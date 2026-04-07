@@ -328,16 +328,24 @@ async function renderWhoopRecoveryCard() {
   // Latest sleep
   const latestSleep = data.sleep.length > 0 ? data.sleep[data.sleep.length - 1] : null;
 
-  // 7-day recovery trend bars
-  const trendBars = data.recovery.slice(-7).map(r => {
+  // 7-day recovery trend table
+  const last7 = data.recovery.slice(-7);
+  const sleepByDate = {};
+  data.sleep.forEach(s => { if (s.date) sleepByDate[s.date] = s; });
+
+  const trendRows = last7.map(r => {
     const rc = getRecoveryColor(r.score);
-    const h = Math.max(4, Math.round(r.score * 0.4));
-    const day = r.date ? new Date(r.date + 'T12:00:00').toLocaleDateString('en', { weekday: 'narrow' }) : '?';
-    return `<div class="whoop-trend-col">
-      <div class="whoop-trend-bar" style="height:${h}px;background:${rc.color}"></div>
-      <span class="whoop-trend-day">${day}</span>
-    </div>`;
-  }).join('');
+    const day = r.date ? new Date(r.date + 'T12:00:00').toLocaleDateString('en', { weekday: 'short', month: 'numeric', day: 'numeric' }) : '?';
+    const sl = r.date ? sleepByDate[r.date] : null;
+    const sleepTxt = sl ? sl.durationHrs + 'h' : '--';
+    return `<tr class="whoop-trend-row">
+      <td class="wt-day">${day}</td>
+      <td class="wt-score" style="color:${rc.color}">${r.score}%</td>
+      <td class="wt-val">${r.hrv ? Math.round(r.hrv) : '--'}</td>
+      <td class="wt-val">${r.restingHR || '--'}</td>
+      <td class="wt-val">${sleepTxt}</td>
+    </tr>`;
+  }).reverse().join('');
 
   // Sleep breakdown
   let sleepHTML = '';
@@ -399,8 +407,11 @@ async function renderWhoopRecoveryCard() {
     </div>
     ${sleepHTML}
     <div class="whoop-trend">
-      <div class="whoop-trend-label">7-day Recovery</div>
-      <div class="whoop-trend-bars">${trendBars}</div>
+      <div class="whoop-trend-label">7-day Trend</div>
+      <table class="whoop-trend-table">
+        <thead><tr><th></th><th>Rec</th><th>HRV</th><th>RHR</th><th>Sleep</th></tr></thead>
+        <tbody>${trendRows}</tbody>
+      </table>
     </div>
   `;
 }

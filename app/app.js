@@ -1953,9 +1953,13 @@ function getExerciseMuscle(exId) {
 function startRestTimer(seconds) {
   state.restTimerTotal = seconds;
   state.restTimerRemaining = seconds;
+  state.restTimerRunning = false;
+
   const overlay = document.getElementById('rest-timer-overlay');
   const textEl = document.getElementById('timer-text');
+  const labelEl = document.getElementById('timer-label');
   const ringFill = document.getElementById('timer-ring-fill');
+  const timerDisplay = document.getElementById('timer-display');
   const circumference = 2 * Math.PI * 90;
 
   overlay.classList.remove('hidden');
@@ -1969,23 +1973,42 @@ function startRestTimer(seconds) {
     ringFill.style.strokeDashoffset = circumference * (1 - progress);
   }
 
+  // Show time but don't start counting — wait for tap
   updateDisplay();
+  labelEl.textContent = '▶ TAP TO START';
+  timerDisplay.style.cursor = 'pointer';
 
-  state.restTimerInterval = setInterval(() => {
-    state.restTimerRemaining--;
-    if (state.restTimerRemaining <= 0) {
-      clearInterval(state.restTimerInterval);
-      state.restTimerRemaining = 0;
+  // Remove old listener if any
+  if (state._timerTapHandler) timerDisplay.removeEventListener('click', state._timerTapHandler);
+
+  state._timerTapHandler = function beginCountdown() {
+    if (state.restTimerRunning) return;
+    state.restTimerRunning = true;
+    labelEl.textContent = 'REST';
+    timerDisplay.style.cursor = 'default';
+
+    state.restTimerInterval = setInterval(() => {
+      state.restTimerRemaining--;
+      if (state.restTimerRemaining <= 0) {
+        clearInterval(state.restTimerInterval);
+        state.restTimerRemaining = 0;
+        state.restTimerRunning = false;
+        updateDisplay();
+        labelEl.textContent = 'DONE';
+        if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 200]);
+        setTimeout(() => overlay.classList.add('hidden'), 1500);
+        return;
+      }
       updateDisplay();
-      if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 200]);
-      setTimeout(() => overlay.classList.add('hidden'), 1500);
-    }
-    updateDisplay();
-  }, 1000);
+    }, 1000);
+  };
+
+  timerDisplay.addEventListener('click', state._timerTapHandler);
 }
 
 function stopRestTimer() {
   if (state.restTimerInterval) clearInterval(state.restTimerInterval);
+  state.restTimerRunning = false;
   document.getElementById('rest-timer-overlay').classList.add('hidden');
 }
 
@@ -2164,6 +2187,59 @@ function updateProteinRing(current) {
   if (pct >= 1) fill.style.stroke = 'var(--accent)';
   else if (pct >= 0.7) fill.style.stroke = 'var(--yellow)';
   else fill.style.stroke = 'var(--orange)';
+}
+
+// Common foods protein lookup (per typical serving)
+const PROTEIN_DB = [
+  { name: 'Chicken Breast', g: 40, serving: '200g' },
+  { name: 'Steak', g: 50, serving: '200g' },
+  { name: 'Ground Beef', g: 40, serving: '200g' },
+  { name: 'Salmon Fillet', g: 35, serving: '180g' },
+  { name: 'Tuna Can', g: 25, serving: '1 can' },
+  { name: 'Eggs', g: 6, serving: '1 egg' },
+  { name: 'Eggs x2', g: 12, serving: '2 eggs' },
+  { name: 'Eggs x3', g: 18, serving: '3 eggs' },
+  { name: 'Eggs x4', g: 24, serving: '4 eggs' },
+  { name: 'Protein Shake', g: 30, serving: '1 scoop' },
+  { name: 'Greek Yogurt', g: 15, serving: '170g' },
+  { name: 'Cottage Cheese', g: 14, serving: '100g' },
+  { name: 'Milk', g: 8, serving: '1 glass' },
+  { name: 'Cheese', g: 7, serving: '1 slice' },
+  { name: 'Turkey Breast', g: 35, serving: '150g' },
+  { name: 'Pork Chop', g: 30, serving: '150g' },
+  { name: 'Shrimp', g: 24, serving: '150g' },
+  { name: 'Tofu', g: 15, serving: '150g' },
+  { name: 'Lentils', g: 18, serving: '1 cup cooked' },
+  { name: 'Chickpeas', g: 15, serving: '1 cup' },
+  { name: 'Rice & Chicken', g: 45, serving: 'plate' },
+  { name: 'Pasta & Meat', g: 35, serving: 'plate' },
+  { name: 'Hamburger', g: 25, serving: '1 burger' },
+  { name: 'Bife de Chorizo', g: 55, serving: '250g' },
+  { name: 'Milanesa', g: 30, serving: '1 piece' },
+  { name: 'Empanadas x3', g: 18, serving: '3 units' },
+  { name: 'Protein Bar', g: 20, serving: '1 bar' },
+  { name: 'Almonds', g: 6, serving: 'handful' },
+  { name: 'Peanut Butter', g: 8, serving: '2 tbsp' },
+];
+
+function setupProteinAutocomplete() {
+  const nameInput = document.getElementById('meal-name');
+  const proteinInput = document.getElementById('meal-protein');
+  const datalist = document.getElementById('protein-suggestions');
+
+  // Populate datalist
+  datalist.innerHTML = PROTEIN_DB.map(f =>
+    `<option value="${f.name}" label="${f.g}g protein (${f.serving})">`
+  ).join('');
+
+  // Auto-fill protein when a known food is selected/typed
+  nameInput.addEventListener('change', () => {
+    const val = nameInput.value.trim().toLowerCase();
+    const match = PROTEIN_DB.find(f => f.name.toLowerCase() === val);
+    if (match && !proteinInput.value) {
+      proteinInput.value = match.g;
+    }
+  });
 }
 
 async function addMeal(name, protein) {
@@ -2836,6 +2912,9 @@ function bindEvents() {
       addMeal(btn.dataset.meal, parseInt(btn.dataset.g));
     });
   });
+
+  // Protein autocomplete
+  setupProteinAutocomplete();
 
   // Nutrition expand
   document.getElementById('nut-expand-btn').addEventListener('click', () => {

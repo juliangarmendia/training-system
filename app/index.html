@@ -146,14 +146,19 @@
             <div class="section-label" style="margin-top:4px">Log a Meal</div>
             <div class="meal-log-form">
               <div style="display:flex;gap:8px">
-                <input type="text" id="meal-name" placeholder="Chicken & rice, shake..." style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:14px;padding:10px 12px">
-                <input type="number" id="meal-protein" placeholder="g" inputmode="numeric" style="width:70px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:14px;padding:10px 8px;text-align:center">
+                <input type="text" id="meal-name" placeholder="What did you eat?" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:14px;padding:10px 12px" list="protein-suggestions">
+                <input type="number" id="meal-protein" placeholder="prot g" inputmode="numeric" style="width:70px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:14px;padding:10px 8px;text-align:center">
               </div>
-              <div class="quick-add" id="quick-add" style="margin-top:8px">
-                <button data-meal="Breakfast" data-g="30">Breakfast 30g</button>
-                <button data-meal="Lunch" data-g="40">Lunch 40g</button>
-                <button data-meal="Dinner" data-g="40">Dinner 40g</button>
-                <button data-meal="Shake" data-g="30">Shake 30g</button>
+              <datalist id="protein-suggestions"></datalist>
+              <div class="quick-add quick-add-grid" id="quick-add" style="margin-top:8px">
+                <button data-meal="Protein Shake" data-g="30">Shake 30g</button>
+                <button data-meal="Chicken Breast" data-g="40">Chicken 40g</button>
+                <button data-meal="Steak (200g)" data-g="50">Steak 50g</button>
+                <button data-meal="Eggs x3" data-g="18">Eggs x3 18g</button>
+                <button data-meal="Greek Yogurt" data-g="15">Yogurt 15g</button>
+                <button data-meal="Tuna Can" data-g="25">Tuna 25g</button>
+                <button data-meal="Salmon Fillet" data-g="35">Salmon 35g</button>
+                <button data-meal="Ground Beef" data-g="40">Beef 40g</button>
               </div>
               <button id="btn-add-meal" class="btn-primary" style="margin-top:8px">Add Meal</button>
             </div>
@@ -312,14 +317,14 @@
 
     <!-- Rest Timer Overlay -->
     <div id="rest-timer-overlay" class="overlay hidden">
-      <div class="timer-display">
+      <div class="timer-display" id="timer-display">
         <svg viewBox="0 0 200 200" class="timer-ring"><circle cx="100" cy="100" r="90" class="timer-ring-bg"/><circle cx="100" cy="100" r="90" class="timer-ring-fill" id="timer-ring-fill"/></svg>
         <div class="timer-text" id="timer-text">0:00</div>
-        <div class="timer-label">REST</div>
+        <div class="timer-label" id="timer-label">TAP TO START</div>
       </div>
       <div class="timer-controls">
         <button id="timer-minus" class="timer-adj">-15s</button>
-        <button id="timer-skip" class="btn-primary">Skip</button>
+        <button id="timer-skip" class="btn-primary">&#9632; Stop</button>
         <button id="timer-plus" class="timer-adj">+15s</button>
       </div>
     </div>
