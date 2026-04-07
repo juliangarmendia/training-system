@@ -58,8 +58,9 @@ async function whoopGetToken() {
 
     const data = await res.json();
     if (!res.ok || data.error) {
-      whoopDisconnect();
-      return null;
+      // Don't disconnect — return existing token and let API calls handle auth errors
+      console.warn('[WHOOP] Token refresh failed, using existing token:', data.error || res.status);
+      return token;
     }
 
     localStorage.setItem('whoop_access_token', data.access_token);
