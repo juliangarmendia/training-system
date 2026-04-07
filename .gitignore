@@ -1,0 +1,15 @@
+# System
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor
+.vscode/
+*.swp
+*.swo
+
+# Claude local settings
+.claude/settings.local.json
+
+# Raw data (personal, don't publish)
+data/raw/
