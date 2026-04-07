@@ -1177,6 +1177,7 @@ function renderLineChart(labels, values, opts = {}) {
 // ==================== STATS MODULE ====================
 async function renderStats() {
   await renderBodyWeightChart();
+  if (window.renderWhoopRecoveryCard) await renderWhoopRecoveryCard();
   await renderStreaks();
   await renderFatigueScore();
   await renderDeloadReminder();
@@ -1288,6 +1289,22 @@ async function renderFatigueScore() {
   // Protein deficit (0-20 points)
   const proteinDays = recentNutrition.filter(n => n.protein < state.settings.proteinTarget).length;
   fatigue += proteinDays * 3;
+
+  // Integrate WHOOP recovery if available
+  if (window.whoopIsConnected && whoopIsConnected()) {
+    try {
+      const whoopData = await whoopSyncData();
+      if (whoopData && whoopData.recovery.length > 0) {
+        const latest = whoopData.recovery[whoopData.recovery.length - 1];
+        if (latest.score != null) {
+          // WHOOP recovery 0-100 (higher = better recovered)
+          // Invert and weight it: low recovery adds fatigue
+          const whoopFatigue = Math.round((100 - latest.score) * 0.3);
+          fatigue = Math.round(fatigue * 0.6 + whoopFatigue + fatigue * 0.1);
+        }
+      }
+    } catch { /* ignore whoop errors */ }
+  }
 
   fatigue = Math.min(100, Math.max(0, fatigue));
 
@@ -2571,6 +2588,9 @@ async function init() {
   renderWeekStrip();
   renderRecentWorkouts();
   updateHeader('gym');
+
+  // WHOOP
+  if (window.renderWhoopUI) renderWhoopUI();
 
   // Notifications
   initNotifications();

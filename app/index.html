@@ -195,6 +195,9 @@
           </div>
           <div class="chart-box" id="bw-chart" style="margin-bottom:16px"></div>
 
+          <!-- WHOOP Recovery -->
+          <div id="whoop-recovery" class="card hidden" style="margin-bottom:12px"></div>
+
           <!-- Deload Reminder -->
           <div id="deload-reminder" class="hidden"></div>
 
@@ -235,6 +238,10 @@
         <div class="view-scroll">
           <div class="section-label">Account</div>
           <div class="card" id="auth-section">
+            <p class="muted" style="font-size:13px;margin:0">Loading...</p>
+          </div>
+          <div class="section-label" style="margin-top:24px">WHOOP</div>
+          <div class="card" id="whoop-section">
             <p class="muted" style="font-size:13px;margin:0">Loading...</p>
           </div>
           <div class="section-label" style="margin-top:24px">Appearance</div>
@@ -315,6 +322,7 @@
   </div>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="supabase-sync.js"></script>
+  <script src="whoop.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

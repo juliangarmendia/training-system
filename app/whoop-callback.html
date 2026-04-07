@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Connecting WHOOP...</title>
+  <style>
+    body { font-family: -apple-system, system-ui, sans-serif; background: #0a0a0a; color: #f0f0f0; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+    .box { text-align: center; padding: 32px; }
+    .spinner { width: 40px; height: 40px; border: 3px solid #262626; border-top-color: #4ade80; border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 16px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .msg { font-size: 16px; font-weight: 600; }
+    .sub { font-size: 13px; color: #666; margin-top: 8px; }
+    .error { color: #f87171; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <div class="spinner" id="spinner"></div>
+    <div class="msg" id="msg">Connecting WHOOP...</div>
+    <div class="sub" id="sub">Exchanging authorization</div>
+  </div>
+  <script>
+    (async () => {
+      const params = new URLSearchParams(window.location.search);
+      const code = params.get('code');
+      const error = params.get('error');
+      const msgEl = document.getElementById('msg');
+      const subEl = document.getElementById('sub');
+      const spinner = document.getElementById('spinner');
+
+      if (error) {
+        spinner.style.display = 'none';
+        msgEl.textContent = 'Authorization denied';
+        msgEl.classList.add('error');
+        subEl.textContent = error;
+        setTimeout(() => window.close(), 3000);
+        return;
+      }
+
+      if (!code) {
+        spinner.style.display = 'none';
+        msgEl.textContent = 'No authorization code';
+        msgEl.classList.add('error');
+        subEl.textContent = 'Missing code parameter';
+        return;
+      }
+
+      try {
+        const res = await fetch('https://ycfodifvpvosukepcxie.supabase.co/functions/v1/whoop-auth', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'exchange', code }),
+        });
+
+        const data = await res.json();
+
+        if (!res.ok || data.error) {
+          throw new Error(data.error || 'Token exchange failed');
+        }
+
+        // Store tokens in localStorage (will be picked up by main app)
+        localStorage.setItem('whoop_access_token', data.access_token);
+        localStorage.setItem('whoop_refresh_token', data.refresh_token);
+        localStorage.setItem('whoop_token_expiry', String(Date.now() + data.expires_in * 1000));
+
+        spinner.style.display = 'none';
+        msgEl.textContent = 'WHOOP connected!';
+        subEl.textContent = 'Redirecting...';
+
+        setTimeout(() => {
+          window.location.href = './index.html';
+        }, 1500);
+
+      } catch (err) {
+        spinner.style.display = 'none';
+        msgEl.textContent = 'Connection failed';
+        msgEl.classList.add('error');
+        subEl.textContent = err.message;
+      }
+    })();
+  </script>
+</body>
+</html>

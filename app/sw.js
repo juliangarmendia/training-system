@@ -2,14 +2,16 @@
 // Service Worker — Training App v3.3
 // ============================================================
 
-const CACHE_NAME = 'training-v3.3';
+const CACHE_NAME = 'training-v3.4';
 const APP_SHELL = [
   './',
   './index.html',
   './style.css',
   './app.js',
   './supabase-sync.js',
+  './whoop.js',
   './manifest.json',
+  './favicon.svg',
 ];
 
 // Install: precache app shell
@@ -38,7 +40,7 @@ self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
 
   // Network-first for Supabase API and CDN scripts
-  if (url.hostname.includes('supabase') || url.hostname.includes('cdn.jsdelivr.net')) {
+  if (url.hostname.includes('supabase') || url.hostname.includes('cdn.jsdelivr.net') || url.hostname.includes('whoop.com')) {
     e.respondWith(
       fetch(e.request)
         .then(res => {
