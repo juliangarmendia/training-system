@@ -5,7 +5,7 @@
 const WHOOP_CLIENT_ID = '2bc89171-9bab-46ec-94d2-0bb8d015f9c3';
 const WHOOP_AUTH_URL = 'https://api.prod.whoop.com/oauth/oauth2/auth';
 const WHOOP_API_BASE = 'https://api.prod.whoop.com/developer';
-const WHOOP_REDIRECT_URI = 'https://juliangarmendia.github.io/training-system/app/whoop-callback.html';
+const WHOOP_REDIRECT_URI = 'https://juliangarmendia.github.io/training-system/whoop-callback.html';
 const WHOOP_TOKEN_PROXY = 'https://ycfodifvpvosukepcxie.supabase.co/functions/v1/whoop-auth';
 const WHOOP_SCOPES = 'read:recovery read:sleep read:workout read:body_measurement read:profile';
 

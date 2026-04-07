@@ -2,7 +2,7 @@ import "@supabase/functions-js/edge-runtime.d.ts";
 
 const WHOOP_TOKEN_URL = "https://api.prod.whoop.com/oauth/oauth2/token";
 const CLIENT_ID = "2bc89171-9bab-46ec-94d2-0bb8d015f9c3";
-const REDIRECT_URI = "https://juliangarmendia.github.io/training-system/app/whoop-callback.html";
+const REDIRECT_URI = "https://juliangarmendia.github.io/training-system/whoop-callback.html";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
