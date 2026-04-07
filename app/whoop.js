@@ -1,5 +1,5 @@
 // ============================================================
-// WHOOP Integration Module — Training App v3.3
+// WHOOP Integration Module — Training App v3.4
 // ============================================================
 
 const WHOOP_CLIENT_ID = '2bc89171-9bab-46ec-94d2-0bb8d015f9c3';
@@ -30,6 +30,7 @@ function whoopDisconnect() {
   localStorage.removeItem('whoop_refresh_token');
   localStorage.removeItem('whoop_token_expiry');
   localStorage.removeItem('whoop_last_sync');
+  localStorage.removeItem('whoop_cache');
 }
 
 async function whoopGetToken() {
@@ -66,11 +67,11 @@ async function whoopGetToken() {
     localStorage.setItem('whoop_token_expiry', String(Date.now() + data.expires_in * 1000));
     return data.access_token;
   } catch {
-    return token; // Use existing token, may still work
+    return token;
   }
 }
 
-// ==================== API CALLS ====================
+// ==================== API CALLS (v2) ====================
 async function whoopFetch(endpoint) {
   const token = await whoopGetToken();
   if (!token) return null;
@@ -80,59 +81,65 @@ async function whoopFetch(endpoint) {
       headers: { 'Authorization': `Bearer ${token}` },
     });
     if (!res.ok) {
+      console.warn(`[WHOOP] ${endpoint} returned ${res.status}`);
       if (res.status === 401) whoopDisconnect();
       return null;
     }
     return await res.json();
-  } catch {
+  } catch (e) {
+    console.warn('[WHOOP] Fetch error:', e);
     return null;
   }
 }
 
-async function whoopGetProfile() {
-  return await whoopFetch('/v1/user/profile/basic');
-}
-
-async function whoopGetRecovery(startDate, endDate) {
+// v2 endpoints
+async function whoopGetCycles(startDate, endDate) {
   const params = new URLSearchParams({
     start: `${startDate}T00:00:00.000Z`,
     end: `${endDate}T23:59:59.999Z`,
+    limit: '25',
   });
-  return await whoopFetch(`/v1/recovery?${params}`);
+  return await whoopFetch(`/v2/cycle?${params}`);
+}
+
+async function whoopGetRecoveryForCycle(cycleId) {
+  return await whoopFetch(`/v2/recovery/${cycleId}`);
 }
 
 async function whoopGetSleep(startDate, endDate) {
   const params = new URLSearchParams({
     start: `${startDate}T00:00:00.000Z`,
     end: `${endDate}T23:59:59.999Z`,
+    limit: '25',
   });
-  return await whoopFetch(`/v1/activity/sleep?${params}`);
-}
-
-async function whoopGetWorkouts(startDate, endDate) {
-  const params = new URLSearchParams({
-    start: `${startDate}T00:00:00.000Z`,
-    end: `${endDate}T23:59:59.999Z`,
-  });
-  return await whoopFetch(`/v1/activity/workout?${params}`);
+  return await whoopFetch(`/v2/activity/sleep?${params}`);
 }
 
 async function whoopGetBodyMeasurement() {
-  return await whoopFetch('/v1/body_measurement');
+  return await whoopFetch('/v2/body_measurement');
+}
+
+async function whoopGetProfile() {
+  return await whoopFetch('/v2/user/profile/basic');
 }
 
 // ==================== SYNC DATA ====================
 async function whoopSyncData() {
   if (!whoopIsConnected()) return null;
 
+  // Cache: don't re-fetch if synced in the last 30 minutes
+  const cache = localStorage.getItem('whoop_cache');
+  if (cache) {
+    try {
+      const cached = JSON.parse(cache);
+      if (cached.timestamp && Date.now() - cached.timestamp < 30 * 60 * 1000) {
+        return cached.data;
+      }
+    } catch { /* ignore */ }
+  }
+
   const today = new Date().toISOString().split('T')[0];
   const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
-
-  const [recovery, sleep, body] = await Promise.all([
-    whoopGetRecovery(weekAgo, today),
-    whoopGetSleep(weekAgo, today),
-    whoopGetBodyMeasurement(),
-  ]);
 
   const result = {
     synced: true,
@@ -142,38 +149,59 @@ async function whoopSyncData() {
     bodyWeight: null,
   };
 
-  // Parse recovery data
-  if (recovery && recovery.records) {
-    result.recovery = recovery.records.map(r => ({
-      date: r.cycle?.days?.[0] || r.created_at?.split('T')[0],
-      score: r.score?.recovery_score,
-      hrv: r.score?.hrv_rmssd_milli,
-      restingHR: r.score?.resting_heart_rate,
-    })).filter(r => r.score != null);
+  // Fetch cycles (which contain recovery data in v2)
+  const [cycles, sleep, body] = await Promise.all([
+    whoopGetCycles(weekAgo, today),
+    whoopGetSleep(weekAgo, today),
+    whoopGetBodyMeasurement(),
+  ]);
+
+  // Parse cycles → get recovery for each
+  if (cycles && cycles.records) {
+    for (const cycle of cycles.records) {
+      if (cycle.score_state === 'SCORED' && cycle.id) {
+        const rec = await whoopGetRecoveryForCycle(cycle.id);
+        if (rec && rec.score) {
+          result.recovery.push({
+            date: cycle.start ? cycle.start.split('T')[0] : today,
+            score: rec.score.recovery_score,
+            hrv: rec.score.hrv_rmssd_milli,
+            restingHR: rec.score.resting_heart_rate,
+            spo2: rec.score.spo2_percentage,
+            skinTemp: rec.score.skin_temp_celsius,
+          });
+        }
+      }
+    }
   }
 
   // Parse sleep data
   if (sleep && sleep.records) {
-    result.sleep = sleep.records.map(s => ({
-      date: s.start?.split('T')[0],
-      score: s.score?.stage_summary ? Math.round(
-        (s.score.stage_summary.total_in_bed_time_milli > 0
-          ? (s.score.stage_summary.total_slow_wave_sleep_time_milli + s.score.stage_summary.total_rem_sleep_time_milli)
-            / s.score.stage_summary.total_in_bed_time_milli * 100
-          : 0)
-      ) : null,
-      durationHrs: s.score?.stage_summary?.total_in_bed_time_milli
-        ? Math.round(s.score.stage_summary.total_in_bed_time_milli / 3600000 * 10) / 10
-        : null,
-    })).filter(s => s.durationHrs != null);
+    result.sleep = sleep.records.map(s => {
+      const summary = s.score?.stage_summary;
+      if (!summary) return null;
+      const totalMs = summary.total_in_bed_time_milli || 0;
+      const durationHrs = totalMs > 0 ? Math.round(totalMs / 3600000 * 10) / 10 : null;
+      const qualityPct = totalMs > 0
+        ? Math.round(((summary.total_slow_wave_sleep_time_milli || 0) + (summary.total_rem_sleep_time_milli || 0)) / totalMs * 100)
+        : null;
+      return {
+        date: s.start ? s.start.split('T')[0] : null,
+        durationHrs,
+        qualityPct,
+        remMs: summary.total_rem_sleep_time_milli || 0,
+        deepMs: summary.total_slow_wave_sleep_time_milli || 0,
+      };
+    }).filter(s => s && s.durationHrs != null);
   }
 
-  // Body measurement (weight)
-  if (body && body.height_meter) {
-    // Whoop returns weight in kilograms
+  // Body measurement
+  if (body) {
     result.bodyWeight = body.weight_kilogram || null;
   }
 
+  // Cache result
+  localStorage.setItem('whoop_cache', JSON.stringify({ timestamp: Date.now(), data: result }));
   localStorage.setItem('whoop_last_sync', today);
   return result;
 }
@@ -199,12 +227,19 @@ function renderWhoopUI() {
       if (typeof toast === 'function') toast('WHOOP disconnected');
     });
     document.getElementById('btn-whoop-sync').addEventListener('click', async () => {
+      // Clear cache to force fresh fetch
+      localStorage.removeItem('whoop_cache');
+      const btn = document.getElementById('btn-whoop-sync');
+      btn.textContent = 'Syncing...';
+      btn.disabled = true;
       const data = await whoopSyncData();
       if (data) {
         if (typeof toast === 'function') toast(`Synced: ${data.recovery.length} recovery, ${data.sleep.length} sleep`);
         renderWhoopUI();
       } else {
-        if (typeof toast === 'function') toast('Sync failed');
+        if (typeof toast === 'function') toast('Sync failed — check connection');
+        btn.textContent = 'Sync Now';
+        btn.disabled = false;
       }
     });
   } else {
@@ -228,7 +263,8 @@ async function renderWhoopRecoveryCard() {
 
   const data = await whoopSyncData();
   if (!data || data.recovery.length === 0) {
-    container.classList.add('hidden');
+    container.innerHTML = '<div class="empty-state" style="padding:16px">WHOOP connected but no recovery data found. Try Sync Now in Settings.</div>';
+    container.classList.remove('hidden');
     return;
   }
 
