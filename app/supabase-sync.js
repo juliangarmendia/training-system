@@ -36,8 +36,12 @@ function initSupabase() {
     if (event === 'SIGNED_IN') {
       syncAll();
       renderAuthUI();
+      const loginScreen = document.getElementById('login-screen');
+      if (loginScreen) loginScreen.classList.add('hidden');
     } else if (event === 'SIGNED_OUT') {
       renderAuthUI();
+      const loginScreen = document.getElementById('login-screen');
+      if (loginScreen) loginScreen.classList.remove('hidden');
     }
   });
 

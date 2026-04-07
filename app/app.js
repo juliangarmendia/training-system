@@ -186,9 +186,6 @@ const state = {
   restTimerTotal: 0,
   settings: { unit: 'kg', proteinTarget: 170, calorieTarget: 2500, startDate: null },
   sessionQuality: 3,
-  pinEntry: '',
-  pinMode: 'check',
-  pinTemp: '',
   selectedStrengthLift: 'bench-press',
 };
 
@@ -289,116 +286,63 @@ function getExerciseName(exId) {
   return exId;
 }
 
-// ==================== PIN LOCK ====================
-function checkPin() {
-  const storedPin = localStorage.getItem('training_pin');
-  if (!storedPin) {
-    document.getElementById('pin-lock').classList.add('hidden');
-    return;
-  }
-  state.pinMode = 'check';
-  state.pinEntry = '';
-  document.getElementById('pin-lock').classList.remove('hidden');
-  document.getElementById('pin-prompt').textContent = 'Enter PIN';
-  document.getElementById('pin-msg').textContent = '';
-  updatePinDots();
+// ==================== LOGIN SCREEN ====================
+function showLoginScreen() {
+  document.getElementById('login-screen').classList.remove('hidden');
 }
 
-function handlePinKey(key) {
-  const lock = document.getElementById('pin-lock');
-  const msg = document.getElementById('pin-msg');
-
-  if (key === 'del') {
-    state.pinEntry = state.pinEntry.slice(0, -1);
-    updatePinDots();
-    return;
-  }
-
-  if (state.pinEntry.length >= 4) return;
-  state.pinEntry += key;
-  updatePinDots();
-
-  if (state.pinEntry.length === 4) {
-    setTimeout(() => {
-      if (state.pinMode === 'check') {
-        const stored = localStorage.getItem('training_pin');
-        if (state.pinEntry === stored) {
-          lock.classList.add('hidden');
-          state.pinEntry = '';
-        } else {
-          msg.textContent = 'Wrong PIN';
-          shakePinDots();
-          state.pinEntry = '';
-          setTimeout(() => updatePinDots(), 400);
-        }
-      } else if (state.pinMode === 'set') {
-        state.pinTemp = state.pinEntry;
-        state.pinEntry = '';
-        state.pinMode = 'confirm';
-        document.getElementById('pin-prompt').textContent = 'Confirm PIN';
-        updatePinDots();
-      } else if (state.pinMode === 'confirm') {
-        if (state.pinEntry === state.pinTemp) {
-          localStorage.setItem('training_pin', state.pinEntry);
-          lock.classList.add('hidden');
-          state.pinEntry = '';
-          state.pinTemp = '';
-          toast('PIN set!');
-          updatePinStatus();
-        } else {
-          msg.textContent = 'PINs don\'t match';
-          shakePinDots();
-          state.pinEntry = '';
-          state.pinMode = 'set';
-          document.getElementById('pin-prompt').textContent = 'Set a 4-digit PIN';
-          setTimeout(() => updatePinDots(), 400);
-        }
-      }
-    }, 150);
-  }
+function hideLoginScreen() {
+  document.getElementById('login-screen').classList.add('hidden');
 }
 
-function updatePinDots() {
-  const dots = document.querySelectorAll('#pin-dots span');
-  dots.forEach((dot, i) => {
-    dot.className = i < state.pinEntry.length ? 'filled' : '';
+function bindLoginEvents() {
+  const errEl = document.getElementById('login-error');
+
+  document.getElementById('btn-login').addEventListener('click', async () => {
+    const email = document.getElementById('login-email').value.trim();
+    const pass = document.getElementById('login-password').value;
+    if (!email || !pass) { errEl.textContent = 'Enter email and password'; return; }
+    errEl.textContent = '';
+    const { error } = await supaSignIn(email, pass);
+    if (error) {
+      errEl.textContent = error.message;
+    } else {
+      hideLoginScreen();
+    }
+  });
+
+  document.getElementById('btn-register').addEventListener('click', async () => {
+    const email = document.getElementById('login-email').value.trim();
+    const pass = document.getElementById('login-password').value;
+    if (!email || pass.length < 6) { errEl.textContent = 'Email + password (min 6 chars)'; return; }
+    errEl.textContent = '';
+    const { error } = await supaSignUp(email, pass);
+    if (error) {
+      errEl.textContent = error.message;
+    } else {
+      errEl.style.color = 'var(--accent)';
+      errEl.textContent = 'Check your email to confirm, then sign in.';
+    }
+  });
+
+  // Allow Enter key to submit
+  document.getElementById('login-password').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') document.getElementById('btn-login').click();
   });
 }
 
-function shakePinDots() {
-  const dots = document.querySelectorAll('#pin-dots span');
-  dots.forEach(d => {
-    d.className = 'error';
-    d.style.animation = 'none';
-    d.offsetHeight;
-    d.style.animation = '';
-  });
-}
-
-function startSetPin() {
-  state.pinMode = 'set';
-  state.pinEntry = '';
-  state.pinTemp = '';
-  document.getElementById('pin-prompt').textContent = 'Set a 4-digit PIN';
-  document.getElementById('pin-msg').textContent = '';
-  document.getElementById('pin-lock').classList.remove('hidden');
-  updatePinDots();
-}
-
-function removePin() {
-  localStorage.removeItem('training_pin');
-  toast('PIN removed');
-  updatePinStatus();
-}
-
-function updatePinStatus() {
-  const hasPin = !!localStorage.getItem('training_pin');
-  const status = document.getElementById('pin-status');
-  const removeBtn = document.getElementById('btn-remove-pin');
-  const setBtn = document.getElementById('btn-set-pin');
-  status.textContent = hasPin ? 'PIN is set' : 'No PIN configured';
-  removeBtn.classList.toggle('hidden', !hasPin);
-  setBtn.textContent = hasPin ? 'Change PIN' : 'Set PIN';
+async function checkAuth() {
+  if (!supabaseClient) {
+    // No Supabase configured — skip login, work offline only
+    hideLoginScreen();
+    return;
+  }
+  const user = await getUser();
+  if (user) {
+    hideLoginScreen();
+  } else {
+    showLoginScreen();
+  }
 }
 
 // ==================== THEME ====================
@@ -1648,7 +1592,6 @@ function applySettingsToUI() {
   document.getElementById('setting-protein-target').value = proteinTarget;
   document.getElementById('setting-calorie-target').value = calorieTarget;
   document.getElementById('setting-start-date').value = startDate || today();
-  updatePinStatus();
 }
 
 async function saveSettings() {
@@ -1817,16 +1760,6 @@ function bindEvents() {
     if (e.target.files[0]) importBackup(e.target.files[0]);
   });
 
-  // PIN
-  document.getElementById('btn-set-pin').addEventListener('click', startSetPin);
-  document.getElementById('btn-remove-pin').addEventListener('click', removePin);
-  document.querySelectorAll('#pin-pad button').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const key = btn.dataset.key;
-      if (key !== undefined && key !== '') handlePinKey(key);
-    });
-  });
-
   // Exercise modal close
   document.getElementById('modal-close').addEventListener('click', closeExerciseModal);
 
@@ -1930,24 +1863,26 @@ async function init() {
   await loadSettings();
   loadTheme();
   bindEvents();
-  checkPin();
-  renderWeekStrip();
-  renderRecentWorkouts();
-  updateHeader('gym');
 
   // Service Worker
   registerServiceWorker();
 
-  // Supabase (optional)
+  // Supabase auth
   if (window.initSupabase) {
     window.initSupabase();
+    bindLoginEvents();
+    await checkAuth();
   } else {
-    // No sync module — render auth section as offline only
+    hideLoginScreen();
     const authSection = document.getElementById('auth-section');
     if (authSection) {
       authSection.innerHTML = '<p class="muted" style="font-size:13px;margin:0">Cloud sync not configured.</p>';
     }
   }
+
+  renderWeekStrip();
+  renderRecentWorkouts();
+  updateHeader('gym');
 
   // Notifications
   initNotifications();

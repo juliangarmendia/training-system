@@ -33,21 +33,12 @@ html, body {
 
 #app { display: flex; flex-direction: column; height: 100%; max-width: 480px; margin: 0 auto; }
 
-/* ========== PIN Lock ========== */
+/* ========== Login / Auth Overlay ========== */
 .pin-overlay { position: fixed; inset: 0; background: var(--bg); z-index: 9999; display: flex; align-items: center; justify-content: center; transition: opacity 0.3s; }
 .pin-overlay.hidden { opacity: 0; pointer-events: none; }
-.pin-box { text-align: center; padding: 32px; width: 100%; max-width: 320px; }
+.pin-box { text-align: center; padding: 32px; width: 100%; max-width: 340px; }
 .pin-icon { font-size: 48px; margin-bottom: 16px; }
 .pin-prompt { font-size: 18px; font-weight: 600; margin-bottom: 24px; }
-.pin-dots { display: flex; justify-content: center; gap: 16px; margin-bottom: 32px; }
-.pin-dots span { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--border2); transition: all 0.15s; }
-.pin-dots span.filled { background: var(--accent); border-color: var(--accent); box-shadow: 0 0 8px var(--accent-glow); }
-.pin-dots span.error { background: var(--red); border-color: var(--red); }
-.pin-pad { display: grid; grid-template-columns: repeat(3, 72px); gap: 12px; justify-content: center; }
-.pin-pad button { width: 72px; height: 56px; border-radius: 14px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 22px; font-weight: 500; cursor: pointer; transition: all 0.1s; display: flex; align-items: center; justify-content: center; }
-.pin-pad button:active { background: var(--surface3); transform: scale(0.95); }
-.pin-empty { visibility: hidden; }
-.pin-msg { margin-top: 20px; font-size: 13px; color: var(--red); min-height: 20px; }
 
 /* ========== Modal ========== */
 .modal { position: fixed; inset: 0; background: var(--bg); z-index: 900; overflow-y: auto; -webkit-overflow-scrolling: touch; transition: opacity 0.2s; }

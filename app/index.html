@@ -12,20 +12,18 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <!-- PIN Lock -->
-  <div id="pin-lock" class="pin-overlay hidden">
-    <div class="pin-box">
-      <div class="pin-icon">🔒</div>
-      <div class="pin-prompt" id="pin-prompt">Enter PIN</div>
-      <div class="pin-dots" id="pin-dots"><span></span><span></span><span></span><span></span></div>
-      <div class="pin-pad" id="pin-pad">
-        <button data-key="1">1</button><button data-key="2">2</button><button data-key="3">3</button>
-        <button data-key="4">4</button><button data-key="5">5</button><button data-key="6">6</button>
-        <button data-key="7">7</button><button data-key="8">8</button><button data-key="9">9</button>
-        <button data-key="" class="pin-empty"></button><button data-key="0">0</button>
-        <button data-key="del" class="pin-del"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 4H8l-7 8 7 8h13a2 2 0 002-2V6a2 2 0 00-2-2z"/><line x1="18" y1="9" x2="12" y2="15"/><line x1="12" y1="9" x2="18" y2="15"/></svg></button>
+  <!-- Login Screen -->
+  <div id="login-screen" class="pin-overlay">
+    <div class="pin-box" style="max-width:340px">
+      <div class="pin-icon">🏋️</div>
+      <div class="pin-prompt">Training System</div>
+      <div id="login-form" style="text-align:left">
+        <div class="form-row" style="margin-bottom:10px"><label>Email</label><input type="email" id="login-email" placeholder="you@email.com" autocomplete="email" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:16px;padding:10px 14px;width:100%"></div>
+        <div class="form-row" style="margin-bottom:10px"><label>Password</label><input type="password" id="login-password" placeholder="Min 6 characters" autocomplete="current-password" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:16px;padding:10px 14px;width:100%"></div>
+        <div id="login-error" style="color:var(--red);font-size:12px;min-height:18px;margin-bottom:6px"></div>
+        <button id="btn-login" class="btn-primary" style="margin-bottom:8px">Sign In</button>
+        <button id="btn-register" class="btn-secondary btn-full" style="text-align:center">Create Account</button>
       </div>
-      <div class="pin-msg" id="pin-msg"></div>
     </div>
   </div>
 
@@ -178,12 +176,6 @@
           <div class="section-label">Account</div>
           <div class="card" id="auth-section">
             <p class="muted" style="font-size:13px;margin:0">Loading...</p>
-          </div>
-          <div class="section-label" style="margin-top:24px">Security</div>
-          <div class="card">
-            <div class="form-row inline"><label>PIN Lock</label><button id="btn-set-pin" class="btn-secondary" style="width:auto;padding:8px 16px">Set PIN</button></div>
-            <div id="pin-status" class="muted" style="font-size:12px;margin-top:8px"></div>
-            <button id="btn-remove-pin" class="btn-danger-sm hidden" style="margin-top:8px">Remove PIN</button>
           </div>
           <div class="section-label" style="margin-top:24px">Appearance</div>
           <div class="card">
