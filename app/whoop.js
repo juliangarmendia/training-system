@@ -71,39 +71,44 @@ async function whoopGetToken() {
   }
 }
 
-// ==================== API CALLS (v2) ====================
+// ==================== API CALLS (v1) ====================
 async function whoopFetch(endpoint) {
   const token = await whoopGetToken();
   if (!token) return null;
 
   try {
-    const res = await fetch(`${WHOOP_API_BASE}${endpoint}`, {
+    const url = `${WHOOP_API_BASE}${endpoint}`;
+    console.log(`[WHOOP] Fetching ${url}`);
+    const res = await fetch(url, {
       headers: { 'Authorization': `Bearer ${token}` },
     });
     if (!res.ok) {
-      console.warn(`[WHOOP] ${endpoint} returned ${res.status}`);
+      const body = await res.text();
+      console.warn(`[WHOOP] ${endpoint} returned ${res.status}:`, body);
       if (res.status === 401) whoopDisconnect();
       return null;
     }
-    return await res.json();
+    const data = await res.json();
+    console.log(`[WHOOP] ${endpoint} →`, data);
+    return data;
   } catch (e) {
     console.warn('[WHOOP] Fetch error:', e);
     return null;
   }
 }
 
-// v2 endpoints
+// v1 endpoints
 async function whoopGetCycles(startDate, endDate) {
   const params = new URLSearchParams({
     start: `${startDate}T00:00:00.000Z`,
     end: `${endDate}T23:59:59.999Z`,
     limit: '25',
   });
-  return await whoopFetch(`/v2/cycle?${params}`);
+  return await whoopFetch(`/v1/cycle?${params}`);
 }
 
 async function whoopGetRecoveryForCycle(cycleId) {
-  return await whoopFetch(`/v2/recovery/${cycleId}`);
+  return await whoopFetch(`/v1/cycle/${cycleId}/recovery`);
 }
 
 async function whoopGetSleep(startDate, endDate) {
@@ -112,15 +117,15 @@ async function whoopGetSleep(startDate, endDate) {
     end: `${endDate}T23:59:59.999Z`,
     limit: '25',
   });
-  return await whoopFetch(`/v2/activity/sleep?${params}`);
+  return await whoopFetch(`/v1/activity/sleep?${params}`);
 }
 
 async function whoopGetBodyMeasurement() {
-  return await whoopFetch('/v2/body_measurement');
+  return await whoopFetch('/v1/user/body_measurement');
 }
 
 async function whoopGetProfile() {
-  return await whoopFetch('/v2/user/profile/basic');
+  return await whoopFetch('/v1/user/profile/basic');
 }
 
 // ==================== SYNC DATA ====================

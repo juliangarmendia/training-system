@@ -453,6 +453,11 @@ async function checkAuth() {
   }
   const user = await getUser();
   if (user) {
+    // If no userName saved, derive from email
+    if (!state.settings.userName && user.email) {
+      state.settings.userName = user.email.split('@')[0];
+      await dbPut('settings', { key: 'userSettings', data: state.settings });
+    }
     hideLoginScreen();
     showWelcomeScreen();
   } else {
