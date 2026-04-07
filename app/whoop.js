@@ -71,38 +71,36 @@ async function whoopGetToken() {
   }
 }
 
-// ==================== API CALLS ====================
+// ==================== API CALLS (via proxy) ====================
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InljZm9kaWZ2cHZvc3VrZXBjeGllIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU1NzQ2MDMsImV4cCI6MjA5MTE1MDYwM30.3nDHWD2IJh2SZ283QuorC60O1KDGxad2LA_jk1aOwW4';
+
 async function whoopFetch(endpoint) {
   const token = await whoopGetToken();
   if (!token) return null;
 
-  // Try v2 first, fall back to v1
-  const versions = ['/v2', '/v1'];
-  for (const ver of versions) {
-    try {
-      const url = `${WHOOP_API_BASE}${ver}${endpoint}`;
-      console.log(`[WHOOP] Fetching ${url}`);
-      const res = await fetch(url, {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
-      if (res.status === 404) {
-        console.log(`[WHOOP] ${ver}${endpoint} not found, trying next...`);
-        continue;
-      }
-      if (!res.ok) {
-        const body = await res.text();
-        console.warn(`[WHOOP] ${ver}${endpoint} returned ${res.status}:`, body);
-        if (res.status === 401) whoopDisconnect();
-        return null;
-      }
-      const data = await res.json();
-      console.log(`[WHOOP] ${ver}${endpoint} →`, data);
-      return data;
-    } catch (e) {
-      console.warn(`[WHOOP] ${ver}${endpoint} error:`, e);
+  try {
+    console.log(`[WHOOP] Proxy call: ${endpoint}`);
+    const res = await fetch(WHOOP_TOKEN_PROXY, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+      },
+      body: JSON.stringify({ action: 'api', endpoint, access_token: token }),
+    });
+
+    const data = await res.json();
+    console.log(`[WHOOP] ${endpoint} →`, res.status, data);
+
+    if (!res.ok) {
+      if (res.status === 401) whoopDisconnect();
+      return null;
     }
+    return data;
+  } catch (e) {
+    console.warn('[WHOOP] Proxy error:', e);
+    return null;
   }
-  return null;
 }
 
 async function whoopGetCycles(startDate, endDate) {
@@ -111,42 +109,7 @@ async function whoopGetCycles(startDate, endDate) {
     end: `${endDate}T23:59:59.999Z`,
     limit: '25',
   });
-  return await whoopFetch(`/cycle?${params}`);
-}
-
-async function whoopGetRecoveryForCycle(cycleId) {
-  // Try /cycle/{id}/recovery (v1 style) and /recovery/{id} (v2 style)
-  const token = await whoopGetToken();
-  if (!token) return null;
-
-  const paths = [
-    `/v1/cycle/${cycleId}/recovery`,
-    `/v2/cycle/${cycleId}/recovery`,
-    `/v2/recovery/${cycleId}`,
-    `/v1/recovery/${cycleId}`,
-  ];
-
-  for (const path of paths) {
-    try {
-      const url = `${WHOOP_API_BASE}${path}`;
-      console.log(`[WHOOP] Recovery try: ${url}`);
-      const res = await fetch(url, {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
-      if (res.status === 404) continue;
-      if (!res.ok) {
-        console.warn(`[WHOOP] ${path} returned ${res.status}`);
-        if (res.status === 401) { whoopDisconnect(); return null; }
-        continue;
-      }
-      const data = await res.json();
-      console.log(`[WHOOP] Recovery found via ${path} →`, data);
-      return data;
-    } catch (e) {
-      console.warn(`[WHOOP] ${path} error:`, e);
-    }
-  }
-  return null;
+  return await whoopFetch(`/v1/cycle?${params}`);
 }
 
 async function whoopGetRecoveryCollection(startDate, endDate) {
@@ -155,7 +118,11 @@ async function whoopGetRecoveryCollection(startDate, endDate) {
     end: `${endDate}T23:59:59.999Z`,
     limit: '25',
   });
-  return await whoopFetch(`/recovery?${params}`);
+  return await whoopFetch(`/v1/recovery?${params}`);
+}
+
+async function whoopGetRecoveryForCycle(cycleId) {
+  return await whoopFetch(`/v1/cycle/${cycleId}/recovery`);
 }
 
 async function whoopGetSleep(startDate, endDate) {
@@ -164,15 +131,15 @@ async function whoopGetSleep(startDate, endDate) {
     end: `${endDate}T23:59:59.999Z`,
     limit: '25',
   });
-  return await whoopFetch(`/activity/sleep?${params}`);
+  return await whoopFetch(`/v1/activity/sleep?${params}`);
 }
 
 async function whoopGetBodyMeasurement() {
-  return await whoopFetch('/user/body_measurement');
+  return await whoopFetch('/v1/user/body_measurement');
 }
 
 async function whoopGetProfile() {
-  return await whoopFetch('/user/profile/basic');
+  return await whoopFetch('/v1/user/profile/basic');
 }
 
 // ==================== SYNC DATA ====================

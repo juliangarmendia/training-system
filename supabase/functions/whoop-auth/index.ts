@@ -1,6 +1,7 @@
 import "@supabase/functions-js/edge-runtime.d.ts";
 
 const WHOOP_TOKEN_URL = "https://api.prod.whoop.com/oauth/oauth2/token";
+const WHOOP_API_BASE = "https://api.prod.whoop.com/developer";
 const CLIENT_ID = "2bc89171-9bab-46ec-94d2-0bb8d015f9c3";
 const REDIRECT_URI = "https://juliangarmendia.github.io/training-system/whoop-callback.html";
 
@@ -17,7 +18,33 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { action, code, refresh_token } = await req.json();
+    const body = await req.json();
+    const { action } = body;
+
+    // ---- API PROXY ----
+    if (action === "api") {
+      const { endpoint, access_token } = body;
+      if (!endpoint || !access_token) {
+        return new Response(
+          JSON.stringify({ error: "Missing endpoint or access_token" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const url = `${WHOOP_API_BASE}${endpoint}`;
+      const response = await fetch(url, {
+        headers: { "Authorization": `Bearer ${access_token}` },
+      });
+
+      const data = await response.json();
+      return new Response(
+        JSON.stringify(data),
+        { status: response.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // ---- TOKEN EXCHANGE / REFRESH ----
+    const { code, refresh_token } = body;
     const clientSecret = Deno.env.get("WHOOP_CLIENT_SECRET");
 
     if (!clientSecret) {
@@ -27,11 +54,10 @@ Deno.serve(async (req) => {
       );
     }
 
-    let body: URLSearchParams;
+    let tokenBody: URLSearchParams;
 
     if (action === "exchange") {
-      // Exchange authorization code for tokens
-      body = new URLSearchParams({
+      tokenBody = new URLSearchParams({
         grant_type: "authorization_code",
         client_id: CLIENT_ID,
         client_secret: clientSecret,
@@ -39,8 +65,7 @@ Deno.serve(async (req) => {
         redirect_uri: REDIRECT_URI,
       });
     } else if (action === "refresh") {
-      // Refresh an expired access token
-      body = new URLSearchParams({
+      tokenBody = new URLSearchParams({
         grant_type: "refresh_token",
         client_id: CLIENT_ID,
         client_secret: clientSecret,
@@ -48,7 +73,7 @@ Deno.serve(async (req) => {
       });
     } else {
       return new Response(
-        JSON.stringify({ error: "Invalid action. Use 'exchange' or 'refresh'" }),
+        JSON.stringify({ error: "Invalid action. Use 'exchange', 'refresh', or 'api'" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -56,7 +81,7 @@ Deno.serve(async (req) => {
     const response = await fetch(WHOOP_TOKEN_URL, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: body.toString(),
+      body: tokenBody.toString(),
     });
 
     const data = await response.json();
@@ -68,7 +93,6 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Return tokens to client (access_token, refresh_token, expires_in)
     return new Response(
       JSON.stringify({
         access_token: data.access_token,
