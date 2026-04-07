@@ -1,5 +1,5 @@
 // ============================================================
-// Training App — v3.2
+// Training App — v3.3
 // ============================================================
 
 // ==================== TRAINING PLAN DATA ====================
@@ -96,6 +96,100 @@ const MUSCLE_COLORS = {
 // Key lifts for strength chart tracking
 const KEY_LIFTS = ['bench-press', 'back-squat', 'sumo-dl', 'ohp', 'barbell-row', 'chinups'];
 
+// Exercise alternatives by muscle group (for swapping)
+const EXERCISE_ALTERNATIVES = {
+  'Chest': [
+    { id: 'bench-press', name: 'Barbell Bench Press' },
+    { id: 'incline-db-press', name: 'Incline DB Press' },
+    { id: 'db-bench', name: 'DB Bench Press' },
+    { id: 'machine-chest-press', name: 'Machine Chest Press' },
+    { id: 'cable-fly', name: 'Cable Fly' },
+    { id: 'pushup', name: 'Push-ups' },
+    { id: 'dips', name: 'Dips (Chest)' },
+  ],
+  'Back': [
+    { id: 'barbell-row', name: 'Barbell Row' },
+    { id: 'chinups', name: 'Chin-ups' },
+    { id: 'lat-pulldown', name: 'Lat Pulldown' },
+    { id: 'landmine-row', name: 'Landmine Row' },
+    { id: 'cable-row', name: 'Cable Row' },
+    { id: 'db-row', name: 'DB Row' },
+    { id: 't-bar-row', name: 'T-Bar Row' },
+    { id: 'pullups', name: 'Pull-ups' },
+  ],
+  'Shoulders': [
+    { id: 'ohp', name: 'Overhead Press' },
+    { id: 'lateral-raise', name: 'DB Lateral Raise' },
+    { id: 'cable-lateral', name: 'Cable Lateral Raise' },
+    { id: 'db-shoulder-press', name: 'DB Shoulder Press' },
+    { id: 'machine-shoulder-press', name: 'Machine Shoulder Press' },
+    { id: 'arnold-press', name: 'Arnold Press' },
+  ],
+  'Rear Delt': [
+    { id: 'face-pull', name: 'Cable Face Pull' },
+    { id: 'rear-delt-fly', name: 'Rear Delt Fly' },
+    { id: 'band-pull-apart', name: 'Band Pull-Apart' },
+    { id: 'reverse-pec-deck', name: 'Reverse Pec Deck' },
+  ],
+  'Quads': [
+    { id: 'back-squat', name: 'Barbell Back Squat' },
+    { id: 'front-squat', name: 'Front Squat' },
+    { id: 'leg-press', name: 'Leg Press' },
+    { id: 'leg-extension', name: 'Leg Extension' },
+    { id: 'bss', name: 'Bulgarian Split Squat' },
+    { id: 'goblet-squat', name: 'Goblet Squat' },
+    { id: 'hack-squat', name: 'Hack Squat' },
+  ],
+  'Hamstrings': [
+    { id: 'rdl', name: 'Barbell RDL' },
+    { id: 'leg-curl-a', name: 'Leg Curl' },
+    { id: 'db-rdl', name: 'DB RDL' },
+    { id: 'good-morning', name: 'Good Morning' },
+    { id: 'nordic-curl', name: 'Nordic Curl' },
+  ],
+  'Posterior': [
+    { id: 'sumo-dl', name: 'Sumo Deadlift' },
+    { id: 'conv-dl', name: 'Conventional Deadlift' },
+    { id: 'trap-bar-dl', name: 'Trap Bar Deadlift' },
+    { id: 'rdl', name: 'Barbell RDL' },
+  ],
+  'Glutes': [
+    { id: 'hip-thrust', name: 'Barbell Hip Thrust' },
+    { id: 'cable-kickback', name: 'Cable Kickback' },
+    { id: 'glute-bridge', name: 'Glute Bridge' },
+  ],
+  'Triceps': [
+    { id: 'tricep-pushdown', name: 'Tricep Pushdown' },
+    { id: 'overhead-ext', name: 'Overhead Tricep Extension' },
+    { id: 'skull-crusher', name: 'Skull Crusher' },
+    { id: 'close-grip-bench', name: 'Close-Grip Bench' },
+  ],
+  'Biceps': [
+    { id: 'incline-curl', name: 'Incline DB Curl' },
+    { id: 'barbell-curl', name: 'Barbell Curl' },
+    { id: 'hammer-curl', name: 'Hammer Curl' },
+    { id: 'cable-curl', name: 'Cable Curl' },
+    { id: 'preacher-curl', name: 'Preacher Curl' },
+  ],
+  'Core': [
+    { id: 'ab-wheel', name: 'Ab Wheel Rollout' },
+    { id: 'hanging-leg-raise', name: 'Hanging Leg Raise' },
+    { id: 'pallof-press', name: 'Cable Pallof Press' },
+    { id: 'cable-crunch', name: 'Cable Crunch' },
+    { id: 'plank', name: 'Plank' },
+    { id: 'dead-bug', name: 'Dead Bug' },
+  ],
+  'Calves': [
+    { id: 'calf-raise', name: 'Standing Calf Raise' },
+    { id: 'seated-calf-raise', name: 'Seated Calf Raise' },
+    { id: 'leg-press-calf', name: 'Leg Press Calf Raise' },
+  ],
+};
+
+// Standard plate weights (kg) for plate calculator
+const PLATE_WEIGHTS = [25, 20, 15, 10, 5, 2.5, 1.25];
+const BAR_WEIGHT = 20; // Standard Olympic bar
+
 // Weekly schedule template: 0=Sun, 1=Mon, ..., 6=Sat
 const WEEK_TEMPLATE = {
   1: { type: 'gym', session: 'upperA' },
@@ -109,7 +203,7 @@ const WEEK_TEMPLATE = {
 
 // ==================== DATABASE ====================
 const DB_NAME = 'TrainingApp';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 let db = null;
 
 function openDB() {
@@ -122,6 +216,7 @@ function openDB() {
       if (!d.objectStoreNames.contains('nutrition')) d.createObjectStore('nutrition', { keyPath: 'date' });
       if (!d.objectStoreNames.contains('settings')) d.createObjectStore('settings', { keyPath: 'key' });
       if (!d.objectStoreNames.contains('sync_queue')) d.createObjectStore('sync_queue', { keyPath: 'id' });
+      if (!d.objectStoreNames.contains('bodyweight')) d.createObjectStore('bodyweight', { keyPath: 'date' });
     };
     req.onsuccess = (e) => { db = e.target.result; resolve(db); };
     req.onerror = (e) => reject(e);
@@ -678,7 +773,7 @@ async function startWorkout(sessionId) {
     });
   });
 
-  // Event: set check (+ auto rest timer)
+  // Event: set check (+ auto rest timer with superset awareness)
   container.querySelectorAll('.set-check').forEach(btn => {
     btn.addEventListener('click', () => {
       btn.classList.toggle('checked');
@@ -687,9 +782,25 @@ async function startWorkout(sessionId) {
       updateSessionProgress();
       // Auto-start rest timer when checking a set (not unchecking)
       if (btn.classList.contains('checked')) {
+        const inSuperset = card.closest('.superset-group');
         const configInput = card.querySelector('[data-rest-config]');
-        const seconds = parseInt(configInput.value) || 120;
-        startRestTimer(seconds);
+        const fullRest = parseInt(configInput.value) || 120;
+        // In a superset: short rest (15s) between exercises, full rest after last exercise in group
+        if (inSuperset) {
+          const cards = inSuperset.querySelectorAll('.exercise-card');
+          const lastCard = cards[cards.length - 1];
+          const isLastExercise = card === lastCard;
+          const setIdx = parseInt(btn.dataset.setCheck);
+          const allChecked = card.querySelectorAll('.set-check.checked').length === card.querySelectorAll('.set-check').length;
+          // If all sets of this exercise done and it's not the last exercise in superset, short rest
+          if (!isLastExercise) {
+            startRestTimer(15);
+          } else {
+            startRestTimer(fullRest);
+          }
+        } else {
+          startRestTimer(fullRest);
+        }
       }
     });
   });
@@ -720,6 +831,18 @@ async function startWorkout(sessionId) {
     el.addEventListener('click', (e) => {
       e.stopPropagation();
       openExerciseHistory(el.dataset.exId);
+    });
+  });
+
+  // Event: swap buttons
+  container.querySelectorAll('.btn-swap').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const card = btn.closest('.exercise-card');
+      const muscle = btn.dataset.swapMuscle;
+      const exId = btn.dataset.swapExId;
+      const ex = session.exercises.find(e => e.id === exId) || { id: exId, name: getExerciseName(exId), muscle };
+      showSwapUI(card, ex, session);
     });
   });
 
@@ -825,6 +948,7 @@ function buildExerciseCard(ex, exIdx, previous, restSettings, exerciseNotes, del
         </div>
         <div class="exercise-notes">${ex.notes}${deload ? '<br><strong>Deload: lighter weight, focus on form.</strong>' : ''}</div>
         ${userNoteHTML}
+        <button class="btn-swap" data-swap-muscle="${ex.muscle}" data-swap-ex-id="${ex.id}">↔ Swap exercise</button>
       </div>
     </div>
   `;
@@ -893,6 +1017,9 @@ async function finishWorkout() {
   };
 
   await smartPut('workouts', workout);
+
+  // PR detection
+  await detectPRs(workout);
 
   if (state.workoutTimerInterval) clearInterval(state.workoutTimerInterval);
   state.activeSession = null;
@@ -1049,10 +1176,14 @@ function renderLineChart(labels, values, opts = {}) {
 
 // ==================== STATS MODULE ====================
 async function renderStats() {
+  await renderBodyWeightChart();
   await renderStreaks();
   await renderFatigueScore();
+  await renderDeloadReminder();
   await renderWeeklyReport();
   await renderWeekComparison();
+  await renderMuscleVolume();
+  await renderProteinChart();
   await renderStrengthChart();
   await renderVolumeChart();
 }
@@ -1656,6 +1787,425 @@ async function renderNutritionHistory() {
   }).join('');
 }
 
+// ==================== PR DETECTION ====================
+async function detectPRs(workout) {
+  const allWorkouts = (await dbGetAll('workouts')).filter(w => w.id !== workout.id);
+  const prs = [];
+
+  for (const ex of workout.exercises) {
+    const doneSets = ex.sets.filter(s => s.done && s.weight > 0 && s.reps > 0);
+    if (doneSets.length === 0) continue;
+
+    // Find best previous 1RM for this exercise
+    let prevBest1RM = 0;
+    allWorkouts.forEach(w => {
+      const wex = w.exercises.find(e => e.exerciseId === ex.exerciseId);
+      if (wex) {
+        wex.sets.filter(s => s.done && s.weight > 0 && s.reps > 0).forEach(s => {
+          const e1rm = estimate1RM(s.weight, s.reps);
+          if (e1rm > prevBest1RM) prevBest1RM = e1rm;
+        });
+      }
+    });
+
+    // Check if any set in this workout beats the previous best
+    const todayBest = doneSets.reduce((best, s) => {
+      const e1rm = estimate1RM(s.weight, s.reps);
+      return e1rm > best.e1rm ? { e1rm, weight: s.weight, reps: s.reps } : best;
+    }, { e1rm: 0, weight: 0, reps: 0 });
+
+    if (todayBest.e1rm > prevBest1RM && prevBest1RM > 0) {
+      prs.push({ exerciseId: ex.exerciseId, e1rm: todayBest.e1rm, weight: todayBest.weight, reps: todayBest.reps });
+    }
+  }
+
+  if (prs.length > 0) {
+    const names = prs.map(pr => `${getExerciseName(pr.exerciseId)} (${pr.weight}×${pr.reps})`).join(', ');
+    setTimeout(() => toast(`🏆 New PR! ${names}`), 500);
+  }
+}
+
+// ==================== EXERCISE SWAP ====================
+function getAlternatives(muscle, currentId) {
+  const alts = EXERCISE_ALTERNATIVES[muscle] || [];
+  return alts.filter(a => a.id !== currentId);
+}
+
+function showSwapUI(card, ex, session) {
+  const existing = card.querySelector('.swap-panel');
+  if (existing) { existing.remove(); return; }
+
+  const alts = getAlternatives(ex.muscle, ex.id);
+  if (alts.length === 0) { toast('No alternatives available'); return; }
+
+  const panel = document.createElement('div');
+  panel.className = 'swap-panel';
+  panel.innerHTML = `
+    <div class="swap-title">Swap ${ex.name} for:</div>
+    ${alts.map(a => `<button class="swap-option" data-swap-id="${a.id}" data-swap-name="${a.name}">${a.name}</button>`).join('')}
+    <button class="swap-cancel">Cancel</button>
+  `;
+
+  panel.querySelector('.swap-cancel').addEventListener('click', () => panel.remove());
+  panel.querySelectorAll('.swap-option').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const newId = btn.dataset.swapId;
+      const newName = btn.dataset.swapName;
+      // Update the card
+      card.dataset.exerciseId = newId;
+      card.querySelector('.exercise-name').textContent = newName;
+      card.querySelector('.exercise-name').dataset.exId = newId;
+      // Update header display
+      const notesEl = card.querySelector('.exercise-notes');
+      if (notesEl) notesEl.textContent = `Swapped from ${ex.name}`;
+      panel.remove();
+      toast(`Swapped to ${newName}`);
+    });
+  });
+
+  card.querySelector('.exercise-body-inner').appendChild(panel);
+}
+
+// ==================== BODY WEIGHT TRACKING ====================
+async function logBodyWeight() {
+  const input = document.getElementById('bw-input');
+  const weight = parseFloat(input.value);
+  if (!weight || weight < 20 || weight > 300) { toast('Enter a valid weight'); return; }
+
+  await smartPut('bodyweight', { date: today(), weight, timestamp: Date.now() });
+  input.value = '';
+  toast(`${weight} kg logged`);
+  renderBodyWeightChart();
+}
+
+async function renderBodyWeightChart() {
+  const container = document.getElementById('bw-chart');
+  const currentEl = document.getElementById('bw-current');
+  const entries = (await dbGetAll('bodyweight')).sort((a, b) => a.date.localeCompare(b.date));
+
+  if (entries.length === 0) {
+    currentEl.textContent = '--';
+    container.innerHTML = '<span class="chart-empty">Log your first weigh-in above</span>';
+    return;
+  }
+
+  currentEl.textContent = entries[entries.length - 1].weight + ' kg';
+
+  if (entries.length < 2) {
+    container.innerHTML = '<span class="chart-empty">Need 2+ entries for chart</span>';
+    return;
+  }
+
+  // Show last 30 entries max
+  const recent = entries.slice(-30);
+
+  // Calculate 7-day moving average
+  const avgValues = recent.map((_, i) => {
+    const window = recent.slice(Math.max(0, i - 6), i + 1);
+    return Math.round(window.reduce((s, e) => s + e.weight, 0) / window.length * 10) / 10;
+  });
+
+  container.innerHTML = renderLineChart(
+    recent.map(e => formatDate(e.date)),
+    recent.map(e => e.weight),
+    { color: 'var(--blue)', height: 150 }
+  );
+
+  // Overlay moving average if enough data
+  if (recent.length >= 7) {
+    const svgEl = container.querySelector('svg');
+    if (svgEl) {
+      const width = 320, pad = { top: 20, right: 15, bottom: 30, left: 40 };
+      const chartW = width - pad.left - pad.right;
+      const chartH = 150 - pad.top - pad.bottom;
+      const vals = recent.map(e => e.weight);
+      const dataMin = Math.min(...vals) * 0.99;
+      const dataMax = Math.max(...vals) * 1.01;
+      const range = dataMax - dataMin || 1;
+      const pts = avgValues.map((v, i) => {
+        const x = pad.left + (i / Math.max(avgValues.length - 1, 1)) * chartW;
+        const y = pad.top + chartH - ((v - dataMin) / range) * chartH;
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+      });
+      const avgPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      avgPath.setAttribute('d', `M${pts.join(' L')}`);
+      avgPath.setAttribute('fill', 'none');
+      avgPath.setAttribute('stroke', 'var(--orange)');
+      avgPath.setAttribute('stroke-width', '2');
+      avgPath.setAttribute('stroke-dasharray', '4 3');
+      avgPath.setAttribute('opacity', '0.7');
+      svgEl.appendChild(avgPath);
+    }
+  }
+}
+
+// ==================== PLATE CALCULATOR ====================
+function calculatePlates(targetWeight) {
+  const barWeight = state.settings.unit === 'lb' ? 45 : BAR_WEIGHT;
+  const plates = state.settings.unit === 'lb' ? [45, 35, 25, 10, 5, 2.5] : PLATE_WEIGHTS;
+
+  if (targetWeight <= barWeight) return { bar: barWeight, perSide: [], total: barWeight };
+
+  let remaining = (targetWeight - barWeight) / 2;
+  const perSide = [];
+
+  for (const plate of plates) {
+    while (remaining >= plate) {
+      perSide.push(plate);
+      remaining -= plate;
+    }
+  }
+
+  const actual = barWeight + perSide.reduce((s, p) => s + p * 2, 0);
+  return { bar: barWeight, perSide, total: actual };
+}
+
+function renderPlateCalculator() {
+  const input = document.getElementById('plate-calc-input');
+  const result = document.getElementById('plate-calc-result');
+  const target = parseFloat(input.value);
+
+  if (!target || target <= 0) { result.innerHTML = ''; return; }
+
+  const { bar, perSide, total } = calculatePlates(target);
+  const unit = state.settings.unit;
+
+  if (perSide.length === 0) {
+    result.innerHTML = `<div class="plate-result">Just the bar: ${bar} ${unit}</div>`;
+    return;
+  }
+
+  // Count plates
+  const counts = {};
+  perSide.forEach(p => { counts[p] = (counts[p] || 0) + 1; });
+
+  const plateList = Object.entries(counts).map(([w, c]) => `${c}× ${w}${unit}`).join(' + ');
+
+  result.innerHTML = `
+    <div class="plate-result">
+      <div class="plate-bar">Bar: ${bar} ${unit}</div>
+      <div class="plate-each">Each side: ${plateList}</div>
+      <div class="plate-visual">${perSide.map(p => `<span class="plate-disc" style="height:${Math.max(20, p * (unit === 'lb' ? 0.8 : 2))}px">${p}</span>`).join('')}</div>
+      ${total !== target ? `<div class="plate-note">Closest: ${total} ${unit} (${target - total > 0 ? '-' : '+'}${Math.abs(target - total).toFixed(1)})</div>` : ''}
+    </div>
+  `;
+}
+
+// ==================== DELOAD REMINDER ====================
+async function checkDeloadNeeded() {
+  const workouts = (await dbGetAll('workouts')).sort((a, b) => b.date.localeCompare(a.date));
+  const wk = getWeekNumber();
+
+  // If already on a deload week, no reminder needed
+  if (isDeloadWeek(wk)) return null;
+
+  // Check for 2 consecutive sessions with quality decline
+  const recent = workouts.slice(0, 4);
+  if (recent.length >= 2) {
+    const q1 = recent[0].quality || 3;
+    const q2 = recent[1].quality || 3;
+    if (q1 <= 2 && q2 <= 2) {
+      return { reason: 'quality', message: '2 consecutive low-quality sessions. Consider a deload.' };
+    }
+  }
+
+  // Check if it's been 5+ weeks since program start without a deload
+  if (wk >= 5 && wk !== 5 && wk !== 9) {
+    // Check if a deload has happened recently
+    const weeksSinceDeload = wk % 4 === 0 ? 0 : wk % 4;
+    if (weeksSinceDeload === 0 || wk >= 7 && wk < 9) {
+      return { reason: 'time', message: `Week ${wk} — Consider scheduling a deload this week.` };
+    }
+  }
+
+  return null;
+}
+
+async function renderDeloadReminder() {
+  const container = document.getElementById('deload-reminder');
+  if (!container) return;
+
+  const reminder = await checkDeloadNeeded();
+  if (reminder) {
+    container.innerHTML = `
+      <div class="deload-banner">
+        <span class="deload-icon">⚠️</span>
+        <span class="deload-text">${reminder.message}</span>
+      </div>
+    `;
+    container.classList.remove('hidden');
+  } else {
+    container.classList.add('hidden');
+  }
+}
+
+// ==================== CSV EXPORT ====================
+async function exportCSV() {
+  const workouts = (await dbGetAll('workouts')).sort((a, b) => a.date.localeCompare(b.date));
+  const runs = (await dbGetAll('runs')).sort((a, b) => a.date.localeCompare(b.date));
+  const nutrition = (await dbGetAll('nutrition')).sort((a, b) => a.date.localeCompare(b.date));
+  const bodyweight = (await dbGetAll('bodyweight')).sort((a, b) => a.date.localeCompare(b.date));
+
+  let csv = '';
+
+  // Workouts sheet
+  csv += '=== WORKOUTS ===\n';
+  csv += 'Date,Session,Exercise,Set,Weight,Reps,RPE,Done,Quality,Duration\n';
+  workouts.forEach(w => {
+    const session = PLAN.sessions[w.session];
+    w.exercises.forEach(ex => {
+      ex.sets.forEach((s, i) => {
+        csv += `${w.date},${session ? session.name : w.session},${getExerciseName(ex.exerciseId)},${i + 1},${s.weight},${s.reps},${s.rpe || ''},${s.done},${w.quality || ''},${w.duration || ''}\n`;
+      });
+    });
+  });
+
+  // Runs
+  csv += '\n=== RUNS ===\n';
+  csv += 'Date,Distance(km),Duration(min),Pace,AvgHR,Feel,Notes\n';
+  runs.forEach(r => {
+    csv += `${r.date},${r.distance},${r.duration},${r.avgPace},${r.avgHR || ''},${r.feel || ''},"${(r.notes || '').replace(/"/g, '""')}"\n`;
+  });
+
+  // Nutrition
+  csv += '\n=== NUTRITION ===\n';
+  csv += 'Date,Protein(g),Meals,Energy,Calories,Alcohol,Notes\n';
+  nutrition.forEach(n => {
+    const protein = n.protein || (n.meals || []).reduce((s, m) => s + (m.protein || 0), 0);
+    const mealCount = (n.meals || []).length;
+    csv += `${n.date},${protein},${mealCount},${n.energy || ''},${n.calories || ''},${n.alcohol || ''},"${(n.notes || '').replace(/"/g, '""')}"\n`;
+  });
+
+  // Body weight
+  csv += '\n=== BODY WEIGHT ===\n';
+  csv += 'Date,Weight(kg)\n';
+  bodyweight.forEach(b => {
+    csv += `${b.date},${b.weight}\n`;
+  });
+
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const fileName = `training-export-${today()}.csv`;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast('CSV exported!');
+}
+
+// ==================== NUTRITION PROTEIN CHART ====================
+async function renderProteinChart() {
+  const container = document.getElementById('protein-chart');
+  if (!container) return;
+
+  const entries = (await dbGetAll('nutrition')).sort((a, b) => a.date.localeCompare(b.date)).slice(-14);
+
+  if (entries.length < 2) {
+    container.innerHTML = '<span class="chart-empty">Need 2+ days of data</span>';
+    return;
+  }
+
+  const labels = entries.map(e => formatDate(e.date));
+  const values = entries.map(e => e.protein || (e.meals || []).reduce((s, m) => s + (m.protein || 0), 0));
+
+  // Draw chart with target line
+  const chartHTML = renderLineChart(labels, values, { color: 'var(--accent)', height: 150 });
+  container.innerHTML = chartHTML;
+
+  // Add target line
+  const svgEl = container.querySelector('svg');
+  if (svgEl && state.settings.proteinTarget) {
+    const width = 320, pad = { top: 20, right: 15, bottom: 30, left: 40 };
+    const chartH = 150 - pad.top - pad.bottom;
+    const allVals = [...values, state.settings.proteinTarget];
+    const dataMin = Math.min(...allVals) * 0.9;
+    const dataMax = Math.max(...allVals) * 1.1;
+    const range = dataMax - dataMin || 1;
+    const targetY = pad.top + chartH - ((state.settings.proteinTarget - dataMin) / range) * chartH;
+
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    line.setAttribute('x1', pad.left);
+    line.setAttribute('y1', targetY);
+    line.setAttribute('x2', width - pad.right);
+    line.setAttribute('y2', targetY);
+    line.setAttribute('stroke', 'var(--red)');
+    line.setAttribute('stroke-width', '1');
+    line.setAttribute('stroke-dasharray', '5 3');
+    line.setAttribute('opacity', '0.6');
+    svgEl.appendChild(line);
+
+    const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    label.setAttribute('x', width - pad.right);
+    label.setAttribute('y', targetY - 4);
+    label.setAttribute('fill', 'var(--red)');
+    label.setAttribute('font-size', '9');
+    label.setAttribute('text-anchor', 'end');
+    label.setAttribute('opacity', '0.7');
+    label.textContent = `Target ${state.settings.proteinTarget}g`;
+    svgEl.appendChild(label);
+  }
+}
+
+// ==================== VOLUME PER MUSCLE GROUP ====================
+async function renderMuscleVolume() {
+  const container = document.getElementById('muscle-volume');
+  if (!container) return;
+
+  const weekDates = getWeekDates().map(d => dateStr(d));
+  const workouts = (await dbGetAll('workouts')).filter(w => weekDates.includes(w.date));
+
+  if (workouts.length === 0) {
+    container.innerHTML = '<div class="empty-state">No workouts this week</div>';
+    return;
+  }
+
+  // Count sets per muscle group
+  const musclesSets = {};
+  workouts.forEach(w => {
+    w.exercises.forEach(ex => {
+      // Find muscle from PLAN or use exerciseId
+      let muscle = null;
+      for (const s of Object.values(PLAN.sessions)) {
+        const found = s.exercises.find(e => e.id === ex.exerciseId);
+        if (found) { muscle = found.muscle; break; }
+      }
+      // Also check EXERCISE_ALTERNATIVES
+      if (!muscle) {
+        for (const [m, alts] of Object.entries(EXERCISE_ALTERNATIVES)) {
+          if (alts.some(a => a.id === ex.exerciseId)) { muscle = m; break; }
+        }
+      }
+      if (!muscle) muscle = 'Other';
+
+      const doneSets = ex.sets.filter(s => s.done).length;
+      musclesSets[muscle] = (musclesSets[muscle] || 0) + doneSets;
+    });
+  });
+
+  // Sort by sets descending
+  const sorted = Object.entries(musclesSets).sort((a, b) => b[1] - a[1]);
+  const maxSets = sorted[0][1];
+
+  container.innerHTML = sorted.map(([muscle, sets]) => {
+    const color = MUSCLE_COLORS[muscle] || '#666';
+    const pct = (sets / maxSets) * 100;
+    const inRange = sets >= 10 && sets <= 14;
+    const label = sets < 10 ? 'low' : sets > 14 ? 'high' : 'optimal';
+    return `
+      <div class="mv-row">
+        <span class="mv-muscle" style="color:${color}">${muscle}</span>
+        <div class="mv-bar-wrap">
+          <div class="mv-bar" style="width:${pct}%;background:${color}40"></div>
+        </div>
+        <span class="mv-sets">${sets} <span class="mv-label" style="color:${inRange ? 'var(--accent)' : 'var(--orange)'}">${label}</span></span>
+      </div>
+    `;
+  }).join('');
+}
+
 // ==================== STAR & TOGGLE HELPERS ====================
 function getStarValue(containerId) {
   const sel = document.querySelector(`#${containerId} button.selected`);
@@ -1882,8 +2432,18 @@ function bindEvents() {
     state.restTimerTotal = Math.max(state.restTimerTotal, state.restTimerRemaining);
   });
 
-  // Backup / Restore
+  // Body weight
+  document.getElementById('btn-log-bw').addEventListener('click', logBodyWeight);
+  document.getElementById('bw-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') logBodyWeight();
+  });
+
+  // Plate calculator
+  document.getElementById('plate-calc-input').addEventListener('input', renderPlateCalculator);
+
+  // Backup / Restore / CSV
   document.getElementById('btn-backup').addEventListener('click', exportBackup);
+  document.getElementById('btn-export-csv').addEventListener('click', exportCSV);
   document.getElementById('file-restore').addEventListener('change', (e) => {
     if (e.target.files[0]) importBackup(e.target.files[0]);
   });

@@ -181,17 +181,52 @@
       <!-- Stats -->
       <section id="view-stats" class="view">
         <div class="view-scroll">
+          <!-- Body Weight -->
+          <div class="section-label">Body Weight</div>
+          <div class="card" style="margin-bottom:12px">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+              <span style="font-size:13px;color:var(--text2)">Current:</span>
+              <span id="bw-current" style="font-size:18px;font-weight:800">--</span>
+            </div>
+            <div style="display:flex;gap:8px">
+              <input type="number" id="bw-input" placeholder="e.g. 82.5" inputmode="decimal" step="0.1" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:16px;padding:10px 14px">
+              <button id="btn-log-bw" class="btn-primary" style="width:auto;padding:10px 20px">Log</button>
+            </div>
+          </div>
+          <div class="chart-box" id="bw-chart" style="margin-bottom:16px"></div>
+
+          <!-- Deload Reminder -->
+          <div id="deload-reminder" class="hidden"></div>
+
           <div class="streak-row" id="streak-row"></div>
           <div class="fatigue-card" id="fatigue-card"></div>
           <div class="section-label" style="margin-top:16px">Weekly Report</div>
           <div class="report-card" id="weekly-report"></div>
           <div class="section-label" style="margin-top:20px">Week vs Week</div>
           <div id="week-compare" class="week-compare"></div>
+
+          <!-- Volume Per Muscle -->
+          <div class="section-label" style="margin-top:20px">Weekly Sets by Muscle</div>
+          <div class="card" id="muscle-volume" style="margin-bottom:12px"></div>
+
+          <!-- Protein Chart -->
+          <div class="section-label" style="margin-top:20px">Daily Protein (14 days)</div>
+          <div class="chart-box" id="protein-chart"></div>
+
           <div class="section-label" style="margin-top:20px">Strength (Est. 1RM)</div>
           <div class="chart-tabs" id="strength-tabs"></div>
           <div class="chart-box" id="strength-chart"></div>
           <div class="section-label" style="margin-top:20px">Weekly Volume (kg)</div>
           <div class="chart-box" id="volume-chart"></div>
+
+          <!-- Plate Calculator -->
+          <div class="section-label" style="margin-top:20px">Plate Calculator</div>
+          <div class="card" style="margin-bottom:20px">
+            <div style="display:flex;gap:8px;margin-bottom:10px">
+              <input type="number" id="plate-calc-input" placeholder="Target weight (kg)" inputmode="decimal" step="0.5" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:16px;padding:10px 14px">
+            </div>
+            <div id="plate-calc-result"></div>
+          </div>
         </div>
       </section>
 
@@ -215,7 +250,9 @@
           </div>
           <div class="section-label" style="margin-top:24px">Data</div>
           <div class="card">
-            <button id="btn-backup" class="btn-secondary btn-full">Export Backup (Share)</button>
+            <button id="btn-backup" class="btn-secondary btn-full">Export Backup (JSON)</button>
+            <div style="height:8px"></div>
+            <button id="btn-export-csv" class="btn-secondary btn-full">Export Data (CSV)</button>
             <div style="height:12px"></div>
             <label class="btn-secondary btn-full" style="text-align:center;cursor:pointer">Import Backup<input type="file" id="file-restore" accept=".json" style="display:none"></label>
           </div>
@@ -237,7 +274,7 @@
             <p class="muted" style="font-size:11px;margin-top:6px">Get reminded on training days and to track protein.</p>
           </div>
           <div class="section-label" style="margin-top:24px">About</div>
-          <div class="card"><p class="muted" style="margin:0;font-size:13px">Training System v3.2<br>Data stored locally + cloud sync.<br>Works offline.</p></div>
+          <div class="card"><p class="muted" style="margin:0;font-size:13px">Training System v3.3<br>Data stored locally + cloud sync.<br>Works offline.</p></div>
         </div>
       </section>
     </main>
