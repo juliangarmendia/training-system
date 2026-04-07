@@ -280,6 +280,24 @@ nav { display: flex; background: var(--surface); border-top: 1px solid var(--bor
 .chart-box svg { width: 100%; }
 .chart-empty { color: var(--text3); font-size: 13px; }
 
+/* ========== Week Comparison ========== */
+.week-compare { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 14px 16px; }
+.wc-header { display: grid; grid-template-columns: 1fr 70px 70px 50px; gap: 4px; padding-bottom: 8px; border-bottom: 1px solid var(--border); margin-bottom: 6px; }
+.wc-header span { font-size: 10px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.3px; text-align: center; }
+.wc-header span:first-child { text-align: left; }
+.wc-row { display: grid; grid-template-columns: 1fr 70px 70px 50px; gap: 4px; padding: 6px 0; border-bottom: 1px solid var(--border); align-items: center; }
+.wc-row:last-child { border-bottom: none; }
+.wc-row .wc-label { font-size: 13px; color: var(--text2); }
+.wc-row .wc-val { font-size: 13px; font-weight: 700; text-align: center; }
+.wc-row .wc-delta { font-size: 11px; font-weight: 700; text-align: center; border-radius: 20px; padding: 2px 6px; }
+.wc-delta.up { color: var(--accent); background: var(--accent-dim); }
+.wc-delta.down { color: var(--red); background: rgba(248,113,113,0.12); }
+.wc-delta.flat { color: var(--text3); }
+
+/* ========== Undo Toast ========== */
+.toast { display: flex; align-items: center; gap: 12px; }
+.toast-action { background: none; border: 1px solid var(--accent); border-radius: var(--radius-xs); color: var(--accent); font-size: 13px; font-weight: 700; padding: 4px 12px; cursor: pointer; white-space: nowrap; flex-shrink: 0; }
+
 /* ========== Rest Timer ========== */
 .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.94); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 1000; transition: opacity 0.25s; }
 .overlay.hidden { opacity: 0; pointer-events: none; }

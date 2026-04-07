@@ -1,5 +1,5 @@
 // ============================================================
-// Training App — v3.1
+// Training App — v3.2
 // ============================================================
 
 // ==================== TRAINING PLAN DATA ====================
@@ -109,7 +109,7 @@ const WEEK_TEMPLATE = {
 
 // ==================== DATABASE ====================
 const DB_NAME = 'TrainingApp';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 let db = null;
 
 function openDB() {
@@ -121,6 +121,7 @@ function openDB() {
       if (!d.objectStoreNames.contains('runs')) d.createObjectStore('runs', { keyPath: 'id' });
       if (!d.objectStoreNames.contains('nutrition')) d.createObjectStore('nutrition', { keyPath: 'date' });
       if (!d.objectStoreNames.contains('settings')) d.createObjectStore('settings', { keyPath: 'key' });
+      if (!d.objectStoreNames.contains('sync_queue')) d.createObjectStore('sync_queue', { keyPath: 'id' });
     };
     req.onsuccess = (e) => { db = e.target.result; resolve(db); };
     req.onerror = (e) => reject(e);
@@ -163,6 +164,16 @@ function dbDelete(store, key) {
   });
 }
 
+// ==================== SYNCED DB HELPERS ====================
+function smartPut(store, data) {
+  if (window.syncedPut) return window.syncedPut(store, data);
+  return dbPut(store, data);
+}
+function smartDelete(store, key) {
+  if (window.syncedDelete) return window.syncedDelete(store, key);
+  return dbDelete(store, key);
+}
+
 // ==================== STATE ====================
 const state = {
   currentTab: 'gym',
@@ -196,16 +207,32 @@ function formatDuration(seconds) {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-function toast(msg) {
+let _toastTimeout = null;
+function toast(msg, action) {
   let el = document.querySelector('.toast');
   if (!el) {
     el = document.createElement('div');
     el.className = 'toast';
     document.body.appendChild(el);
   }
-  el.textContent = msg;
-  el.classList.add('show');
-  setTimeout(() => el.classList.remove('show'), 2200);
+  if (_toastTimeout) clearTimeout(_toastTimeout);
+
+  if (action) {
+    el.innerHTML = `<span>${msg}</span><button class="toast-action">${action.label}</button>`;
+    el.querySelector('.toast-action').addEventListener('click', () => {
+      action.callback();
+      el.classList.remove('show');
+    });
+    el.classList.add('show');
+    _toastTimeout = setTimeout(() => {
+      el.classList.remove('show');
+      if (action.onExpire) action.onExpire();
+    }, 5000);
+  } else {
+    el.innerHTML = `<span>${msg}</span>`;
+    el.classList.add('show');
+    _toastTimeout = setTimeout(() => el.classList.remove('show'), 2200);
+  }
 }
 
 function getWeekNumber() {
@@ -528,13 +555,34 @@ async function renderRecentWorkouts() {
           <div class="hi-title">${session ? session.name : w.session}</div>
           <div class="hi-sub">${formatDate(w.date)} · ${totalSets} sets · ${w.duration || ''}</div>
         </div>
-        <div class="hi-right">
-          <div class="hi-stat">${w.quality || '-'}/5</div>
-          <div class="hi-stat-sub">quality</div>
+        <div class="hi-right" style="display:flex;align-items:center">
+          <div>
+            <div class="hi-stat">${w.quality || '-'}/5</div>
+            <div class="hi-stat-sub">quality</div>
+          </div>
+          <button class="hi-delete" data-delete-workout="${w.id}">&times;</button>
         </div>
       </div>
     `;
   }).join('');
+
+  container.querySelectorAll('[data-delete-workout]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const wId = btn.dataset.deleteWorkout;
+      const deletedW = await dbGet('workouts', wId);
+      await smartDelete('workouts', wId);
+      renderRecentWorkouts();
+      toast('Workout deleted', {
+        label: 'Undo',
+        callback: async () => {
+          if (deletedW) {
+            await smartPut('workouts', deletedW);
+            renderRecentWorkouts();
+          }
+        }
+      });
+    });
+  });
 }
 
 // ==================== SESSION PROGRESS BAR ====================
@@ -619,12 +667,19 @@ async function startWorkout(sessionId) {
     });
   });
 
-  // Event: set check
+  // Event: set check (+ auto rest timer)
   container.querySelectorAll('.set-check').forEach(btn => {
     btn.addEventListener('click', () => {
       btn.classList.toggle('checked');
-      updateExerciseStatus(btn.closest('.exercise-card'));
+      const card = btn.closest('.exercise-card');
+      updateExerciseStatus(card);
       updateSessionProgress();
+      // Auto-start rest timer when checking a set (not unchecking)
+      if (btn.classList.contains('checked')) {
+        const configInput = card.querySelector('[data-rest-config]');
+        const seconds = parseInt(configInput.value) || 120;
+        startRestTimer(seconds);
+      }
     });
   });
 
@@ -826,7 +881,7 @@ async function finishWorkout() {
     notes: document.getElementById('workout-notes').value.trim(),
   };
 
-  await dbPut('workouts', workout);
+  await smartPut('workouts', workout);
 
   if (state.workoutTimerInterval) clearInterval(state.workoutTimerInterval);
   state.activeSession = null;
@@ -986,6 +1041,7 @@ async function renderStats() {
   await renderStreaks();
   await renderFatigueScore();
   await renderWeeklyReport();
+  await renderWeekComparison();
   await renderStrengthChart();
   await renderVolumeChart();
 }
@@ -1237,6 +1293,78 @@ async function renderVolumeChart() {
   );
 }
 
+// ==================== WEEK vs WEEK COMPARISON ====================
+async function renderWeekComparison() {
+  const container = document.getElementById('week-compare');
+  if (!container) return;
+
+  const workouts = await dbGetAll('workouts');
+  const runs = await dbGetAll('runs');
+  const nutrition = await dbGetAll('nutrition');
+
+  // Current week dates
+  const curWeekDates = getWeekDates().map(d => dateStr(d));
+
+  // Previous week dates
+  const prevWeekDates = getWeekDates().map(d => {
+    const pd = new Date(d);
+    pd.setDate(pd.getDate() - 7);
+    return dateStr(pd);
+  });
+
+  function weekMetrics(dates) {
+    const wk = workouts.filter(w => dates.includes(w.date));
+    const rn = runs.filter(r => dates.includes(r.date));
+    const nt = nutrition.filter(n => dates.includes(n.date));
+
+    let volume = 0;
+    wk.forEach(w => w.exercises.forEach(ex => ex.sets.filter(s => s.done).forEach(s => { volume += (s.weight || 0) * (s.reps || 0); })));
+
+    const avgProtein = nt.length > 0 ? Math.round(nt.reduce((s, n) => s + (n.protein || 0), 0) / nt.length) : 0;
+    const avgQuality = wk.length > 0 ? +(wk.reduce((s, w) => s + (w.quality || 3), 0) / wk.length).toFixed(1) : 0;
+    const totalKm = +rn.reduce((s, r) => s + (r.distance || 0), 0).toFixed(1);
+
+    return { sessions: wk.length, runs: rn.length, volume, totalKm, avgProtein, avgQuality };
+  }
+
+  const curr = weekMetrics(curWeekDates);
+  const prev = weekMetrics(prevWeekDates);
+
+  function delta(c, p, higherIsBetter = true) {
+    if (p === 0 && c === 0) return '<span class="wc-delta flat">=</span>';
+    if (p === 0) return '<span class="wc-delta up">NEW</span>';
+    const diff = c - p;
+    if (diff === 0) return '<span class="wc-delta flat">=</span>';
+    const positive = higherIsBetter ? diff > 0 : diff < 0;
+    const arrow = diff > 0 ? '↑' : '↓';
+    const cls = positive ? 'up' : 'down';
+    return `<span class="wc-delta ${cls}">${arrow}${Math.abs(Math.round(diff))}</span>`;
+  }
+
+  const rows = [
+    { label: 'Gym sessions', c: curr.sessions, p: prev.sessions },
+    { label: 'Runs', c: curr.runs, p: prev.runs },
+    { label: 'Volume (kg)', c: curr.volume.toLocaleString(), p: prev.volume.toLocaleString(), cRaw: curr.volume, pRaw: prev.volume },
+    { label: 'Run km', c: curr.totalKm, p: prev.totalKm },
+    { label: 'Avg protein', c: curr.avgProtein + 'g', p: prev.avgProtein + 'g', cRaw: curr.avgProtein, pRaw: prev.avgProtein },
+    { label: 'Avg quality', c: curr.avgQuality + '/5', p: prev.avgQuality + '/5', cRaw: curr.avgQuality, pRaw: prev.avgQuality },
+  ];
+
+  container.innerHTML = `
+    <div class="wc-header">
+      <span></span><span>Prev</span><span>This</span><span>Δ</span>
+    </div>
+    ${rows.map(r => `
+      <div class="wc-row">
+        <span class="wc-label">${r.label}</span>
+        <span class="wc-val" style="color:var(--text3)">${r.p}</span>
+        <span class="wc-val">${r.c}</span>
+        ${delta(r.cRaw !== undefined ? r.cRaw : r.c, r.pRaw !== undefined ? r.pRaw : r.p)}
+      </div>
+    `).join('')}
+  `;
+}
+
 // ==================== REST TIMER ====================
 function startRestTimer(seconds) {
   state.restTimerTotal = seconds;
@@ -1318,7 +1446,7 @@ async function logRun() {
     feel, notes,
   };
 
-  await dbPut('runs', run);
+  await smartPut('runs', run);
 
   document.getElementById('run-distance').value = '';
   document.getElementById('run-duration').value = '';
@@ -1357,9 +1485,19 @@ async function renderRunHistory() {
 
   container.querySelectorAll('[data-delete-run]').forEach(btn => {
     btn.addEventListener('click', async () => {
-      await dbDelete('runs', btn.dataset.deleteRun);
-      toast('Run deleted');
+      const runId = btn.dataset.deleteRun;
+      const deletedRun = await dbGet('runs', runId);
+      await smartDelete('runs', runId);
       renderRunHistory();
+      toast('Run deleted', {
+        label: 'Undo',
+        callback: async () => {
+          if (deletedRun) {
+            await smartPut('runs', deletedRun);
+            renderRunHistory();
+          }
+        }
+      });
     });
   });
 }
@@ -1426,7 +1564,7 @@ async function logNutrition() {
     notes: document.getElementById('nut-notes').value.trim(),
   };
 
-  await dbPut('nutrition', entry);
+  await smartPut('nutrition', entry);
   toast('Saved!');
   renderNutritionHistory();
 }
@@ -1691,6 +1829,99 @@ function bindEvents() {
 
   // Exercise modal close
   document.getElementById('modal-close').addEventListener('click', closeExerciseModal);
+
+  // Notification toggles
+  document.getElementById('notif-on').addEventListener('click', () => toggleNotifications(true));
+  document.getElementById('notif-off').addEventListener('click', () => toggleNotifications(false));
+}
+
+// ==================== NOTIFICATIONS ====================
+let _notifInterval = null;
+
+async function initNotifications() {
+  const enabled = localStorage.getItem('training_notif') === 'on';
+  document.getElementById('notif-on').classList.toggle('selected', enabled);
+  document.getElementById('notif-off').classList.toggle('selected', !enabled);
+
+  if (enabled && 'Notification' in window) {
+    const perm = await Notification.requestPermission();
+    if (perm === 'granted') startNotificationChecks();
+  }
+}
+
+function toggleNotifications(on) {
+  localStorage.setItem('training_notif', on ? 'on' : 'off');
+  document.getElementById('notif-on').classList.toggle('selected', on);
+  document.getElementById('notif-off').classList.toggle('selected', !on);
+
+  if (on && 'Notification' in window) {
+    Notification.requestPermission().then(perm => {
+      if (perm === 'granted') {
+        startNotificationChecks();
+        toast('Notifications enabled');
+      } else {
+        toast('Permission denied by browser');
+        localStorage.setItem('training_notif', 'off');
+        document.getElementById('notif-on').classList.remove('selected');
+        document.getElementById('notif-off').classList.add('selected');
+      }
+    });
+  } else {
+    if (_notifInterval) clearInterval(_notifInterval);
+    toast('Notifications disabled');
+  }
+}
+
+function startNotificationChecks() {
+  if (_notifInterval) clearInterval(_notifInterval);
+  checkAndNotify(); // immediate check
+  _notifInterval = setInterval(checkAndNotify, 30 * 60 * 1000); // every 30 min
+}
+
+async function checkAndNotify() {
+  if (localStorage.getItem('training_notif') !== 'on') return;
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+
+  const now = new Date();
+  const hour = now.getHours();
+  const todayStr = today();
+  const lastNotif = localStorage.getItem('training_last_notif');
+  if (lastNotif === todayStr) return; // one notification per day max
+
+  const jsDay = now.getDay();
+  const plan = WEEK_TEMPLATE[jsDay];
+
+  // Morning training reminder (7-10 AM)
+  if (hour >= 7 && hour <= 10 && plan.type !== 'rest') {
+    const label = plan.type === 'gym' ? PLAN.sessions[plan.session].name : 'Zone 2 Run';
+    new Notification('Training Day', { body: `Today: ${label}. Let's go!`, tag: 'training-day' });
+    localStorage.setItem('training_last_notif', todayStr);
+    return;
+  }
+
+  // Evening protein reminder (8-10 PM)
+  if (hour >= 20 && hour <= 22) {
+    try {
+      const entry = await dbGet('nutrition', todayStr);
+      if (!entry || (entry.protein || 0) < state.settings.proteinTarget) {
+        const current = entry ? entry.protein || 0 : 0;
+        new Notification('Protein Check', {
+          body: `${current}g / ${state.settings.proteinTarget}g today. Log your protein!`,
+          tag: 'protein-reminder'
+        });
+        localStorage.setItem('training_last_notif', todayStr);
+      }
+    } catch (e) { /* ignore */ }
+  }
+}
+
+// ==================== SERVICE WORKER ====================
+function registerServiceWorker() {
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./sw.js')
+      .then(reg => console.log('[SW] Registered:', reg.scope))
+      .catch(err => console.warn('[SW] Registration failed:', err));
+  }
 }
 
 // ==================== INIT ====================
@@ -1703,6 +1934,23 @@ async function init() {
   renderWeekStrip();
   renderRecentWorkouts();
   updateHeader('gym');
+
+  // Service Worker
+  registerServiceWorker();
+
+  // Supabase (optional)
+  if (window.initSupabase) {
+    window.initSupabase();
+  } else {
+    // No sync module — render auth section as offline only
+    const authSection = document.getElementById('auth-section');
+    if (authSection) {
+      authSection.innerHTML = '<p class="muted" style="font-size:13px;margin:0">Cloud sync not configured.</p>';
+    }
+  }
+
+  // Notifications
+  initNotifications();
 }
 
 document.addEventListener('DOMContentLoaded', init);
