@@ -71,44 +71,91 @@ async function whoopGetToken() {
   }
 }
 
-// ==================== API CALLS (v1) ====================
+// ==================== API CALLS ====================
 async function whoopFetch(endpoint) {
   const token = await whoopGetToken();
   if (!token) return null;
 
-  try {
-    const url = `${WHOOP_API_BASE}${endpoint}`;
-    console.log(`[WHOOP] Fetching ${url}`);
-    const res = await fetch(url, {
-      headers: { 'Authorization': `Bearer ${token}` },
-    });
-    if (!res.ok) {
-      const body = await res.text();
-      console.warn(`[WHOOP] ${endpoint} returned ${res.status}:`, body);
-      if (res.status === 401) whoopDisconnect();
-      return null;
+  // Try v2 first, fall back to v1
+  const versions = ['/v2', '/v1'];
+  for (const ver of versions) {
+    try {
+      const url = `${WHOOP_API_BASE}${ver}${endpoint}`;
+      console.log(`[WHOOP] Fetching ${url}`);
+      const res = await fetch(url, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (res.status === 404) {
+        console.log(`[WHOOP] ${ver}${endpoint} not found, trying next...`);
+        continue;
+      }
+      if (!res.ok) {
+        const body = await res.text();
+        console.warn(`[WHOOP] ${ver}${endpoint} returned ${res.status}:`, body);
+        if (res.status === 401) whoopDisconnect();
+        return null;
+      }
+      const data = await res.json();
+      console.log(`[WHOOP] ${ver}${endpoint} →`, data);
+      return data;
+    } catch (e) {
+      console.warn(`[WHOOP] ${ver}${endpoint} error:`, e);
     }
-    const data = await res.json();
-    console.log(`[WHOOP] ${endpoint} →`, data);
-    return data;
-  } catch (e) {
-    console.warn('[WHOOP] Fetch error:', e);
-    return null;
   }
+  return null;
 }
 
-// v1 endpoints
 async function whoopGetCycles(startDate, endDate) {
   const params = new URLSearchParams({
     start: `${startDate}T00:00:00.000Z`,
     end: `${endDate}T23:59:59.999Z`,
     limit: '25',
   });
-  return await whoopFetch(`/v1/cycle?${params}`);
+  return await whoopFetch(`/cycle?${params}`);
 }
 
 async function whoopGetRecoveryForCycle(cycleId) {
-  return await whoopFetch(`/v1/cycle/${cycleId}/recovery`);
+  // Try /cycle/{id}/recovery (v1 style) and /recovery/{id} (v2 style)
+  const token = await whoopGetToken();
+  if (!token) return null;
+
+  const paths = [
+    `/v1/cycle/${cycleId}/recovery`,
+    `/v2/cycle/${cycleId}/recovery`,
+    `/v2/recovery/${cycleId}`,
+    `/v1/recovery/${cycleId}`,
+  ];
+
+  for (const path of paths) {
+    try {
+      const url = `${WHOOP_API_BASE}${path}`;
+      console.log(`[WHOOP] Recovery try: ${url}`);
+      const res = await fetch(url, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (res.status === 404) continue;
+      if (!res.ok) {
+        console.warn(`[WHOOP] ${path} returned ${res.status}`);
+        if (res.status === 401) { whoopDisconnect(); return null; }
+        continue;
+      }
+      const data = await res.json();
+      console.log(`[WHOOP] Recovery found via ${path} →`, data);
+      return data;
+    } catch (e) {
+      console.warn(`[WHOOP] ${path} error:`, e);
+    }
+  }
+  return null;
+}
+
+async function whoopGetRecoveryCollection(startDate, endDate) {
+  const params = new URLSearchParams({
+    start: `${startDate}T00:00:00.000Z`,
+    end: `${endDate}T23:59:59.999Z`,
+    limit: '25',
+  });
+  return await whoopFetch(`/recovery?${params}`);
 }
 
 async function whoopGetSleep(startDate, endDate) {
@@ -117,15 +164,15 @@ async function whoopGetSleep(startDate, endDate) {
     end: `${endDate}T23:59:59.999Z`,
     limit: '25',
   });
-  return await whoopFetch(`/v1/activity/sleep?${params}`);
+  return await whoopFetch(`/activity/sleep?${params}`);
 }
 
 async function whoopGetBodyMeasurement() {
-  return await whoopFetch('/v1/user/body_measurement');
+  return await whoopFetch('/user/body_measurement');
 }
 
 async function whoopGetProfile() {
-  return await whoopFetch('/v1/user/profile/basic');
+  return await whoopFetch('/user/profile/basic');
 }
 
 // ==================== SYNC DATA ====================
@@ -154,15 +201,37 @@ async function whoopSyncData() {
     bodyWeight: null,
   };
 
-  // Fetch cycles (which contain recovery data in v2)
-  const [cycles, sleep, body] = await Promise.all([
+  // Fetch cycles, recovery collection, sleep, body in parallel
+  const [cycles, recoveryCollection, sleep, body] = await Promise.all([
     whoopGetCycles(weekAgo, today),
+    whoopGetRecoveryCollection(weekAgo, today),
     whoopGetSleep(weekAgo, today),
     whoopGetBodyMeasurement(),
   ]);
 
-  // Parse cycles → get recovery for each
-  if (cycles && cycles.records) {
+  console.log('[WHOOP] Cycles:', cycles);
+  console.log('[WHOOP] Recovery collection:', recoveryCollection);
+  console.log('[WHOOP] Sleep:', sleep);
+  console.log('[WHOOP] Body:', body);
+
+  // Strategy 1: Use recovery collection endpoint directly
+  if (recoveryCollection && recoveryCollection.records && recoveryCollection.records.length > 0) {
+    for (const rec of recoveryCollection.records) {
+      if (rec.score_state === 'SCORED' && rec.score) {
+        result.recovery.push({
+          date: rec.created_at ? rec.created_at.split('T')[0] : today,
+          score: rec.score.recovery_score,
+          hrv: rec.score.hrv_rmssd_milli,
+          restingHR: rec.score.resting_heart_rate,
+          spo2: rec.score.spo2_percentage,
+          skinTemp: rec.score.skin_temp_celsius,
+        });
+      }
+    }
+  }
+
+  // Strategy 2: If collection didn't work, try per-cycle recovery
+  if (result.recovery.length === 0 && cycles && cycles.records) {
     for (const cycle of cycles.records) {
       if (cycle.score_state === 'SCORED' && cycle.id) {
         const rec = await whoopGetRecoveryForCycle(cycle.id);
