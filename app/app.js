@@ -1957,9 +1957,11 @@ async function renderBodyWeightChart() {
 }
 
 // ==================== PLATE CALCULATOR ====================
-function calculatePlates(targetWeight) {
-  const barWeight = state.settings.unit === 'lb' ? 45 : BAR_WEIGHT;
-  const plates = state.settings.unit === 'lb' ? [45, 35, 25, 10, 5, 2.5] : PLATE_WEIGHTS;
+let plateCalcUnit = 'kg';
+
+function calculatePlates(targetWeight, unit) {
+  const barWeight = unit === 'lb' ? 45 : BAR_WEIGHT;
+  const plates = unit === 'lb' ? [45, 35, 25, 10, 5, 2.5] : PLATE_WEIGHTS;
 
   if (targetWeight <= barWeight) return { bar: barWeight, perSide: [], total: barWeight };
 
@@ -1984,8 +1986,8 @@ function renderPlateCalculator() {
 
   if (!target || target <= 0) { result.innerHTML = ''; return; }
 
-  const { bar, perSide, total } = calculatePlates(target);
-  const unit = state.settings.unit;
+  const unit = plateCalcUnit;
+  const { bar, perSide, total } = calculatePlates(target, unit);
 
   if (perSide.length === 0) {
     result.innerHTML = `<div class="plate-result">Just the bar: ${bar} ${unit}</div>`;
@@ -2457,6 +2459,17 @@ function bindEvents() {
 
   // Plate calculator
   document.getElementById('plate-calc-input').addEventListener('input', renderPlateCalculator);
+  document.querySelectorAll('.plate-unit-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      plateCalcUnit = btn.dataset.plateUnit;
+      document.querySelectorAll('.plate-unit-btn').forEach(b => {
+        b.classList.toggle('active', b === btn);
+        b.style.background = b === btn ? 'var(--accent)' : 'var(--surface)';
+        b.style.color = b === btn ? 'var(--bg)' : 'var(--text2)';
+      });
+      renderPlateCalculator();
+    });
+  });
 
   // Backup / Restore / CSV
   document.getElementById('btn-backup').addEventListener('click', exportBackup);

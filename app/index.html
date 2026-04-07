@@ -225,8 +225,12 @@
           <!-- Plate Calculator -->
           <div class="section-label" style="margin-top:20px">Plate Calculator</div>
           <div class="card" style="margin-bottom:20px">
-            <div style="display:flex;gap:8px;margin-bottom:10px">
-              <input type="number" id="plate-calc-input" placeholder="Target weight (kg)" inputmode="decimal" step="0.5" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:16px;padding:10px 14px">
+            <div style="display:flex;gap:8px;margin-bottom:10px;align-items:center">
+              <input type="number" id="plate-calc-input" placeholder="Target weight" inputmode="decimal" step="0.5" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:16px;padding:10px 14px">
+              <div id="plate-unit-toggle" style="display:flex;border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden;flex-shrink:0">
+                <button class="plate-unit-btn active" data-plate-unit="kg" style="padding:10px 14px;font-size:14px;font-weight:600;border:none;cursor:pointer;background:var(--accent);color:var(--bg)">kg</button>
+                <button class="plate-unit-btn" data-plate-unit="lb" style="padding:10px 14px;font-size:14px;font-weight:600;border:none;cursor:pointer;background:var(--surface);color:var(--text2)">lb</button>
+              </div>
             </div>
             <div id="plate-calc-result"></div>
           </div>
