@@ -48,7 +48,10 @@ async function whoopGetToken() {
   try {
     const res = await fetch(WHOOP_TOKEN_PROXY, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InljZm9kaWZ2cHZvc3VrZXBjeGllIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU1NzQ2MDMsImV4cCI6MjA5MTE1MDYwM30.3nDHWD2IJh2SZ283QuorC60O1KDGxad2LA_jk1aOwW4',
+      },
       body: JSON.stringify({ action: 'refresh', refresh_token: refresh }),
     });
 
