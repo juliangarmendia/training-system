@@ -18,12 +18,23 @@
       <div class="pin-icon">🏋️</div>
       <div class="pin-prompt">Training System</div>
       <div id="login-form" style="text-align:left">
+        <div class="form-row" id="login-name-row" style="margin-bottom:10px;display:none"><label>Your name</label><input type="text" id="login-name" placeholder="Julian" autocomplete="given-name" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:16px;padding:10px 14px;width:100%"></div>
         <div class="form-row" style="margin-bottom:10px"><label>Email</label><input type="email" id="login-email" placeholder="you@email.com" autocomplete="email" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:16px;padding:10px 14px;width:100%"></div>
         <div class="form-row" style="margin-bottom:10px"><label>Password</label><input type="password" id="login-password" placeholder="Min 6 characters" autocomplete="current-password" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:16px;padding:10px 14px;width:100%"></div>
         <div id="login-error" style="color:var(--red);font-size:12px;min-height:18px;margin-bottom:6px"></div>
         <button id="btn-login" class="btn-primary" style="margin-bottom:8px">Sign In</button>
         <button id="btn-register" class="btn-secondary btn-full" style="text-align:center">Create Account</button>
       </div>
+    </div>
+  </div>
+
+  <!-- Welcome Screen -->
+  <div id="welcome-screen" class="pin-overlay hidden">
+    <div class="pin-box" style="max-width:380px">
+      <div id="welcome-greeting" style="font-size:26px;font-weight:800;margin-bottom:8px"></div>
+      <div id="welcome-today" style="font-size:15px;color:var(--text2);margin-bottom:24px;line-height:1.5"></div>
+      <div id="welcome-icon" style="font-size:64px;margin-bottom:24px"></div>
+      <button id="btn-welcome-go" class="btn-primary">Let's Go</button>
     </div>
   </div>
 
@@ -131,12 +142,25 @@
                 <div class="ring-label"><span id="protein-current" class="ring-value">0</span><span class="ring-unit">/ <span id="protein-target-display">170</span>g</span><span class="ring-name">Protein</span></div>
               </div>
             </div>
-            <div class="quick-add" id="quick-add"><button data-add="20">+20g</button><button data-add="30">+30g</button><button data-add="40">+40g</button><button data-add="50">+50g</button></div>
-            <div class="form-row"><label>Or set total protein (g)</label><input type="number" id="nut-protein" step="1" min="0" placeholder="170" inputmode="numeric"></div>
-            <div class="divider"></div>
+            <div class="section-label" style="margin-top:4px">Log a Meal</div>
+            <div class="meal-log-form">
+              <div style="display:flex;gap:8px">
+                <input type="text" id="meal-name" placeholder="Chicken & rice, shake..." style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:14px;padding:10px 12px">
+                <input type="number" id="meal-protein" placeholder="g" inputmode="numeric" style="width:70px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:14px;padding:10px 8px;text-align:center">
+              </div>
+              <div class="quick-add" id="quick-add" style="margin-top:8px">
+                <button data-meal="Breakfast" data-g="30">Breakfast 30g</button>
+                <button data-meal="Lunch" data-g="40">Lunch 40g</button>
+                <button data-meal="Dinner" data-g="40">Dinner 40g</button>
+                <button data-meal="Shake" data-g="30">Shake 30g</button>
+              </div>
+              <button id="btn-add-meal" class="btn-primary" style="margin-top:8px">Add Meal</button>
+            </div>
+            <div class="divider" style="margin:12px 0"></div>
+            <div class="section-label">Today's Meals</div>
+            <div id="meal-list" class="recent-list" style="max-height:200px;overflow-y:auto"></div>
+            <div class="divider" style="margin:12px 0"></div>
             <div class="checklist">
-              <div class="check-row"><label>Meals with protein</label><div id="nut-meals" class="stars compact"><button data-v="1">1</button><button data-v="2">2</button><button data-v="3">3</button><button data-v="4" class="selected">4</button><button data-v="5">5</button></div></div>
-              <div class="check-row"><label>Water OK?</label><div class="toggle-group"><button id="nut-water-yes" class="toggle-btn selected" data-v="true">Yes</button><button id="nut-water-no" class="toggle-btn" data-v="false">No</button></div></div>
               <div class="check-row"><label>Energy level</label><div id="nut-energy" class="stars compact"><button data-v="1">😩</button><button data-v="2">😐</button><button data-v="3" class="selected">🙂</button><button data-v="4">😊</button><button data-v="5">💪</button></div></div>
             </div>
             <button class="expand-btn" id="nut-expand-btn">More details ▾</button>
@@ -194,8 +218,10 @@
             <div style="height:12px"></div>
             <label class="btn-secondary btn-full" style="text-align:center;cursor:pointer">Import Backup<input type="file" id="file-restore" accept=".json" style="display:none"></label>
           </div>
-          <div class="section-label" style="margin-top:24px">Units & Targets</div>
+          <div class="section-label" style="margin-top:24px">Profile & Targets</div>
           <div class="card">
+            <div class="form-row"><label>Your name</label><input type="text" id="setting-name" placeholder="Your name" style="background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:16px;padding:10px 14px;width:100%"></div>
+            <div style="height:12px"></div>
             <div class="form-row inline"><label>Weight unit</label><div class="toggle-group"><button id="unit-kg" class="toggle-btn selected">kg</button><button id="unit-lb" class="toggle-btn">lb</button></div></div>
             <div style="height:12px"></div>
             <div class="form-row"><label>Daily protein target (g)</label><input type="number" id="setting-protein-target" step="5" min="0" value="170" inputmode="numeric"></div>

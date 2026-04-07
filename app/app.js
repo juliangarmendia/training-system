@@ -184,7 +184,7 @@ const state = {
   restTimerInterval: null,
   restTimerRemaining: 0,
   restTimerTotal: 0,
-  settings: { unit: 'kg', proteinTarget: 170, calorieTarget: 2500, startDate: null },
+  settings: { unit: 'kg', proteinTarget: 170, calorieTarget: 2500, startDate: null, userName: '' },
   sessionQuality: 3,
   selectedStrengthLift: 'bench-press',
 };
@@ -311,17 +311,37 @@ function bindLoginEvents() {
     }
   });
 
+  // Toggle name field for registration
+  let registerMode = false;
   document.getElementById('btn-register').addEventListener('click', async () => {
+    const nameRow = document.getElementById('login-name-row');
+    if (!registerMode) {
+      // First click: show name field and switch to register mode
+      registerMode = true;
+      nameRow.style.display = 'flex';
+      document.getElementById('btn-register').textContent = 'Create Account';
+      document.getElementById('btn-login').textContent = 'Back to Sign In';
+      return;
+    }
+    const name = document.getElementById('login-name').value.trim();
     const email = document.getElementById('login-email').value.trim();
     const pass = document.getElementById('login-password').value;
+    if (!name) { errEl.textContent = 'Enter your name'; return; }
     if (!email || pass.length < 6) { errEl.textContent = 'Email + password (min 6 chars)'; return; }
     errEl.textContent = '';
+    // Save name to settings after signup
+    state.settings.userName = name;
+    await dbPut('settings', { key: 'userSettings', data: state.settings });
     const { error } = await supaSignUp(email, pass);
     if (error) {
       errEl.textContent = error.message;
     } else {
       errEl.style.color = 'var(--accent)';
       errEl.textContent = 'Check your email to confirm, then sign in.';
+      registerMode = false;
+      nameRow.style.display = 'none';
+      document.getElementById('btn-register').textContent = 'Create Account';
+      document.getElementById('btn-login').textContent = 'Sign In';
     }
   });
 
@@ -333,16 +353,63 @@ function bindLoginEvents() {
 
 async function checkAuth() {
   if (!supabaseClient) {
-    // No Supabase configured — skip login, work offline only
     hideLoginScreen();
     return;
   }
   const user = await getUser();
   if (user) {
     hideLoginScreen();
+    showWelcomeScreen();
   } else {
     showLoginScreen();
   }
+}
+
+// ==================== WELCOME SCREEN ====================
+function showWelcomeScreen() {
+  const name = state.settings.userName || 'there';
+  const jsDay = new Date().getDay();
+  const plan = WEEK_TEMPLATE[jsDay];
+  const wk = getWeekNumber();
+
+  let todayText = '';
+  let icon = '';
+  if (plan.type === 'gym') {
+    const session = PLAN.sessions[plan.session];
+    todayText = `Hoy te toca <strong>${session.name}</strong> — ${session.subtitle}`;
+    icon = session.icon;
+    if (isDeloadWeek(wk)) todayText += ' (Deload)';
+  } else if (plan.type === 'run') {
+    const runsAllowed = getRunsThisWeek(wk);
+    if ((jsDay === 3 && runsAllowed < 2) || (jsDay === 0 && runsAllowed < 3)) {
+      todayText = 'Hoy es <strong>dia de descanso</strong>. Recupera bien.';
+      icon = '😴';
+    } else {
+      todayText = 'Hoy te toca <strong>Zone 2 Run</strong> — ritmo conversacional';
+      icon = '🏃';
+    }
+  } else {
+    todayText = 'Hoy es <strong>dia de descanso</strong>. Recupera bien.';
+    icon = '😴';
+    if (jsDay === 0 && getRunsThisWeek(wk) >= 3) {
+      todayText = 'Hoy podes hacer un <strong>run opcional</strong> o descansar.';
+      icon = '🏃';
+    }
+  }
+
+  document.getElementById('welcome-greeting').textContent = `Bienvenido, ${name}!`;
+  document.getElementById('welcome-today').innerHTML = todayText;
+  document.getElementById('welcome-icon').textContent = icon;
+  document.getElementById('welcome-screen').classList.remove('hidden');
+
+  document.getElementById('btn-welcome-go').addEventListener('click', () => {
+    document.getElementById('welcome-screen').classList.add('hidden');
+  });
+
+  // Auto-dismiss after 5 seconds
+  setTimeout(() => {
+    document.getElementById('welcome-screen').classList.add('hidden');
+  }, 5000);
 }
 
 // ==================== THEME ====================
@@ -1454,25 +1521,63 @@ async function renderNutrition() {
 
   const entry = await dbGet('nutrition', today());
   if (entry) {
-    document.getElementById('nut-protein').value = entry.protein || '';
-    setStarValue('nut-meals', entry.meals || 4);
-    setToggleValue('nut-water', entry.water !== false);
     setStarValue('nut-energy', entry.energy || 3);
     document.getElementById('nut-alcohol').value = entry.alcohol || 0;
     setStarValue('nut-hunger', entry.hunger || 3);
     document.getElementById('nut-calories').value = entry.calories || '';
     document.getElementById('nut-notes').value = entry.notes || '';
-    updateProteinRing(entry.protein || 0);
-  } else {
-    document.getElementById('nut-protein').value = '';
-    updateProteinRing(0);
   }
 
-  document.getElementById('nut-protein').oninput = (e) => {
-    updateProteinRing(parseInt(e.target.value) || 0);
-  };
-
+  renderMealList();
   renderNutritionHistory();
+}
+
+async function renderMealList() {
+  const entry = await dbGet('nutrition', today());
+  const meals = (entry && entry.meals) || [];
+  const totalProtein = meals.reduce((sum, m) => sum + (m.protein || 0), 0);
+
+  updateProteinRing(totalProtein);
+
+  const container = document.getElementById('meal-list');
+  if (meals.length === 0) {
+    container.innerHTML = '<div class="empty-state" style="padding:12px">No meals logged yet today</div>';
+    return;
+  }
+
+  container.innerHTML = meals.map((m, i) => `
+    <div class="history-item" style="padding:10px 12px">
+      <div class="hi-left">
+        <div class="hi-title" style="font-size:13px">${m.name}</div>
+        <div class="hi-sub">${m.time || ''}</div>
+      </div>
+      <div class="hi-right" style="display:flex;align-items:center">
+        <div class="hi-stat" style="font-size:14px">${m.protein}g</div>
+        <button class="hi-delete" data-delete-meal="${i}">&times;</button>
+      </div>
+    </div>
+  `).join('');
+
+  container.querySelectorAll('[data-delete-meal]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const idx = parseInt(btn.dataset.deleteMeal);
+      const entry = await dbGet('nutrition', today()) || { date: today(), meals: [] };
+      const removed = entry.meals.splice(idx, 1)[0];
+      entry.protein = entry.meals.reduce((sum, m) => sum + (m.protein || 0), 0);
+      await smartPut('nutrition', entry);
+      renderMealList();
+      toast('Meal removed', {
+        label: 'Undo',
+        callback: async () => {
+          const e = await dbGet('nutrition', today()) || { date: today(), meals: [] };
+          e.meals.splice(idx, 0, removed);
+          e.protein = e.meals.reduce((sum, m) => sum + (m.protein || 0), 0);
+          await smartPut('nutrition', e);
+          renderMealList();
+        }
+      });
+    });
+  });
 }
 
 function updateProteinRing(current) {
@@ -1488,25 +1593,35 @@ function updateProteinRing(current) {
   else fill.style.stroke = 'var(--orange)';
 }
 
-function quickAddProtein(grams) {
-  const input = document.getElementById('nut-protein');
-  const current = parseInt(input.value) || 0;
-  input.value = current + grams;
-  updateProteinRing(current + grams);
+async function addMeal(name, protein) {
+  if (!name || !protein) { toast('Enter meal name and protein'); return; }
+
+  const now = new Date();
+  const time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+
+  const entry = await dbGet('nutrition', today()) || { date: today(), meals: [], energy: 3 };
+  if (!entry.meals) entry.meals = [];
+  entry.meals.push({ name, protein, time });
+  entry.protein = entry.meals.reduce((sum, m) => sum + (m.protein || 0), 0);
+
+  await smartPut('nutrition', entry);
+
+  // Clear inputs
+  document.getElementById('meal-name').value = '';
+  document.getElementById('meal-protein').value = '';
+
+  toast(`${name} — ${protein}g logged`);
+  renderMealList();
 }
 
 async function logNutrition() {
-  const entry = {
-    date: today(),
-    protein: parseInt(document.getElementById('nut-protein').value) || 0,
-    meals: getStarValue('nut-meals'),
-    water: getToggleValue('nut-water'),
-    energy: getStarValue('nut-energy'),
-    alcohol: parseInt(document.getElementById('nut-alcohol').value) || 0,
-    hunger: getStarValue('nut-hunger'),
-    calories: parseInt(document.getElementById('nut-calories').value) || null,
-    notes: document.getElementById('nut-notes').value.trim(),
-  };
+  const entry = await dbGet('nutrition', today()) || { date: today(), meals: [] };
+  entry.energy = getStarValue('nut-energy');
+  entry.alcohol = parseInt(document.getElementById('nut-alcohol').value) || 0;
+  entry.hunger = getStarValue('nut-hunger');
+  entry.calories = parseInt(document.getElementById('nut-calories').value) || null;
+  entry.notes = document.getElementById('nut-notes').value.trim();
+  entry.protein = (entry.meals || []).reduce((sum, m) => sum + (m.protein || 0), 0);
 
   await smartPut('nutrition', entry);
   toast('Saved!');
@@ -1523,12 +1638,14 @@ async function renderNutritionHistory() {
   }
 
   container.innerHTML = entries.map(e => {
-    const hitTarget = e.protein >= state.settings.proteinTarget;
+    const totalProtein = e.protein || (e.meals || []).reduce((sum, m) => sum + (m.protein || 0), 0);
+    const mealCount = (e.meals || []).length;
+    const hitTarget = totalProtein >= state.settings.proteinTarget;
     return `
       <div class="history-item">
         <div class="hi-left">
           <div class="hi-title">${formatDate(e.date)}</div>
-          <div class="hi-sub">${e.protein}g protein · ${e.meals} meals${e.alcohol ? ` · ${e.alcohol} drinks` : ''}${e.calories ? ` · ${e.calories} kcal` : ''}</div>
+          <div class="hi-sub">${totalProtein}g protein · ${mealCount} meals${e.alcohol ? ` · ${e.alcohol} drinks` : ''}${e.calories ? ` · ${e.calories} kcal` : ''}</div>
         </div>
         <div class="hi-right">
           <div class="hi-stat" style="color:${hitTarget ? 'var(--accent)' : 'var(--orange)'}">${hitTarget ? '✓' : '✗'}</div>
@@ -1586,12 +1703,13 @@ async function loadSettings() {
 }
 
 function applySettingsToUI() {
-  const { unit, proteinTarget, calorieTarget, startDate } = state.settings;
+  const { unit, proteinTarget, calorieTarget, startDate, userName } = state.settings;
   document.getElementById('unit-kg').classList.toggle('selected', unit === 'kg');
   document.getElementById('unit-lb').classList.toggle('selected', unit === 'lb');
   document.getElementById('setting-protein-target').value = proteinTarget;
   document.getElementById('setting-calorie-target').value = calorieTarget;
   document.getElementById('setting-start-date').value = startDate || today();
+  document.getElementById('setting-name').value = userName || '';
 }
 
 async function saveSettings() {
@@ -1599,8 +1717,9 @@ async function saveSettings() {
   const proteinTarget = parseInt(document.getElementById('setting-protein-target').value) || 170;
   const calorieTarget = parseInt(document.getElementById('setting-calorie-target').value) || 2500;
   const startDate = document.getElementById('setting-start-date').value || today();
+  const userName = document.getElementById('setting-name').value.trim();
 
-  state.settings = { unit, proteinTarget, calorieTarget, startDate };
+  state.settings = { unit, proteinTarget, calorieTarget, startDate, userName };
   await dbPut('settings', { key: 'userSettings', data: state.settings });
   toast('Settings saved!');
 }
@@ -1707,9 +1826,21 @@ function bindEvents() {
   // Nutrition
   document.getElementById('btn-log-nutrition').addEventListener('click', logNutrition);
 
-  // Quick add protein
-  document.querySelectorAll('#quick-add button').forEach(btn => {
-    btn.addEventListener('click', () => quickAddProtein(parseInt(btn.dataset.add)));
+  // Add meal button
+  document.getElementById('btn-add-meal').addEventListener('click', () => {
+    const name = document.getElementById('meal-name').value.trim();
+    const protein = parseInt(document.getElementById('meal-protein').value) || 0;
+    if (!name && !protein) return;
+    addMeal(name || 'Meal', protein);
+    document.getElementById('meal-name').value = '';
+    document.getElementById('meal-protein').value = '';
+  });
+
+  // Quick-add meal buttons
+  document.querySelectorAll('[data-meal]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      addMeal(btn.dataset.meal, parseInt(btn.dataset.g));
+    });
   });
 
   // Nutrition expand
@@ -1738,11 +1869,8 @@ function bindEvents() {
   document.getElementById('theme-dark').addEventListener('click', () => setTheme('dark'));
   document.getElementById('theme-light').addEventListener('click', () => setTheme('light'));
 
-  // Water toggle
-  setupToggle('nut-water');
-
   // Star selectors
-  ['run-feel', 'nut-meals', 'nut-hunger', 'nut-energy'].forEach(setupStarGroup);
+  ['run-feel', 'nut-hunger', 'nut-energy'].forEach(setupStarGroup);
 
   // Rest timer controls
   document.getElementById('timer-skip').addEventListener('click', stopRestTimer);
