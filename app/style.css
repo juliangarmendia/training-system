@@ -342,13 +342,27 @@ nav { display: flex; background: var(--surface); border-top: 1px solid var(--bor
 .plate-note { font-size: 11px; color: var(--orange); margin-top: 4px; }
 
 /* ========== WHOOP Recovery Card ========== */
-.whoop-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
-.whoop-logo { font-size: 11px; font-weight: 800; letter-spacing: 2px; color: var(--text3); }
-.whoop-score { font-size: 28px; font-weight: 800; }
-.whoop-label { font-size: 12px; font-weight: 700; margin-bottom: 12px; }
-.whoop-metrics { display: flex; gap: 12px; }
-.whoop-metric { flex: 1; background: var(--bg2); border-radius: var(--radius-xs); padding: 10px 8px; text-align: center; }
-.wm-val { display: block; font-size: 16px; font-weight: 800; }
-.wm-label { display: block; font-size: 9px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.3px; margin-top: 2px; }
+.whoop-card-top { display: flex; gap: 16px; align-items: center; margin-bottom: 12px; }
+.whoop-ring-wrap { position: relative; flex-shrink: 0; width: 88px; height: 88px; }
+.whoop-ring-text { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 1px; }
+.whoop-ring-score { font-size: 26px; font-weight: 800; line-height: 1; }
+.whoop-ring-pct { font-size: 13px; font-weight: 700; opacity: 0.7; margin-top: 2px; }
+.whoop-card-info { flex: 1; min-width: 0; }
+.whoop-card-title { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.whoop-logo-text { font-size: 10px; font-weight: 800; letter-spacing: 2px; color: var(--text3); text-transform: uppercase; }
+.whoop-recovery-label { font-size: 13px; font-weight: 700; }
+.whoop-metrics-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.whoop-metric-sm { background: var(--bg2); border-radius: var(--radius-xs); padding: 8px 4px; text-align: center; }
+.wm-val-sm { display: block; font-size: 14px; font-weight: 800; }
+.wm-label-sm { display: block; font-size: 8px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.3px; margin-top: 2px; }
+.whoop-sleep-breakdown { display: flex; gap: 12px; padding: 8px 0; border-top: 1px solid var(--border); margin-bottom: 8px; }
+.whoop-sleep-stat { font-size: 11px; color: var(--text2); display: flex; align-items: center; gap: 4px; }
+.whoop-sleep-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+.whoop-trend { border-top: 1px solid var(--border); padding-top: 10px; }
+.whoop-trend-label { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700; margin-bottom: 8px; }
+.whoop-trend-bars { display: flex; gap: 6px; align-items: flex-end; height: 44px; }
+.whoop-trend-col { display: flex; flex-direction: column; align-items: center; flex: 1; gap: 4px; justify-content: flex-end; }
+.whoop-trend-bar { width: 100%; border-radius: 2px; min-height: 4px; transition: height 0.3s ease; }
+.whoop-trend-day { font-size: 9px; color: var(--text3); }
 
 @media (min-width: 481px) { #app { border-left: 1px solid var(--border); border-right: 1px solid var(--border); } }

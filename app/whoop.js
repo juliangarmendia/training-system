@@ -91,7 +91,8 @@ async function whoopFetch(endpoint) {
     console.log(`[WHOOP] ${endpoint} →`, res.status, data);
 
     if (!res.ok) {
-      if (res.status === 401) whoopDisconnect();
+      // Don't disconnect on 401 from API — token might just need refresh
+      if (res.status === 401) console.warn('[WHOOP] Token may be expired for:', endpoint);
       return null;
     }
     return data;
@@ -133,6 +134,9 @@ async function whoopGetSleep(startDate, endDate) {
 }
 
 async function whoopGetBodyMeasurement() {
+  // Try multiple paths — v2 moved this endpoint
+  const result = await whoopFetch(`/v2/body_measurement`);
+  if (result) return result;
   return await whoopFetch(`/v2/user/body_measurement`);
 }
 
@@ -293,6 +297,12 @@ function renderWhoopUI() {
 }
 
 // ==================== WHOOP RECOVERY CARD ====================
+function getRecoveryColor(score) {
+  if (score >= 67) return { color: '#4ade80', label: 'Green' };
+  if (score >= 34) return { color: '#facc15', label: 'Yellow' };
+  return { color: '#f87171', label: 'Red' };
+}
+
 async function renderWhoopRecoveryCard() {
   const container = document.getElementById('whoop-recovery');
   if (!container || !whoopIsConnected()) {
@@ -312,33 +322,84 @@ async function renderWhoopRecoveryCard() {
   // Latest recovery
   const latest = data.recovery[data.recovery.length - 1];
   const score = latest.score;
-  let color, label;
-  if (score >= 67) { color = 'var(--accent)'; label = 'Green'; }
-  else if (score >= 34) { color = 'var(--yellow)'; label = 'Yellow'; }
-  else { color = 'var(--red)'; label = 'Red'; }
+  const { color, label } = getRecoveryColor(score);
 
-  // Sleep data
+  // Latest sleep
   const latestSleep = data.sleep.length > 0 ? data.sleep[data.sleep.length - 1] : null;
 
+  // 7-day recovery trend bars
+  const trendBars = data.recovery.slice(-7).map(r => {
+    const rc = getRecoveryColor(r.score);
+    const h = Math.max(4, Math.round(r.score * 0.4));
+    const day = r.date ? new Date(r.date + 'T12:00:00').toLocaleDateString('en', { weekday: 'narrow' }) : '?';
+    return `<div class="whoop-trend-col">
+      <div class="whoop-trend-bar" style="height:${h}px;background:${rc.color}"></div>
+      <span class="whoop-trend-day">${day}</span>
+    </div>`;
+  }).join('');
+
+  // Sleep breakdown
+  let sleepHTML = '';
+  if (latestSleep) {
+    const deepH = latestSleep.deepMs ? (latestSleep.deepMs / 3600000).toFixed(1) : '0';
+    const remH = latestSleep.remMs ? (latestSleep.remMs / 3600000).toFixed(1) : '0';
+    sleepHTML = `
+      <div class="whoop-sleep-breakdown">
+        <div class="whoop-sleep-stat"><span class="whoop-sleep-dot" style="background:#6366f1"></span> Deep ${deepH}h</div>
+        <div class="whoop-sleep-stat"><span class="whoop-sleep-dot" style="background:#8b5cf6"></span> REM ${remH}h</div>
+        <div class="whoop-sleep-stat"><span class="whoop-sleep-dot" style="background:var(--text3)"></span> Total ${latestSleep.durationHrs}h</div>
+      </div>`;
+  }
+
+  // Recovery ring (SVG arc)
+  const radius = 36;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference - (score / 100) * circumference;
+
   container.innerHTML = `
-    <div class="whoop-header">
-      <span class="whoop-logo">WHOOP</span>
-      <span class="whoop-score" style="color:${color}">${score}%</span>
+    <div class="whoop-card-top">
+      <div class="whoop-ring-wrap">
+        <svg width="88" height="88" viewBox="0 0 88 88">
+          <circle cx="44" cy="44" r="${radius}" fill="none" stroke="var(--bg2)" stroke-width="6"/>
+          <circle cx="44" cy="44" r="${radius}" fill="none" stroke="${color}" stroke-width="6"
+            stroke-dasharray="${circumference}" stroke-dashoffset="${offset}"
+            stroke-linecap="round" transform="rotate(-90 44 44)"
+            style="transition:stroke-dashoffset 0.8s ease"/>
+        </svg>
+        <div class="whoop-ring-text">
+          <span class="whoop-ring-score" style="color:${color}">${score}</span>
+          <span class="whoop-ring-pct">%</span>
+        </div>
+      </div>
+      <div class="whoop-card-info">
+        <div class="whoop-card-title">
+          <span class="whoop-logo-text">WHOOP</span>
+          <span class="whoop-recovery-label" style="color:${color}">${label}</span>
+        </div>
+        <div class="whoop-metrics-row">
+          <div class="whoop-metric-sm">
+            <span class="wm-val-sm">${latest.hrv ? Math.round(latest.hrv) : '--'}</span>
+            <span class="wm-label-sm">HRV</span>
+          </div>
+          <div class="whoop-metric-sm">
+            <span class="wm-val-sm">${latest.restingHR || '--'}</span>
+            <span class="wm-label-sm">RHR</span>
+          </div>
+          <div class="whoop-metric-sm">
+            <span class="wm-val-sm">${latest.spo2 ? Math.round(latest.spo2) + '%' : '--'}</span>
+            <span class="wm-label-sm">SpO2</span>
+          </div>
+          <div class="whoop-metric-sm">
+            <span class="wm-val-sm">${latestSleep ? latestSleep.durationHrs + 'h' : '--'}</span>
+            <span class="wm-label-sm">Sleep</span>
+          </div>
+        </div>
+      </div>
     </div>
-    <div class="whoop-label" style="color:${color}">${label} Recovery</div>
-    <div class="whoop-metrics">
-      <div class="whoop-metric">
-        <span class="wm-val">${latest.hrv ? Math.round(latest.hrv) : '--'}</span>
-        <span class="wm-label">HRV (ms)</span>
-      </div>
-      <div class="whoop-metric">
-        <span class="wm-val">${latest.restingHR || '--'}</span>
-        <span class="wm-label">Resting HR</span>
-      </div>
-      <div class="whoop-metric">
-        <span class="wm-val">${latestSleep ? latestSleep.durationHrs + 'h' : '--'}</span>
-        <span class="wm-label">Sleep</span>
-      </div>
+    ${sleepHTML}
+    <div class="whoop-trend">
+      <div class="whoop-trend-label">7-day Recovery</div>
+      <div class="whoop-trend-bars">${trendBars}</div>
     </div>
   `;
 }
