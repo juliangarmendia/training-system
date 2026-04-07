@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="14" fill="#0a0a0a"/>
+  <!-- Dumbbell -->
+  <rect x="12" y="22" width="8" height="20" rx="2" fill="#00d4aa"/>
+  <rect x="44" y="22" width="8" height="20" rx="2" fill="#00d4aa"/>
+  <rect x="8" y="26" width="4" height="12" rx="1.5" fill="#00d4aa"/>
+  <rect x="52" y="26" width="4" height="12" rx="1.5" fill="#00d4aa"/>
+  <rect x="20" y="29" width="24" height="6" rx="2" fill="#00d4aa"/>
+</svg>
