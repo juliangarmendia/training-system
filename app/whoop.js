@@ -107,7 +107,7 @@ async function whoopGetCycles(startDate, endDate) {
     end: `${endDate}T23:59:59.999Z`,
     limit: '25',
   });
-  return await whoopFetch(`/v1/cycle?${params}`);
+  return await whoopFetch(`/v2/cycle?${params}`);
 }
 
 async function whoopGetRecoveryCollection(startDate, endDate) {
@@ -116,11 +116,11 @@ async function whoopGetRecoveryCollection(startDate, endDate) {
     end: `${endDate}T23:59:59.999Z`,
     limit: '25',
   });
-  return await whoopFetch(`/v1/recovery?${params}`);
+  return await whoopFetch(`/v2/recovery?${params}`);
 }
 
 async function whoopGetRecoveryForCycle(cycleId) {
-  return await whoopFetch(`/v1/cycle/${cycleId}/recovery`);
+  return await whoopFetch(`/v2/cycle/${cycleId}/recovery`);
 }
 
 async function whoopGetSleep(startDate, endDate) {
@@ -129,15 +129,15 @@ async function whoopGetSleep(startDate, endDate) {
     end: `${endDate}T23:59:59.999Z`,
     limit: '25',
   });
-  return await whoopFetch(`/v1/activity/sleep?${params}`);
+  return await whoopFetch(`/v2/activity/sleep?${params}`);
 }
 
 async function whoopGetBodyMeasurement() {
-  return await whoopFetch('/v1/user/body_measurement');
+  return await whoopFetch(`/v2/user/body_measurement`);
 }
 
 async function whoopGetProfile() {
-  return await whoopFetch('/v1/user/profile/basic');
+  return await whoopFetch(`/v2/user/profile/basic`);
 }
 
 // ==================== SYNC DATA ====================

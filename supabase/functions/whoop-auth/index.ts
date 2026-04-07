@@ -32,11 +32,25 @@ Deno.serve(async (req) => {
       }
 
       const url = `${WHOOP_API_BASE}${endpoint}`;
+      console.log(`[WHOOP Proxy] Fetching: ${url}`);
       const response = await fetch(url, {
         headers: { "Authorization": `Bearer ${access_token}` },
       });
 
-      const data = await response.json();
+      const text = await response.text();
+      console.log(`[WHOOP Proxy] ${endpoint} → ${response.status}: ${text.substring(0, 200)}`);
+
+      // Try to parse as JSON, return error if not valid JSON
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        return new Response(
+          JSON.stringify({ error: `WHOOP API returned ${response.status}`, body: text.substring(0, 500) }),
+          { status: response.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
       return new Response(
         JSON.stringify(data),
         { status: response.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
