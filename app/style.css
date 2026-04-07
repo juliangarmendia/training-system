@@ -167,6 +167,8 @@ nav { display: flex; background: var(--surface); border-top: 1px solid var(--bor
 .set-check { width: 32px; height: 32px; border-radius: var(--radius-xs); border: 2px solid var(--border); background: none; cursor: pointer; display: flex; align-items: center; justify-content: center; color: transparent; font-size: 14px; transition: all 0.15s; }
 .set-check.checked { border-color: var(--accent); background: var(--accent); color: var(--bg); box-shadow: 0 0 8px var(--accent-glow); }
 .previous-data { font-size: 11px; color: var(--text3); margin-bottom: 8px; padding: 7px 10px; background: var(--bg2); border-radius: var(--radius-xs); border-left: 3px solid var(--border2); }
+.prev-header { font-size: 11px; color: var(--teal); font-weight: 600; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.tap-hint { font-size: 9px; color: var(--text3); font-weight: 500; vertical-align: middle; opacity: 0.6; }
 .rest-btn-row { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
 .btn-rest { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-xs); color: var(--text); font-size: 12px; font-weight: 500; padding: 7px 12px; cursor: pointer; display: flex; align-items: center; gap: 5px; }
 .rest-config { display: flex; align-items: center; gap: 4px; }

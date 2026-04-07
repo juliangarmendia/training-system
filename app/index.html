@@ -47,6 +47,8 @@
         <button id="modal-close" class="modal-close-btn">&times;</button>
       </div>
       <div id="modal-1rm" class="modal-1rm"></div>
+      <div class="section-label" style="margin-top:12px">Est. 1RM Progression</div>
+      <div id="modal-1rm-chart" class="chart-box"></div>
       <div class="section-label" style="margin-top:12px">RPE Trend</div>
       <div id="modal-rpe-chart" class="chart-box"></div>
       <div class="section-label" style="margin-top:12px">History</div>
@@ -189,10 +191,11 @@
           <!-- Body Weight -->
           <div class="section-label">Body Weight</div>
           <div class="card" style="margin-bottom:12px">
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
               <span style="font-size:13px;color:var(--text2)">Current:</span>
               <span id="bw-current" style="font-size:18px;font-weight:800">--</span>
             </div>
+            <div id="bw-rate" style="font-size:12px;margin-bottom:10px"></div>
             <div style="display:flex;gap:8px">
               <input type="number" id="bw-input" placeholder="e.g. 82.5" inputmode="decimal" step="0.1" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:16px;padding:10px 14px">
               <button id="btn-log-bw" class="btn-primary" style="width:auto;padding:10px 20px">Log</button>

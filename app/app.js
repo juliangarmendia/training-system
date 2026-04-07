@@ -733,24 +733,26 @@ async function startWorkout(sessionId) {
   const warmupBody = document.getElementById('warmup-body');
   let warmupHTML = `<ul class="warmup-list">${session.warmup.map(w => `<li>${w}</li>`).join('')}</ul>`;
 
-  // Auto warm-up set generator for the first compound exercise
-  const firstCompound = session.exercises[0];
-  if (firstCompound && previous) {
-    const prevEx = previous.exercises.find(e => e.exerciseId === firstCompound.id);
-    const topWeight = prevEx ? Math.max(...prevEx.sets.filter(s => s.done && s.weight > 0).map(s => s.weight), 0) : 0;
-    if (topWeight > 0) {
-      const bar = state.settings.unit === 'lb' ? 45 : 20;
+  // Auto warm-up set generator for all exercises with previous data
+  if (previous) {
+    const bar = state.settings.unit === 'lb' ? 45 : 20;
+    for (const ex of session.exercises) {
+      const prevEx = previous.exercises.find(e => e.exerciseId === ex.id);
+      const topWeight = prevEx ? Math.max(...prevEx.sets.filter(s => s.done && s.weight > 0).map(s => s.weight), 0) : 0;
+      if (topWeight <= bar) continue; // Skip if too light for warm-up ramp
       const warmupSets = [
         { pct: 0, w: bar, reps: 10 },
         { pct: 40, w: Math.round(topWeight * 0.4 / 2.5) * 2.5, reps: 6 },
         { pct: 60, w: Math.round(topWeight * 0.6 / 2.5) * 2.5, reps: 4 },
         { pct: 80, w: Math.round(topWeight * 0.8 / 2.5) * 2.5, reps: 2 },
-      ].filter(s => s.w >= bar);
-      warmupHTML += `
-        <div class="warmup-auto">
-          <div class="warmup-auto-title">${firstCompound.name} Warm-up (based on ${topWeight}${state.settings.unit})</div>
-          ${warmupSets.map(s => `<div class="warmup-auto-set"><span class="warmup-pct">${s.pct === 0 ? 'Bar' : s.pct + '%'}</span><span class="warmup-weight">${s.w}${state.settings.unit}</span><span class="warmup-reps">× ${s.reps}</span></div>`).join('')}
-        </div>`;
+      ].filter(s => s.w >= bar && s.w < topWeight);
+      if (warmupSets.length > 0) {
+        warmupHTML += `
+          <div class="warmup-auto">
+            <div class="warmup-auto-title">${ex.name} (${topWeight}${state.settings.unit})</div>
+            ${warmupSets.map(s => `<div class="warmup-auto-set"><span class="warmup-pct">${s.pct === 0 ? 'Bar' : s.pct + '%'}</span><span class="warmup-weight">${s.w}${state.settings.unit}</span><span class="warmup-reps">× ${s.reps}</span></div>`).join('')}
+          </div>`;
+      }
     }
   }
 
@@ -932,8 +934,12 @@ function buildExerciseCard(ex, exIdx, previous, restSettings, exerciseNotes, del
     `;
   }
 
-  const prevDataHTML = prevEx
-    ? `<div class="previous-data">Last time: ${prevEx.sets.filter(s => s.done).map(s => `${s.weight}${state.settings.unit}×${s.reps}`).join(', ') || 'no data'}</div>`
+  const prevDoneSets = prevEx ? prevEx.sets.filter(s => s.done && s.weight > 0) : [];
+  const prevSummary = prevDoneSets.length > 0
+    ? prevDoneSets.map(s => `${s.weight}×${s.reps}`).join('  ')
+    : '';
+  const prevHeaderHTML = prevSummary
+    ? `<div class="prev-header">Last: ${prevSummary}</div>`
     : '';
 
   const e1rmHTML = best1RM > 0 ? `<div class="exercise-1rm">Est. 1RM: ${best1RM} ${state.settings.unit}</div>` : '';
@@ -943,17 +949,17 @@ function buildExerciseCard(ex, exIdx, previous, restSettings, exerciseNotes, del
     <div class="exercise-header">
       <div class="exercise-info">
         <div class="exercise-name-row">
-          <span class="exercise-name tappable" data-ex-id="${ex.id}">${ex.name}</span>
+          <span class="exercise-name tappable" data-ex-id="${ex.id}">${ex.name} <span class="tap-hint">history</span></span>
           <span class="muscle-badge" style="background:${muscleColor}20;color:${muscleColor}">${ex.muscle}</span>
         </div>
         <div class="exercise-target">${numSets} × ${ex.reps} @ ${rpeDisplay} · Rest ${Math.floor(customRest / 60)}:${(customRest % 60).toString().padStart(2, '0')}</div>
+        ${prevHeaderHTML}
         ${e1rmHTML}
       </div>
       <div class="exercise-status" data-status="${ex.id}"></div>
     </div>
     <div class="exercise-body">
       <div class="exercise-body-inner">
-        ${prevDataHTML}
         <div class="set-table">
           <div class="set-table-header">
             <div>Set</div>
@@ -1094,12 +1100,25 @@ async function openExerciseHistory(exId) {
     }
   });
 
-  // Show 1RM
+  // Show 1RM summary
   const latest1RM = history.length > 0 ? history[history.length - 1].best1RM : 0;
   const peak1RM = history.reduce((max, h) => Math.max(max, h.best1RM), 0);
   document.getElementById('modal-1rm').innerHTML = latest1RM > 0
-    ? `<span>Est. 1RM</span><span class="val">${latest1RM} ${state.settings.unit}</span>`
+    ? `<span>Est. 1RM: <strong>${latest1RM}</strong> ${state.settings.unit}</span>${peak1RM > latest1RM ? `<span style="color:var(--text3);font-size:11px;margin-left:8px">Peak: ${peak1RM} ${state.settings.unit}</span>` : '<span style="color:var(--accent);font-size:11px;margin-left:8px">= All-time best</span>'}`
     : '<span>No data yet</span>';
+
+  // 1RM progression chart
+  const e1rmChart = document.getElementById('modal-1rm-chart');
+  const e1rmData = history.filter(h => h.best1RM > 0).slice(-16);
+  if (e1rmData.length >= 2) {
+    e1rmChart.innerHTML = renderLineChart(
+      e1rmData.map(h => formatDate(h.date)),
+      e1rmData.map(h => h.best1RM),
+      { color: 'var(--accent)', height: 130, showDots: true }
+    );
+  } else {
+    e1rmChart.innerHTML = '<span class="chart-empty">Need 2+ sessions for 1RM trend</span>';
+  }
 
   // RPE trend chart
   const rpeChart = document.getElementById('modal-rpe-chart');
@@ -2407,7 +2426,38 @@ async function renderBodyWeightChart() {
     return;
   }
 
-  currentEl.textContent = entries[entries.length - 1].weight + ' kg';
+  const latestWeight = entries[entries.length - 1].weight;
+  currentEl.textContent = latestWeight + ' kg';
+
+  // Rate of change: compare 7-day average now vs 7 days ago
+  const rateEl = document.getElementById('bw-rate');
+  if (entries.length >= 3) {
+    const now = new Date();
+    const weekAgo = new Date(now - 7 * 86400000);
+    const recentEntries = entries.filter(e => new Date(e.date + 'T12:00:00') > weekAgo);
+    const olderEntries = entries.filter(e => {
+      const d = new Date(e.date + 'T12:00:00');
+      return d <= weekAgo && d > new Date(now - 14 * 86400000);
+    });
+    if (recentEntries.length > 0 && olderEntries.length > 0) {
+      const avgRecent = recentEntries.reduce((s, e) => s + e.weight, 0) / recentEntries.length;
+      const avgOlder = olderEntries.reduce((s, e) => s + e.weight, 0) / olderEntries.length;
+      const weeklyChange = avgRecent - avgOlder;
+      const pctChange = (weeklyChange / avgOlder) * 100;
+      const absPct = Math.abs(pctChange).toFixed(1);
+      const sign = weeklyChange > 0 ? '+' : '';
+      let color, label;
+      if (pctChange <= -0.5 && pctChange >= -1.0) { color = 'var(--accent)'; label = 'on target'; }
+      else if (pctChange < -1.0) { color = 'var(--orange)'; label = 'too fast'; }
+      else if (pctChange < 0) { color = 'var(--yellow)'; label = 'slow'; }
+      else { color = 'var(--red)'; label = 'gaining'; }
+      rateEl.innerHTML = `<span style="color:${color}">${sign}${weeklyChange.toFixed(1)} kg/wk (${sign}${pctChange.toFixed(1)}%) — ${label}</span> <span style="color:var(--text3)">target: -0.5 to -1%</span>`;
+    } else {
+      rateEl.textContent = 'Need 2+ weeks of data for rate';
+    }
+  } else {
+    rateEl.textContent = '';
+  }
 
   if (entries.length < 2) {
     container.innerHTML = '<span class="chart-empty">Need 2+ entries for chart</span>';
@@ -2515,6 +2565,7 @@ function renderPlateCalculator() {
 async function checkDeloadNeeded() {
   const workouts = (await dbGetAll('workouts')).sort((a, b) => b.date.localeCompare(a.date));
   const wk = getWeekNumber();
+  const reasons = [];
 
   // If already on a deload week, no reminder needed
   if (isDeloadWeek(wk)) return null;
@@ -2525,19 +2576,51 @@ async function checkDeloadNeeded() {
     const q1 = recent[0].quality || 3;
     const q2 = recent[1].quality || 3;
     if (q1 <= 2 && q2 <= 2) {
-      return { reason: 'quality', message: '2 consecutive low-quality sessions. Consider a deload.' };
+      reasons.push('2 consecutive low-quality sessions');
     }
   }
 
-  // Check if it's been 5+ weeks since program start without a deload
-  if (wk >= 5 && wk !== 5 && wk !== 9) {
-    // Check if a deload has happened recently
-    const weeksSinceDeload = wk % 4 === 0 ? 0 : wk % 4;
-    if (weeksSinceDeload === 0 || wk >= 7 && wk < 9) {
-      return { reason: 'time', message: `Week ${wk} — Consider scheduling a deload this week.` };
+  // Check RPE trend: if average RPE of last 3 sessions > 8.5, fatigue is accumulating
+  if (recent.length >= 3) {
+    const sessionRpes = recent.slice(0, 3).map(w => {
+      const rpes = [];
+      w.exercises.forEach(ex => ex.sets.filter(s => s.done && s.rpe).forEach(s => rpes.push(s.rpe)));
+      return rpes.length > 0 ? rpes.reduce((a, b) => a + b) / rpes.length : 0;
+    }).filter(r => r > 0);
+    if (sessionRpes.length >= 2) {
+      const avgRpe = sessionRpes.reduce((a, b) => a + b) / sessionRpes.length;
+      if (avgRpe >= 8.5) {
+        reasons.push(`RPE averaging ${avgRpe.toFixed(1)} over last ${sessionRpes.length} sessions`);
+      }
     }
   }
 
+  // Check WHOOP recovery: if last 3 days average recovery < 34% (red zone)
+  if (window.whoopIsConnected && whoopIsConnected()) {
+    try {
+      const whoopData = await whoopSyncData();
+      if (whoopData && whoopData.recovery.length >= 2) {
+        const last3 = whoopData.recovery.slice(-3);
+        const avgRecovery = last3.reduce((s, r) => s + r.score, 0) / last3.length;
+        if (avgRecovery < 34) {
+          reasons.push(`WHOOP recovery averaging ${Math.round(avgRecovery)}% (red zone)`);
+        }
+      }
+    } catch { /* ignore */ }
+  }
+
+  // Check if it's been 5+ weeks without a deload
+  if (wk >= 5) {
+    const lastDeloadWeek = Math.floor((wk - 1) / 4) * 4 + (isDeloadWeek(wk) ? wk : 0);
+    const weeksSinceLast = wk - lastDeloadWeek;
+    if (weeksSinceLast >= 5) {
+      reasons.push(`${weeksSinceLast} weeks without a deload`);
+    }
+  }
+
+  if (reasons.length > 0) {
+    return { reasons, message: reasons.join(' + ') + '. Consider a deload.' };
+  }
   return null;
 }
 
@@ -2547,10 +2630,14 @@ async function renderDeloadReminder() {
 
   const reminder = await checkDeloadNeeded();
   if (reminder) {
+    const severity = reminder.reasons.length >= 3 ? 'var(--red)' : reminder.reasons.length >= 2 ? 'var(--orange)' : 'var(--yellow)';
     container.innerHTML = `
-      <div class="deload-banner">
+      <div class="deload-banner" style="border-color:${severity}">
         <span class="deload-icon">⚠️</span>
-        <span class="deload-text">${reminder.message}</span>
+        <div>
+          <div class="deload-text" style="font-weight:700">Deload recommended</div>
+          <div style="font-size:11px;color:var(--text2);margin-top:2px">${reminder.reasons.join(' · ')}</div>
+        </div>
       </div>
     `;
     container.classList.remove('hidden');
