@@ -1,5 +1,5 @@
 // ============================================================
-// Training App — v3.4
+// Training App — v4.0
 // ============================================================
 
 // ==================== TRAINING PLAN DATA ====================
@@ -729,9 +729,32 @@ async function startWorkout(sessionId) {
   const restSettings = await dbGet('settings', 'restTimes') || { key: 'restTimes', data: {} };
   const exerciseNotes = await dbGet('settings', 'exerciseNotes') || { key: 'exerciseNotes', data: {} };
 
-  // Render warm-up
+  // Render warm-up with auto warm-up sets
   const warmupBody = document.getElementById('warmup-body');
-  warmupBody.innerHTML = `<ul class="warmup-list">${session.warmup.map(w => `<li>${w}</li>`).join('')}</ul>`;
+  let warmupHTML = `<ul class="warmup-list">${session.warmup.map(w => `<li>${w}</li>`).join('')}</ul>`;
+
+  // Auto warm-up set generator for the first compound exercise
+  const firstCompound = session.exercises[0];
+  if (firstCompound && previous) {
+    const prevEx = previous.exercises.find(e => e.exerciseId === firstCompound.id);
+    const topWeight = prevEx ? Math.max(...prevEx.sets.filter(s => s.done && s.weight > 0).map(s => s.weight), 0) : 0;
+    if (topWeight > 0) {
+      const bar = state.settings.unit === 'lb' ? 45 : 20;
+      const warmupSets = [
+        { pct: 0, w: bar, reps: 10 },
+        { pct: 40, w: Math.round(topWeight * 0.4 / 2.5) * 2.5, reps: 6 },
+        { pct: 60, w: Math.round(topWeight * 0.6 / 2.5) * 2.5, reps: 4 },
+        { pct: 80, w: Math.round(topWeight * 0.8 / 2.5) * 2.5, reps: 2 },
+      ].filter(s => s.w >= bar);
+      warmupHTML += `
+        <div class="warmup-auto">
+          <div class="warmup-auto-title">${firstCompound.name} Warm-up (based on ${topWeight}${state.settings.unit})</div>
+          ${warmupSets.map(s => `<div class="warmup-auto-set"><span class="warmup-pct">${s.pct === 0 ? 'Bar' : s.pct + '%'}</span><span class="warmup-weight">${s.w}${state.settings.unit}</span><span class="warmup-reps">× ${s.reps}</span></div>`).join('')}
+        </div>`;
+    }
+  }
+
+  warmupBody.innerHTML = warmupHTML;
   document.getElementById('warmup-section').classList.remove('expanded');
 
   // Group exercises by superset
@@ -1033,6 +1056,12 @@ async function finishWorkout() {
   document.getElementById('workout-notes').value = '';
 
   toast('Workout saved!');
+
+  // Offer to save as template
+  if (confirm('Save this workout as a reusable template?')) {
+    await saveWorkoutAsTemplate(workout);
+  }
+
   switchTab('gym');
 }
 
@@ -1186,12 +1215,17 @@ async function renderStats() {
   await renderStreaks();
   await renderFatigueScore();
   await renderDeloadReminder();
+  await renderWeeklySummary();
   await renderWeeklyReport();
   await renderWeekComparison();
+  await renderStreakCalendar();
   await renderMuscleVolume();
+  renderBodyCompEstimator();
   await renderProteinChart();
+  renderMacroCalculator();
   await renderStrengthChart();
   await renderVolumeChart();
+  await renderTemplateUI();
 }
 
 async function renderStreaks() {
@@ -1295,17 +1329,29 @@ async function renderFatigueScore() {
   const proteinDays = recentNutrition.filter(n => n.protein < state.settings.proteinTarget).length;
   fatigue += proteinDays * 3;
 
+  // Average RPE from recent workouts (0-20 points)
+  const allRpes = [];
+  recentWorkouts.forEach(w => {
+    w.exercises.forEach(ex => {
+      ex.sets.filter(s => s.done && s.rpe).forEach(s => allRpes.push(s.rpe));
+    });
+  });
+  if (allRpes.length > 0) {
+    const avgRpe = allRpes.reduce((a, b) => a + b, 0) / allRpes.length;
+    fatigue += Math.round(Math.max(0, avgRpe - 6) * 5); // RPE 6→0, 10→20
+  }
+
   // Integrate WHOOP recovery if available
+  let whoopLabel = '';
   if (window.whoopIsConnected && whoopIsConnected()) {
     try {
       const whoopData = await whoopSyncData();
       if (whoopData && whoopData.recovery.length > 0) {
         const latest = whoopData.recovery[whoopData.recovery.length - 1];
         if (latest.score != null) {
-          // WHOOP recovery 0-100 (higher = better recovered)
-          // Invert and weight it: low recovery adds fatigue
           const whoopFatigue = Math.round((100 - latest.score) * 0.3);
-          fatigue = Math.round(fatigue * 0.6 + whoopFatigue + fatigue * 0.1);
+          fatigue = Math.round(fatigue * 0.55 + whoopFatigue + fatigue * 0.15);
+          whoopLabel = ` · WHOOP ${latest.score}%`;
         }
       }
     } catch { /* ignore whoop errors */ }
@@ -1321,11 +1367,11 @@ async function renderFatigueScore() {
 
   container.innerHTML = `
     <div class="fatigue-header">
-      <span class="fatigue-title">Fatigue Score</span>
-      <span class="fatigue-score" style="color:${color}">${fatigue}</span>
+      <span class="fatigue-title">Readiness Score</span>
+      <span class="fatigue-score" style="color:${color}">${100 - fatigue}</span>
     </div>
-    <div class="fatigue-bar"><div class="fatigue-bar-fill" style="width:${fatigue}%;background:${color}"></div></div>
-    <div class="fatigue-tip">${tip}</div>
+    <div class="fatigue-bar"><div class="fatigue-bar-fill" style="width:${100 - fatigue}%;background:${color}"></div></div>
+    <div class="fatigue-tip">${tip}${whoopLabel}</div>
   `;
 }
 
@@ -1527,6 +1573,380 @@ async function renderWeekComparison() {
       </div>
     `).join('')}
   `;
+}
+
+// ==================== STREAK CALENDAR (GitHub style) ====================
+async function renderStreakCalendar() {
+  const container = document.getElementById('streak-calendar');
+  if (!container) return;
+
+  const workouts = await dbGetAll('workouts');
+  const runs = await dbGetAll('runs');
+
+  // Build set of active dates (last 12 weeks = 84 days)
+  const activeDates = new Set();
+  workouts.forEach(w => activeDates.add(w.date));
+  runs.forEach(r => activeDates.add(r.date));
+
+  const today = new Date();
+  const days = 84; // 12 weeks
+  const cells = [];
+
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(today.getDate() - i);
+    const ds = dateStr(d);
+    const active = activeDates.has(ds);
+    const isToday = i === 0;
+    cells.push({ date: ds, active, isToday, day: d.getDay() });
+  }
+
+  // Arrange in columns (weeks), rows (days 0-6)
+  const weeks = [];
+  let currentWeek = [];
+  cells.forEach((c, i) => {
+    if (i === 0) {
+      // Pad first week
+      for (let j = 0; j < c.day; j++) currentWeek.push(null);
+    }
+    currentWeek.push(c);
+    if (c.day === 6 || i === cells.length - 1) {
+      weeks.push(currentWeek);
+      currentWeek = [];
+    }
+  });
+
+  const totalActive = activeDates.size;
+  const last7 = cells.slice(-7).filter(c => c && c.active).length;
+
+  container.innerHTML = `
+    <div class="streak-cal-stats">
+      <span>${totalActive} total sessions</span>
+      <span>${last7}/7 this week</span>
+    </div>
+    <div class="streak-cal-grid">
+      ${weeks.map(week => `<div class="streak-cal-col">${week.map(c => {
+        if (!c) return '<div class="streak-cal-cell empty"></div>';
+        return `<div class="streak-cal-cell${c.active ? ' active' : ''}${c.isToday ? ' today' : ''}" title="${c.date}"></div>`;
+      }).join('')}</div>`).join('')}
+    </div>
+    <div class="streak-cal-legend"><span class="streak-cal-cell"></span> Rest <span class="streak-cal-cell active"></span> Active</div>
+  `;
+}
+
+// ==================== BODY COMPOSITION ESTIMATOR ====================
+function renderBodyCompEstimator() {
+  const container = document.getElementById('bodycomp-section');
+  if (!container) return;
+
+  container.innerHTML = `
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+      <div style="flex:1"><label class="muted" style="font-size:11px">Weight (kg)</label><input type="number" id="bc-weight" inputmode="decimal" step="0.1" placeholder="82" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:14px;padding:8px 10px"></div>
+      <div style="flex:1"><label class="muted" style="font-size:11px">Waist (cm)</label><input type="number" id="bc-waist" inputmode="decimal" step="0.5" placeholder="85" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:14px;padding:8px 10px"></div>
+      <div style="flex:1"><label class="muted" style="font-size:11px">Neck (cm)</label><input type="number" id="bc-neck" inputmode="decimal" step="0.5" placeholder="38" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:14px;padding:8px 10px"></div>
+      <div style="flex:1"><label class="muted" style="font-size:11px">Height (cm)</label><input type="number" id="bc-height" inputmode="decimal" step="1" placeholder="178" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:14px;padding:8px 10px"></div>
+    </div>
+    <button id="btn-calc-bf" class="btn-secondary" style="width:100%;text-align:center">Calculate</button>
+    <div id="bc-result" style="margin-top:10px"></div>
+  `;
+
+  document.getElementById('btn-calc-bf').addEventListener('click', () => {
+    const weight = parseFloat(document.getElementById('bc-weight').value);
+    const waist = parseFloat(document.getElementById('bc-waist').value);
+    const neck = parseFloat(document.getElementById('bc-neck').value);
+    const height = parseFloat(document.getElementById('bc-height').value);
+
+    if (!weight || !waist || !neck || !height) {
+      document.getElementById('bc-result').innerHTML = '<span class="muted">Fill all fields</span>';
+      return;
+    }
+
+    // US Navy method (male)
+    const bf = 495 / (1.0324 - 0.19077 * Math.log10(waist - neck) + 0.15456 * Math.log10(height)) - 450;
+    const bfPct = Math.round(bf * 10) / 10;
+    const leanMass = Math.round(weight * (1 - bfPct / 100) * 10) / 10;
+    const fatMass = Math.round(weight * (bfPct / 100) * 10) / 10;
+
+    let category;
+    if (bfPct < 6) category = 'Essential';
+    else if (bfPct < 14) category = 'Athletic';
+    else if (bfPct < 18) category = 'Fitness';
+    else if (bfPct < 25) category = 'Average';
+    else category = 'Above average';
+
+    document.getElementById('bc-result').innerHTML = `
+      <div class="bc-result-grid">
+        <div class="bc-stat"><span class="bc-val">${bfPct}%</span><span class="bc-label">Body Fat</span></div>
+        <div class="bc-stat"><span class="bc-val">${leanMass} kg</span><span class="bc-label">Lean Mass</span></div>
+        <div class="bc-stat"><span class="bc-val">${fatMass} kg</span><span class="bc-label">Fat Mass</span></div>
+        <div class="bc-stat"><span class="bc-val">${category}</span><span class="bc-label">Category</span></div>
+      </div>
+    `;
+  });
+}
+
+// ==================== WEEKLY TRAINING SUMMARY ====================
+async function renderWeeklySummary() {
+  const container = document.getElementById('weekly-summary');
+  if (!container) return;
+
+  const workouts = await dbGetAll('workouts');
+  const runs = await dbGetAll('runs');
+  const wk = getWeekNumber();
+
+  const thisWeek = workouts.filter(w => w.week === wk);
+  const thisWeekRuns = runs.filter(r => {
+    const d = new Date(r.date);
+    const now = new Date();
+    const diffDays = Math.floor((now - d) / 86400000);
+    return diffDays <= 7;
+  });
+
+  // Total volume
+  let totalVolume = 0;
+  let totalSets = 0;
+  const muscleSets = {};
+  const prs = [];
+
+  thisWeek.forEach(w => {
+    w.exercises.forEach(ex => {
+      const exName = getExerciseName(ex.exerciseId);
+      const muscle = getExerciseMuscle(ex.exerciseId);
+      ex.sets.filter(s => s.done).forEach(s => {
+        totalVolume += (s.weight || 0) * (s.reps || 0);
+        totalSets++;
+        if (muscle) muscleSets[muscle] = (muscleSets[muscle] || 0) + 1;
+      });
+    });
+  });
+
+  const totalKm = thisWeekRuns.reduce((sum, r) => sum + (r.distance || 0), 0);
+  const adherence = thisWeek.length;
+  const planned = Object.values(WEEK_TEMPLATE).filter(d => d.type === 'gym').length;
+
+  container.innerHTML = `
+    <div class="ws-grid">
+      <div class="ws-stat"><span class="ws-val">${adherence}/${planned}</span><span class="ws-label">Sessions</span></div>
+      <div class="ws-stat"><span class="ws-val">${totalSets}</span><span class="ws-label">Total Sets</span></div>
+      <div class="ws-stat"><span class="ws-val">${Math.round(totalVolume / 1000)}k</span><span class="ws-label">Volume (${state.settings.unit})</span></div>
+      <div class="ws-stat"><span class="ws-val">${totalKm.toFixed(1)}</span><span class="ws-label">Run km</span></div>
+    </div>
+  `;
+}
+
+// ==================== MACRO CALCULATOR ====================
+function renderMacroCalculator() {
+  const container = document.getElementById('macro-calc-section');
+  if (!container) return;
+
+  container.innerHTML = `
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+      <div style="flex:1;min-width:70px"><label class="muted" style="font-size:11px">Weight (kg)</label><input type="number" id="mc-weight" inputmode="decimal" step="0.1" placeholder="82" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:14px;padding:8px 10px"></div>
+      <div style="flex:1;min-width:100px"><label class="muted" style="font-size:11px">Goal</label>
+        <select id="mc-goal" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:14px;padding:8px 10px">
+          <option value="cut">Fat Loss</option>
+          <option value="maintain">Maintain</option>
+          <option value="bulk">Muscle Gain</option>
+        </select>
+      </div>
+      <div style="flex:1;min-width:100px"><label class="muted" style="font-size:11px">Activity</label>
+        <select id="mc-activity" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:14px;padding:8px 10px">
+          <option value="1.4">Sedentary</option>
+          <option value="1.55" selected>Moderate (3-4x/wk)</option>
+          <option value="1.7">Active (5-6x/wk)</option>
+          <option value="1.9">Very Active</option>
+        </select>
+      </div>
+    </div>
+    <button id="btn-calc-macros" class="btn-secondary" style="width:100%;text-align:center">Calculate Macros</button>
+    <div id="mc-result" style="margin-top:10px"></div>
+  `;
+
+  document.getElementById('btn-calc-macros').addEventListener('click', () => {
+    const weight = parseFloat(document.getElementById('mc-weight').value);
+    const goal = document.getElementById('mc-goal').value;
+    const activity = parseFloat(document.getElementById('mc-activity').value);
+
+    if (!weight) {
+      document.getElementById('mc-result').innerHTML = '<span class="muted">Enter your weight</span>';
+      return;
+    }
+
+    // Mifflin-St Jeor estimate (male, assume height ~178, age ~30)
+    const bmr = 10 * weight + 6.25 * 178 - 5 * 30 + 5;
+    const tdee = Math.round(bmr * activity);
+    const deficit = goal === 'cut' ? -400 : (goal === 'bulk' ? 300 : 0);
+    const calories = tdee + deficit;
+
+    // Macros
+    const protein = Math.round(weight * 2); // 2g/kg
+    const fat = Math.round(weight * 0.9); // 0.9g/kg
+    const proteinCal = protein * 4;
+    const fatCal = fat * 9;
+    const carbCal = calories - proteinCal - fatCal;
+    const carbs = Math.max(0, Math.round(carbCal / 4));
+
+    document.getElementById('mc-result').innerHTML = `
+      <div class="mc-summary">Target: <strong>${calories} kcal/day</strong> (TDEE ${tdee} ${deficit > 0 ? '+' : ''}${deficit})</div>
+      <div class="mc-macros">
+        <div class="mc-macro"><div class="mc-bar" style="background:var(--accent);height:${Math.round(proteinCal/calories*60)}px"></div><span class="mc-val">${protein}g</span><span class="mc-label">Protein</span></div>
+        <div class="mc-macro"><div class="mc-bar" style="background:var(--yellow);height:${Math.round(fatCal/calories*60)}px"></div><span class="mc-val">${fat}g</span><span class="mc-label">Fat</span></div>
+        <div class="mc-macro"><div class="mc-bar" style="background:var(--blue);height:${Math.round(carbCal/calories*60)}px"></div><span class="mc-val">${carbs}g</span><span class="mc-label">Carbs</span></div>
+      </div>
+    `;
+  });
+}
+
+// ==================== WORKOUT TEMPLATES ====================
+async function renderTemplateUI() {
+  const container = document.getElementById('template-section');
+  if (!container) return;
+
+  const templates = (await dbGet('settings', 'workoutTemplates')) || { key: 'workoutTemplates', data: [] };
+  const list = templates.data || [];
+
+  container.innerHTML = `
+    <div id="template-list">
+      ${list.length === 0 ? '<div class="muted" style="font-size:12px;padding:8px 0">No saved templates yet. Finish a workout and save it as a template.</div>' : ''}
+      ${list.map((t, i) => `
+        <div class="template-item">
+          <div class="template-info">
+            <span class="template-name">${t.name}</span>
+            <span class="template-detail">${t.exercises.length} exercises · ${t.exercises.reduce((s, e) => s + e.sets, 0)} sets</span>
+          </div>
+          <div class="template-actions">
+            <button class="btn-template-load" data-template-idx="${i}">Load</button>
+            <button class="btn-template-delete" data-template-idx="${i}">✕</button>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+
+  container.querySelectorAll('.btn-template-delete').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const idx = parseInt(btn.dataset.templateIdx);
+      const templates = (await dbGet('settings', 'workoutTemplates')) || { key: 'workoutTemplates', data: [] };
+      templates.data.splice(idx, 1);
+      await dbPut('settings', templates);
+      toast('Template deleted');
+      renderTemplateUI();
+    });
+  });
+
+  container.querySelectorAll('.btn-template-load').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const idx = parseInt(btn.dataset.templateIdx);
+      const templates = (await dbGet('settings', 'workoutTemplates')) || { key: 'workoutTemplates', data: [] };
+      const t = templates.data[idx];
+      if (t) {
+        toast(`Loaded template: ${t.name}`);
+        startCustomWorkout(t);
+      }
+    });
+  });
+}
+
+async function saveWorkoutAsTemplate(workout) {
+  const name = prompt('Template name:', workout.session || 'Custom Workout');
+  if (!name) return;
+
+  const exercises = workout.exercises.map(ex => ({
+    exerciseId: ex.exerciseId,
+    sets: ex.sets.length,
+    lastWeight: ex.sets.filter(s => s.done && s.weight > 0).map(s => s.weight).pop() || 0,
+    lastReps: ex.sets.filter(s => s.done && s.reps > 0).map(s => s.reps).pop() || 0,
+  }));
+
+  const templates = (await dbGet('settings', 'workoutTemplates')) || { key: 'workoutTemplates', data: [] };
+  if (!templates.data) templates.data = [];
+  templates.data.push({ name, exercises, createdAt: today() });
+  await dbPut('settings', templates);
+  toast('Template saved!');
+}
+
+async function startCustomWorkout(template) {
+  state.activeSession = 'custom';
+  state.workoutStartTime = Date.now();
+  state.sessionQuality = 3;
+
+  const warmupBody = document.getElementById('warmup-body');
+  warmupBody.innerHTML = '<ul class="warmup-list"><li>5 min general warm-up</li><li>Dynamic stretches</li><li>Warm-up sets for first exercise</li></ul>';
+
+  const container = document.getElementById('workout-exercises');
+  container.innerHTML = '';
+
+  const restSettings = await dbGet('settings', 'restTimes') || { key: 'restTimes', data: {} };
+  const exerciseNotes = await dbGet('settings', 'exerciseNotes') || { key: 'exerciseNotes', data: {} };
+  const workouts = await dbGetAll('workouts');
+
+  template.exercises.forEach((tex, idx) => {
+    // Find exercise in PLAN
+    let exDef = null;
+    Object.values(PLAN.sessions).forEach(s => {
+      const found = s.exercises.find(e => e.id === tex.exerciseId);
+      if (found) exDef = found;
+    });
+    // Also check EXERCISE_ALTERNATIVES
+    if (!exDef) {
+      Object.values(EXERCISE_ALTERNATIVES).forEach(alts => {
+        const found = alts.find(a => a.id === tex.exerciseId);
+        if (found) exDef = { ...found, sets: tex.sets, reps: '6-12', rpe: '7-8', defaultRest: 90, notes: '' };
+      });
+    }
+    if (!exDef) return;
+
+    const ex = { ...exDef, sets: tex.sets };
+    const card = buildExerciseCard(ex, idx, null, restSettings, exerciseNotes, false, { exercises: template.exercises.map(t => exDef) }, workouts);
+    container.appendChild(card);
+  });
+
+  // Re-bind events
+  container.querySelectorAll('.exercise-header').forEach(h => {
+    h.addEventListener('click', (e) => {
+      if (e.target.classList.contains('tappable')) return;
+      h.closest('.exercise-card').classList.toggle('expanded');
+    });
+  });
+
+  container.querySelectorAll('.set-check').forEach(btn => {
+    btn.addEventListener('click', () => {
+      btn.classList.toggle('checked');
+      const card = btn.closest('.exercise-card');
+      updateExerciseStatus(card);
+      if (btn.classList.contains('checked')) {
+        const exId = card.dataset.exerciseId;
+        const restInput = card.querySelector(`[data-rest-config="${exId}"]`);
+        const fullRest = restInput ? parseInt(restInput.value) || 90 : 90;
+        startRestTimer(fullRest);
+      }
+    });
+  });
+
+  container.querySelectorAll('.btn-rest').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const seconds = parseInt(btn.dataset.restStart) || 90;
+      startRestTimer(seconds);
+    });
+  });
+
+  container.querySelectorAll('.exercise-name.tappable').forEach(el => {
+    el.addEventListener('click', () => openExerciseHistory(el.dataset.exId));
+  });
+
+  switchTab('workout');
+  startWorkoutTimer();
+}
+
+function getExerciseMuscle(exId) {
+  for (const session of Object.values(PLAN.sessions)) {
+    const ex = session.exercises.find(e => e.id === exId);
+    if (ex) return ex.muscle;
+  }
+  for (const [muscle, alts] of Object.entries(EXERCISE_ALTERNATIVES)) {
+    if (alts.find(a => a.id === exId)) return muscle;
+  }
+  return null;
 }
 
 // ==================== REST TIMER ====================
