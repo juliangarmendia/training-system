@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
@@ -17,31 +17,37 @@
     <div class="pin-box">
       <div class="pin-icon">🔒</div>
       <div class="pin-prompt" id="pin-prompt">Enter PIN</div>
-      <div class="pin-dots" id="pin-dots">
-        <span></span><span></span><span></span><span></span>
-      </div>
+      <div class="pin-dots" id="pin-dots"><span></span><span></span><span></span><span></span></div>
       <div class="pin-pad" id="pin-pad">
-        <button data-key="1">1</button>
-        <button data-key="2">2</button>
-        <button data-key="3">3</button>
-        <button data-key="4">4</button>
-        <button data-key="5">5</button>
-        <button data-key="6">6</button>
-        <button data-key="7">7</button>
-        <button data-key="8">8</button>
-        <button data-key="9">9</button>
-        <button data-key="" class="pin-empty"></button>
-        <button data-key="0">0</button>
-        <button data-key="del" class="pin-del">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 4H8l-7 8 7 8h13a2 2 0 002-2V6a2 2 0 00-2-2z"/><line x1="18" y1="9" x2="12" y2="15"/><line x1="12" y1="9" x2="18" y2="15"/></svg>
-        </button>
+        <button data-key="1">1</button><button data-key="2">2</button><button data-key="3">3</button>
+        <button data-key="4">4</button><button data-key="5">5</button><button data-key="6">6</button>
+        <button data-key="7">7</button><button data-key="8">8</button><button data-key="9">9</button>
+        <button data-key="" class="pin-empty"></button><button data-key="0">0</button>
+        <button data-key="del" class="pin-del"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 4H8l-7 8 7 8h13a2 2 0 002-2V6a2 2 0 00-2-2z"/><line x1="18" y1="9" x2="12" y2="15"/><line x1="12" y1="9" x2="18" y2="15"/></svg></button>
       </div>
       <div class="pin-msg" id="pin-msg"></div>
     </div>
   </div>
 
+  <!-- Exercise History Modal -->
+  <div id="exercise-modal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="modal-ex-name">Exercise</h3>
+        <button id="modal-close" class="modal-close-btn">&times;</button>
+      </div>
+      <div id="modal-1rm" class="modal-1rm"></div>
+      <div class="section-label" style="margin-top:12px">RPE Trend</div>
+      <div id="modal-rpe-chart" class="chart-box"></div>
+      <div class="section-label" style="margin-top:12px">History</div>
+      <div id="modal-history-list" class="modal-history"></div>
+      <div class="section-label" style="margin-top:16px">Notes</div>
+      <textarea id="modal-ex-notes" class="input-notes" placeholder="Personal notes for this exercise..." rows="3"></textarea>
+      <button id="modal-save-notes" class="btn-primary" style="margin-top:8px">Save Notes</button>
+    </div>
+  </div>
+
   <div id="app">
-    <!-- Header -->
     <header id="header">
       <div class="header-content">
         <h1 id="header-title">Training</h1>
@@ -54,7 +60,6 @@
       </button>
     </header>
 
-    <!-- Views -->
     <main id="main">
       <!-- Gym Home -->
       <section id="view-gym" class="view active">
@@ -74,7 +79,10 @@
             <button id="btn-back-gym" class="back-btn">&larr; Back</button>
             <div class="workout-timer" id="workout-timer">00:00</div>
           </div>
-          <!-- Warm-up -->
+          <div class="session-progress" id="session-progress">
+            <div class="sp-bar"><div class="sp-fill" id="sp-fill"></div></div>
+            <div class="sp-text" id="sp-text">0 / 0 exercises</div>
+          </div>
           <div class="warmup-card" id="warmup-section">
             <div class="warmup-header" id="warmup-toggle">
               <span class="warmup-title">🔥 Warm-up</span>
@@ -88,11 +96,7 @@
             <div class="quality-select">
               <span class="label">Session quality</span>
               <div id="quality-stars" class="stars">
-                <button data-v="1">1</button>
-                <button data-v="2">2</button>
-                <button data-v="3" class="selected">3</button>
-                <button data-v="4">4</button>
-                <button data-v="5">5</button>
+                <button data-v="1">1</button><button data-v="2">2</button><button data-v="3" class="selected">3</button><button data-v="4">4</button><button data-v="5">5</button>
               </div>
             </div>
             <button id="btn-finish-workout" class="btn-primary btn-lg">Finish Workout</button>
@@ -106,31 +110,11 @@
           <div class="run-plan-banner" id="run-plan-banner"></div>
           <div class="section-label">Log a Run</div>
           <div class="card form-card">
-            <div class="form-row">
-              <label>Distance (km)</label>
-              <input type="number" id="run-distance" step="0.1" min="0" placeholder="5.0" inputmode="decimal">
-            </div>
-            <div class="form-row">
-              <label>Duration (min)</label>
-              <input type="number" id="run-duration" step="1" min="0" placeholder="38" inputmode="numeric">
-            </div>
-            <div class="form-row">
-              <label>Avg HR (bpm)</label>
-              <input type="number" id="run-hr" step="1" min="0" placeholder="129" inputmode="numeric">
-            </div>
-            <div class="form-row">
-              <label>How it felt</label>
-              <div id="run-feel" class="stars">
-                <button data-v="1">1</button>
-                <button data-v="2">2</button>
-                <button data-v="3" class="selected">3</button>
-                <button data-v="4">4</button>
-                <button data-v="5">5</button>
-              </div>
-            </div>
-            <div class="form-row">
-              <textarea id="run-notes" class="input-notes" placeholder="Notes (optional)" rows="2"></textarea>
-            </div>
+            <div class="form-row"><label>Distance (km)</label><input type="number" id="run-distance" step="0.1" min="0" placeholder="5.0" inputmode="decimal"></div>
+            <div class="form-row"><label>Duration (min)</label><input type="number" id="run-duration" step="1" min="0" placeholder="38" inputmode="numeric"></div>
+            <div class="form-row"><label>Avg HR (bpm)</label><input type="number" id="run-hr" step="1" min="0" placeholder="129" inputmode="numeric"></div>
+            <div class="form-row"><label>How it felt</label><div id="run-feel" class="stars"><button data-v="1">1</button><button data-v="2">2</button><button data-v="3" class="selected">3</button><button data-v="4">4</button><button data-v="5">5</button></div></div>
+            <div class="form-row"><textarea id="run-notes" class="input-notes" placeholder="Notes (optional)" rows="2"></textarea></div>
             <button id="btn-log-run" class="btn-primary">Log Run</button>
           </div>
           <div class="section-label" style="margin-top:24px">Run History</div>
@@ -145,84 +129,24 @@
           <div class="card nutrition-card">
             <div class="macro-ring-container">
               <div class="macro-ring" id="protein-ring">
-                <svg viewBox="0 0 120 120">
-                  <circle cx="60" cy="60" r="52" class="ring-bg"/>
-                  <circle cx="60" cy="60" r="52" class="ring-fill" id="protein-ring-fill"/>
-                </svg>
-                <div class="ring-label">
-                  <span id="protein-current" class="ring-value">0</span>
-                  <span class="ring-unit">/ <span id="protein-target-display">170</span>g</span>
-                  <span class="ring-name">Protein</span>
-                </div>
+                <svg viewBox="0 0 120 120"><circle cx="60" cy="60" r="52" class="ring-bg"/><circle cx="60" cy="60" r="52" class="ring-fill" id="protein-ring-fill"/></svg>
+                <div class="ring-label"><span id="protein-current" class="ring-value">0</span><span class="ring-unit">/ <span id="protein-target-display">170</span>g</span><span class="ring-name">Protein</span></div>
               </div>
             </div>
-            <!-- Quick add -->
-            <div class="quick-add" id="quick-add">
-              <button data-add="20">+20g</button>
-              <button data-add="30">+30g</button>
-              <button data-add="40">+40g</button>
-              <button data-add="50">+50g</button>
-            </div>
-            <div class="form-row">
-              <label>Or set total protein (g)</label>
-              <input type="number" id="nut-protein" step="1" min="0" placeholder="170" inputmode="numeric">
-            </div>
-
+            <div class="quick-add" id="quick-add"><button data-add="20">+20g</button><button data-add="30">+30g</button><button data-add="40">+40g</button><button data-add="50">+50g</button></div>
+            <div class="form-row"><label>Or set total protein (g)</label><input type="number" id="nut-protein" step="1" min="0" placeholder="170" inputmode="numeric"></div>
             <div class="divider"></div>
-
             <div class="checklist">
-              <div class="check-row">
-                <label>Meals with protein</label>
-                <div id="nut-meals" class="stars compact">
-                  <button data-v="1">1</button>
-                  <button data-v="2">2</button>
-                  <button data-v="3">3</button>
-                  <button data-v="4" class="selected">4</button>
-                  <button data-v="5">5</button>
-                </div>
-              </div>
-              <div class="check-row">
-                <label>Water OK?</label>
-                <div class="toggle-group">
-                  <button id="nut-water-yes" class="toggle-btn selected" data-v="true">Yes</button>
-                  <button id="nut-water-no" class="toggle-btn" data-v="false">No</button>
-                </div>
-              </div>
-              <div class="check-row">
-                <label>Energy level</label>
-                <div id="nut-energy" class="stars compact">
-                  <button data-v="1">😩</button>
-                  <button data-v="2">😐</button>
-                  <button data-v="3" class="selected">🙂</button>
-                  <button data-v="4">😊</button>
-                  <button data-v="5">💪</button>
-                </div>
-              </div>
+              <div class="check-row"><label>Meals with protein</label><div id="nut-meals" class="stars compact"><button data-v="1">1</button><button data-v="2">2</button><button data-v="3">3</button><button data-v="4" class="selected">4</button><button data-v="5">5</button></div></div>
+              <div class="check-row"><label>Water OK?</label><div class="toggle-group"><button id="nut-water-yes" class="toggle-btn selected" data-v="true">Yes</button><button id="nut-water-no" class="toggle-btn" data-v="false">No</button></div></div>
+              <div class="check-row"><label>Energy level</label><div id="nut-energy" class="stars compact"><button data-v="1">😩</button><button data-v="2">😐</button><button data-v="3" class="selected">🙂</button><button data-v="4">😊</button><button data-v="5">💪</button></div></div>
             </div>
-
             <button class="expand-btn" id="nut-expand-btn">More details ▾</button>
             <div class="expand-content hidden" id="nut-expand">
-              <div class="form-row">
-                <label>Alcohol (drinks)</label>
-                <input type="number" id="nut-alcohol" step="1" min="0" value="0" inputmode="numeric">
-              </div>
-              <div class="form-row">
-                <label>Hunger (1=full, 5=starving)</label>
-                <div id="nut-hunger" class="stars">
-                  <button data-v="1">1</button>
-                  <button data-v="2">2</button>
-                  <button data-v="3" class="selected">3</button>
-                  <button data-v="4">4</button>
-                  <button data-v="5">5</button>
-                </div>
-              </div>
-              <div class="form-row">
-                <label>Calories (optional)</label>
-                <input type="number" id="nut-calories" step="50" min="0" placeholder="2500" inputmode="numeric">
-              </div>
-              <div class="form-row">
-                <textarea id="nut-notes" class="input-notes" placeholder="Notes (optional)" rows="2"></textarea>
-              </div>
+              <div class="form-row"><label>Alcohol (drinks)</label><input type="number" id="nut-alcohol" step="1" min="0" value="0" inputmode="numeric"></div>
+              <div class="form-row"><label>Hunger (1=full, 5=starving)</label><div id="nut-hunger" class="stars"><button data-v="1">1</button><button data-v="2">2</button><button data-v="3" class="selected">3</button><button data-v="4">4</button><button data-v="5">5</button></div></div>
+              <div class="form-row"><label>Calories (optional)</label><input type="number" id="nut-calories" step="50" min="0" placeholder="2500" inputmode="numeric"></div>
+              <div class="form-row"><textarea id="nut-notes" class="input-notes" placeholder="Notes (optional)" rows="2"></textarea></div>
             </div>
             <button id="btn-log-nutrition" class="btn-primary">Save Today</button>
           </div>
@@ -231,63 +155,57 @@
         </div>
       </section>
 
+      <!-- Stats -->
+      <section id="view-stats" class="view">
+        <div class="view-scroll">
+          <div class="streak-row" id="streak-row"></div>
+          <div class="fatigue-card" id="fatigue-card"></div>
+          <div class="section-label" style="margin-top:16px">Weekly Report</div>
+          <div class="report-card" id="weekly-report"></div>
+          <div class="section-label" style="margin-top:20px">Strength (Est. 1RM)</div>
+          <div class="chart-tabs" id="strength-tabs"></div>
+          <div class="chart-box" id="strength-chart"></div>
+          <div class="section-label" style="margin-top:20px">Weekly Volume (kg)</div>
+          <div class="chart-box" id="volume-chart"></div>
+        </div>
+      </section>
+
       <!-- Settings -->
       <section id="view-settings" class="view">
         <div class="view-scroll">
           <div class="section-label">Security</div>
           <div class="card">
-            <div class="form-row inline">
-              <label>PIN Lock</label>
-              <button id="btn-set-pin" class="btn-secondary" style="width:auto;padding:8px 16px">Set PIN</button>
-            </div>
+            <div class="form-row inline"><label>PIN Lock</label><button id="btn-set-pin" class="btn-secondary" style="width:auto;padding:8px 16px">Set PIN</button></div>
             <div id="pin-status" class="muted" style="font-size:12px;margin-top:8px"></div>
             <button id="btn-remove-pin" class="btn-danger-sm hidden" style="margin-top:8px">Remove PIN</button>
           </div>
-
+          <div class="section-label" style="margin-top:24px">Appearance</div>
+          <div class="card">
+            <div class="form-row inline"><label>Theme</label>
+              <div class="toggle-group"><button id="theme-dark" class="toggle-btn selected">Dark</button><button id="theme-light" class="toggle-btn">Light</button></div>
+            </div>
+          </div>
           <div class="section-label" style="margin-top:24px">Program</div>
           <div class="card">
-            <div class="form-row">
-              <label>Program start date</label>
-              <input type="date" id="setting-start-date" class="date-input">
-            </div>
-            <p class="muted" style="font-size:11px;margin-top:6px">Used to calculate current week, deload schedule, and running progression.</p>
+            <div class="form-row"><label>Program start date</label><input type="date" id="setting-start-date" class="date-input"></div>
+            <p class="muted" style="font-size:11px;margin-top:6px">Used to calculate current week, deloads, and running progression.</p>
           </div>
-
           <div class="section-label" style="margin-top:24px">Data</div>
           <div class="card">
             <button id="btn-backup" class="btn-secondary btn-full">Export Backup (Share)</button>
             <div style="height:12px"></div>
-            <label class="btn-secondary btn-full" style="text-align:center;cursor:pointer">
-              Import Backup
-              <input type="file" id="file-restore" accept=".json" style="display:none">
-            </label>
+            <label class="btn-secondary btn-full" style="text-align:center;cursor:pointer">Import Backup<input type="file" id="file-restore" accept=".json" style="display:none"></label>
           </div>
-
           <div class="section-label" style="margin-top:24px">Units & Targets</div>
           <div class="card">
-            <div class="form-row inline">
-              <label>Weight unit</label>
-              <div class="toggle-group">
-                <button id="unit-kg" class="toggle-btn selected" data-v="kg">kg</button>
-                <button id="unit-lb" class="toggle-btn" data-v="lb">lb</button>
-              </div>
-            </div>
+            <div class="form-row inline"><label>Weight unit</label><div class="toggle-group"><button id="unit-kg" class="toggle-btn selected">kg</button><button id="unit-lb" class="toggle-btn">lb</button></div></div>
             <div style="height:12px"></div>
-            <div class="form-row">
-              <label>Daily protein target (g)</label>
-              <input type="number" id="setting-protein-target" step="5" min="0" value="170" inputmode="numeric">
-            </div>
-            <div class="form-row">
-              <label>Daily calorie target</label>
-              <input type="number" id="setting-calorie-target" step="50" min="0" value="2500" inputmode="numeric">
-            </div>
+            <div class="form-row"><label>Daily protein target (g)</label><input type="number" id="setting-protein-target" step="5" min="0" value="170" inputmode="numeric"></div>
+            <div class="form-row"><label>Daily calorie target</label><input type="number" id="setting-calorie-target" step="50" min="0" value="2500" inputmode="numeric"></div>
             <button id="btn-save-settings" class="btn-primary">Save Settings</button>
           </div>
-
           <div class="section-label" style="margin-top:24px">About</div>
-          <div class="card">
-            <p class="muted" style="margin:0;font-size:13px">Training System v3.0<br>Data stored locally on your device.<br>Export backups regularly.</p>
-          </div>
+          <div class="card"><p class="muted" style="margin:0;font-size:13px">Training System v3.1<br>Data stored locally.<br>Export backups regularly.</p></div>
         </div>
       </section>
     </main>
@@ -295,10 +213,7 @@
     <!-- Rest Timer Overlay -->
     <div id="rest-timer-overlay" class="overlay hidden">
       <div class="timer-display">
-        <svg viewBox="0 0 200 200" class="timer-ring">
-          <circle cx="100" cy="100" r="90" class="timer-ring-bg"/>
-          <circle cx="100" cy="100" r="90" class="timer-ring-fill" id="timer-ring-fill"/>
-        </svg>
+        <svg viewBox="0 0 200 200" class="timer-ring"><circle cx="100" cy="100" r="90" class="timer-ring-bg"/><circle cx="100" cy="100" r="90" class="timer-ring-fill" id="timer-ring-fill"/></svg>
         <div class="timer-text" id="timer-text">0:00</div>
         <div class="timer-label">REST</div>
       </div>
@@ -312,20 +227,23 @@
     <!-- Bottom Nav -->
     <nav id="nav">
       <button class="nav-btn active" data-tab="gym">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="10" rx="1"/><line x1="6" y1="4" x2="6" y2="20"/><line x1="18" y1="4" x2="18" y2="20"/><line x1="2" y1="12" x2="22" y2="12"/></svg>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="10" rx="1"/><line x1="6" y1="4" x2="6" y2="20"/><line x1="18" y1="4" x2="18" y2="20"/></svg>
         <span>Gym</span>
       </button>
       <button class="nav-btn" data-tab="run">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="14" cy="4" r="2"/><path d="M6 21l3-9 2.5 2V21M16 11l-3-3-4 4 2 2"/></svg>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="14" cy="4" r="2"/><path d="M6 21l3-9 2.5 2V21M16 11l-3-3-4 4 2 2"/></svg>
         <span>Run</span>
       </button>
       <button class="nav-btn" data-tab="nutrition">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8h1a4 4 0 010 8h-1"/><path d="M2 8h16v9a4 4 0 01-4 4H6a4 4 0 01-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>
-        <span>Nutrition</span>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8h1a4 4 0 010 8h-1"/><path d="M2 8h16v9a4 4 0 01-4 4H6a4 4 0 01-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>
+        <span>Food</span>
+      </button>
+      <button class="nav-btn" data-tab="stats">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        <span>Stats</span>
       </button>
     </nav>
   </div>
-
   <script src="app.js"></script>
 </body>
 </html>
