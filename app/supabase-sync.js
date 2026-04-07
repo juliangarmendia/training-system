@@ -8,8 +8,8 @@
 // 3. Run the SQL schema (see bottom of this file) in Supabase SQL Editor
 // ============================================================
 
-const SUPABASE_URL = '';  // e.g. 'https://xxxxx.supabase.co'
-const SUPABASE_ANON_KEY = ''; // e.g. 'eyJhbGci...'
+const SUPABASE_URL = 'https://ycfodifvpvosukepcxie.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InljZm9kaWZ2cHZvc3VrZXBjeGllIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU1NzQ2MDMsImV4cCI6MjA5MTE1MDYwM30.3nDHWD2IJh2SZ283QuorC60O1KDGxad2LA_jk1aOwW4';
 
 let supabaseClient = null;
 
