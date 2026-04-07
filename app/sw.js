@@ -1,8 +1,8 @@
 // ============================================================
-// Service Worker — Training App v3.3
+// Service Worker — Training App v4.0
 // ============================================================
 
-const CACHE_NAME = 'training-v4.0';
+const CACHE_NAME = 'training-v4.1';
 const APP_SHELL = [
   './',
   './index.html',
@@ -14,7 +14,7 @@ const APP_SHELL = [
   './favicon.svg',
 ];
 
-// Install: precache app shell
+// Install: precache app shell, skip waiting immediately
 self.addEventListener('install', (e) => {
   e.waitUntil(
     caches.open(CACHE_NAME)
@@ -23,7 +23,7 @@ self.addEventListener('install', (e) => {
   );
 });
 
-// Activate: clean old caches
+// Activate: clean old caches, claim all clients
 self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches.keys().then(keys =>
@@ -32,43 +32,28 @@ self.addEventListener('activate', (e) => {
   );
 });
 
-// Fetch: cache-first for app shell, network-first for CDN/API
+// Fetch: network-first for everything (always get latest when online)
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
 
-  // Skip non-GET
+  // Skip non-GET and chrome-extension requests
   if (e.request.method !== 'GET') return;
+  if (url.protocol === 'chrome-extension:') return;
 
-  // Network-first for Supabase API and CDN scripts
-  if (url.hostname.includes('supabase') || url.hostname.includes('cdn.jsdelivr.net') || url.hostname.includes('whoop.com')) {
-    e.respondWith(
-      fetch(e.request)
-        .then(res => {
-          const clone = res.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(e.request, clone));
-          return res;
-        })
-        .catch(() => caches.match(e.request))
-    );
-    return;
-  }
-
-  // Cache-first for everything else (app shell)
   e.respondWith(
-    caches.match(e.request).then(cached => {
-      if (cached) {
-        // Update cache in background
-        fetch(e.request).then(res => {
-          caches.open(CACHE_NAME).then(cache => cache.put(e.request, res));
-        }).catch(() => {});
-        return cached;
-      }
-      return fetch(e.request).then(res => {
-        const clone = res.clone();
-        caches.open(CACHE_NAME).then(cache => cache.put(e.request, clone));
+    fetch(e.request)
+      .then(res => {
+        // Cache successful responses
+        if (res.ok) {
+          const clone = res.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(e.request, clone)).catch(() => {});
+        }
         return res;
-      });
-    })
+      })
+      .catch(() => {
+        // Offline: fall back to cache
+        return caches.match(e.request);
+      })
   );
 });
 

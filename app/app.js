@@ -2995,8 +2995,28 @@ async function checkAndNotify() {
 function registerServiceWorker() {
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js')
-      .then(reg => console.log('[SW] Registered:', reg.scope))
+      .then(reg => {
+        console.log('[SW] Registered:', reg.scope);
+        // Check for updates every 5 minutes
+        setInterval(() => reg.update(), 5 * 60 * 1000);
+        // When a new SW is found, auto-reload once it activates
+        reg.addEventListener('updatefound', () => {
+          const newWorker = reg.installing;
+          newWorker.addEventListener('statechange', () => {
+            if (newWorker.state === 'activated' && navigator.serviceWorker.controller) {
+              console.log('[SW] New version available, reloading...');
+              toast('App updated! Reloading...');
+              setTimeout(() => window.location.reload(), 1000);
+            }
+          });
+        });
+      })
       .catch(err => console.warn('[SW] Registration failed:', err));
+
+    // Also reload if controller changes (new SW took over)
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      window.location.reload();
+    });
   }
 }
 
