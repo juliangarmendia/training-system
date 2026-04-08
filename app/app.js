@@ -55,12 +55,12 @@ const PLAN = {
         'Chin-up: BW × 3-5 easy, or lat pulldown light × 10',
       ],
       exercises: [
-        { id: 'chinups', name: 'Chin-ups', muscle: 'Back', sets: 4, reps: '5-8', rpe: '7-8', defaultRest: 150, notes: 'Add weight when you get 4×8. Use lat pulldown if <5 reps.' },
+        { id: 'chinups', name: 'Chin-ups', muscle: 'Back', sets: 4, reps: '5-8', rpe: '7-8', defaultRest: 150, notes: 'Add weight when you get 4×8. Use lat pulldown if <5 reps.', bw: true },
         { id: 'ohp', name: 'Overhead Press', muscle: 'Shoulders', sets: 4, reps: '5-8', rpe: '7-8', defaultRest: 150, notes: 'Standing. Strict form, no leg drive.' },
         { id: 'landmine-row', name: 'Landmine Row', muscle: 'Back', sets: 3, reps: '8-12/side', rpe: '7', defaultRest: 90, notes: 'Unilateral. Use landmine attachment.' },
         { id: 'incline-curl', name: 'Incline DB Curl', muscle: 'Biceps', sets: 3, reps: '10-12', rpe: '7', defaultRest: 60, notes: 'Stretch at bottom.', superset: 'A' },
         { id: 'cable-lateral', name: 'Cable Lateral Raise', muscle: 'Shoulders', sets: 3, reps: '12-15', rpe: '7', defaultRest: 60, notes: 'Constant tension throughout ROM.', superset: 'A' },
-        { id: 'hanging-leg-raise', name: 'Hanging Leg Raise', muscle: 'Core', sets: 3, reps: '8-12', rpe: '-', defaultRest: 60, notes: 'Scale to knee raises if needed.' },
+        { id: 'hanging-leg-raise', name: 'Hanging Leg Raise', muscle: 'Core', sets: 3, reps: '8-12', rpe: '-', defaultRest: 60, notes: 'Scale to knee raises if needed.', bw: true },
       ]
     },
     lowerB: {
@@ -597,7 +597,7 @@ async function getWeekSchedule() {
 }
 
 async function saveWeekSchedule(schedule) {
-  await dbPut('settings', { key: 'weekSchedule', data: schedule });
+  await smartPut('settings', { key: 'weekSchedule', data: schedule });
 }
 
 // Get the planned gym session for a specific date
@@ -657,8 +657,17 @@ async function renderWeekStrip() {
       gymCell.classList.add('empty');
     }
 
+    // Determine icon for the cell
+    let cellIcon = '';
+    if (gymDone && dayWorkout && PLAN.sessions[dayWorkout.session]) {
+      cellIcon = PLAN.sessions[dayWorkout.session].icon;
+    } else if (!gymDone && plannedSession && PLAN.sessions[plannedSession]) {
+      cellIcon = PLAN.sessions[plannedSession].icon;
+    }
+
     gymCell.innerHTML = `
       <div class="ws-day">${dayNames[i]}</div>
+      ${cellIcon ? `<div class="ws-icon">${cellIcon}</div>` : ''}
       <div class="ws-session${gymDone ? ' ws-done' : ''}">${gymDone ? '✓' : gymLabel}</div>
       <div class="ws-sub">${gymDone && dayWorkout ? (PLAN.sessions[dayWorkout.session]?.name.replace('Upper ', 'U').replace('Lower ', 'L') || '') : ''}</div>
     `;
@@ -689,15 +698,33 @@ async function renderWeekStrip() {
     const runCell = document.createElement('div');
     runCell.className = `ws-cell ws-run-cell${isToday ? ' today' : ''}`;
 
+    const runKey = 'run_' + ds;
+    const customRun = customSchedule[runKey];
+    const defaultRun = WEEK_TEMPLATE[jsDay].type === 'run';
+    const planRun = customRun !== undefined ? customRun === true : defaultRun;
+
     if (dayRun) {
       runCell.classList.add('done');
       runCell.innerHTML = `<div class="ws-day">${dayNames[i]}</div><div class="ws-run-dot done">✓</div>`;
       runCell.addEventListener('click', () => { switchTab('run'); });
     } else {
-      const planRun = WEEK_TEMPLATE[jsDay].type === 'run';
       runCell.innerHTML = `<div class="ws-day">${dayNames[i]}</div><div class="ws-run-dot${planRun ? ' planned' : ''}"></div>`;
       runCell.addEventListener('click', () => { switchTab('run'); });
     }
+
+    // Long-press to toggle run day
+    let runPressTimer;
+    runCell.addEventListener('touchstart', (e) => {
+      runPressTimer = setTimeout(async () => {
+        e.preventDefault();
+        customSchedule[runKey] = !planRun;
+        await saveWeekSchedule(customSchedule);
+        renderWeekStrip();
+        toast(customSchedule[runKey] ? 'Run day set' : 'Run day cleared');
+      }, 600);
+    }, { passive: false });
+    runCell.addEventListener('touchend', () => clearTimeout(runPressTimer));
+    runCell.addEventListener('touchmove', () => clearTimeout(runPressTimer));
 
     runRow.appendChild(runCell);
   });
@@ -1110,7 +1137,7 @@ function buildExerciseCard(ex, exIdx, previous, restSettings, exerciseNotes, del
     setsHTML += `
       <div class="set-row" data-set="${i}">
         <div class="set-num">${i + 1}</div>
-        <input type="number" class="set-input" data-field="weight" placeholder="${prevSet ? prevSet.weight : '-'}" inputmode="decimal" step="0.5">
+        <input type="number" class="set-input" data-field="weight" placeholder="${prevSet ? prevSet.weight : (ex.bw ? '0' : '-')}" inputmode="decimal" step="0.5">
         <input type="number" class="set-input" data-field="reps" placeholder="${prevSet ? prevSet.reps : '-'}" inputmode="numeric" step="1">
         <select class="set-input" data-field="rpe" style="padding:8px 2px;font-size:12px">
           <option value="">RPE</option>
@@ -1121,9 +1148,9 @@ function buildExerciseCard(ex, exIdx, previous, restSettings, exerciseNotes, del
     `;
   }
 
-  const prevDoneSets = prevEx ? prevEx.sets.filter(s => s.done && s.weight > 0) : [];
+  const prevDoneSets = prevEx ? prevEx.sets.filter(s => s.done && (s.weight > 0 || ex.bw)) : [];
   const prevSummary = prevDoneSets.length > 0
-    ? prevDoneSets.map(s => `${s.weight}×${s.reps}`).join('  ')
+    ? prevDoneSets.map(s => `${ex.bw ? '+' + s.weight : s.weight}×${s.reps}`).join('  ')
     : '';
   const prevHeaderHTML = prevSummary
     ? `<div class="prev-header">Last: ${prevSummary}</div>`
@@ -1150,7 +1177,7 @@ function buildExerciseCard(ex, exIdx, previous, restSettings, exerciseNotes, del
         <div class="set-table">
           <div class="set-table-header">
             <div>Set</div>
-            <div>${state.settings.unit}</div>
+            <div>${ex.bw ? '+' + state.settings.unit : state.settings.unit}</div>
             <div>Reps</div>
             <div>RPE</div>
             <div></div>
@@ -1183,10 +1210,19 @@ function updateExerciseStatus(card) {
   if (done.length === checks.length && checks.length > 0) {
     statusEl.className = 'exercise-status done';
     statusEl.textContent = '✓';
-    const next = card.nextElementSibling;
-    if (next && next.classList.contains('exercise-card') && !next.classList.contains('expanded')) {
+    // Find next incomplete card across the entire workout (handles supersets too)
+    const allCards = [...document.querySelectorAll('#workout-exercises .exercise-card')];
+    const myIdx = allCards.indexOf(card);
+    const nextCard = allCards.slice(myIdx + 1).find(c => {
+      const cDone = c.querySelectorAll('.set-check.checked').length;
+      const cTotal = c.querySelectorAll('.set-check').length;
+      return cTotal > 0 && cDone < cTotal;
+    });
+    if (nextCard && !nextCard.classList.contains('expanded')) {
       card.classList.remove('expanded');
-      next.classList.add('expanded');
+      nextCard.classList.add('expanded');
+    } else if (!nextCard) {
+      card.classList.remove('expanded');
     }
   } else if (done.length > 0) {
     statusEl.className = 'exercise-status partial';
@@ -1225,9 +1261,11 @@ async function finishWorkout() {
     exercises.push({ exerciseId: exId, sets });
   });
 
+  // Use the date the workout was started, not when it was finished
+  const startDate = new Date(state.workoutStartTime).toISOString().split('T')[0];
   const workout = {
     id: uid(),
-    date: today(),
+    date: startDate,
     session: state.activeSession,
     week: getWeekNumber(),
     startTime: new Date(state.workoutStartTime).toTimeString().slice(0, 5),
@@ -1249,12 +1287,6 @@ async function finishWorkout() {
   document.getElementById('workout-notes').value = '';
 
   toast('Workout saved!');
-
-  // Offer to save as template
-  if (confirm('Save this workout as a reusable template?')) {
-    await saveWorkoutAsTemplate(workout);
-  }
-
   switchTab('gym');
 }
 
@@ -3235,6 +3267,20 @@ function bindEvents() {
   // Settings save
   document.getElementById('btn-save-settings').addEventListener('click', saveSettings);
 
+  // Force update
+  document.getElementById('btn-force-update').addEventListener('click', async () => {
+    toast('Updating...');
+    if ('serviceWorker' in navigator) {
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (reg) {
+        await reg.unregister();
+      }
+      const keys = await caches.keys();
+      await Promise.all(keys.map(k => caches.delete(k)));
+    }
+    window.location.reload(true);
+  });
+
   // Unit toggles
   document.getElementById('unit-kg').addEventListener('click', () => {
     document.getElementById('unit-kg').classList.add('selected');
@@ -3407,11 +3453,37 @@ function registerServiceWorker() {
 }
 
 // ==================== INIT ====================
+// One-time data migrations
+async function runMigrations() {
+  const migKey = 'migrations_done';
+  const done = (await dbGet('settings', migKey)) || { key: migKey, data: [] };
+  if (!done.data) done.data = [];
+
+  // Migration: fix duplicate workouts on 2026-04-08 — move Upper A to 2026-04-07
+  if (!done.data.includes('fix-apr8-dup')) {
+    const workouts = await dbGetAll('workouts');
+    const apr8 = workouts.filter(w => w.date === '2026-04-08');
+    if (apr8.length >= 2) {
+      const upperA = apr8.find(w => w.session === 'upperA');
+      if (upperA) {
+        upperA.date = '2026-04-07';
+        await smartPut('workouts', upperA);
+        console.log('[Migration] Moved Upper A workout to 2026-04-07');
+      }
+    }
+    done.data.push('fix-apr8-dup');
+    await dbPut('settings', done);
+  }
+}
+
 async function init() {
   await openDB();
   await loadSettings();
   loadTheme();
   bindEvents();
+
+  // Run data migrations
+  await runMigrations();
 
   // Service Worker
   registerServiceWorker();
