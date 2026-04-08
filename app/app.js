@@ -609,8 +609,23 @@ async function renderWeekStrip() {
     const plan = WEEK_TEMPLATE[jsDay];
     const isToday = ds === todayStr;
 
+    // Check what was actually done on this date
+    const dayWorkout = workouts.find(w => w.date === ds);
+    const dayRun = runs.find(r => r.date === ds);
+
     let icon = '', activity = '', type = plan.type;
-    if (plan.type === 'gym') {
+    let completed = false;
+
+    if (dayWorkout) {
+      // A gym workout was completed on this date — show what was actually done
+      const actualSession = PLAN.sessions[dayWorkout.session];
+      icon = actualSession ? actualSession.icon : '🏋️';
+      activity = actualSession ? actualSession.name : dayWorkout.session;
+      type = 'gym';
+      completed = true;
+    } else if (dayRun && (plan.type === 'run' || plan.type === 'rest')) {
+      icon = '🏃'; activity = 'Run'; type = 'run'; completed = true;
+    } else if (plan.type === 'gym') {
       const session = PLAN.sessions[plan.session];
       icon = session.icon;
       activity = session.name;
@@ -624,15 +639,6 @@ async function renderWeekStrip() {
       if (jsDay === 0 && runsAllowed >= 3) { icon = '🏃'; activity = 'Run (opt)'; type = 'run'; }
     }
 
-    // Check completion: any gym workout on this date (not just the scheduled session)
-    const dayWorkout = workouts.find(w => w.date === ds);
-    const dayRun = runs.find(r => r.date === ds);
-    const completed = type === 'gym'
-      ? !!dayWorkout
-      : type === 'run'
-        ? !!dayRun
-        : false;
-
     const card = document.createElement('div');
     card.className = `day-card${isToday ? ' today' : ''}${completed ? ' completed' : ''}`;
     card.innerHTML = `
@@ -643,16 +649,17 @@ async function renderWeekStrip() {
       <div class="day-status ${completed ? 'done' : 'upcoming'}">${completed ? '✓' : type === 'rest' ? '' : '—'}</div>
     `;
 
-    if (type === 'gym') {
-      if (completed && dayWorkout) {
-        // Completed: view saved workout (read-only)
-        card.addEventListener('click', () => viewCompletedWorkout(dayWorkout));
-      } else {
-        // Not completed: show session picker to allow day swaps
-        card.addEventListener('click', () => showSessionPicker(plan.session));
-      }
+    if (completed && dayWorkout) {
+      // Completed gym: view saved workout
+      card.addEventListener('click', () => viewCompletedWorkout(dayWorkout));
+    } else if (completed && dayRun) {
+      card.addEventListener('click', () => { switchTab('run'); });
     } else if (type === 'run') {
       card.addEventListener('click', () => { switchTab('run'); });
+    } else {
+      // Any non-completed day: session picker (gym, rest, whatever — lets user train any day)
+      const defaultSession = plan.type === 'gym' ? plan.session : Object.keys(PLAN.sessions)[0];
+      card.addEventListener('click', () => showSessionPicker(defaultSession));
     }
     container.appendChild(card);
   });
