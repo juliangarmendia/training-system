@@ -427,4 +427,20 @@ nav { display: flex; background: var(--surface); border-top: 1px solid var(--bor
 .btn-template-load { padding: 6px 12px; font-size: 12px; font-weight: 600; background: var(--accent); color: var(--bg); border: none; border-radius: var(--radius-xs); cursor: pointer; }
 .btn-template-delete { padding: 6px 10px; font-size: 12px; background: transparent; color: var(--text3); border: 1px solid var(--border); border-radius: var(--radius-xs); cursor: pointer; }
 
+/* Action Sheet */
+.action-sheet { position: fixed; inset: 0; z-index: 3000; display: flex; align-items: flex-end; justify-content: center; }
+.action-sheet.hidden { display: none; }
+.action-sheet-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,0.5); }
+.action-sheet-panel { position: relative; width: 100%; max-width: 480px; background: var(--surface); border-radius: var(--radius-lg) var(--radius-lg) 0 0; padding: 16px 16px calc(var(--safe-bottom) + 16px); }
+.action-sheet-title { font-size: 14px; font-weight: 700; color: var(--text2); text-align: center; margin-bottom: 12px; }
+.action-sheet-options { display: flex; flex-direction: column; gap: 6px; }
+.action-sheet-btn { padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg); color: var(--text); font-size: 15px; font-weight: 600; text-align: left; cursor: pointer; display: flex; align-items: center; gap: 10px; transition: background 0.1s; }
+.action-sheet-btn:active { background: var(--surface2); }
+.action-sheet-btn.selected { border-color: var(--accent); background: var(--accent-dim); }
+.action-sheet-btn .as-icon { font-size: 18px; }
+.action-sheet-btn .as-label { flex: 1; }
+.action-sheet-btn .as-check { color: var(--accent); font-weight: 700; }
+.action-sheet-cancel { width: 100%; margin-top: 10px; padding: 14px; border: none; border-radius: var(--radius-sm); background: var(--surface2); color: var(--text2); font-size: 15px; font-weight: 700; cursor: pointer; }
+.action-sheet-cancel:active { background: var(--surface3); }
+
 @media (min-width: 481px) { #app { border-left: 1px solid var(--border); border-right: 1px solid var(--border); } }

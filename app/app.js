@@ -717,10 +717,16 @@ async function renderWeekStrip() {
     runCell.addEventListener('touchstart', (e) => {
       runPressTimer = setTimeout(async () => {
         e.preventDefault();
-        customSchedule[runKey] = !planRun;
+        const dayLabel = new Date(ds + 'T12:00:00').toLocaleDateString('en', { weekday: 'long', month: 'short', day: 'numeric' });
+        const choice = await showActionSheet(dayLabel + ' — Running', [
+          { value: 'run', label: 'Zone 2 Run', icon: '🏃', selected: planRun },
+          { value: 'rest', label: 'No run', icon: '😴', selected: !planRun },
+        ]);
+        if (choice === null) return;
+        customSchedule[runKey] = choice === 'run';
         await saveWeekSchedule(customSchedule);
         renderWeekStrip();
-        toast(customSchedule[runKey] ? 'Run day set' : 'Run day cleared');
+        toast(choice === 'run' ? 'Run day set' : 'Run day cleared');
       }, 600);
     }, { passive: false });
     runCell.addEventListener('touchend', () => clearTimeout(runPressTimer));
@@ -730,22 +736,62 @@ async function renderWeekStrip() {
   });
 }
 
+// Generic action sheet — returns a Promise that resolves with the chosen value or null
+function showActionSheet(title, options) {
+  return new Promise(resolve => {
+    const sheet = document.getElementById('action-sheet');
+    const titleEl = document.getElementById('action-sheet-title');
+    const optionsEl = document.getElementById('action-sheet-options');
+    const cancelBtn = document.getElementById('action-sheet-cancel');
+    const backdrop = sheet.querySelector('.action-sheet-backdrop');
+
+    titleEl.textContent = title;
+    optionsEl.innerHTML = options.map(o => `
+      <button class="action-sheet-btn${o.selected ? ' selected' : ''}" data-value="${o.value}">
+        ${o.icon ? `<span class="as-icon">${o.icon}</span>` : ''}
+        <span class="as-label">${o.label}</span>
+        ${o.selected ? '<span class="as-check">✓</span>' : ''}
+      </button>
+    `).join('');
+
+    sheet.classList.remove('hidden');
+
+    function close(val) {
+      sheet.classList.add('hidden');
+      cancelBtn.removeEventListener('click', onCancel);
+      backdrop.removeEventListener('click', onCancel);
+      resolve(val);
+    }
+    function onCancel() { close(null); }
+
+    cancelBtn.addEventListener('click', onCancel);
+    backdrop.addEventListener('click', onCancel);
+    optionsEl.querySelectorAll('.action-sheet-btn').forEach(btn => {
+      btn.addEventListener('click', () => close(btn.dataset.value));
+    });
+  });
+}
+
 async function changeGymDay(ds, jsDay, customSchedule) {
   const sessions = Object.entries(PLAN.sessions);
-  const options = ['Empty (rest day)', ...sessions.map(([, s]) => s.name)];
-  const labels = options.map((o, i) => `${i}. ${o}`).join('\n');
-  const choice = prompt(`Set this day:\n${labels}`, '0');
-  if (choice === null) return;
-  const idx = parseInt(choice);
-  if (idx === 0) {
-    customSchedule[ds] = null; // Empty
-  } else if (idx > 0 && idx <= sessions.length) {
-    customSchedule[ds] = sessions[idx - 1][0];
-  } else {
-    return;
-  }
+  const current = customSchedule[ds] !== undefined ? customSchedule[ds] : (WEEK_TEMPLATE[jsDay].type === 'gym' ? WEEK_TEMPLATE[jsDay].session : null);
+  const dayLabel = new Date(ds + 'T12:00:00').toLocaleDateString('en', { weekday: 'long', month: 'short', day: 'numeric' });
+
+  const options = [
+    { value: 'empty', label: 'Rest day', icon: '😴', selected: current === null },
+    ...sessions.map(([id, s]) => ({ value: id, label: s.name + ' — ' + s.subtitle, icon: s.icon, selected: current === id }))
+  ];
+
+  const choice = await showActionSheet(dayLabel, options);
+  if (choice === null) return; // cancelled
+
+  const newVal = choice === 'empty' ? null : choice;
+  if (newVal === current) return; // no change
+
+  customSchedule[ds] = newVal;
   await saveWeekSchedule(customSchedule);
   renderWeekStrip();
+  toast(newVal ? `Set to ${PLAN.sessions[newVal].name}` : 'Set to rest day');
 }
 
 async function renderRecentWorkouts() {
@@ -812,18 +858,15 @@ function updateSessionProgress() {
 }
 
 // ==================== SESSION PICKER (day swap) ====================
-function showSessionPicker(defaultSession, dateOverride) {
+async function showSessionPicker(defaultSession, dateOverride) {
   const sessions = Object.entries(PLAN.sessions);
-  const defaultIdx = sessions.findIndex(([id]) => id === defaultSession);
-  const labels = sessions.map(([id, s], i) => `${i + 1}. ${s.icon} ${s.name}`).join('\n');
-  const choice = prompt(`Choose session:\n${labels}\n\nEnter number (default: ${defaultIdx + 1}):`, defaultIdx + 1);
+  const options = sessions.map(([id, s]) => ({
+    value: id, label: s.name + ' — ' + s.subtitle, icon: s.icon, selected: id === defaultSession
+  }));
+
+  const choice = await showActionSheet('Start workout', options);
   if (choice === null) return;
-  const idx = parseInt(choice) - 1;
-  if (idx >= 0 && idx < sessions.length) {
-    startWorkout(sessions[idx][0]);
-  } else {
-    startWorkout(defaultSession);
-  }
+  startWorkout(choice);
 }
 
 // ==================== VIEW COMPLETED WORKOUT (read-only) ====================
