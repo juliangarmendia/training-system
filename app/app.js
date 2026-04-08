@@ -590,6 +590,24 @@ function renderWeekBanner() {
   `;
 }
 
+// Get custom week schedule (overrides per date)
+async function getWeekSchedule() {
+  const saved = await dbGet('settings', 'weekSchedule');
+  return (saved && saved.data) || {};
+}
+
+async function saveWeekSchedule(schedule) {
+  await dbPut('settings', { key: 'weekSchedule', data: schedule });
+}
+
+// Get the planned gym session for a specific date
+function getPlannedSession(jsDay, customSchedule, ds) {
+  // Custom override for this specific date
+  if (customSchedule[ds] !== undefined) return customSchedule[ds]; // null = empty, string = sessionId
+  const plan = WEEK_TEMPLATE[jsDay];
+  return plan.type === 'gym' ? plan.session : null;
+}
+
 async function renderWeekStrip() {
   renderWeekBanner();
   const container = document.getElementById('week-strip');
@@ -598,71 +616,109 @@ async function renderWeekStrip() {
   const workouts = await dbGetAll('workouts');
   const runs = await dbGetAll('runs');
   const wk = getWeekNumber();
-  const runsAllowed = getRunsThisWeek(wk);
   const deload = isDeloadWeek(wk);
   const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const customSchedule = await getWeekSchedule();
 
-  container.innerHTML = '';
+  // Build two-row layout
+  container.innerHTML = `
+    <div class="ws-label">Strength</div>
+    <div class="ws-row" id="ws-gym-row"></div>
+    <div class="ws-label">Running</div>
+    <div class="ws-row" id="ws-run-row"></div>
+  `;
+
+  const gymRow = document.getElementById('ws-gym-row');
+  const runRow = document.getElementById('ws-run-row');
+
   weekDates.forEach((date, i) => {
     const ds = dateStr(date);
     const jsDay = date.getDay();
-    const plan = WEEK_TEMPLATE[jsDay];
     const isToday = ds === todayStr;
-
-    // Check what was actually done on this date
     const dayWorkout = workouts.find(w => w.date === ds);
     const dayRun = runs.find(r => r.date === ds);
+    const plannedSession = getPlannedSession(jsDay, customSchedule, ds);
 
-    let icon = '', activity = '', type = plan.type;
-    let completed = false;
+    // --- GYM CELL ---
+    const gymCell = document.createElement('div');
+    gymCell.className = `ws-cell${isToday ? ' today' : ''}`;
 
+    let gymLabel = '', gymDone = false;
     if (dayWorkout) {
-      // A gym workout was completed on this date — show what was actually done
-      const actualSession = PLAN.sessions[dayWorkout.session];
-      icon = actualSession ? actualSession.icon : '🏋️';
-      activity = actualSession ? actualSession.name : dayWorkout.session;
-      type = 'gym';
-      completed = true;
-    } else if (dayRun && (plan.type === 'run' || plan.type === 'rest')) {
-      icon = '🏃'; activity = 'Run'; type = 'run'; completed = true;
-    } else if (plan.type === 'gym') {
-      const session = PLAN.sessions[plan.session];
-      icon = session.icon;
-      activity = session.name;
-      if (deload) activity += ' (DL)';
-    } else if (plan.type === 'run') {
-      if (jsDay === 3 && runsAllowed < 2) { type = 'rest'; icon = '😴'; activity = 'Rest'; }
-      else if (jsDay === 0 && runsAllowed < 3) { type = 'rest'; icon = '😴'; activity = 'Rest'; }
-      else { icon = '🏃'; activity = plan.label; }
+      const s = PLAN.sessions[dayWorkout.session];
+      gymLabel = s ? s.name.replace(/Upper |Lower /, '').charAt(0) + s.name.slice(-1) : '✓';
+      gymDone = true;
+      gymCell.classList.add('done');
+    } else if (plannedSession) {
+      const s = PLAN.sessions[plannedSession];
+      gymLabel = s ? s.name.replace('Upper ', 'U').replace('Lower ', 'L') : '?';
     } else {
-      icon = '😴'; activity = 'Rest';
-      if (jsDay === 0 && runsAllowed >= 3) { icon = '🏃'; activity = 'Run (opt)'; type = 'run'; }
+      gymLabel = '—';
+      gymCell.classList.add('empty');
     }
 
-    const card = document.createElement('div');
-    card.className = `day-card${isToday ? ' today' : ''}${completed ? ' completed' : ''}`;
-    card.innerHTML = `
-      <div class="day-name">${dayNames[i]}</div>
-      <div class="day-date">${date.getDate()}</div>
-      <div class="day-icon">${icon}</div>
-      <div class="day-activity">${activity}</div>
-      <div class="day-status ${completed ? 'done' : 'upcoming'}">${completed ? '✓' : type === 'rest' ? '' : '—'}</div>
+    gymCell.innerHTML = `
+      <div class="ws-day">${dayNames[i]}</div>
+      <div class="ws-session${gymDone ? ' ws-done' : ''}">${gymDone ? '✓' : gymLabel}</div>
+      <div class="ws-sub">${gymDone && dayWorkout ? (PLAN.sessions[dayWorkout.session]?.name.replace('Upper ', 'U').replace('Lower ', 'L') || '') : ''}</div>
     `;
 
-    if (completed && dayWorkout) {
-      // Completed gym: view saved workout
-      card.addEventListener('click', () => viewCompletedWorkout(dayWorkout));
-    } else if (completed && dayRun) {
-      card.addEventListener('click', () => { switchTab('run'); });
-    } else if (type === 'run') {
-      card.addEventListener('click', () => { switchTab('run'); });
+    // Click handler
+    if (gymDone && dayWorkout) {
+      gymCell.addEventListener('click', () => viewCompletedWorkout(dayWorkout));
+    } else if (plannedSession) {
+      gymCell.addEventListener('click', () => showSessionPicker(plannedSession));
     } else {
-      // Any non-completed day: session picker (gym, rest, whatever — lets user train any day)
-      const defaultSession = plan.type === 'gym' ? plan.session : Object.keys(PLAN.sessions)[0];
-      card.addEventListener('click', () => showSessionPicker(defaultSession));
+      gymCell.addEventListener('click', () => showSessionPicker(Object.keys(PLAN.sessions)[0], ds));
     }
-    container.appendChild(card);
+
+    // Long-press to change/clear assignment
+    let pressTimer;
+    gymCell.addEventListener('touchstart', (e) => {
+      pressTimer = setTimeout(() => {
+        e.preventDefault();
+        changeGymDay(ds, jsDay, customSchedule);
+      }, 600);
+    }, { passive: false });
+    gymCell.addEventListener('touchend', () => clearTimeout(pressTimer));
+    gymCell.addEventListener('touchmove', () => clearTimeout(pressTimer));
+
+    gymRow.appendChild(gymCell);
+
+    // --- RUN CELL ---
+    const runCell = document.createElement('div');
+    runCell.className = `ws-cell ws-run-cell${isToday ? ' today' : ''}`;
+
+    if (dayRun) {
+      runCell.classList.add('done');
+      runCell.innerHTML = `<div class="ws-day">${dayNames[i]}</div><div class="ws-run-dot done">✓</div>`;
+      runCell.addEventListener('click', () => { switchTab('run'); });
+    } else {
+      const planRun = WEEK_TEMPLATE[jsDay].type === 'run';
+      runCell.innerHTML = `<div class="ws-day">${dayNames[i]}</div><div class="ws-run-dot${planRun ? ' planned' : ''}"></div>`;
+      runCell.addEventListener('click', () => { switchTab('run'); });
+    }
+
+    runRow.appendChild(runCell);
   });
+}
+
+async function changeGymDay(ds, jsDay, customSchedule) {
+  const sessions = Object.entries(PLAN.sessions);
+  const options = ['Empty (rest day)', ...sessions.map(([, s]) => s.name)];
+  const labels = options.map((o, i) => `${i}. ${o}`).join('\n');
+  const choice = prompt(`Set this day:\n${labels}`, '0');
+  if (choice === null) return;
+  const idx = parseInt(choice);
+  if (idx === 0) {
+    customSchedule[ds] = null; // Empty
+  } else if (idx > 0 && idx <= sessions.length) {
+    customSchedule[ds] = sessions[idx - 1][0];
+  } else {
+    return;
+  }
+  await saveWeekSchedule(customSchedule);
+  renderWeekStrip();
 }
 
 async function renderRecentWorkouts() {
@@ -729,9 +785,8 @@ function updateSessionProgress() {
 }
 
 // ==================== SESSION PICKER (day swap) ====================
-function showSessionPicker(defaultSession) {
+function showSessionPicker(defaultSession, dateOverride) {
   const sessions = Object.entries(PLAN.sessions);
-  const options = sessions.map(([id, s]) => `${s.icon} ${s.name}`);
   const defaultIdx = sessions.findIndex(([id]) => id === defaultSession);
   const labels = sessions.map(([id, s], i) => `${i + 1}. ${s.icon} ${s.name}`).join('\n');
   const choice = prompt(`Choose session:\n${labels}\n\nEnter number (default: ${defaultIdx + 1}):`, defaultIdx + 1);

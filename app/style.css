@@ -11,7 +11,7 @@
   --blue: #60a5fa; --orange: #fb923c; --red: #f87171; --yellow: #fbbf24;
   --purple: #a78bfa; --pink: #f472b6; --teal: #34d399;
   --radius: 16px; --radius-sm: 10px; --radius-xs: 8px;
-  --nav-h: 68px; --header-h: 56px;
+  --nav-h: 80px; --header-h: 56px;
   --safe-top: env(safe-area-inset-top, 0px); --safe-bottom: env(safe-area-inset-bottom, 0px);
 }
 
@@ -71,7 +71,7 @@ main { flex: 1; overflow: hidden; position: relative; }
 .view-scroll { height: 100%; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 8px 16px calc(var(--nav-h) + var(--safe-bottom) + 16px); }
 
 /* ========== Navigation ========== */
-nav { display: flex; background: var(--surface); border-top: 1px solid var(--border); padding-bottom: calc(var(--safe-bottom) + 4px); flex-shrink: 0; z-index: 100; }
+nav { display: flex; background: var(--surface); border-top: 1px solid var(--border); padding-bottom: calc(var(--safe-bottom) + 14px); flex-shrink: 0; z-index: 100; }
 .nav-btn { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 10px 0 8px; background: none; border: none; color: var(--text3); font-size: 10px; font-weight: 600; cursor: pointer; position: relative; transition: color 0.15s; }
 .nav-btn.active { color: var(--accent); }
 .nav-btn.active::before { content: ''; position: absolute; top: 0; left: 25%; width: 50%; height: 2px; background: var(--accent); border-radius: 0 0 2px 2px; }
@@ -95,19 +95,24 @@ nav { display: flex; background: var(--surface); border-top: 1px solid var(--bor
 .wb-bar-fill { height: 100%; background: var(--accent); border-radius: 2px; transition: width 0.5s; }
 
 /* ========== Week Strip ========== */
-.week-strip { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; }
-.week-strip::-webkit-scrollbar { display: none; }
-.day-card { min-width: 64px; flex-shrink: 0; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 6px; text-align: center; cursor: pointer; transition: all 0.15s; display: flex; flex-direction: column; align-items: center; gap: 3px; }
-.day-card:active { transform: scale(0.96); }
-.day-card.today { border-color: var(--accent); box-shadow: 0 0 12px var(--accent-glow); }
-.day-card.completed { opacity: 0.5; }
-.day-card .day-name { font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--text2); letter-spacing: 0.5px; }
-.day-card.today .day-name { color: var(--accent); }
-.day-card .day-date { font-size: 10px; color: var(--text3); }
-.day-card .day-icon { font-size: 18px; margin: 2px 0; line-height: 1; }
-.day-card .day-activity { font-size: 10px; font-weight: 600; color: var(--text); line-height: 1.2; }
-.day-card .day-status { font-size: 10px; font-weight: 600; }
-.day-card .day-status.done { color: var(--accent); }
+.week-strip { padding-bottom: 4px; }
+.ws-label { font-size: 9px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; margin: 6px 0 4px; }
+.ws-label:first-child { margin-top: 0; }
+.ws-row { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.ws-cell { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-xs); padding: 6px 2px; text-align: center; cursor: pointer; transition: all 0.15s; }
+.ws-cell:active { transform: scale(0.95); }
+.ws-cell.today { border-color: var(--accent); box-shadow: 0 0 8px var(--accent-glow); }
+.ws-cell.done { background: var(--accent-dim); }
+.ws-cell.empty { opacity: 0.4; }
+.ws-day { font-size: 9px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.3px; }
+.ws-cell.today .ws-day { color: var(--accent); }
+.ws-session { font-size: 12px; font-weight: 800; color: var(--text); margin: 3px 0 1px; line-height: 1; }
+.ws-done { color: var(--accent); }
+.ws-sub { font-size: 8px; color: var(--text3); line-height: 1; min-height: 10px; }
+.ws-run-cell { padding: 4px 2px; }
+.ws-run-dot { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--border); margin: 4px auto 0; }
+.ws-run-dot.planned { border-color: var(--blue); background: var(--blue)20; }
+.ws-run-dot.done { border-color: var(--accent); background: var(--accent); width: auto; height: auto; font-size: 10px; color: var(--bg); font-weight: 700; border-radius: var(--radius-xs); padding: 1px 0; }
 
 /* ========== Session Progress ========== */
 .session-progress { margin-bottom: 12px; }
