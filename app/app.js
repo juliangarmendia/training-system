@@ -733,19 +733,37 @@ async function startWorkout(sessionId) {
   const warmupBody = document.getElementById('warmup-body');
   let warmupHTML = `<ul class="warmup-list">${session.warmup.map(w => `<li>${w}</li>`).join('')}</ul>`;
 
-  // Auto warm-up set generator for all exercises with previous data
+  // Auto warm-up ramp: full for 1st compound, short for 2nd, none for accessories
   if (previous) {
     const bar = state.settings.unit === 'lb' ? 45 : 20;
+    let compoundIdx = 0;
     for (const ex of session.exercises) {
       const prevEx = previous.exercises.find(e => e.exerciseId === ex.id);
       const topWeight = prevEx ? Math.max(...prevEx.sets.filter(s => s.done && s.weight > 0).map(s => s.weight), 0) : 0;
-      if (topWeight <= bar) continue; // Skip if too light for warm-up ramp
-      const warmupSets = [
-        { pct: 0, w: bar, reps: 10 },
-        { pct: 40, w: Math.round(topWeight * 0.4 / 2.5) * 2.5, reps: 6 },
-        { pct: 60, w: Math.round(topWeight * 0.6 / 2.5) * 2.5, reps: 4 },
-        { pct: 80, w: Math.round(topWeight * 0.8 / 2.5) * 2.5, reps: 2 },
-      ].filter(s => s.w >= bar && s.w < topWeight);
+      if (topWeight <= bar) continue;
+      // Only compounds (sets >= 3 and has RPE >= 7) get warm-up ramps
+      const isCompound = ex.sets >= 3 && ex.rpe !== '-' && parseFloat(ex.rpe) >= 7;
+      if (!isCompound) continue;
+      compoundIdx++;
+      let warmupSets;
+      if (compoundIdx === 1) {
+        // First compound: full ramp (bar → 40% → 60% → 80%)
+        warmupSets = [
+          { pct: 0, w: bar, reps: 10 },
+          { pct: 40, w: Math.round(topWeight * 0.4 / 2.5) * 2.5, reps: 6 },
+          { pct: 60, w: Math.round(topWeight * 0.6 / 2.5) * 2.5, reps: 4 },
+          { pct: 80, w: Math.round(topWeight * 0.8 / 2.5) * 2.5, reps: 2 },
+        ];
+      } else if (compoundIdx === 2) {
+        // Second compound: short ramp (60% → 80%) — already warm
+        warmupSets = [
+          { pct: 60, w: Math.round(topWeight * 0.6 / 2.5) * 2.5, reps: 4 },
+          { pct: 80, w: Math.round(topWeight * 0.8 / 2.5) * 2.5, reps: 2 },
+        ];
+      } else {
+        break; // No ramp for 3rd+ compound
+      }
+      warmupSets = warmupSets.filter(s => s.w >= bar && s.w < topWeight);
       if (warmupSets.length > 0) {
         warmupHTML += `
           <div class="warmup-auto">
