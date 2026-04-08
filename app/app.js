@@ -274,6 +274,7 @@ const state = {
   currentTab: 'gym',
   currentView: 'gym',
   activeSession: null,
+  viewingCompleted: false,
   workoutStartTime: null,
   workoutTimerInterval: null,
   restTimerInterval: null,
@@ -623,10 +624,13 @@ async function renderWeekStrip() {
       if (jsDay === 0 && runsAllowed >= 3) { icon = '🏃'; activity = 'Run (opt)'; type = 'run'; }
     }
 
+    // Check completion: any gym workout on this date (not just the scheduled session)
+    const dayWorkout = workouts.find(w => w.date === ds);
+    const dayRun = runs.find(r => r.date === ds);
     const completed = type === 'gym'
-      ? workouts.some(w => w.date === ds && w.session === plan.session)
+      ? !!dayWorkout
       : type === 'run'
-        ? runs.some(r => r.date === ds)
+        ? !!dayRun
         : false;
 
     const card = document.createElement('div');
@@ -640,7 +644,13 @@ async function renderWeekStrip() {
     `;
 
     if (type === 'gym') {
-      card.addEventListener('click', () => startWorkout(plan.session));
+      if (completed && dayWorkout) {
+        // Completed: view saved workout (read-only)
+        card.addEventListener('click', () => viewCompletedWorkout(dayWorkout));
+      } else {
+        // Not completed: show session picker to allow day swaps
+        card.addEventListener('click', () => showSessionPicker(plan.session));
+      }
     } else if (type === 'run') {
       card.addEventListener('click', () => { switchTab('run'); });
     }
@@ -709,6 +719,103 @@ function updateSessionProgress() {
   const pct = total > 0 ? (done / total) * 100 : 0;
   document.getElementById('sp-fill').style.width = pct + '%';
   document.getElementById('sp-text').textContent = `${done} / ${total} exercises`;
+}
+
+// ==================== SESSION PICKER (day swap) ====================
+function showSessionPicker(defaultSession) {
+  const sessions = Object.entries(PLAN.sessions);
+  const options = sessions.map(([id, s]) => `${s.icon} ${s.name}`);
+  const defaultIdx = sessions.findIndex(([id]) => id === defaultSession);
+  const labels = sessions.map(([id, s], i) => `${i + 1}. ${s.icon} ${s.name}`).join('\n');
+  const choice = prompt(`Choose session:\n${labels}\n\nEnter number (default: ${defaultIdx + 1}):`, defaultIdx + 1);
+  if (choice === null) return;
+  const idx = parseInt(choice) - 1;
+  if (idx >= 0 && idx < sessions.length) {
+    startWorkout(sessions[idx][0]);
+  } else {
+    startWorkout(defaultSession);
+  }
+}
+
+// ==================== VIEW COMPLETED WORKOUT (read-only) ====================
+function viewCompletedWorkout(workout) {
+  state.viewingCompleted = true;
+  const session = PLAN.sessions[workout.session];
+  const sessionName = session ? session.name : workout.session;
+
+  document.getElementById('workout-timer').textContent = workout.duration || '--:--';
+  document.getElementById('sp-fill').style.width = '100%';
+  document.getElementById('sp-text').textContent = 'Completed';
+
+  const container = document.getElementById('workout-exercises');
+  container.innerHTML = '';
+
+  const unit = state.settings.unit;
+  for (const ex of workout.exercises) {
+    const exName = getExerciseName(ex.exerciseId);
+    const muscle = getExerciseMuscle(ex.exerciseId);
+    const muscleColor = MUSCLE_COLORS[muscle] || '#666';
+
+    const setsHTML = ex.sets.map((s, i) => `
+      <div class="set-row" style="opacity:${s.done ? 1 : 0.4}">
+        <div class="set-num">${i + 1}</div>
+        <div class="set-input" style="text-align:center;font-weight:700">${s.weight || '-'}</div>
+        <div class="set-input" style="text-align:center">${s.reps || '-'}</div>
+        <div class="set-input" style="text-align:center;font-size:12px">${s.rpe || ''}</div>
+        <div class="set-check ${s.done ? 'checked' : ''}" style="pointer-events:none">✓</div>
+      </div>
+    `).join('');
+
+    const card = document.createElement('div');
+    card.className = 'exercise-card expanded';
+    card.dataset.exerciseId = ex.exerciseId;
+    card.innerHTML = `
+      <div class="exercise-header" style="cursor:default">
+        <div class="exercise-info">
+          <div class="exercise-name-row">
+            <span class="exercise-name tappable" data-ex-id="${ex.exerciseId}">${exName} <span class="tap-hint">history</span></span>
+            <span class="muscle-badge" style="background:${muscleColor}20;color:${muscleColor}">${muscle || ''}</span>
+          </div>
+          <div class="exercise-target" style="color:var(--accent)">Completed · ${workout.date}</div>
+        </div>
+      </div>
+      <div class="exercise-body" style="display:block">
+        <div class="exercise-body-inner">
+          <div class="set-table">
+            <div class="set-table-header">
+              <div>Set</div><div>${unit}</div><div>Reps</div><div>RPE</div><div></div>
+            </div>
+            ${setsHTML}
+          </div>
+        </div>
+      </div>
+    `;
+    container.appendChild(card);
+  }
+
+  // Wire exercise name taps for history
+  container.querySelectorAll('.exercise-name.tappable').forEach(el => {
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openExerciseHistory(el.dataset.exId);
+    });
+  });
+
+  // Hide finish button, show back only
+  document.getElementById('btn-finish-workout').style.display = 'none';
+  document.getElementById('workout-notes').style.display = 'none';
+
+  // Show warmup section collapsed with workout notes if any
+  const warmupBody = document.getElementById('warmup-body');
+  if (workout.notes) {
+    warmupBody.innerHTML = `<div style="padding:8px 0;color:var(--text2);font-size:13px">${workout.notes}</div>`;
+  } else {
+    warmupBody.innerHTML = '';
+  }
+  document.getElementById('warmup-section').classList.remove('expanded');
+
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById('view-workout').classList.add('active');
 }
 
 // ==================== WORKOUT ====================
@@ -842,12 +949,12 @@ async function startWorkout(sessionId) {
           const allChecked = card.querySelectorAll('.set-check.checked').length === card.querySelectorAll('.set-check').length;
           // If all sets of this exercise done and it's not the last exercise in superset, short rest
           if (!isLastExercise) {
-            startRestTimer(15);
+            startRestTimer(15, true);
           } else {
-            startRestTimer(fullRest);
+            startRestTimer(fullRest, true);
           }
         } else {
-          startRestTimer(fullRest);
+          startRestTimer(fullRest, true);
         }
       }
     });
@@ -1987,7 +2094,26 @@ function getExerciseMuscle(exId) {
 }
 
 // ==================== REST TIMER ====================
-function startRestTimer(seconds) {
+// Beep using Web Audio API
+function playTimerBeep() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const beep = (freq, start, dur) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.frequency.value = freq;
+      gain.gain.value = 0.3;
+      osc.start(ctx.currentTime + start);
+      osc.stop(ctx.currentTime + start + dur);
+    };
+    beep(880, 0, 0.15);
+    beep(880, 0.25, 0.15);
+    beep(1320, 0.5, 0.3);
+  } catch { /* audio not available */ }
+}
+
+function startRestTimer(seconds, autoStart = false) {
   state.restTimerTotal = seconds;
   state.restTimerRemaining = seconds;
   state.restTimerRunning = false;
@@ -2010,15 +2136,7 @@ function startRestTimer(seconds) {
     ringFill.style.strokeDashoffset = circumference * (1 - progress);
   }
 
-  // Show time but don't start counting — wait for tap
-  updateDisplay();
-  labelEl.textContent = '▶ TAP TO START';
-  timerDisplay.style.cursor = 'pointer';
-
-  // Remove old listener if any
-  if (state._timerTapHandler) timerDisplay.removeEventListener('click', state._timerTapHandler);
-
-  state._timerTapHandler = function beginCountdown() {
+  function beginCountdown() {
     if (state.restTimerRunning) return;
     state.restTimerRunning = true;
     labelEl.textContent = 'REST';
@@ -2032,15 +2150,30 @@ function startRestTimer(seconds) {
         state.restTimerRunning = false;
         updateDisplay();
         labelEl.textContent = 'DONE';
+        playTimerBeep();
         if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 200]);
         setTimeout(() => overlay.classList.add('hidden'), 1500);
         return;
       }
       updateDisplay();
     }, 1000);
-  };
+  }
 
-  timerDisplay.addEventListener('click', state._timerTapHandler);
+  updateDisplay();
+
+  // Remove old listener if any
+  if (state._timerTapHandler) timerDisplay.removeEventListener('click', state._timerTapHandler);
+
+  if (autoStart) {
+    // Auto-triggered by set check: start immediately
+    beginCountdown();
+  } else {
+    // Manual trigger: wait for tap
+    labelEl.textContent = '▶ TAP TO START';
+    timerDisplay.style.cursor = 'pointer';
+    state._timerTapHandler = beginCountdown;
+    timerDisplay.addEventListener('click', state._timerTapHandler);
+  }
 }
 
 function stopRestTimer() {
@@ -2974,7 +3107,14 @@ function bindEvents() {
 
   // Back from workout
   document.getElementById('btn-back-gym').addEventListener('click', () => {
-    if (state.activeSession) {
+    if (state.viewingCompleted) {
+      // Viewing saved workout: just go back, no prompt needed
+      state.viewingCompleted = false;
+      document.getElementById('btn-finish-workout').style.display = '';
+      document.getElementById('workout-notes').style.display = '';
+      state.currentView = 'gym';
+      switchTab('gym');
+    } else if (state.activeSession) {
       if (confirm('Leave workout? Data will be lost.')) {
         if (state.workoutTimerInterval) clearInterval(state.workoutTimerInterval);
         state.activeSession = null;
