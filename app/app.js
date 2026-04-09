@@ -4120,3 +4120,13 @@ async function init() {
 }
 
 document.addEventListener('DOMContentLoaded', init);
+
+// Save workout state when app goes to background (iOS kills PWAs aggressively)
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden' && state.activeSession) {
+    saveActiveWorkout();
+  }
+});
+window.addEventListener('pagehide', () => {
+  if (state.activeSession) saveActiveWorkout();
+});
