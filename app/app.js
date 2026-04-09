@@ -3954,18 +3954,6 @@ async function init() {
   renderStreakBanner();
   updateHeader('gym');
 
-  // Debug bar (temporary) — shows safe area values on device
-  const dbg = document.getElementById('debug-bar');
-  if (dbg) {
-    const cs = getComputedStyle(document.documentElement);
-    const sab = cs.getPropertyValue('--safe-bottom').trim() || 'n/a';
-    const standalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
-    const navEl = document.getElementById('nav');
-    const navH = navEl ? navEl.offsetHeight : '?';
-    const vh = window.innerHeight;
-    const dvh = document.documentElement.clientHeight;
-    dbg.textContent = `sab=${sab} | standalone=${standalone} | navH=${navH}px | vh=${vh} dvh=${dvh} | ${navigator.userAgent.includes('iPhone') ? 'iPhone' : 'other'}`;
-  }
 
   // WHOOP
   if (window.renderWhoopUI) renderWhoopUI();
