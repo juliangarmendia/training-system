@@ -105,7 +105,6 @@
           <div class="week-banner" id="week-banner"></div>
           <div class="section-label">This Week</div>
           <div class="week-strip" id="week-strip"></div>
-          <div id="activity-rings" style="margin:16px 0"></div>
           <div id="streak-banner"></div>
           <div class="section-label" style="margin-top:20px">Recent Workouts</div>
           <div id="recent-workouts" class="recent-list"></div>
@@ -223,6 +222,9 @@
       <!-- Stats -->
       <section id="view-stats" class="view">
         <div class="view-scroll">
+          <!-- Activity Rings -->
+          <div id="activity-rings" style="margin-bottom:16px"></div>
+
           <!-- Body Weight -->
           <div class="section-label">Body Weight</div>
           <div class="card" style="margin-bottom:12px">
@@ -373,6 +375,9 @@
         <button id="timer-plus" class="timer-adj">+15s</button>
       </div>
     </div>
+
+    <!-- Debug bar (temporary) -->
+    <div id="debug-bar" style="background:#f00;color:#fff;font-size:10px;text-align:center;padding:2px;font-family:monospace;z-index:9999"></div>
 
     <!-- Bottom Nav -->
     <nav id="nav">

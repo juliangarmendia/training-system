@@ -557,7 +557,7 @@ function switchTab(tab) {
 
   if (tab === 'gym') {
     showView(state.currentView === 'workout' ? 'workout' : 'gym');
-    if (state.currentView !== 'workout') { renderWeekStrip(); renderRecentWorkouts(); renderStreakBanner(); renderActivityRings(); }
+    if (state.currentView !== 'workout') { renderWeekStrip(); renderRecentWorkouts(); renderStreakBanner(); }
   } else if (tab === 'run') { showView('run'); renderRunPlanBanner(); renderRunHistory(); }
   else if (tab === 'nutrition') { showView('nutrition'); renderNutrition(); }
   else if (tab === 'stats') { showView('stats'); renderStats(); }
@@ -898,11 +898,15 @@ async function renderActivityRings() {
   const sessionsThisWeek = workouts.filter(w => weekDates.includes(w.date)).length;
   const sessionPct = Math.min(sessionsThisWeek / planned, 1);
 
-  // Ring 2: Protein today (target from settings)
-  const todayNutrition = nutrition.filter(n => n.date === todayStr);
-  const proteinToday = todayNutrition.reduce((s, n) => s + (n.protein || 0), 0);
+  // Ring 2: Protein — days this week where goal was met
   const proteinTarget = state.settings.proteinTarget || 170;
-  const proteinPct = Math.min(proteinToday / proteinTarget, 1);
+  const daysWithData = weekDates.filter(d => d <= todayStr);
+  const proteinDaysMet = daysWithData.filter(d => {
+    const dayNut = nutrition.filter(n => n.date === d);
+    const total = dayNut.reduce((s, n) => s + (n.protein || 0), 0);
+    return total >= proteinTarget;
+  }).length;
+  const proteinPct = daysWithData.length > 0 ? Math.min(proteinDaysMet / daysWithData.length, 1) : 0;
 
   // Ring 3: Running this week (target: planned run days)
   const plannedRuns = Object.values(WEEK_TEMPLATE).filter(d => d.type === 'run').length;
@@ -928,7 +932,7 @@ async function renderActivityRings() {
       </svg>
       <div class="activity-rings-legend">
         <div class="arl-row"><span class="arl-dot" style="background:var(--orange)"></span><span class="arl-label">Training</span><span class="arl-val">${sessionsThisWeek}/${planned}</span></div>
-        <div class="arl-row"><span class="arl-dot" style="background:var(--accent)"></span><span class="arl-label">Protein</span><span class="arl-val">${proteinToday}/${proteinTarget}g</span></div>
+        <div class="arl-row"><span class="arl-dot" style="background:var(--accent)"></span><span class="arl-label">Protein</span><span class="arl-val">${proteinDaysMet}/${daysWithData.length} days</span></div>
         <div class="arl-row"><span class="arl-dot" style="background:var(--blue)"></span><span class="arl-label">Running</span><span class="arl-val">${runsThisWeek}/${plannedRuns}</span></div>
       </div>
     </div>
@@ -1670,6 +1674,7 @@ function renderLineChart(labels, values, opts = {}) {
 
 // ==================== STATS MODULE ====================
 async function renderStats() {
+  await renderActivityRings();
   await renderBodyWeightChart();
   if (window.renderWhoopRecoveryCard) await renderWhoopRecoveryCard();
   await renderStreaks();
@@ -3947,8 +3952,20 @@ async function init() {
   renderWeekStrip();
   renderRecentWorkouts();
   renderStreakBanner();
-  renderActivityRings();
   updateHeader('gym');
+
+  // Debug bar (temporary) — shows safe area values on device
+  const dbg = document.getElementById('debug-bar');
+  if (dbg) {
+    const cs = getComputedStyle(document.documentElement);
+    const sab = cs.getPropertyValue('--safe-bottom').trim() || 'n/a';
+    const standalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+    const navEl = document.getElementById('nav');
+    const navH = navEl ? navEl.offsetHeight : '?';
+    const vh = window.innerHeight;
+    const dvh = document.documentElement.clientHeight;
+    dbg.textContent = `sab=${sab} | standalone=${standalone} | navH=${navH}px | vh=${vh} dvh=${dvh} | ${navigator.userAgent.includes('iPhone') ? 'iPhone' : 'other'}`;
+  }
 
   // WHOOP
   if (window.renderWhoopUI) renderWhoopUI();
