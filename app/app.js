@@ -1222,6 +1222,7 @@ async function startWorkout(sessionId) {
       const card = btn.closest('.exercise-card');
       updateExerciseStatus(card);
       updateSessionProgress();
+      saveActiveWorkout();
       // Auto-start rest timer when checking a set (not unchecking)
       if (btn.classList.contains('checked')) {
         const inSuperset = card.closest('.superset-group');
@@ -1268,7 +1269,7 @@ async function startWorkout(sessionId) {
     });
   });
 
-  // Event: RPE color on change
+  // Event: RPE color on change + auto-save
   container.querySelectorAll('[data-field="rpe"]').forEach(select => {
     select.addEventListener('change', () => {
       const val = parseFloat(select.value);
@@ -1280,7 +1281,13 @@ async function startWorkout(sessionId) {
         row.style.borderLeft = '';
         select.style.color = '';
       }
+      saveActiveWorkout();
     });
+  });
+
+  // Auto-save on weight/reps input change
+  container.querySelectorAll('[data-field="weight"], [data-field="reps"]').forEach(input => {
+    input.addEventListener('change', () => saveActiveWorkout());
   });
 
   // Event: tappable exercise names
@@ -1317,6 +1324,7 @@ async function startWorkout(sessionId) {
   showView('workout');
   document.getElementById('header-title').textContent = session.name;
   document.getElementById('header-subtitle').textContent = session.subtitle + (deload ? ' (Deload)' : '');
+  saveActiveWorkout();
 }
 
 function buildExerciseCard(ex, exIdx, previous, restSettings, exerciseNotes, deload, session, allWorkouts) {
@@ -1448,6 +1456,136 @@ function updateExerciseStatus(card) {
   }
 }
 
+// ==================== WORKOUT PERSISTENCE ====================
+function captureWorkoutState() {
+  const exercises = [];
+  document.querySelectorAll('#workout-exercises .exercise-card').forEach(card => {
+    const exId = card.dataset.exerciseId;
+    const expanded = card.classList.contains('expanded');
+    const sets = [];
+    card.querySelectorAll('.set-row').forEach(row => {
+      sets.push({
+        weight: row.querySelector('[data-field="weight"]').value,
+        reps: row.querySelector('[data-field="reps"]').value,
+        rpe: row.querySelector('[data-field="rpe"]').value,
+        done: row.querySelector('.set-check').classList.contains('checked'),
+      });
+    });
+    exercises.push({ exerciseId: exId, sets, expanded });
+  });
+  return {
+    key: 'activeWorkout',
+    sessionId: state.activeSession,
+    startTime: state.workoutStartTime,
+    quality: state.sessionQuality,
+    notes: document.getElementById('workout-notes').value,
+    exercises,
+  };
+}
+
+async function saveActiveWorkout() {
+  if (!state.activeSession) return;
+  const data = captureWorkoutState();
+  await dbPut('settings', data);
+}
+
+async function clearActiveWorkout() {
+  await dbDelete('settings', 'activeWorkout');
+  const banner = document.getElementById('resume-workout-banner');
+  if (banner) { banner.classList.add('hidden'); banner.innerHTML = ''; }
+}
+
+async function showResumeBanner() {
+  const banner = document.getElementById('resume-workout-banner');
+  if (!banner) return;
+  const saved = await dbGet('settings', 'activeWorkout');
+  if (!saved || !saved.sessionId) { banner.classList.add('hidden'); return; }
+  const session = PLAN.sessions[saved.sessionId];
+  if (!session) { await clearActiveWorkout(); return; }
+
+  const elapsed = Math.floor((Date.now() - saved.startTime) / 1000);
+  const completedSets = saved.exercises.reduce((sum, ex) => sum + ex.sets.filter(s => s.done).length, 0);
+  const totalSets = saved.exercises.reduce((sum, ex) => sum + ex.sets.length, 0);
+
+  banner.classList.remove('hidden');
+  banner.innerHTML = `
+    <div class="resume-banner" id="resume-banner-tap">
+      <div class="resume-banner-icon">💪</div>
+      <div class="resume-banner-info">
+        <div class="resume-banner-title">${session.name} in progress</div>
+        <div class="resume-banner-sub">${completedSets}/${totalSets} sets · ${formatDuration(elapsed)} elapsed</div>
+      </div>
+      <button class="resume-banner-discard" id="resume-discard">Discard</button>
+    </div>
+  `;
+
+  document.getElementById('resume-banner-tap').addEventListener('click', async (e) => {
+    if (e.target.id === 'resume-discard') {
+      e.stopPropagation();
+      if (confirm('Discard this workout? All progress will be lost.')) {
+        await clearActiveWorkout();
+        state.activeSession = null;
+      }
+      return;
+    }
+    await restoreActiveWorkout();
+    banner.classList.add('hidden');
+  });
+}
+
+async function restoreActiveWorkout() {
+  const saved = await dbGet('settings', 'activeWorkout');
+  if (!saved || !saved.sessionId) return false;
+  const session = PLAN.sessions[saved.sessionId];
+  if (!session) { await clearActiveWorkout(); return false; }
+
+  // Restore state
+  state.activeSession = saved.sessionId;
+  state.workoutStartTime = saved.startTime;
+  state.sessionQuality = saved.quality || 3;
+
+  // Rebuild the workout UI (reuse startWorkout rendering)
+  await startWorkout(saved.sessionId);
+
+  // Now restore the saved input values on top of the freshly rendered UI
+  const cards = document.querySelectorAll('#workout-exercises .exercise-card');
+  saved.exercises.forEach((savedEx, i) => {
+    // Find the card with matching exerciseId
+    const card = [...cards].find(c => c.dataset.exerciseId === savedEx.exerciseId);
+    if (!card) return;
+    if (savedEx.expanded) card.classList.add('expanded');
+    else card.classList.remove('expanded');
+    const rows = card.querySelectorAll('.set-row');
+    savedEx.sets.forEach((s, j) => {
+      const row = rows[j];
+      if (!row) return;
+      if (s.weight) row.querySelector('[data-field="weight"]').value = s.weight;
+      if (s.reps) row.querySelector('[data-field="reps"]').value = s.reps;
+      if (s.rpe) {
+        const sel = row.querySelector('[data-field="rpe"]');
+        sel.value = s.rpe;
+        sel.style.color = rpeColor(parseFloat(s.rpe));
+        row.style.borderLeft = `3px solid ${rpeColor(parseFloat(s.rpe))}`;
+      }
+      if (s.done) {
+        row.querySelector('.set-check').classList.add('checked');
+      }
+    });
+  });
+
+  // Restore notes and quality
+  document.getElementById('workout-notes').value = saved.notes || '';
+  document.querySelectorAll('#quality-stars button').forEach(b => {
+    b.classList.toggle('selected', parseInt(b.dataset.v) === state.sessionQuality);
+  });
+
+  // Restore start time for timer (don't reset it)
+  state.workoutStartTime = saved.startTime;
+  updateSessionProgress();
+
+  return true;
+}
+
 function startWorkoutTimer() {
   if (state.workoutTimerInterval) clearInterval(state.workoutTimerInterval);
   const timerEl = document.getElementById('workout-timer');
@@ -1491,6 +1629,7 @@ async function finishWorkout() {
   };
 
   await smartPut('workouts', workout);
+  await clearActiveWorkout();
 
   // PR detection
   await detectPRs(workout);
@@ -3616,9 +3755,10 @@ function bindEvents() {
       state.currentView = 'gym';
       switchTab('gym');
     } else if (state.activeSession) {
-      if (confirm('Leave workout? Data will be lost.')) {
+      if (confirm('Abandon workout? Progress will be lost.')) {
         if (state.workoutTimerInterval) clearInterval(state.workoutTimerInterval);
         state.activeSession = null;
+        clearActiveWorkout();
         state.currentView = 'gym';
         switchTab('gym');
       }
@@ -3954,6 +4094,8 @@ async function init() {
   renderStreakBanner();
   updateHeader('gym');
 
+  // Check for in-progress workout
+  await showResumeBanner();
 
   // WHOOP
   if (window.renderWhoopUI) renderWhoopUI();
