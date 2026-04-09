@@ -86,6 +86,27 @@ const PLAN = {
   }
 };
 
+// Rolling number animation — digits roll up/down when value changes
+function animateNumber(el, newValue, suffix = '') {
+  if (!el) return;
+  const text = String(newValue) + suffix;
+  if (el.textContent === text) return;
+  el.classList.add('num-roll');
+  el.style.setProperty('--from', `"${el.textContent}"`);
+  el.textContent = text;
+  el.addEventListener('animationend', () => el.classList.remove('num-roll'), { once: true });
+}
+
+// RPE color mapping
+function rpeColor(rpe) {
+  if (!rpe || rpe <= 0) return 'var(--text3)';
+  if (rpe <= 6) return 'var(--accent)';
+  if (rpe <= 7) return '#86efac';
+  if (rpe <= 7.5) return 'var(--yellow)';
+  if (rpe <= 8.5) return 'var(--orange)';
+  return 'var(--red)';
+}
+
 // Muscle badge colors
 const MUSCLE_COLORS = {
   'Chest': '#60a5fa', 'Back': '#34d399', 'Shoulders': '#a78bfa', 'Rear Delt': '#a78bfa',
@@ -536,7 +557,7 @@ function switchTab(tab) {
 
   if (tab === 'gym') {
     showView(state.currentView === 'workout' ? 'workout' : 'gym');
-    if (state.currentView !== 'workout') { renderWeekStrip(); renderRecentWorkouts(); renderStreakBanner(); }
+    if (state.currentView !== 'workout') { renderWeekStrip(); renderRecentWorkouts(); renderStreakBanner(); renderActivityRings(); }
   } else if (tab === 'run') { showView('run'); renderRunPlanBanner(); renderRunHistory(); }
   else if (tab === 'nutrition') { showView('nutrition'); renderNutrition(); }
   else if (tab === 'stats') { showView('stats'); renderStats(); }
@@ -796,10 +817,18 @@ async function changeGymDay(ds, jsDay, customSchedule) {
 
 function showSkeleton(container, count = 3) {
   container.innerHTML = Array(count).fill('<div class="skeleton skeleton-card"></div>').join('');
+  container.classList.remove('morph-in');
 }
 
 function showEmptyState(container, icon, title, text) {
   container.innerHTML = `<div class="empty-state-box"><div class="empty-state-icon">${icon}</div><div class="empty-state-title">${title}</div><div class="empty-state-text">${text}</div></div>`;
+  morphIn(container);
+}
+
+function morphIn(container) {
+  container.classList.remove('morph-in');
+  void container.offsetWidth; // force reflow
+  container.classList.add('morph-in');
 }
 
 async function renderRecentWorkouts() {
@@ -849,9 +878,63 @@ async function renderRecentWorkouts() {
       });
     });
   });
+  morphIn(container);
 }
 
 // ==================== STREAK COUNTER ====================
+// ==================== ACTIVITY RINGS (Apple Watch style) ====================
+async function renderActivityRings() {
+  const container = document.getElementById('activity-rings');
+  if (!container) return;
+
+  const workouts = await dbGetAll('workouts');
+  const runs = await dbGetAll('runs');
+  const nutrition = await dbGetAll('nutrition');
+  const todayStr = today();
+  const weekDates = getWeekDates().map(d => dateStr(d));
+
+  // Ring 1: Training sessions this week (target: planned gym days)
+  const planned = Object.values(WEEK_TEMPLATE).filter(d => d.type === 'gym').length;
+  const sessionsThisWeek = workouts.filter(w => weekDates.includes(w.date)).length;
+  const sessionPct = Math.min(sessionsThisWeek / planned, 1);
+
+  // Ring 2: Protein today (target from settings)
+  const todayNutrition = nutrition.filter(n => n.date === todayStr);
+  const proteinToday = todayNutrition.reduce((s, n) => s + (n.protein || 0), 0);
+  const proteinTarget = state.settings.proteinTarget || 170;
+  const proteinPct = Math.min(proteinToday / proteinTarget, 1);
+
+  // Ring 3: Running this week (target: planned run days)
+  const plannedRuns = Object.values(WEEK_TEMPLATE).filter(d => d.type === 'run').length;
+  const runsThisWeek = runs.filter(r => weekDates.includes(r.date)).length;
+  const runPct = plannedRuns > 0 ? Math.min(runsThisWeek / plannedRuns, 1) : 0;
+
+  function ringArc(cx, cy, r, pct, color, width) {
+    const circ = 2 * Math.PI * r;
+    const offset = circ - circ * pct;
+    return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${color}" stroke-width="${width}" stroke-linecap="round" stroke-dasharray="${circ.toFixed(1)}" stroke-dashoffset="${offset.toFixed(1)}" style="transition:stroke-dashoffset 0.8s ease-out"/>`;
+  }
+
+  const cx = 60, cy = 60;
+  container.innerHTML = `
+    <div class="activity-rings-card">
+      <svg width="120" height="120" viewBox="0 0 120 120" style="transform:rotate(-90deg)">
+        <circle cx="${cx}" cy="${cy}" r="48" fill="none" stroke="rgba(251,146,60,0.15)" stroke-width="9"/>
+        ${ringArc(cx, cy, 48, sessionPct, 'var(--orange)', 9)}
+        <circle cx="${cx}" cy="${cy}" r="36" fill="none" stroke="rgba(74,222,128,0.15)" stroke-width="9"/>
+        ${ringArc(cx, cy, 36, proteinPct, 'var(--accent)', 9)}
+        <circle cx="${cx}" cy="${cy}" r="24" fill="none" stroke="rgba(96,165,250,0.15)" stroke-width="9"/>
+        ${ringArc(cx, cy, 24, runPct, 'var(--blue)', 9)}
+      </svg>
+      <div class="activity-rings-legend">
+        <div class="arl-row"><span class="arl-dot" style="background:var(--orange)"></span><span class="arl-label">Training</span><span class="arl-val">${sessionsThisWeek}/${planned}</span></div>
+        <div class="arl-row"><span class="arl-dot" style="background:var(--accent)"></span><span class="arl-label">Protein</span><span class="arl-val">${proteinToday}/${proteinTarget}g</span></div>
+        <div class="arl-row"><span class="arl-dot" style="background:var(--blue)"></span><span class="arl-label">Running</span><span class="arl-val">${runsThisWeek}/${plannedRuns}</span></div>
+      </div>
+    </div>
+  `;
+}
+
 async function renderStreakBanner() {
   const container = document.getElementById('streak-banner');
   if (!container) return;
@@ -919,7 +1002,7 @@ function updateSessionProgress() {
     ring.style.strokeDashoffset = circumference - (circumference * pct / 100);
   }
   const ringText = document.getElementById('sp-ring-pct');
-  if (ringText) ringText.textContent = Math.round(pct) + '%';
+  if (ringText) animateNumber(ringText, Math.round(pct), '%');
 }
 
 // ==================== SESSION PICKER (day swap) ====================
@@ -954,11 +1037,11 @@ function viewCompletedWorkout(workout) {
     const muscleColor = MUSCLE_COLORS[muscle] || '#666';
 
     const setsHTML = ex.sets.map((s, i) => `
-      <div class="set-row" style="opacity:${s.done ? 1 : 0.4}">
+      <div class="set-row" style="opacity:${s.done ? 1 : 0.4}${s.rpe ? ';border-left:3px solid ' + rpeColor(s.rpe) : ''}">
         <div class="set-num">${i + 1}</div>
         <div class="set-input" style="text-align:center;font-weight:700">${s.weight || '-'}</div>
         <div class="set-input" style="text-align:center">${s.reps || '-'}</div>
-        <div class="set-input" style="text-align:center;font-size:12px">${s.rpe || ''}</div>
+        <div class="set-input" style="text-align:center;font-size:12px;${s.rpe ? 'color:' + rpeColor(s.rpe) : ''}">${s.rpe || ''}</div>
         <div class="set-check ${s.done ? 'checked' : ''}" style="pointer-events:none">✓</div>
       </div>
     `).join('');
@@ -1125,6 +1208,9 @@ async function startWorkout(sessionId) {
     });
   });
 
+  // Drag-to-reorder exercises (long-press + drag)
+  initExerciseDrag(container);
+
   // Event: set check (+ auto rest timer with superset awareness)
   container.querySelectorAll('.set-check').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -1175,6 +1261,21 @@ async function startWorkout(sessionId) {
       const rs = await dbGet('settings', 'restTimes') || { key: 'restTimes', data: {} };
       rs.data[exId] = val;
       await dbPut('settings', rs);
+    });
+  });
+
+  // Event: RPE color on change
+  container.querySelectorAll('[data-field="rpe"]').forEach(select => {
+    select.addEventListener('change', () => {
+      const val = parseFloat(select.value);
+      const row = select.closest('.set-row');
+      if (val) {
+        row.style.borderLeft = `3px solid ${rpeColor(val)}`;
+        select.style.color = rpeColor(val);
+      } else {
+        row.style.borderLeft = '';
+        select.style.color = '';
+      }
     });
   });
 
@@ -1242,7 +1343,9 @@ function buildExerciseCard(ex, exIdx, previous, restSettings, exerciseNotes, del
   let setsHTML = '';
   for (let i = 0; i < numSets; i++) {
     const prevSet = prevEx && prevEx.sets[i];
+    const ghostHTML = prevSet && prevSet.done ? `<div class="ghost-set"><span>${ex.bw ? '+' : ''}${prevSet.weight}</span><span>${prevSet.reps}</span><span>${prevSet.rpe || ''}</span></div>` : '';
     setsHTML += `
+      ${ghostHTML}
       <div class="set-row" data-set="${i}">
         <div class="set-num">${i + 1}</div>
         <input type="number" class="set-input" data-field="weight" placeholder="${prevSet ? prevSet.weight : (ex.bw ? '0' : '-')}" inputmode="decimal" step="0.5">
@@ -1577,6 +1680,7 @@ async function renderStats() {
   await renderWeekComparison();
   await renderStreakCalendar();
   await renderMuscleVolume();
+  await renderSwimlaneTL();
   renderBodyCompEstimator();
   await renderProteinChart();
   renderMacroCalculator();
@@ -3120,30 +3224,30 @@ async function renderProteinChart() {
   }
 }
 
-// ==================== VOLUME PER MUSCLE GROUP ====================
+// ==================== VOLUME PER MUSCLE GROUP (HEATMAP) ====================
 async function renderMuscleVolume() {
   const container = document.getElementById('muscle-volume');
   if (!container) return;
 
-  const weekDates = getWeekDates().map(d => dateStr(d));
-  const workouts = (await dbGetAll('workouts')).filter(w => weekDates.includes(w.date));
+  const weekDates = getWeekDates();
+  const weekStrs = weekDates.map(d => dateStr(d));
+  const workouts = (await dbGetAll('workouts')).filter(w => weekStrs.includes(w.date));
 
   if (workouts.length === 0) {
-    container.innerHTML = '<div class="empty-state">No workouts this week</div>';
+    showEmptyState(container, '📊', 'No data yet', 'Complete workouts to see your volume heatmap');
     return;
   }
 
-  // Count sets per muscle group
-  const musclesSets = {};
+  // Count sets per muscle group per day
+  const muscleDay = {}; // { muscle: { '2026-04-07': 4, ... } }
+  const muscleTotals = {};
   workouts.forEach(w => {
     w.exercises.forEach(ex => {
-      // Find muscle from PLAN or use exerciseId
       let muscle = null;
       for (const s of Object.values(PLAN.sessions)) {
         const found = s.exercises.find(e => e.id === ex.exerciseId);
         if (found) { muscle = found.muscle; break; }
       }
-      // Also check EXERCISE_ALTERNATIVES
       if (!muscle) {
         for (const [m, alts] of Object.entries(EXERCISE_ALTERNATIVES)) {
           if (alts.some(a => a.id === ex.exerciseId)) { muscle = m; break; }
@@ -3152,29 +3256,208 @@ async function renderMuscleVolume() {
       if (!muscle) muscle = 'Other';
 
       const doneSets = ex.sets.filter(s => s.done).length;
-      musclesSets[muscle] = (musclesSets[muscle] || 0) + doneSets;
+      if (!muscleDay[muscle]) muscleDay[muscle] = {};
+      muscleDay[muscle][w.date] = (muscleDay[muscle][w.date] || 0) + doneSets;
+      muscleTotals[muscle] = (muscleTotals[muscle] || 0) + doneSets;
     });
   });
 
-  // Sort by sets descending
-  const sorted = Object.entries(musclesSets).sort((a, b) => b[1] - a[1]);
-  const maxSets = sorted[0][1];
+  // Sort muscles by total sets descending
+  const sorted = Object.keys(muscleTotals).sort((a, b) => muscleTotals[b] - muscleTotals[a]);
+  // Find max sets in any single cell for intensity scaling
+  let maxCell = 0;
+  sorted.forEach(m => weekStrs.forEach(d => { maxCell = Math.max(maxCell, (muscleDay[m] && muscleDay[m][d]) || 0); }));
+  if (maxCell === 0) maxCell = 1;
 
-  container.innerHTML = sorted.map(([muscle, sets]) => {
+  const dayLabels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+  const todayStr = today();
+
+  let html = `<div class="heatmap-grid" style="grid-template-columns: 72px repeat(7, 1fr) 40px">`;
+  // Header row
+  html += `<div class="hm-corner"></div>`;
+  dayLabels.forEach((d, i) => {
+    const isToday = weekStrs[i] === todayStr;
+    html += `<div class="hm-day${isToday ? ' hm-today' : ''}">${d}</div>`;
+  });
+  html += `<div class="hm-day">Σ</div>`;
+
+  // Muscle rows
+  sorted.forEach(muscle => {
     const color = MUSCLE_COLORS[muscle] || '#666';
-    const pct = (sets / maxSets) * 100;
-    const inRange = sets >= 10 && sets <= 14;
-    const label = sets < 10 ? 'low' : sets > 14 ? 'high' : 'optimal';
-    return `
-      <div class="mv-row">
-        <span class="mv-muscle" style="color:${color}">${muscle}</span>
-        <div class="mv-bar-wrap">
-          <div class="mv-bar" style="width:${pct}%;background:${color}40"></div>
-        </div>
-        <span class="mv-sets">${sets} <span class="mv-label" style="color:${inRange ? 'var(--accent)' : 'var(--orange)'}">${label}</span></span>
-      </div>
-    `;
-  }).join('');
+    const total = muscleTotals[muscle];
+    const inRange = total >= 10 && total <= 14;
+    html += `<div class="hm-muscle" style="color:${color}">${muscle}</div>`;
+    weekStrs.forEach(d => {
+      const sets = (muscleDay[muscle] && muscleDay[muscle][d]) || 0;
+      const intensity = sets / maxCell;
+      const bg = sets > 0 ? `${color}${Math.round(intensity * 0.6 * 255).toString(16).padStart(2, '0')}` : 'transparent';
+      html += `<div class="hm-cell" style="background:${bg}" title="${muscle}: ${sets} sets">${sets || ''}</div>`;
+    });
+    html += `<div class="hm-total" style="color:${inRange ? 'var(--accent)' : total < 10 ? 'var(--orange)' : 'var(--yellow)'}">${total}</div>`;
+  });
+  html += `</div>`;
+  container.innerHTML = html;
+}
+
+// ==================== SWIMLANE TIMELINE ====================
+async function renderSwimlaneTL() {
+  const container = document.getElementById('swimlane-timeline');
+  if (!container) return;
+
+  const weekDates = getWeekDates();
+  const weekStrs = weekDates.map(d => dateStr(d));
+  const workouts = await dbGetAll('workouts');
+  const runs = await dbGetAll('runs');
+  const customSchedule = await getWeekSchedule();
+  const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const todayStr = today();
+
+  const lanes = [
+    { id: 'gym', label: 'Gym', color: 'var(--orange)', icon: '🏋️' },
+    { id: 'run', label: 'Run', color: 'var(--blue)', icon: '🏃' },
+    { id: 'rest', label: 'Rest', color: 'var(--text3)', icon: '😴' },
+  ];
+
+  // Build day data
+  const dayData = weekStrs.map((ds, i) => {
+    const w = workouts.find(w => w.date === ds);
+    const r = runs.find(r => r.date === ds);
+    const sched = customSchedule || WEEK_TEMPLATE;
+    const jsDay = weekDates[i].getDay();
+    const planned = sched[jsDay] || { type: 'rest' };
+    return { date: ds, day: dayNames[i], workout: w, run: r, planned };
+  });
+
+  let html = `<div class="swimlane">`;
+  // Day headers
+  html += `<div class="sl-header"><div class="sl-lane-label"></div>`;
+  dayData.forEach(d => {
+    const isToday = d.date === todayStr;
+    html += `<div class="sl-day${isToday ? ' sl-today' : ''}">${d.day}</div>`;
+  });
+  html += `</div>`;
+
+  // Lanes
+  lanes.forEach(lane => {
+    html += `<div class="sl-row"><div class="sl-lane-label">${lane.icon} ${lane.label}</div>`;
+    dayData.forEach(d => {
+      let active = false, label = '';
+      if (lane.id === 'gym') {
+        if (d.workout) {
+          active = true;
+          const sess = PLAN.sessions[d.workout.session];
+          label = sess ? sess.name.replace(/Upper |Lower /, '').charAt(0) : '✓';
+        } else if (d.planned.type === 'gym' && d.date >= todayStr) {
+          label = '·';
+        }
+      } else if (lane.id === 'run') {
+        if (d.run) {
+          active = true;
+          label = d.run.distance ? d.run.distance + 'k' : '✓';
+        } else if (d.planned.type === 'run' && d.date >= todayStr) {
+          label = '·';
+        }
+      } else if (lane.id === 'rest') {
+        if (!d.workout && !d.run && d.date <= todayStr) {
+          active = true;
+          label = '✓';
+        } else if (d.planned.type === 'rest') {
+          label = '·';
+        }
+      }
+      const bg = active ? lane.color : 'transparent';
+      html += `<div class="sl-cell${active ? ' sl-active' : ''}" style="${active ? 'background:' + lane.color + '20;color:' + lane.color : ''}"><span>${label}</span></div>`;
+    });
+    html += `</div>`;
+  });
+  html += `</div>`;
+  container.innerHTML = html;
+}
+
+// ==================== DRAG-TO-REORDER EXERCISES ====================
+function initExerciseDrag(container) {
+  let dragEl = null, placeholder = null, startY = 0, offsetY = 0, longPressTimer = null;
+
+  const getSwappable = () => [...container.children].filter(el => el.classList.contains('exercise-card') || el.classList.contains('superset-group'));
+
+  container.addEventListener('touchstart', (e) => {
+    const header = e.target.closest('.exercise-header');
+    if (!header) return;
+    const card = header.closest('.exercise-card, .superset-group') || header.closest('.exercise-card');
+    if (!card || !container.contains(card)) return;
+    const touch = e.touches[0];
+    startY = touch.clientY;
+    longPressTimer = setTimeout(() => {
+      dragEl = card.parentElement.classList.contains('superset-group') ? card.parentElement : card;
+      const rect = dragEl.getBoundingClientRect();
+      offsetY = startY - rect.top;
+      dragEl.classList.add('dragging');
+      placeholder = document.createElement('div');
+      placeholder.className = 'drag-placeholder';
+      placeholder.style.height = rect.height + 'px';
+      dragEl.parentNode.insertBefore(placeholder, dragEl);
+      dragEl.style.position = 'fixed';
+      dragEl.style.top = (startY - offsetY) + 'px';
+      dragEl.style.left = rect.left + 'px';
+      dragEl.style.width = rect.width + 'px';
+      dragEl.style.zIndex = '999';
+      navigator.vibrate && navigator.vibrate(30);
+    }, 400);
+  }, { passive: true });
+
+  container.addEventListener('touchmove', (e) => {
+    if (longPressTimer && Math.abs(e.touches[0].clientY - startY) > 10) {
+      clearTimeout(longPressTimer);
+      longPressTimer = null;
+    }
+    if (!dragEl) return;
+    e.preventDefault();
+    const y = e.touches[0].clientY;
+    dragEl.style.top = (y - offsetY) + 'px';
+    // Find swap target
+    const items = getSwappable().filter(el => el !== dragEl);
+    for (const item of items) {
+      const r = item.getBoundingClientRect();
+      const mid = r.top + r.height / 2;
+      if (y < mid && container.children.length > 0) {
+        container.insertBefore(placeholder, item);
+        break;
+      }
+      if (item === items[items.length - 1]) {
+        container.appendChild(placeholder);
+      }
+    }
+  }, { passive: false });
+
+  const endDrag = () => {
+    clearTimeout(longPressTimer);
+    longPressTimer = null;
+    if (!dragEl) return;
+    dragEl.classList.remove('dragging');
+    dragEl.style.position = '';
+    dragEl.style.top = '';
+    dragEl.style.left = '';
+    dragEl.style.width = '';
+    dragEl.style.zIndex = '';
+    if (placeholder && placeholder.parentNode) {
+      placeholder.parentNode.insertBefore(dragEl, placeholder);
+      placeholder.remove();
+    }
+    // Spring animation
+    dragEl.style.transition = 'transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)';
+    dragEl.style.transform = 'scale(1.02)';
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        dragEl.style.transform = '';
+        setTimeout(() => { dragEl.style.transition = ''; }, 300);
+      });
+    });
+    dragEl = null;
+    placeholder = null;
+  };
+
+  container.addEventListener('touchend', endDrag, { passive: true });
+  container.addEventListener('touchcancel', endDrag, { passive: true });
 }
 
 // ==================== STAR & TOGGLE HELPERS ====================
@@ -3460,6 +3743,47 @@ function bindEvents() {
   // Notification toggles
   document.getElementById('notif-on').addEventListener('click', () => toggleNotifications(true));
   document.getElementById('notif-off').addEventListener('click', () => toggleNotifications(false));
+
+  // Pull-to-reveal quick log
+  const gymScroll = document.getElementById('gym-scroll');
+  const pullReveal = document.getElementById('pull-reveal');
+  if (gymScroll && pullReveal) {
+    let pullStartY = 0;
+    gymScroll.addEventListener('touchstart', (e) => { pullStartY = e.touches[0].clientY; }, { passive: true });
+    gymScroll.addEventListener('touchend', (e) => {
+      const dy = e.changedTouches[0].clientY - pullStartY;
+      if (gymScroll.scrollTop <= 0 && dy > 60) {
+        pullReveal.classList.add('open');
+      } else if (dy < -30) {
+        pullReveal.classList.remove('open');
+      }
+    }, { passive: true });
+  }
+
+  // Quick log save
+  const quickLogSave = document.getElementById('quick-log-save');
+  if (quickLogSave) {
+    quickLogSave.addEventListener('click', async () => {
+      const weight = parseFloat(document.getElementById('quick-weight').value);
+      const note = document.getElementById('quick-note').value.trim();
+      const todayStr = today();
+      if (weight) {
+        await smartPut('bodyweight', { id: 'bw-' + todayStr, date: todayStr, weight });
+      }
+      if (note) {
+        const existing = (await dbGet('daily_notes', todayStr)) || { id: todayStr, notes: [] };
+        existing.notes = existing.notes || [];
+        existing.notes.push(note);
+        await smartPut('daily_notes', existing);
+      }
+      if (weight || note) {
+        toast(weight ? `Logged ${weight} kg` : 'Note saved');
+        document.getElementById('quick-weight').value = '';
+        document.getElementById('quick-note').value = '';
+        document.getElementById('pull-reveal').classList.remove('open');
+      }
+    });
+  }
 }
 
 // ==================== NOTIFICATIONS ====================
@@ -3623,6 +3947,7 @@ async function init() {
   renderWeekStrip();
   renderRecentWorkouts();
   renderStreakBanner();
+  renderActivityRings();
   updateHeader('gym');
 
   // WHOOP
@@ -3630,6 +3955,21 @@ async function init() {
 
   // Notifications
   initNotifications();
+
+  // Sticky compressed section headers
+  document.querySelectorAll('.view-scroll').forEach(scroll => {
+    const labels = scroll.querySelectorAll('.section-label');
+    if (!labels.length) return;
+    const observer = new IntersectionObserver(entries => {
+      entries.forEach(entry => {
+        entry.target.classList.toggle('stuck', entry.intersectionRatio < 1);
+      });
+    }, { root: scroll, threshold: [1] });
+    labels.forEach(l => {
+      l.style.top = '-1px'; // needed so it triggers when fully stuck
+      observer.observe(l);
+    });
+  });
 }
 
 document.addEventListener('DOMContentLoaded', init);
