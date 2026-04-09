@@ -3889,46 +3889,6 @@ function bindEvents() {
   document.getElementById('notif-on').addEventListener('click', () => toggleNotifications(true));
   document.getElementById('notif-off').addEventListener('click', () => toggleNotifications(false));
 
-  // Pull-to-reveal quick log
-  const gymScroll = document.getElementById('gym-scroll');
-  const pullReveal = document.getElementById('pull-reveal');
-  if (gymScroll && pullReveal) {
-    let pullStartY = 0;
-    gymScroll.addEventListener('touchstart', (e) => { pullStartY = e.touches[0].clientY; }, { passive: true });
-    gymScroll.addEventListener('touchend', (e) => {
-      const dy = e.changedTouches[0].clientY - pullStartY;
-      if (gymScroll.scrollTop <= 0 && dy > 60) {
-        pullReveal.classList.add('open');
-      } else if (dy < -30) {
-        pullReveal.classList.remove('open');
-      }
-    }, { passive: true });
-  }
-
-  // Quick log save
-  const quickLogSave = document.getElementById('quick-log-save');
-  if (quickLogSave) {
-    quickLogSave.addEventListener('click', async () => {
-      const weight = parseFloat(document.getElementById('quick-weight').value);
-      const note = document.getElementById('quick-note').value.trim();
-      const todayStr = today();
-      if (weight) {
-        await smartPut('bodyweight', { id: 'bw-' + todayStr, date: todayStr, weight });
-      }
-      if (note) {
-        const existing = (await dbGet('daily_notes', todayStr)) || { id: todayStr, notes: [] };
-        existing.notes = existing.notes || [];
-        existing.notes.push(note);
-        await smartPut('daily_notes', existing);
-      }
-      if (weight || note) {
-        toast(weight ? `Logged ${weight} kg` : 'Note saved');
-        document.getElementById('quick-weight').value = '';
-        document.getElementById('quick-note').value = '';
-        document.getElementById('pull-reveal').classList.remove('open');
-      }
-    });
-  }
 }
 
 // ==================== NOTIFICATIONS ====================

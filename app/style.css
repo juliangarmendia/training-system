@@ -497,16 +497,6 @@ nav { display: flex; background: var(--surface); border-top: 1px solid var(--bor
 @keyframes morphIn { from { opacity: 0; transform: translateY(6px) scale(0.98); } to { opacity: 1; transform: none; } }
 .morph-in { animation: morphIn 0.3s ease-out both; }
 
-/* Pull-to-reveal quick log */
-.pull-reveal { max-height: 0; overflow: hidden; transition: max-height 0.35s ease-out; background: var(--surface); border-radius: 0 0 var(--radius) var(--radius); margin: 0 -16px; padding: 0 16px; }
-.pull-reveal.open { max-height: 160px; }
-.pull-reveal-inner { padding: 8px 0 12px; }
-.pull-hint { text-align: center; font-size: 11px; color: var(--text3); font-weight: 600; padding: 4px 0; letter-spacing: 0.5px; }
-.pull-reveal.open .pull-hint { display: none; }
-.pull-form { display: flex; align-items: flex-end; gap: 10px; }
-.pull-field { flex: 1; }
-.pull-field label { display: block; font-size: 10px; font-weight: 700; color: var(--text3); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
-.pull-field input { width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-xs); padding: 8px 10px; color: var(--text); font-size: 14px; }
 
 /* Drag-to-reorder */
 .dragging { opacity: 0.9; box-shadow: 0 8px 32px rgba(0,0,0,0.4); border-radius: var(--radius); transform: scale(1.03); z-index: 999; }
