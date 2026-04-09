@@ -74,7 +74,7 @@ header h1 { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
 main { flex: 1; overflow: hidden; position: relative; }
 .view { position: absolute; inset: 0; opacity: 0; pointer-events: none; transition: opacity 0.25s, transform 0.25s; transform: translateY(8px); }
 .view.active { opacity: 1; pointer-events: auto; transform: translateY(0); }
-.view-scroll { height: 100%; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 8px 16px calc(var(--nav-h) + var(--safe-bottom) + 16px); border-top: 2px solid var(--section-accent, transparent); }
+.view-scroll { height: 100%; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 8px 16px 16px; border-top: 2px solid var(--section-accent, transparent); }
 
 /* ========== Navigation ========== */
 nav { display: flex; background: var(--surface); border-top: 1px solid var(--border); padding-bottom: calc(var(--safe-bottom) + 14px); flex-shrink: 0; z-index: 100; margin-top: auto; }
