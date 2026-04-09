@@ -2,7 +2,7 @@
 // Service Worker — Training App v4.0
 // ============================================================
 
-const CACHE_NAME = 'training-v6.4';
+const CACHE_NAME = 'training-v6.5';
 const APP_SHELL = [
   './',
   './index.html',
@@ -11,7 +11,7 @@ const APP_SHELL = [
   './supabase-sync.js',
   './whoop.js',
   './manifest.json',
-  './favicon.svg',
+  './app-icon.png',
 ];
 
 // Install: precache app shell, skip waiting immediately

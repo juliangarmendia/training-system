@@ -10,9 +10,9 @@
   "categories": ["health", "fitness"],
   "icons": [
     {
-      "src": "favicon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
+      "src": "app-icon.png",
+      "sizes": "855x855",
+      "type": "image/png",
       "purpose": "any maskable"
     }
   ]
