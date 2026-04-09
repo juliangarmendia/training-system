@@ -536,7 +536,7 @@ function switchTab(tab) {
 
   if (tab === 'gym') {
     showView(state.currentView === 'workout' ? 'workout' : 'gym');
-    if (state.currentView !== 'workout') { renderWeekStrip(); renderRecentWorkouts(); }
+    if (state.currentView !== 'workout') { renderWeekStrip(); renderRecentWorkouts(); renderStreakBanner(); }
   } else if (tab === 'run') { showView('run'); renderRunPlanBanner(); renderRunHistory(); }
   else if (tab === 'nutrition') { showView('nutrition'); renderNutrition(); }
   else if (tab === 'stats') { showView('stats'); renderStats(); }
@@ -794,12 +794,21 @@ async function changeGymDay(ds, jsDay, customSchedule) {
   toast(newVal ? `Set to ${PLAN.sessions[newVal].name}` : 'Set to rest day');
 }
 
+function showSkeleton(container, count = 3) {
+  container.innerHTML = Array(count).fill('<div class="skeleton skeleton-card"></div>').join('');
+}
+
+function showEmptyState(container, icon, title, text) {
+  container.innerHTML = `<div class="empty-state-box"><div class="empty-state-icon">${icon}</div><div class="empty-state-title">${title}</div><div class="empty-state-text">${text}</div></div>`;
+}
+
 async function renderRecentWorkouts() {
   const container = document.getElementById('recent-workouts');
+  showSkeleton(container, 3);
   const workouts = (await dbGetAll('workouts')).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 8);
 
   if (!workouts.length) {
-    container.innerHTML = '<div class="empty-state">No workouts logged yet.<br>Tap a day above to start.</div>';
+    showEmptyState(container, '🏋️', 'No workouts yet', 'Tap a day in the schedule above to start your first session.');
     return;
   }
 
@@ -842,19 +851,75 @@ async function renderRecentWorkouts() {
   });
 }
 
-// ==================== SESSION PROGRESS BAR ====================
+// ==================== STREAK COUNTER ====================
+async function renderStreakBanner() {
+  const container = document.getElementById('streak-banner');
+  if (!container) return;
+  const workouts = await dbGetAll('workouts');
+  const runs = await dbGetAll('runs');
+
+  // Get all unique training dates
+  const trainingDates = new Set();
+  workouts.forEach(w => trainingDates.add(w.date));
+  runs.forEach(r => trainingDates.add(r.date));
+
+  if (trainingDates.size === 0) { container.innerHTML = ''; return; }
+
+  // Calculate current streak (consecutive days with training, ending today or yesterday)
+  let streak = 0;
+  const d = new Date();
+  // Start from today and go backwards
+  for (let i = 0; i < 365; i++) {
+    const ds = d.toISOString().split('T')[0];
+    if (trainingDates.has(ds)) {
+      streak++;
+    } else if (i === 0) {
+      // Today has no training yet — that's ok, check from yesterday
+    } else {
+      break;
+    }
+    d.setDate(d.getDate() - 1);
+  }
+
+  // Also count total this week
+  const weekDates = getWeekDates();
+  const thisWeek = weekDates.filter(wd => trainingDates.has(dateStr(wd))).length;
+
+  if (streak <= 1 && thisWeek <= 1) { container.innerHTML = ''; return; }
+
+  const fireLevel = streak >= 7 ? '🔥🔥🔥' : streak >= 4 ? '🔥🔥' : streak >= 2 ? '🔥' : '';
+
+  container.innerHTML = `
+    <div class="streak-fire">
+      <div class="streak-fire-icon">${fireLevel || '💪'}</div>
+      <div class="streak-fire-info">
+        <div class="streak-fire-count">${streak} day${streak !== 1 ? 's' : ''} streak</div>
+        <div class="streak-fire-label">${thisWeek} session${thisWeek !== 1 ? 's' : ''} this week</div>
+      </div>
+    </div>
+  `;
+}
+
+// ==================== SESSION PROGRESS ====================
 function updateSessionProgress() {
-  const cards = document.querySelectorAll('#workout-exercises .exercise-card');
-  const total = cards.length;
-  let done = 0;
-  cards.forEach(card => {
-    const checks = card.querySelectorAll('.set-check');
-    const checked = card.querySelectorAll('.set-check.checked');
-    if (checks.length > 0 && checked.length === checks.length) done++;
-  });
+  const allChecks = document.querySelectorAll('#workout-exercises .set-check');
+  const allChecked = document.querySelectorAll('#workout-exercises .set-check.checked');
+  const total = allChecks.length;
+  const done = allChecked.length;
   const pct = total > 0 ? (done / total) * 100 : 0;
+
+  // Update bar
   document.getElementById('sp-fill').style.width = pct + '%';
-  document.getElementById('sp-text').textContent = `${done} / ${total} exercises`;
+  document.getElementById('sp-text').textContent = `${done} / ${total} sets`;
+
+  // Update progress ring if present
+  const ring = document.getElementById('sp-ring-fill');
+  if (ring) {
+    const circumference = 2 * Math.PI * 38; // r=38
+    ring.style.strokeDashoffset = circumference - (circumference * pct / 100);
+  }
+  const ringText = document.getElementById('sp-ring-pct');
+  if (ringText) ringText.textContent = Math.round(pct) + '%';
 }
 
 // ==================== SESSION PICKER (day swap) ====================
@@ -1479,11 +1544,22 @@ function renderLineChart(labels, values, opts = {}) {
     dotsHTML = points.map(p => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3" fill="${color}"/>`).join('');
   }
 
+  // Gradient fill area
+  const gradientId = 'grad-' + Math.random().toString(36).slice(2, 7);
+  const areaD = pathD + ` L${points[points.length - 1].x.toFixed(1)},${pad.top + chartH} L${points[0].x.toFixed(1)},${pad.top + chartH} Z`;
+
   return `
     <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet">
+      <defs>
+        <linearGradient id="${gradientId}" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="${color}" stop-opacity="0.25"/>
+          <stop offset="100%" stop-color="${color}" stop-opacity="0.02"/>
+        </linearGradient>
+      </defs>
       ${yLabels}
       ${xLabels}
-      <path d="${pathD}" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="${areaD}" fill="url(#${gradientId})"/>
+      <path d="${pathD}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
       ${dotsHTML}
     </svg>
   `;
@@ -2377,7 +2453,7 @@ async function renderRunHistory() {
   const runs = (await dbGetAll('runs')).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 12);
 
   if (!runs.length) {
-    container.innerHTML = '<div class="empty-state">No runs logged yet</div>';
+    showEmptyState(container, '🏃', 'No runs yet', 'Log your runs in the Run tab to track distance and pace.');
     return;
   }
 
@@ -2444,7 +2520,7 @@ async function renderMealList() {
 
   const container = document.getElementById('meal-list');
   if (meals.length === 0) {
-    container.innerHTML = '<div class="empty-state" style="padding:12px">No meals logged yet today</div>';
+    showEmptyState(container, '🍽️', 'No meals today', 'Add what you ate to track your protein intake.');
     return;
   }
 
@@ -2589,7 +2665,7 @@ async function renderNutritionHistory() {
   const entries = (await dbGetAll('nutrition')).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 7);
 
   if (!entries.length) {
-    container.innerHTML = '<div class="empty-state">No nutrition data yet</div>';
+    showEmptyState(container, '📊', 'No nutrition history', 'Your daily protein totals will appear here.');
     return;
   }
 
@@ -2710,7 +2786,7 @@ async function renderBodyWeightChart() {
 
   if (entries.length === 0) {
     currentEl.textContent = '--';
-    container.innerHTML = '<span class="chart-empty">Log your first weigh-in above</span>';
+    showEmptyState(container, '⚖️', 'No weigh-ins yet', 'Log your weight above to start tracking trends.');
     return;
   }
 
@@ -3546,6 +3622,7 @@ async function init() {
 
   renderWeekStrip();
   renderRecentWorkouts();
+  renderStreakBanner();
   updateHeader('gym');
 
   // WHOOP

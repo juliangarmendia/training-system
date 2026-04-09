@@ -89,6 +89,7 @@
           <div class="week-banner" id="week-banner"></div>
           <div class="section-label">This Week</div>
           <div class="week-strip" id="week-strip"></div>
+          <div id="streak-banner"></div>
           <div class="section-label" style="margin-top:20px">Recent Workouts</div>
           <div id="recent-workouts" class="recent-list"></div>
         </div>
@@ -102,8 +103,15 @@
             <div class="workout-timer" id="workout-timer">00:00</div>
           </div>
           <div class="session-progress" id="session-progress">
+            <div class="sp-ring-row">
+              <svg class="sp-ring" width="84" height="84" viewBox="0 0 84 84">
+                <circle cx="42" cy="42" r="38" fill="none" stroke="var(--border)" stroke-width="5"/>
+                <circle id="sp-ring-fill" cx="42" cy="42" r="38" fill="none" stroke="var(--accent)" stroke-width="5" stroke-linecap="round" stroke-dasharray="238.76" stroke-dashoffset="238.76" style="transition:stroke-dashoffset 0.5s ease-out"/>
+              </svg>
+              <span class="sp-ring-text" id="sp-ring-pct">0%</span>
+            </div>
             <div class="sp-bar"><div class="sp-fill" id="sp-fill"></div></div>
-            <div class="sp-text" id="sp-text">0 / 0 exercises</div>
+            <div class="sp-text" id="sp-text">0 / 0 sets</div>
           </div>
           <div class="warmup-card" id="warmup-section">
             <div class="warmup-header" id="warmup-toggle">
@@ -324,7 +332,7 @@
           </div>
           <div class="section-label" style="margin-top:24px">App</div>
           <div class="card">
-            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v5.2<br>Data stored locally + cloud sync.<br>Works offline.</p>
+            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v6.0<br>Data stored locally + cloud sync.<br>Works offline.</p>
             <button id="btn-force-update" class="btn-secondary btn-full" style="text-align:center">Force Update App</button>
           </div>
         </div>
