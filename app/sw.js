@@ -2,7 +2,7 @@
 // Service Worker — Training App v4.0
 // ============================================================
 
-const CACHE_NAME = 'training-v7.4';
+const CACHE_NAME = 'training-v7.5';
 const APP_SHELL = [
   './',
   './index.html',
@@ -12,6 +12,7 @@ const APP_SHELL = [
   './whoop.js',
   './manifest.json',
   './app-icon.png',
+  './intro.mp4',
 ];
 
 // Install: precache app shell, skip waiting immediately

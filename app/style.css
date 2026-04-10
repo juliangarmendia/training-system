@@ -617,6 +617,23 @@ nav { display: flex; background: var(--surface); border-top: 1px solid var(--bor
 /* ========== Login form spacing ========== */
 .login-row { margin-bottom: 10px; }
 .login-error { color: var(--red); font-size: 12px; min-height: 18px; margin-bottom: 6px; }
+.login-video-card {
+  width: 180px;
+  height: 180px;
+  margin: 0 auto 18px;
+  border-radius: 28px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  box-shadow: 0 12px 40px rgba(0,0,0,0.45), 0 0 0 1px var(--accent-dim);
+  background: var(--surface);
+  position: relative;
+}
+.login-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
 
 /* ========== Shared text input ========== */
 .text-input {
