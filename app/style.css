@@ -10,9 +10,11 @@
   --accent-dim: rgba(74,222,128,0.12); --accent-glow: rgba(74,222,128,0.2);
   --blue: #60a5fa; --orange: #fb923c; --red: #f87171; --yellow: #fbbf24;
   --purple: #a78bfa; --pink: #f472b6; --teal: #34d399;
-  --radius: 16px; --radius-sm: 10px; --radius-xs: 8px;
+  --radius: 16px; --radius-sm: 10px; --radius-xs: 8px; --radius-lg: 20px;
   --nav-h: 80px; --header-h: 56px;
   --safe-top: env(safe-area-inset-top, 0px); --safe-bottom: env(safe-area-inset-bottom, 0px);
+  /* Typography scale */
+  --fs-xs: 11px; --fs-sm: 13px; --fs-md: 15px; --fs-lg: 18px; --fs-xl: 22px; --fs-display: 28px;
 }
 
 [data-theme="light"] {
@@ -69,6 +71,8 @@ header h1 { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
 #view-run { --section-accent: var(--blue); --section-glow: rgba(96,165,250,0.12); }
 #view-nutrition { --section-accent: var(--accent); --section-glow: rgba(74,222,128,0.12); }
 #view-stats { --section-accent: var(--purple); --section-glow: rgba(167,139,250,0.12); }
+#view-settings { --section-accent: var(--teal); --section-glow: rgba(52,211,153,0.12); }
+#login-screen, #welcome-screen { --section-accent: var(--accent); --section-glow: var(--accent-glow); }
 
 /* ========== Main / Views ========== */
 main { flex: 1; overflow: hidden; position: relative; }
@@ -91,8 +95,11 @@ nav { display: flex; background: var(--surface); border-top: 1px solid var(--bor
 .card { background: var(--surface); border-radius: var(--radius); padding: 16px; border: 1px solid var(--border); box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
 .form-card { display: flex; flex-direction: column; gap: 16px; }
 .nutrition-card { display: flex; flex-direction: column; gap: 14px; }
-.section-label { font-size: 12px; font-weight: 700; color: var(--section-accent, var(--text3)); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 10px; padding: 4px 4px; opacity: 0.8; position: sticky; top: 0; z-index: 20; background: var(--bg); transition: font-size 0.15s, padding 0.15s; }
-.section-label.stuck { font-size: 10px; padding: 3px 8px; background: var(--surface); border-radius: 0 0 var(--radius-xs) var(--radius-xs); box-shadow: 0 2px 8px rgba(0,0,0,0.2); margin-left: -8px; margin-right: -8px; }
+.section-label { font-size: var(--fs-xs); font-weight: 700; color: var(--section-accent, var(--text3)); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 10px; padding: 4px 4px; opacity: 0.85; transition: font-size 0.15s, padding 0.15s; }
+/* Only root-level labels (direct children of .view-scroll) are sticky */
+.view-scroll > .section-label { position: sticky; top: 0; z-index: 20; background: var(--bg); }
+.view-scroll > .section-label ~ .section-label { margin-top: 24px; }
+.view-scroll > .section-label.stuck { font-size: 10px; padding: 3px 8px; background: var(--surface); border-radius: 0 0 var(--radius-xs) var(--radius-xs); box-shadow: 0 2px 8px rgba(0,0,0,0.2); margin-left: -8px; margin-right: -8px; }
 .divider { height: 1px; background: var(--border); margin: 4px 0; }
 
 /* ========== Week Banner ========== */
@@ -259,7 +266,7 @@ nav { display: flex; background: var(--surface); border-top: 1px solid var(--bor
 .hi-delete { background: none; border: none; color: var(--text3); font-size: 18px; padding: 4px 8px; cursor: pointer; margin-left: 8px; }
 
 /* ========== Protein Ring ========== */
-.macro-ring-container { display: flex; justify-content: center; margin-bottom: 4px; }
+.macro-ring-container, .protein-ring-container { display: flex; justify-content: center; margin-bottom: 4px; }
 .macro-ring { position: relative; width: 130px; height: 130px; }
 .macro-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
 .ring-bg { fill: none; stroke: var(--border); stroke-width: 8; }
@@ -590,3 +597,124 @@ nav { display: flex; background: var(--surface); border-top: 1px solid var(--bor
 }
 
 @media (min-width: 481px) { #app { border-left: 1px solid var(--border); border-right: 1px solid var(--border); } }
+
+/* ========== Body weight current row ========== */
+.bw-current-row { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.bw-current-label { font-size: var(--fs-sm); color: var(--text2); }
+.bw-current-val { font-size: var(--fs-lg); font-weight: 800; }
+.bw-rate { font-size: 12px; margin-bottom: 10px; }
+
+/* ========== Meal input row ========== */
+.meal-input-row { display: flex; gap: 8px; }
+.meal-input-row #meal-name { flex: 1; }
+.meal-protein-input { width: 70px; flex-shrink: 0; text-align: center; }
+
+/* ========== Inline-row wrappers ========== */
+.bw-row, .plate-input-row { display: flex; gap: 8px; align-items: center; }
+.bw-row .text-input, .plate-input-row .text-input { flex: 1; }
+.bw-row .btn-primary { width: auto; padding: 10px 20px; }
+
+/* ========== Login form spacing ========== */
+.login-row { margin-bottom: 10px; }
+.login-error { color: var(--red); font-size: 12px; min-height: 18px; margin-bottom: 6px; }
+
+/* ========== Shared text input ========== */
+.text-input {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 16px;
+  padding: 10px 14px;
+  width: 100%;
+  -webkit-appearance: none;
+  font-family: inherit;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.text-input:focus { border-color: var(--section-accent, var(--accent)); outline: none; box-shadow: 0 0 0 2px var(--accent-dim); }
+.text-input::placeholder { color: var(--text3); }
+.text-input.sm { font-size: 14px; padding: 10px 12px; }
+
+/* ========== Nav active — icon language parity ========== */
+.nav-btn { transition: color 0.15s, background 0.2s; }
+.nav-btn.active { color: var(--accent); }
+.nav-btn .nav-icon-wrap {
+  width: 38px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 14px;
+  transition: background 0.2s, transform 0.2s;
+}
+.nav-btn.active .nav-icon-wrap { background: var(--accent-dim); transform: translateY(-1px); }
+.nav-btn.active svg { stroke: var(--accent); }
+.nav-btn.active::before { display: none; } /* retire the old top bar */
+
+/* ========== View transitions use section accent ========== */
+.view.active .view-scroll { animation: viewFadeIn 0.3s ease-out; }
+@keyframes viewFadeIn {
+  from { opacity: 0; transform: translateY(6px); border-top-color: transparent; }
+  to { opacity: 1; transform: none; }
+}
+
+/* ========== Quick-add buttons: uniform compact grid ========== */
+.quick-add-grid { grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.quick-add-grid button {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 2px;
+  padding: 8px 2px;
+  min-height: 48px;
+  font-size: 10px;
+  line-height: 1.1;
+  white-space: normal;
+  text-align: center;
+}
+.quick-add-grid button .qa-name { font-size: 10px; font-weight: 700; color: var(--accent); }
+.quick-add-grid button .qa-g { font-size: 9px; font-weight: 600; color: var(--text3); }
+
+/* ========== Protein ring label hierarchy ========== */
+.macro-ring { width: 140px; height: 140px; }
+.ring-value { font-size: var(--fs-display); font-weight: 900; line-height: 1; }
+.ring-unit { font-size: 10px; color: var(--text3); margin-top: 4px; }
+.ring-name { font-size: 9px; color: var(--text3); letter-spacing: 0.8px; text-transform: uppercase; margin-top: 2px; }
+
+/* ========== Stats default card spacing ========== */
+#view-stats .view-scroll > .card,
+#view-stats .view-scroll > .chart-box,
+#view-stats .view-scroll > .report-card,
+#view-stats .view-scroll > .week-compare,
+#view-stats .view-scroll > #activity-rings,
+#view-stats .view-scroll > .streak-row,
+#view-stats .view-scroll > .fatigue-card { margin-bottom: 12px; }
+
+/* ========== Stats sub-tabs ========== */
+.stats-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  margin-bottom: 16px;
+  position: sticky;
+  top: 0;
+  z-index: 30;
+}
+.stats-tab {
+  flex: 1;
+  padding: 8px 4px;
+  border: none;
+  background: none;
+  color: var(--text3);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.stats-tab.active {
+  background: var(--section-accent, var(--accent));
+  color: var(--bg);
+}
+#view-stats .view-scroll > [data-group]:not(.active-group),
+#view-stats .view-scroll > .section-label[data-group]:not(.active-group) { display: none; }

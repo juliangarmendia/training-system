@@ -1493,15 +1493,23 @@ async function clearActiveWorkout() {
   await dbDelete('settings', 'activeWorkout');
   const banner = document.getElementById('resume-workout-banner');
   if (banner) { banner.classList.add('hidden'); banner.innerHTML = ''; }
+  const weekBanner = document.getElementById('week-banner');
+  if (weekBanner) weekBanner.classList.remove('hidden');
 }
 
 async function showResumeBanner() {
   const banner = document.getElementById('resume-workout-banner');
   if (!banner) return;
   const saved = await dbGet('settings', 'activeWorkout');
-  if (!saved || !saved.sessionId) { banner.classList.add('hidden'); return; }
+  const weekBanner = document.getElementById('week-banner');
+  if (!saved || !saved.sessionId) {
+    banner.classList.add('hidden');
+    if (weekBanner) weekBanner.classList.remove('hidden');
+    return;
+  }
   const session = PLAN.sessions[saved.sessionId];
   if (!session) { await clearActiveWorkout(); return; }
+  if (weekBanner) weekBanner.classList.add('hidden');
 
   const elapsed = Math.floor((Date.now() - saved.startTime) / 1000);
   const completedSets = saved.exercises.reduce((sum, ex) => sum + ex.sets.filter(s => s.done).length, 0);
@@ -1812,7 +1820,21 @@ function renderLineChart(labels, values, opts = {}) {
 }
 
 // ==================== STATS MODULE ====================
+function switchStatsGroup(group) {
+  document.querySelectorAll('#stats-tabs .stats-tab').forEach(b => {
+    b.classList.toggle('active', b.dataset.statsGroup === group);
+  });
+  document.querySelectorAll('#view-stats .view-scroll > [data-group]').forEach(el => {
+    el.classList.toggle('active-group', el.dataset.group === group);
+  });
+  const scroll = document.querySelector('#view-stats .view-scroll');
+  if (scroll) scroll.scrollTop = 0;
+}
+
 async function renderStats() {
+  // Ensure a stats group is active (default: today)
+  const anyActive = document.querySelector('#view-stats .view-scroll > [data-group].active-group');
+  if (!anyActive) switchStatsGroup('today');
   await renderActivityRings();
   await renderBodyWeightChart();
   if (window.renderWhoopRecoveryCard) await renderWhoopRecoveryCard();
@@ -3738,6 +3760,11 @@ function bindEvents() {
     btn.addEventListener('click', () => switchTab(btn.dataset.tab));
   });
 
+  // Stats sub-tabs
+  document.querySelectorAll('#stats-tabs .stats-tab').forEach(btn => {
+    btn.addEventListener('click', () => switchStatsGroup(btn.dataset.statsGroup));
+  });
+
   // Settings button
   document.getElementById('btn-settings').addEventListener('click', () => {
     showView('settings');
@@ -3863,13 +3890,11 @@ function bindEvents() {
 
   // Plate calculator
   document.getElementById('plate-calc-input').addEventListener('input', renderPlateCalculator);
-  document.querySelectorAll('.plate-unit-btn').forEach(btn => {
+  document.querySelectorAll('#plate-unit-toggle .toggle-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       plateCalcUnit = btn.dataset.plateUnit;
-      document.querySelectorAll('.plate-unit-btn').forEach(b => {
-        b.classList.toggle('active', b === btn);
-        b.style.background = b === btn ? 'var(--accent)' : 'var(--surface)';
-        b.style.color = b === btn ? 'var(--bg)' : 'var(--text2)';
+      document.querySelectorAll('#plate-unit-toggle .toggle-btn').forEach(b => {
+        b.classList.toggle('selected', b === btn);
       });
       renderPlateCalculator();
     });
@@ -4065,7 +4090,7 @@ async function init() {
 
   // Sticky compressed section headers
   document.querySelectorAll('.view-scroll').forEach(scroll => {
-    const labels = scroll.querySelectorAll('.section-label');
+    const labels = scroll.querySelectorAll(':scope > .section-label');
     if (!labels.length) return;
     const observer = new IntersectionObserver(entries => {
       entries.forEach(entry => {

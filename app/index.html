@@ -19,10 +19,10 @@
       <img src="app-icon.png" alt="Training System" style="width:120px;height:120px;border-radius:24px;margin-bottom:16px">
       <div class="pin-prompt">Training System</div>
       <div id="login-form" style="text-align:left">
-        <div class="form-row" id="login-name-row" style="margin-bottom:10px;display:none"><label>Your name</label><input type="text" id="login-name" placeholder="Julian" autocomplete="given-name" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:16px;padding:10px 14px;width:100%"></div>
-        <div class="form-row" style="margin-bottom:10px"><label>Email</label><input type="email" id="login-email" placeholder="you@email.com" autocomplete="email" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:16px;padding:10px 14px;width:100%"></div>
-        <div class="form-row" style="margin-bottom:10px"><label>Password</label><input type="password" id="login-password" placeholder="Min 6 characters" autocomplete="current-password" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:16px;padding:10px 14px;width:100%"></div>
-        <div id="login-error" style="color:var(--red);font-size:12px;min-height:18px;margin-bottom:6px"></div>
+        <div class="form-row login-row" id="login-name-row" style="display:none"><label>Your name</label><input type="text" id="login-name" class="text-input" placeholder="Julian" autocomplete="given-name"></div>
+        <div class="form-row login-row"><label>Email</label><input type="email" id="login-email" class="text-input" placeholder="you@email.com" autocomplete="email"></div>
+        <div class="form-row login-row"><label>Password</label><input type="password" id="login-password" class="text-input" placeholder="Min 6 characters" autocomplete="current-password"></div>
+        <div id="login-error" class="login-error"></div>
         <button id="btn-login" class="btn-primary" style="margin-bottom:8px">Sign In</button>
         <button id="btn-register" class="btn-secondary btn-full" style="text-align:center">Create Account</button>
       </div>
@@ -158,28 +158,32 @@
         <div class="view-scroll">
           <div class="section-label" id="nutrition-date-label">Today</div>
           <div class="card nutrition-card">
-            <div class="macro-ring-container">
+            <div class="protein-ring-container">
               <div class="macro-ring" id="protein-ring">
                 <svg viewBox="0 0 120 120"><circle cx="60" cy="60" r="52" class="ring-bg"/><circle cx="60" cy="60" r="52" class="ring-fill" id="protein-ring-fill"/></svg>
-                <div class="ring-label"><span id="protein-current" class="ring-value">0</span><span class="ring-unit">/ <span id="protein-target-display">170</span>g</span><span class="ring-name">Protein</span></div>
+                <div class="ring-label">
+                  <span id="protein-current" class="ring-value">0</span>
+                  <span class="ring-unit">of <span id="protein-target-display">170</span>g</span>
+                  <span class="ring-name">Protein</span>
+                </div>
               </div>
             </div>
             <div class="section-label" style="margin-top:4px">Log a Meal</div>
             <div class="meal-log-form">
-              <div style="display:flex;gap:8px">
-                <input type="text" id="meal-name" placeholder="What did you eat?" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:14px;padding:10px 12px" list="protein-suggestions">
-                <input type="number" id="meal-protein" placeholder="prot g" inputmode="numeric" style="width:70px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:14px;padding:10px 8px;text-align:center">
+              <div class="meal-input-row">
+                <input type="text" id="meal-name" class="text-input sm" placeholder="What did you eat?" list="protein-suggestions">
+                <input type="number" id="meal-protein" class="text-input sm meal-protein-input" placeholder="g" inputmode="numeric">
               </div>
               <datalist id="protein-suggestions"></datalist>
               <div class="quick-add quick-add-grid" id="quick-add" style="margin-top:8px">
-                <button data-meal="Protein Shake" data-g="30">Shake 30g</button>
-                <button data-meal="Chicken Breast" data-g="40">Chicken 40g</button>
-                <button data-meal="Steak (200g)" data-g="50">Steak 50g</button>
-                <button data-meal="Eggs x3" data-g="18">Eggs x3 18g</button>
-                <button data-meal="Greek Yogurt" data-g="15">Yogurt 15g</button>
-                <button data-meal="Tuna Can" data-g="25">Tuna 25g</button>
-                <button data-meal="Salmon Fillet" data-g="35">Salmon 35g</button>
-                <button data-meal="Ground Beef" data-g="40">Beef 40g</button>
+                <button data-meal="Protein Shake" data-g="30"><span class="qa-name">Shake</span><span class="qa-g">30g</span></button>
+                <button data-meal="Chicken Breast" data-g="40"><span class="qa-name">Chicken</span><span class="qa-g">40g</span></button>
+                <button data-meal="Steak (200g)" data-g="50"><span class="qa-name">Steak</span><span class="qa-g">50g</span></button>
+                <button data-meal="Eggs x3" data-g="18"><span class="qa-name">Eggs×3</span><span class="qa-g">18g</span></button>
+                <button data-meal="Greek Yogurt" data-g="15"><span class="qa-name">Yogurt</span><span class="qa-g">15g</span></button>
+                <button data-meal="Tuna Can" data-g="25"><span class="qa-name">Tuna</span><span class="qa-g">25g</span></button>
+                <button data-meal="Salmon Fillet" data-g="35"><span class="qa-name">Salmon</span><span class="qa-g">35g</span></button>
+                <button data-meal="Ground Beef" data-g="40"><span class="qa-name">Beef</span><span class="qa-g">40g</span></button>
               </div>
               <button id="btn-add-meal" class="btn-primary" style="margin-top:8px">Add Meal</button>
             </div>
@@ -188,7 +192,7 @@
             <div id="meal-list" class="recent-list" style="max-height:200px;overflow-y:auto"></div>
             <div class="divider" style="margin:12px 0"></div>
             <div class="checklist">
-              <div class="check-row"><label>Energy level</label><div id="nut-energy" class="stars compact"><button data-v="1">😩</button><button data-v="2">😐</button><button data-v="3" class="selected">🙂</button><button data-v="4">😊</button><button data-v="5">💪</button></div></div>
+              <div class="check-row"><label>Energy level</label><div id="nut-energy" class="stars compact"><button data-v="1">1</button><button data-v="2">2</button><button data-v="3" class="selected">3</button><button data-v="4">4</button><button data-v="5">5</button></div></div>
             </div>
             <button class="expand-btn" id="nut-expand-btn">More details ▾</button>
             <div class="expand-content hidden" id="nut-expand">
@@ -207,83 +211,71 @@
       <!-- Stats -->
       <section id="view-stats" class="view">
         <div class="view-scroll">
-          <!-- Activity Rings -->
-          <div id="activity-rings" style="margin-bottom:16px"></div>
+          <!-- Stats sub-tabs -->
+          <div class="stats-tabs" id="stats-tabs">
+            <button class="stats-tab active" data-stats-group="today">Today</button>
+            <button class="stats-tab" data-stats-group="body">Body</button>
+            <button class="stats-tab" data-stats-group="strength">Strength</button>
+            <button class="stats-tab" data-stats-group="tools">Tools</button>
+          </div>
 
-          <!-- Body Weight -->
-          <div class="section-label">Body Weight</div>
-          <div class="card" style="margin-bottom:12px">
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-              <span style="font-size:13px;color:var(--text2)">Current:</span>
-              <span id="bw-current" style="font-size:18px;font-weight:800">--</span>
+          <!-- ===== TODAY ===== -->
+          <div id="activity-rings" data-group="today"></div>
+          <div id="deload-reminder" class="hidden" data-group="today"></div>
+          <div class="streak-row" id="streak-row" data-group="today"></div>
+          <div class="fatigue-card" id="fatigue-card" data-group="today"></div>
+          <div class="section-label" data-group="today">This Week</div>
+          <div class="card" id="weekly-summary" data-group="today"></div>
+          <div class="section-label" data-group="today">Weekly Timeline</div>
+          <div class="card" id="swimlane-timeline" data-group="today"></div>
+          <div id="whoop-recovery" class="card hidden" data-group="today"></div>
+          <div class="section-label" data-group="today">Weekly Report</div>
+          <div class="report-card" id="weekly-report" data-group="today"></div>
+          <div class="section-label" data-group="today">Week vs Week</div>
+          <div id="week-compare" class="week-compare" data-group="today"></div>
+
+          <!-- ===== BODY ===== -->
+          <div class="section-label" data-group="body">Body Weight</div>
+          <div class="card" data-group="body">
+            <div class="bw-current-row">
+              <span class="bw-current-label">Current:</span>
+              <span id="bw-current" class="bw-current-val">--</span>
             </div>
-            <div id="bw-rate" style="font-size:12px;margin-bottom:10px"></div>
-            <div style="display:flex;gap:8px">
-              <input type="number" id="bw-input" placeholder="e.g. 82.5" inputmode="decimal" step="0.1" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:16px;padding:10px 14px">
-              <button id="btn-log-bw" class="btn-primary" style="width:auto;padding:10px 20px">Log</button>
+            <div id="bw-rate" class="bw-rate"></div>
+            <div class="bw-row">
+              <input type="number" id="bw-input" class="text-input" placeholder="e.g. 82.5" inputmode="decimal" step="0.1">
+              <button id="btn-log-bw" class="btn-primary">Log</button>
             </div>
           </div>
-          <div class="chart-box" id="bw-chart" style="margin-bottom:16px"></div>
+          <div class="chart-box" id="bw-chart" data-group="body"></div>
+          <div class="section-label" data-group="body">Body Composition</div>
+          <div class="card" id="bodycomp-section" data-group="body"></div>
+          <div class="section-label" data-group="body">Daily Protein (14 days)</div>
+          <div class="chart-box" id="protein-chart" data-group="body"></div>
+          <div class="section-label" data-group="body">Activity Calendar</div>
+          <div class="card" id="streak-calendar" data-group="body"></div>
 
-          <!-- Swimlane Timeline -->
-          <div class="section-label" style="margin-top:20px">Weekly Timeline</div>
-          <div class="card" id="swimlane-timeline" style="margin-bottom:12px"></div>
+          <!-- ===== STRENGTH ===== -->
+          <div class="section-label" data-group="strength">Weekly Sets by Muscle</div>
+          <div class="card" id="muscle-volume" data-group="strength"></div>
+          <div class="section-label" data-group="strength">Strength (Est. 1RM)</div>
+          <div class="chart-tabs" id="strength-tabs" data-group="strength"></div>
+          <div class="chart-box" id="strength-chart" data-group="strength"></div>
+          <div class="section-label" data-group="strength">Weekly Volume (kg)</div>
+          <div class="chart-box" id="volume-chart" data-group="strength"></div>
 
-          <!-- WHOOP Recovery -->
-          <div id="whoop-recovery" class="card hidden" style="margin-bottom:12px"></div>
-
-          <!-- Deload Reminder -->
-          <div id="deload-reminder" class="hidden"></div>
-
-          <div class="streak-row" id="streak-row"></div>
-          <div class="fatigue-card" id="fatigue-card"></div>
-          <!-- Weekly Summary -->
-          <div class="section-label" style="margin-top:16px">This Week</div>
-          <div class="card" id="weekly-summary" style="margin-bottom:12px"></div>
-
-          <div class="section-label">Weekly Report</div>
-          <div class="report-card" id="weekly-report"></div>
-          <div class="section-label" style="margin-top:20px">Week vs Week</div>
-          <div id="week-compare" class="week-compare"></div>
-
-          <!-- Streak Calendar -->
-          <div class="section-label" style="margin-top:20px">Activity Calendar</div>
-          <div class="card" id="streak-calendar" style="margin-bottom:12px"></div>
-
-          <!-- Volume Per Muscle -->
-          <div class="section-label" style="margin-top:20px">Weekly Sets by Muscle</div>
-          <div class="card" id="muscle-volume" style="margin-bottom:12px"></div>
-
-          <!-- Body Composition -->
-          <div class="section-label" style="margin-top:20px">Body Composition</div>
-          <div class="card" id="bodycomp-section" style="margin-bottom:12px"></div>
-
-          <!-- Protein Chart -->
-          <div class="section-label" style="margin-top:20px">Daily Protein (14 days)</div>
-          <div class="chart-box" id="protein-chart"></div>
-
-          <!-- Macro Calculator -->
-          <div class="section-label" style="margin-top:20px">Macro Calculator</div>
-          <div class="card" id="macro-calc-section" style="margin-bottom:12px"></div>
-
-          <div class="section-label" style="margin-top:20px">Strength (Est. 1RM)</div>
-          <div class="chart-tabs" id="strength-tabs"></div>
-          <div class="chart-box" id="strength-chart"></div>
-          <div class="section-label" style="margin-top:20px">Weekly Volume (kg)</div>
-          <div class="chart-box" id="volume-chart"></div>
-
-          <!-- Workout Templates -->
-          <div class="section-label" style="margin-top:20px">Workout Templates</div>
-          <div class="card" id="template-section" style="margin-bottom:12px"></div>
-
-          <!-- Plate Calculator -->
-          <div class="section-label" style="margin-top:20px">Plate Calculator</div>
-          <div class="card" style="margin-bottom:20px">
-            <div style="display:flex;gap:8px;margin-bottom:10px;align-items:center">
-              <input type="number" id="plate-calc-input" placeholder="Target weight" inputmode="decimal" step="0.5" style="flex:1;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:16px;padding:10px 14px">
-              <div id="plate-unit-toggle" style="display:flex;border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden;flex-shrink:0">
-                <button class="plate-unit-btn active" data-plate-unit="kg" style="padding:10px 14px;font-size:14px;font-weight:600;border:none;cursor:pointer;background:var(--accent);color:var(--bg)">kg</button>
-                <button class="plate-unit-btn" data-plate-unit="lb" style="padding:10px 14px;font-size:14px;font-weight:600;border:none;cursor:pointer;background:var(--surface);color:var(--text2)">lb</button>
+          <!-- ===== TOOLS ===== -->
+          <div class="section-label" data-group="tools">Macro Calculator</div>
+          <div class="card" id="macro-calc-section" data-group="tools"></div>
+          <div class="section-label" data-group="tools">Workout Templates</div>
+          <div class="card" id="template-section" data-group="tools"></div>
+          <div class="section-label" data-group="tools">Plate Calculator</div>
+          <div class="card" data-group="tools">
+            <div class="plate-input-row">
+              <input type="number" id="plate-calc-input" class="text-input" placeholder="Target weight" inputmode="decimal" step="0.5">
+              <div id="plate-unit-toggle" class="toggle-group">
+                <button class="toggle-btn selected" data-plate-unit="kg">kg</button>
+                <button class="toggle-btn" data-plate-unit="lb">lb</button>
               </div>
             </div>
             <div id="plate-calc-result"></div>
@@ -323,7 +315,7 @@
           </div>
           <div class="section-label" style="margin-top:24px">Profile & Targets</div>
           <div class="card">
-            <div class="form-row"><label>Your name</label><input type="text" id="setting-name" placeholder="Your name" style="background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:16px;padding:10px 14px;width:100%"></div>
+            <div class="form-row"><label>Your name</label><input type="text" id="setting-name" class="text-input" placeholder="Your name"></div>
             <div style="height:12px"></div>
             <div class="form-row inline"><label>Weight unit</label><div class="toggle-group"><button id="unit-kg" class="toggle-btn selected">kg</button><button id="unit-lb" class="toggle-btn">lb</button></div></div>
             <div style="height:12px"></div>
@@ -340,7 +332,7 @@
           </div>
           <div class="section-label" style="margin-top:24px">App</div>
           <div class="card">
-            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v7.3<br>Data stored locally + cloud sync.<br>Works offline.</p>
+            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v7.4<br>Data stored locally + cloud sync.<br>Works offline.</p>
             <button id="btn-force-update" class="btn-secondary btn-full" style="text-align:center">Force Update App</button>
           </div>
         </div>
@@ -364,19 +356,19 @@
     <!-- Bottom Nav -->
     <nav id="nav">
       <button class="nav-btn active" data-tab="gym">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="10" rx="1"/><line x1="6" y1="4" x2="6" y2="20"/><line x1="18" y1="4" x2="18" y2="20"/></svg>
+        <div class="nav-icon-wrap"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="10" rx="1"/><line x1="6" y1="4" x2="6" y2="20"/><line x1="18" y1="4" x2="18" y2="20"/></svg></div>
         <span>Gym</span>
       </button>
       <button class="nav-btn" data-tab="run">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="14" cy="4" r="2"/><path d="M6 21l3-9 2.5 2V21M16 11l-3-3-4 4 2 2"/></svg>
+        <div class="nav-icon-wrap"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="14" cy="4" r="2"/><path d="M6 21l3-9 2.5 2V21M16 11l-3-3-4 4 2 2"/></svg></div>
         <span>Run</span>
       </button>
       <button class="nav-btn" data-tab="nutrition">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8h1a4 4 0 010 8h-1"/><path d="M2 8h16v9a4 4 0 01-4 4H6a4 4 0 01-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>
+        <div class="nav-icon-wrap"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8h1a4 4 0 010 8h-1"/><path d="M2 8h16v9a4 4 0 01-4 4H6a4 4 0 01-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg></div>
         <span>Food</span>
       </button>
       <button class="nav-btn" data-tab="stats">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        <div class="nav-icon-wrap"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
         <span>Stats</span>
       </button>
     </nav>
