@@ -11,10 +11,17 @@ const WHOOP_SCOPES = 'read:recovery read:sleep read:workout read:body_measuremen
 
 // ==================== AUTH ====================
 function whoopIsConnected() {
-  return !!localStorage.getItem('whoop_access_token');
+  // Need either a live access token or a refresh token to be truly "connected"
+  return !!(localStorage.getItem('whoop_access_token') || localStorage.getItem('whoop_refresh_token'));
+}
+
+function whoopNeedsReconnect() {
+  // Explicit flag set when refresh fails irrecoverably
+  return localStorage.getItem('whoop_needs_reconnect') === '1';
 }
 
 function whoopConnect() {
+  localStorage.removeItem('whoop_needs_reconnect');
   const params = new URLSearchParams({
     client_id: WHOOP_CLIENT_ID,
     redirect_uri: WHOOP_REDIRECT_URI,
@@ -31,20 +38,30 @@ function whoopDisconnect() {
   localStorage.removeItem('whoop_token_expiry');
   localStorage.removeItem('whoop_last_sync');
   localStorage.removeItem('whoop_cache');
+  localStorage.removeItem('whoop_needs_reconnect');
 }
 
-async function whoopGetToken() {
-  const expiry = parseInt(localStorage.getItem('whoop_token_expiry') || '0');
-  const token = localStorage.getItem('whoop_access_token');
+function whoopMarkReconnectNeeded(reason) {
+  console.warn('[WHOOP] Marking reconnect needed:', reason);
+  localStorage.setItem('whoop_needs_reconnect', '1');
+  localStorage.removeItem('whoop_access_token');
+  localStorage.removeItem('whoop_token_expiry');
+  // Keep refresh_token around in case user retries, but the flag drives UI
+}
+
+// Errors that mean the refresh token itself is dead — no point retrying
+function isFatalAuthError(status, errStr) {
+  if (status === 400 || status === 401 || status === 403) return true;
+  const s = String(errStr || '').toLowerCase();
+  return s.includes('invalid_grant') || s.includes('invalid_token') || s.includes('unauthorized') || s.includes('expired');
+}
+
+async function whoopRefreshToken() {
   const refresh = localStorage.getItem('whoop_refresh_token');
-
-  if (!token) return null;
-
-  // If token is still valid (with 5 min buffer)
-  if (Date.now() < expiry - 300000) return token;
-
-  // Try to refresh
-  if (!refresh) return null;
+  if (!refresh) {
+    whoopMarkReconnectNeeded('no refresh token');
+    return null;
+  }
 
   try {
     const res = await fetch(WHOOP_TOKEN_PROXY, {
@@ -56,24 +73,45 @@ async function whoopGetToken() {
       body: JSON.stringify({ action: 'refresh', refresh_token: refresh }),
     });
 
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
+
     if (!res.ok || data.error) {
-      // Don't disconnect — return existing token and let API calls handle auth errors
-      console.warn('[WHOOP] Token refresh failed, using existing token:', data.error || res.status);
-      return token;
+      if (isFatalAuthError(res.status, data.error)) {
+        whoopMarkReconnectNeeded(`refresh failed: ${res.status} ${data.error || ''}`);
+        return null;
+      }
+      // Transient network/proxy error — keep state, retry later
+      console.warn('[WHOOP] Transient refresh failure, will retry later:', res.status, data.error);
+      return null;
     }
 
     localStorage.setItem('whoop_access_token', data.access_token);
     localStorage.setItem('whoop_refresh_token', data.refresh_token);
     localStorage.setItem('whoop_token_expiry', String(Date.now() + data.expires_in * 1000));
+    localStorage.removeItem('whoop_needs_reconnect');
     return data.access_token;
-  } catch {
-    return token;
+  } catch (e) {
+    // Network error — don't mark as needing reconnect, this is likely offline
+    console.warn('[WHOOP] Network error during refresh:', e);
+    return null;
   }
 }
 
+async function whoopGetToken() {
+  if (whoopNeedsReconnect()) return null;
+
+  const expiry = parseInt(localStorage.getItem('whoop_token_expiry') || '0');
+  const token = localStorage.getItem('whoop_access_token');
+
+  // If token is still valid (with 5 min buffer), use it
+  if (token && Date.now() < expiry - 300000) return token;
+
+  // Otherwise refresh
+  return await whoopRefreshToken();
+}
+
 // ==================== API CALLS (via proxy) ====================
-async function whoopFetch(endpoint) {
+async function whoopFetch(endpoint, _retried = false) {
   const token = await whoopGetToken();
   if (!token) return null;
 
@@ -88,12 +126,23 @@ async function whoopFetch(endpoint) {
       body: JSON.stringify({ action: 'api', endpoint, access_token: token }),
     });
 
-    const data = await res.json();
-    console.log(`[WHOOP] ${endpoint} →`, res.status, data);
+    const data = await res.json().catch(() => ({}));
+    console.log(`[WHOOP] ${endpoint} →`, res.status);
+
+    if (res.status === 401 && !_retried) {
+      // Stale access token — force a refresh and retry exactly once
+      console.warn('[WHOOP] 401, forcing refresh + retry:', endpoint);
+      localStorage.setItem('whoop_token_expiry', '0'); // invalidate
+      const newToken = await whoopRefreshToken();
+      if (!newToken) return null;
+      return await whoopFetch(endpoint, true);
+    }
 
     if (!res.ok) {
-      // Don't disconnect on 401 from API — token might just need refresh
-      if (res.status === 401) console.warn('[WHOOP] Token may be expired for:', endpoint);
+      if (res.status === 401) {
+        // Retry already failed → refresh token is dead
+        whoopMarkReconnectNeeded('API 401 after refresh retry');
+      }
       return null;
     }
     return data;
@@ -254,6 +303,18 @@ async function whoopSyncData() {
 function renderWhoopUI() {
   const container = document.getElementById('whoop-section');
   if (!container) return;
+
+  if (whoopNeedsReconnect()) {
+    container.innerHTML = `
+      <div class="form-row inline">
+        <label style="font-size:13px;color:var(--red)">WHOOP session expired</label>
+      </div>
+      <p class="muted" style="font-size:11px;margin-top:4px;margin-bottom:8px">Your WHOOP login expired. Reconnect to resume syncing recovery, HRV, and sleep.</p>
+      <button id="btn-whoop-reconnect" class="btn-secondary" style="width:100%;text-align:center;border-color:var(--red);color:var(--red)">Reconnect WHOOP</button>
+    `;
+    document.getElementById('btn-whoop-reconnect').addEventListener('click', whoopConnect);
+    return;
+  }
 
   if (whoopIsConnected()) {
     const lastSync = localStorage.getItem('whoop_last_sync') || 'Never';
