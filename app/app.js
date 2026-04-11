@@ -314,6 +314,18 @@ const state = {
 //
 // v1 had a slice bug (took 9 chars when Date.now().toString(36) is 8) so the
 // parsed epoch was garbage — v2 rolls a new flag and re-runs correctly.
+// One-shot: reset the cloud-sync watermark so the next syncAll re-pulls ALL
+// rows from Supabase. Used to recover workouts that were locally deleted but
+// still exist in cloud (e.g. accidental tap on the old delete X).
+async function oneShotCloudRecovery() {
+  if (localStorage.getItem('cloud_recovery_v1')) return;
+  try {
+    await dbDelete('settings', 'lastSyncTimestamp');
+    localStorage.setItem('cloud_recovery_v1', String(Date.now()));
+    console.log('[Recovery] lastSyncTimestamp reset — next sync will full-pull');
+  } catch (e) { console.warn('[Recovery] Failed:', e); }
+}
+
 async function migrateWorkoutDatesToLocal() {
   if (localStorage.getItem('tz_date_migration_v2')) return;
   try {
@@ -959,7 +971,7 @@ async function renderRecentWorkouts() {
     const session = PLAN.sessions[w.session];
     const totalSets = w.exercises.reduce((sum, ex) => sum + ex.sets.filter(s => s.done).length, 0);
     return `
-      <div class="history-item">
+      <div class="history-item" data-edit-workout="${w.id}">
         <div class="hi-left">
           <div class="hi-title">${session ? session.name : w.session}</div>
           <div class="hi-sub">${formatDate(w.date)} · ${totalSets} sets · ${w.duration || ''}</div>
@@ -969,30 +981,125 @@ async function renderRecentWorkouts() {
             <div class="hi-stat">${w.quality || '-'}/5</div>
             <div class="hi-stat-sub">quality</div>
           </div>
-          <button class="hi-delete" data-delete-workout="${w.id}">&times;</button>
+          <span class="hi-chev" aria-hidden="true">›</span>
         </div>
       </div>
     `;
   }).join('');
 
-  container.querySelectorAll('[data-delete-workout]').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const wId = btn.dataset.deleteWorkout;
-      const deletedW = await dbGet('workouts', wId);
-      await smartDelete('workouts', wId);
-      renderRecentWorkouts();
-      toast('Workout deleted', {
-        label: 'Undo',
-        callback: async () => {
-          if (deletedW) {
-            await smartPut('workouts', deletedW);
-            renderRecentWorkouts();
-          }
-        }
-      });
-    });
+  container.querySelectorAll('[data-edit-workout]').forEach(item => {
+    item.addEventListener('click', () => openEditWorkout(item.dataset.editWorkout));
   });
   morphIn(container);
+}
+
+// ==================== EDIT WORKOUT MODAL ====================
+let _editWorkoutId = null;
+
+async function openEditWorkout(id) {
+  const w = await dbGet('workouts', id);
+  if (!w) { toast('Workout not found'); return; }
+  _editWorkoutId = id;
+
+  const session = PLAN.sessions[w.session];
+  document.getElementById('ew-title').textContent = session ? session.name : w.session;
+  document.getElementById('ew-date').value = w.date || '';
+  document.getElementById('ew-quality').value = w.quality || '';
+  document.getElementById('ew-notes').value = w.notes || '';
+
+  const unit = state.settings.unit || 'kg';
+  const exHost = document.getElementById('ew-exercises');
+  exHost.innerHTML = w.exercises.map((ex, exi) => {
+    const name = getExerciseName(ex.exerciseId);
+    const rows = ex.sets.map((s, i) => `
+      <div class="ew-set" data-ex="${exi}" data-set="${i}">
+        <div class="ew-num">${i + 1}</div>
+        <input type="number" inputmode="decimal" step="0.5" data-f="weight" value="${s.weight || ''}" placeholder="${unit}">
+        <input type="number" inputmode="numeric" data-f="reps" value="${s.reps || ''}" placeholder="reps">
+        <input type="number" inputmode="decimal" step="0.5" data-f="rpe" value="${s.rpe || ''}" placeholder="rpe">
+        <button class="ew-done ${s.done ? 'checked' : ''}" data-f="done" type="button">✓</button>
+      </div>
+    `).join('');
+    return `
+      <div class="ew-ex">
+        <div class="ew-ex-name">${name}</div>
+        <div class="ew-set-head"><span></span><span>Weight</span><span>Reps</span><span>RPE</span><span>Done</span></div>
+        ${rows}
+      </div>
+    `;
+  }).join('');
+
+  // Toggle done buttons
+  exHost.querySelectorAll('.ew-done').forEach(btn => {
+    btn.addEventListener('click', () => btn.classList.toggle('checked'));
+  });
+
+  document.getElementById('edit-workout-modal').classList.remove('hidden');
+}
+
+function closeEditWorkout() {
+  document.getElementById('edit-workout-modal').classList.add('hidden');
+  _editWorkoutId = null;
+}
+
+async function saveEditWorkout() {
+  if (!_editWorkoutId) return;
+  const w = await dbGet('workouts', _editWorkoutId);
+  if (!w) { toast('Workout not found'); return; }
+
+  const newDate = document.getElementById('ew-date').value;
+  const newQuality = parseInt(document.getElementById('ew-quality').value, 10);
+  const newNotes = document.getElementById('ew-notes').value.trim();
+
+  if (newDate) w.date = newDate;
+  if (!isNaN(newQuality)) w.quality = Math.max(1, Math.min(5, newQuality));
+  w.notes = newNotes;
+
+  document.querySelectorAll('#ew-exercises .ew-set').forEach(row => {
+    const exi = parseInt(row.dataset.ex, 10);
+    const si = parseInt(row.dataset.set, 10);
+    const s = w.exercises[exi] && w.exercises[exi].sets[si];
+    if (!s) return;
+    s.weight = parseFloat(row.querySelector('[data-f="weight"]').value) || 0;
+    s.reps = parseInt(row.querySelector('[data-f="reps"]').value, 10) || 0;
+    const rpeVal = parseFloat(row.querySelector('[data-f="rpe"]').value);
+    s.rpe = isNaN(rpeVal) ? null : rpeVal;
+    s.done = row.querySelector('[data-f="done"]').classList.contains('checked');
+  });
+
+  await smartPut('workouts', w);
+  closeEditWorkout();
+  toast('Workout updated');
+  renderRecentWorkouts();
+  if (state.currentView === 'stats') renderStats();
+  renderWeekStrip();
+  renderStreakBanner();
+}
+
+async function deleteEditWorkout() {
+  if (!_editWorkoutId) return;
+  const confirmed = confirm('Delete this workout permanently? This cannot be undone after a few seconds.');
+  if (!confirmed) return;
+  const wId = _editWorkoutId;
+  const deletedW = await dbGet('workouts', wId);
+  await smartDelete('workouts', wId);
+  closeEditWorkout();
+  renderRecentWorkouts();
+  renderWeekStrip();
+  renderStreakBanner();
+  toast('Workout deleted', {
+    label: 'Undo',
+    callback: async () => {
+      if (!deletedW) return;
+      // Strip _updated_at so smartPut re-stamps it (keeps ordering consistent)
+      delete deletedW._updated_at;
+      await smartPut('workouts', deletedW);
+      renderRecentWorkouts();
+      renderWeekStrip();
+      renderStreakBanner();
+      toast('Workout restored');
+    }
+  });
 }
 
 // ==================== STREAK COUNTER ====================
@@ -4089,6 +4196,11 @@ function bindEvents() {
   // Exercise modal close
   document.getElementById('modal-close').addEventListener('click', closeExerciseModal);
 
+  // Edit workout modal
+  document.getElementById('ew-close').addEventListener('click', closeEditWorkout);
+  document.getElementById('ew-save').addEventListener('click', saveEditWorkout);
+  document.getElementById('ew-delete').addEventListener('click', deleteEditWorkout);
+
   // Notification toggles
   document.getElementById('notif-on').addEventListener('click', () => toggleNotifications(true));
   document.getElementById('notif-off').addEventListener('click', () => toggleNotifications(false));
@@ -4237,6 +4349,7 @@ async function init() {
   // Run data migrations
   await runMigrations();
   await migrateWorkoutDatesToLocal();
+  await oneShotCloudRecovery();
 
   // Service Worker
   registerServiceWorker();

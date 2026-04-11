@@ -55,6 +55,24 @@
     </div>
   </div>
 
+  <!-- Edit Workout Modal -->
+  <div id="edit-workout-modal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="ew-title">Edit Workout</h3>
+        <button id="ew-close" class="modal-close-btn">&times;</button>
+      </div>
+      <div class="form-row"><label>Date</label><input type="date" id="ew-date" class="text-input"></div>
+      <div class="form-row"><label>Quality (1-5)</label><input type="number" id="ew-quality" class="text-input" min="1" max="5" inputmode="numeric"></div>
+      <div class="section-label" style="margin-top:12px">Exercises</div>
+      <div id="ew-exercises"></div>
+      <div class="section-label" style="margin-top:12px">Notes</div>
+      <textarea id="ew-notes" class="input-notes" rows="3" placeholder="Workout notes..."></textarea>
+      <button id="ew-save" class="btn-primary btn-lg" style="margin-top:12px">Save Changes</button>
+      <button id="ew-delete" class="btn-secondary btn-full" style="margin-top:8px;text-align:center;color:var(--red);border-color:var(--red)">Delete Workout</button>
+    </div>
+  </div>
+
   <!-- Exercise History Modal -->
   <div id="exercise-modal" class="modal hidden">
     <div class="modal-content">
@@ -343,7 +361,7 @@
           </div>
           <div class="section-label" style="margin-top:24px">App</div>
           <div class="card">
-            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v8.3<br>Data stored locally + cloud sync.<br>Works offline.</p>
+            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v8.4<br>Data stored locally + cloud sync.<br>Works offline.</p>
             <button id="btn-force-update" class="btn-secondary btn-full" style="text-align:center">Force Update App</button>
           </div>
         </div>

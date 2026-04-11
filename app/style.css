@@ -255,7 +255,8 @@ nav { display: flex; background: var(--surface); border-top: 1px solid var(--bor
 
 /* ========== History List ========== */
 .recent-list { display: flex; flex-direction: column; gap: 8px; }
-.history-item { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 1px 4px rgba(0,0,0,0.1); transition: background 0.15s, border-color 0.15s; }
+.history-item { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 1px 4px rgba(0,0,0,0.1); transition: background 0.15s, border-color 0.15s; cursor: pointer; }
+.history-item:active { background: var(--surface2); border-color: var(--accent); }
 .hi-left { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
 .hi-title { font-size: 14px; font-weight: 600; }
 .hi-sub { font-size: 12px; color: var(--text2); }
@@ -264,6 +265,7 @@ nav { display: flex; background: var(--surface); border-top: 1px solid var(--bor
 .hi-stat-sub { font-size: 11px; color: var(--text3); }
 .empty-state { text-align: center; padding: 32px 24px; color: var(--text3); font-size: 14px; }
 .hi-delete { background: none; border: none; color: var(--text3); font-size: 18px; padding: 4px 8px; cursor: pointer; margin-left: 8px; }
+.hi-chev { color: var(--text3); font-size: 22px; font-weight: 400; margin-left: 10px; line-height: 1; }
 
 /* ========== Protein Ring ========== */
 .macro-ring-container, .protein-ring-container { display: flex; justify-content: center; margin-bottom: 4px; }
@@ -948,4 +950,17 @@ nav { display: flex; background: var(--surface); border-top: 1px solid var(--bor
 
 /* ========== Header context title gets tabular-nums when showing data ========== */
 #header-title.ctx { font-size: 20px; font-variant-numeric: tabular-nums; }
+
+/* ========== Edit Workout modal ========== */
+.ew-ex { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px; margin-bottom: 10px; }
+.ew-ex-name { font-size: 14px; font-weight: 700; margin-bottom: 8px; color: var(--text); }
+.ew-set-head, .ew-set { display: grid; grid-template-columns: 24px 1fr 1fr 54px 30px; gap: 6px; align-items: center; }
+.ew-set-head { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; padding: 2px 0; font-weight: 700; }
+.ew-set-head span { text-align: center; }
+.ew-set { padding: 3px 0; }
+.ew-set .ew-num { text-align: center; font-size: 12px; color: var(--text2); font-weight: 600; }
+.ew-set input { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 14px; padding: 6px 4px; text-align: center; width: 100%; -webkit-appearance: none; font-variant-numeric: tabular-nums; }
+.ew-set input:focus { border-color: var(--accent); outline: none; }
+.ew-set .ew-done { width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--border); background: transparent; color: transparent; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; margin: 0 auto; font-size: 14px; }
+.ew-set .ew-done.checked { background: var(--accent); border-color: var(--accent); color: var(--on-accent, #000); }
 
