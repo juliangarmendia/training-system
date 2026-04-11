@@ -297,6 +297,9 @@ window.syncedPut = syncedPut;
 window.syncedDelete = syncedDelete;
 window.renderAuthUI = renderAuthUI;
 window.supaSignOut = supaSignOut;
+window.syncAll = syncAll;
+window.getSupaUser = getUser;
+Object.defineProperty(window, '__supabaseClient', { get: () => supabaseClient });
 
 // ==================== SQL SCHEMA ====================
 // Run this in your Supabase SQL Editor to set up the database:

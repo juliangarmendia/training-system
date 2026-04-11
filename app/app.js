@@ -326,6 +326,66 @@ async function oneShotCloudRecovery() {
   } catch (e) { console.warn('[Recovery] Failed:', e); }
 }
 
+// Scan local sync_queue for pending delete entries and restore them.
+// If a delete was enqueued but never drained to cloud (offline, app closed,
+// error), the full item data is still sitting in the queue — we can recover
+// it and cancel the delete.
+async function recoverFromSyncQueue() {
+  const restored = [];
+  try {
+    const queue = await dbGetAll('sync_queue');
+    for (const q of queue) {
+      if (q.action !== 'delete' || q.store !== 'workouts') continue;
+      if (!q.data || !q.data.id) continue;
+      // Make sure it's not already present locally
+      const existing = await dbGet('workouts', q.data.id);
+      if (!existing) {
+        const clean = { ...q.data };
+        delete clean._updated_at;
+        await dbPut('workouts', clean);
+        restored.push({ id: clean.id, session: clean.session, date: clean.date });
+      }
+      // Cancel the pending delete either way
+      await dbDelete('sync_queue', q.id);
+    }
+  } catch (e) { console.warn('[Recovery] sync_queue scan failed:', e); }
+  return restored;
+}
+
+// Force-pull every workout from Supabase and merge into local.
+// Returns an array of summaries of anything that was new or different.
+async function forceCloudPull() {
+  const added = [];
+  if (!window.supabaseClient && !window.initSupabase) return added;
+  // Use the global set in supabase-sync.js
+  const client = window.__supabaseClient || null;
+  // Fallback: call syncAll after resetting the watermark
+  try {
+    await dbDelete('settings', 'lastSyncTimestamp');
+  } catch {}
+  if (typeof window.syncAll === 'function') {
+    await window.syncAll();
+  }
+  // After sync, re-check local count
+  const local = await dbGetAll('workouts');
+  return local;
+}
+
+async function listCloudWorkouts() {
+  // Directly query Supabase for all workouts for this user
+  const client = window.__supabaseClient;
+  if (!client) return { error: 'Supabase client not initialized' };
+  const user = typeof window.getSupaUser === 'function' ? await window.getSupaUser() : null;
+  if (!user) return { error: 'Not logged in' };
+  const { data, error } = await client
+    .from('workouts')
+    .select('*')
+    .eq('user_id', user.id)
+    .order('updated_at', { ascending: false });
+  if (error) return { error: error.message };
+  return { rows: data || [] };
+}
+
 async function migrateWorkoutDatesToLocal() {
   if (localStorage.getItem('tz_date_migration_v2')) return;
   try {
@@ -4200,6 +4260,43 @@ function bindEvents() {
   document.getElementById('ew-close').addEventListener('click', closeEditWorkout);
   document.getElementById('ew-save').addEventListener('click', saveEditWorkout);
   document.getElementById('ew-delete').addEventListener('click', deleteEditWorkout);
+
+  // Data recovery buttons (Settings)
+  const recoveryOut = document.getElementById('recovery-output');
+  const showOut = (txt) => { recoveryOut.style.display = 'block'; recoveryOut.textContent = txt; };
+  document.getElementById('btn-recover-data').addEventListener('click', async () => {
+    showOut('Scanning…');
+    const lines = [];
+    // 1) Pending-delete recovery from sync queue
+    const restoredQ = await recoverFromSyncQueue();
+    lines.push(`Sync queue: restored ${restoredQ.length}`);
+    restoredQ.forEach(r => lines.push(`  + ${r.session} · ${r.date}`));
+    // 2) Force cloud pull
+    const beforeCount = (await dbGetAll('workouts')).length;
+    await forceCloudPull();
+    const afterCount = (await dbGetAll('workouts')).length;
+    lines.push(`Cloud pull: ${beforeCount} → ${afterCount} workouts`);
+    lines.push(`(net change: ${afterCount - beforeCount})`);
+    showOut(lines.join('\n'));
+    renderRecentWorkouts();
+    renderWeekStrip();
+    renderStreakBanner();
+    toast(`Recovery: +${restoredQ.length} queue, ${afterCount - beforeCount} cloud`);
+  });
+  document.getElementById('btn-scan-cloud').addEventListener('click', async () => {
+    showOut('Fetching cloud workouts…');
+    const res = await listCloudWorkouts();
+    if (res.error) { showOut('Error: ' + res.error); return; }
+    const lines = [`Cloud has ${res.rows.length} workouts:`];
+    res.rows.forEach(r => {
+      const w = r.data || {};
+      const sessKey = w.session || '?';
+      const session = PLAN.sessions[sessKey];
+      const name = session ? session.name : sessKey;
+      lines.push(`  ${w.date || '?'} · ${name} · id=${(w.id || '').slice(0, 6)}`);
+    });
+    showOut(lines.join('\n'));
+  });
 
   // Notification toggles
   document.getElementById('notif-on').addEventListener('click', () => toggleNotifications(true));
