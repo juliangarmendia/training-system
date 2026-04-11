@@ -1069,7 +1069,13 @@ async function openEditWorkout(id) {
   document.getElementById('ew-quality').value = w.quality || '';
   document.getElementById('ew-notes').value = w.notes || '';
 
-  const unit = state.settings.unit || 'kg';
+  const appUnit = state.settings.unit || 'kg';
+  const unit = w.inputUnit || appUnit;
+  // Show a banner if the workout will be stored in a different unit than entered
+  const titleEl = document.getElementById('ew-title');
+  if (w.inputUnit && w.inputUnit !== appUnit) {
+    titleEl.innerHTML = `${session ? session.name : w.session} <span style="font-size:11px;color:var(--accent);font-weight:600">· input: ${unit.toUpperCase()}</span>`;
+  }
   const exHost = document.getElementById('ew-exercises');
   exHost.innerHTML = w.exercises.map((ex, exi) => {
     const name = getExerciseName(ex.exerciseId);
@@ -1117,17 +1123,31 @@ async function saveEditWorkout() {
   if (!isNaN(newQuality)) w.quality = Math.max(1, Math.min(5, newQuality));
   w.notes = newNotes;
 
+  const appUnit = state.settings.unit || 'kg';
+  // If the workout was drafted in a different input unit, convert on save so
+  // internal values stay in the app's canonical unit.
+  const inputUnit = w.inputUnit || appUnit;
+  const convert = (v) => {
+    if (inputUnit === appUnit) return v;
+    if (inputUnit === 'lb' && appUnit === 'kg') return +(v * 0.453592).toFixed(2);
+    if (inputUnit === 'kg' && appUnit === 'lb') return +(v * 2.20462).toFixed(2);
+    return v;
+  };
   document.querySelectorAll('#ew-exercises .ew-set').forEach(row => {
     const exi = parseInt(row.dataset.ex, 10);
     const si = parseInt(row.dataset.set, 10);
     const s = w.exercises[exi] && w.exercises[exi].sets[si];
     if (!s) return;
-    s.weight = parseFloat(row.querySelector('[data-f="weight"]').value) || 0;
+    const rawWeight = parseFloat(row.querySelector('[data-f="weight"]').value) || 0;
+    s.weight = convert(rawWeight);
     s.reps = parseInt(row.querySelector('[data-f="reps"]').value, 10) || 0;
     const rpeVal = parseFloat(row.querySelector('[data-f="rpe"]').value);
     s.rpe = isNaN(rpeVal) ? null : rpeVal;
     s.done = row.querySelector('[data-f="done"]').classList.contains('checked');
   });
+  // One-time conversion only: strip inputUnit after saving so future edits
+  // use the app's canonical unit directly.
+  delete w.inputUnit;
 
   await smartPut('workouts', w);
   closeEditWorkout();
@@ -1239,8 +1259,6 @@ async function renderTrashList() {
 
 // ==================== LOG PAST WORKOUT ====================
 async function logPastWorkout() {
-  // Simple flow: prompt for session, then create blank workout with today's
-  // date and open the edit modal so the user can tweak date + fill in sets.
   const sessions = Object.values(PLAN.sessions);
   const labels = sessions.map((s, i) => `${i + 1}. ${s.name}`).join('\n');
   const pick = prompt(`Which session?\n\n${labels}\n\nEnter 1-${sessions.length}:`);
@@ -1251,6 +1269,10 @@ async function logPastWorkout() {
     return;
   }
   const session = sessions[idx];
+
+  const unitPick = prompt('Enter weights in:\n\n1. kg\n2. lb\n\nChoose 1 or 2:', '1');
+  if (!unitPick) return;
+  const inputUnit = unitPick.trim() === '2' ? 'lb' : 'kg';
 
   const workout = {
     id: uid(),
@@ -1265,6 +1287,7 @@ async function logPastWorkout() {
     })),
     quality: null,
     notes: '',
+    inputUnit, // remembered so the editor shows the right placeholder
   };
   await smartPut('workouts', workout);
   renderRecentWorkouts();

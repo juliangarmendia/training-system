@@ -342,7 +342,7 @@ nav { display: flex; background: var(--surface); border-top: 1px solid var(--bor
 .hidden { display: none !important; }
 .workout-actions { display: flex; flex-direction: column; gap: 12px; margin-top: 16px; }
 .toast { position: fixed; bottom: calc(var(--nav-h) + var(--safe-bottom) + 16px); left: 50%; transform: translateX(-50%) translateY(80px); background: var(--surface2); border: 1px solid var(--accent); border-radius: var(--radius-sm); padding: 10px 22px; font-size: 14px; font-weight: 600; color: var(--accent); z-index: 2000; transition: transform 0.3s, opacity 0.3s; opacity: 0; pointer-events: none; white-space: nowrap; box-shadow: 0 4px 20px rgba(0,0,0,0.4); }
-.toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+.toast.show { transform: translateX(-50%) translateY(0); opacity: 1; pointer-events: auto; }
 .view-scroll::-webkit-scrollbar { width: 0; }
 
 /* ========== Swap Panel ========== */
