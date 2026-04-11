@@ -83,7 +83,12 @@ main { flex: 1; overflow: hidden; position: relative; }
 /* ========== Navigation ========== */
 nav { display: flex; background: var(--surface); border-top: 1px solid var(--border); padding-bottom: calc(var(--safe-bottom) + 6px); flex-shrink: 0; z-index: 100; margin-top: auto; }
 @media (display-mode: standalone) {
-  nav { padding-bottom: var(--safe-bottom); }
+  /* iOS PWA: shrink the nav strip so it sits lower on screen.
+     The 10/8 vertical padding on .nav-btn + safe-area inset was adding
+     ~24px of empty space above the home indicator. */
+  nav { padding-bottom: max(var(--safe-bottom), 4px); }
+  .nav-btn { padding: 2px 0 0; gap: 1px; }
+  .nav-btn .nav-icon-wrap { height: 24px; }
 }
 .nav-btn { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 10px 0 8px; background: none; border: none; color: var(--text3); font-size: 10px; font-weight: 600; cursor: pointer; position: relative; transition: color 0.15s; }
 .nav-btn.active { color: var(--accent); }
