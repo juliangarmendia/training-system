@@ -308,21 +308,27 @@ const state = {
 
 // ==================== ONE-SHOT MIGRATION: tz date fix ====================
 // Previous versions used toISOString() which is UTC. For users east/west of
-// UTC, evening workouts were saved to the next (or previous) day. This runs
-// once: for each workout/run from the last 60 days, if the stored `date` is
-// exactly 1 day off from what the id's epoch converts to in local time, fix it.
+// UTC, evening workouts were saved to the next day. This runs once: for each
+// workout/run from the last 90 days, if the stored `date` is exactly 1 day
+// ahead of what the id's epoch converts to in local time, fix it.
+//
+// v1 had a slice bug (took 9 chars when Date.now().toString(36) is 8) so the
+// parsed epoch was garbage — v2 rolls a new flag and re-runs correctly.
 async function migrateWorkoutDatesToLocal() {
-  if (localStorage.getItem('tz_date_migration_v1')) return;
+  if (localStorage.getItem('tz_date_migration_v2')) return;
   try {
     let fixed = 0;
+    const details = [];
+    const minEpoch = new Date('2020-01-01').getTime();
+    const maxEpoch = Date.now() + 86400000;
     const fixCollection = async (storeName) => {
       const items = await dbGetAll(storeName);
       for (const item of items) {
         if (!item.id || !item.date) continue;
-        // uid() = Date.now().toString(36) + random — first 9 chars = epoch
-        const epochMs = parseInt(item.id.slice(0, 9), 36);
-        if (!isFinite(epochMs) || epochMs <= 0) continue;
-        if (Date.now() - epochMs > 60 * 86400000) continue;
+        // uid() = Date.now().toString(36) + random. Date.now() is 8 base36 chars.
+        const epochMs = parseInt(item.id.slice(0, 8), 36);
+        if (!isFinite(epochMs) || epochMs < minEpoch || epochMs > maxEpoch) continue;
+        if (Date.now() - epochMs > 90 * 86400000) continue;
         const localDate = dateStr(new Date(epochMs));
         if (localDate === item.date) continue;
         const stored = new Date(item.date + 'T00:00:00');
@@ -330,6 +336,7 @@ async function migrateWorkoutDatesToLocal() {
         const diffDays = Math.round((stored - inferred) / 86400000);
         // Only auto-fix the classic +1 day UTC drift
         if (diffDays === 1) {
+          details.push(`${storeName} ${item.session || ''} ${item.date}→${localDate}`);
           item.date = localDate;
           await smartPut(storeName, item);
           fixed++;
@@ -338,15 +345,17 @@ async function migrateWorkoutDatesToLocal() {
     };
     await fixCollection('workouts');
     await fixCollection('runs');
-    localStorage.setItem('tz_date_migration_v1', String(Date.now()));
+    localStorage.setItem('tz_date_migration_v2', String(Date.now()));
     if (fixed > 0) {
-      console.log(`[migration] Fixed ${fixed} workout/run date(s) to local tz`);
+      console.log(`[migration v2] Fixed ${fixed}:`, details);
       setTimeout(() => {
         if (typeof toast === 'function') toast(`Fixed ${fixed} workout date${fixed === 1 ? '' : 's'}`);
       }, 1800);
+    } else {
+      console.log('[migration v2] No records needed fixing');
     }
   } catch (e) {
-    console.warn('[migration] tz date fix failed:', e);
+    console.warn('[migration v2] tz date fix failed:', e);
   }
 }
 
@@ -760,7 +769,10 @@ async function renderWeekStrip() {
     const isToday = ds === todayStr;
     const dayWorkout = workouts.find(w => w.date === ds);
     const dayRun = runs.find(r => r.date === ds);
-    const plannedSession = getPlannedSession(jsDay, customSchedule, ds);
+    const isPast = ds < todayStr;
+    // Don't show "planned" on past days that the user didn't train — those
+    // should read as empty/rest, not as "you were supposed to do X".
+    const plannedSession = isPast ? null : getPlannedSession(jsDay, customSchedule, ds);
 
     // --- GYM CELL ---
     const gymCell = document.createElement('div');
@@ -776,7 +788,7 @@ async function renderWeekStrip() {
       const s = PLAN.sessions[plannedSession];
       gymLabel = s ? s.name.replace('Upper ', 'U').replace('Lower ', 'L') : '?';
     } else {
-      gymLabel = '—';
+      gymLabel = isPast ? 'rest' : '—';
       gymCell.classList.add('empty');
     }
 
