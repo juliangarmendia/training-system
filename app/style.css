@@ -735,3 +735,216 @@ nav { display: flex; background: var(--surface); border-top: 1px solid var(--bor
 }
 #view-stats .view-scroll > [data-group]:not(.active-group),
 #view-stats .view-scroll > .section-label[data-group]:not(.active-group) { display: none; }
+
+/* ==================================================
+   v7.6 — Workout screen polish + light theme fixes
+   ================================================== */
+
+/* On-accent text color flips per theme so .stats-tab.active reads correctly */
+:root, [data-theme="dark"] { --on-accent: #0a0a0a; }
+[data-theme="light"] { --on-accent: #ffffff; }
+.stats-tab.active { color: var(--on-accent); }
+
+/* Shadow tokens that flip per theme (keeps login-video-card readable in light) */
+:root, [data-theme="dark"] {
+  --shadow-card: 0 2px 8px rgba(0,0,0,0.10);
+  --shadow-card-lg: 0 12px 40px rgba(0,0,0,0.45);
+}
+[data-theme="light"] {
+  --shadow-card: 0 2px 12px rgba(0,0,0,0.06);
+  --shadow-card-lg: 0 12px 32px rgba(0,0,0,0.10);
+}
+.login-video-card { box-shadow: var(--shadow-card-lg), 0 0 0 1px var(--accent-dim); }
+
+/* ========== Workout Header: bigger timer ========== */
+.workout-timer {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--accent);
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--accent-dim);
+  background: var(--accent-dim);
+  box-shadow: 0 0 0 1px var(--accent-dim), 0 2px 12px rgba(0,0,0,0.10);
+  letter-spacing: 0.5px;
+}
+
+/* ========== Now / Next Up bar (sticky above exercises) ========== */
+.now-next-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  position: sticky;
+  top: 0;
+  z-index: 15;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.20);
+}
+.nn-col { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.nn-label { font-size: 9px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; }
+.nn-value { font-size: 13px; font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nn-col.nn-now .nn-value { color: var(--accent); }
+.nn-col.nn-next .nn-value { color: var(--text2); }
+.nn-divider { width: 1px; height: 28px; background: var(--border); flex-shrink: 0; }
+
+/* ========== Set rows: breathable + active highlight ========== */
+.set-table-header { grid-template-columns: 24px 1fr 1fr 58px 38px; gap: 8px; padding: 0 0 6px; }
+.set-row {
+  grid-template-columns: 24px 1fr 1fr 58px 38px;
+  gap: 8px;
+  padding: 6px 6px;
+  margin: 0 -6px 4px;
+  border-radius: var(--radius-xs);
+  border-left: 2px solid transparent;
+  transition: background 0.2s, border-color 0.2s;
+}
+.set-row.current {
+  background: var(--accent-dim);
+  border-left-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent-dim);
+}
+.set-row.current .set-num { color: var(--accent); }
+.set-row.completed { opacity: 0.6; }
+.set-input { padding: 9px 6px; font-size: 15px; }
+
+/* Ghost set indent for new gap */
+.ghost-set { grid-template-columns: 24px 1fr 1fr 58px 38px; gap: 8px; }
+
+/* Row flash when a set is checked */
+@keyframes setRowFlash {
+  0% { background: var(--accent); transform: scale(1); }
+  40% { background: var(--accent-dim); transform: scale(1.01); }
+  100% { background: transparent; transform: scale(1); }
+}
+.set-row.flashed { animation: setRowFlash 0.55s ease-out; }
+
+/* Exercise card: active emphasis (subtle — current set already shows) */
+.exercise-card.current { border-color: var(--accent); box-shadow: 0 4px 20px var(--accent-glow); }
+
+/* First-render animation only — do NOT re-trigger on reloads */
+.exercise-card { animation: none; opacity: 1; }
+#workout-exercises.initial-animate .exercise-card { animation: fadeSlideIn 0.3s ease-out both; }
+#workout-exercises.initial-animate .exercise-card:nth-child(1) { animation-delay: 0s; }
+#workout-exercises.initial-animate .exercise-card:nth-child(2) { animation-delay: 0.05s; }
+#workout-exercises.initial-animate .exercise-card:nth-child(3) { animation-delay: 0.1s; }
+#workout-exercises.initial-animate .exercise-card:nth-child(4) { animation-delay: 0.15s; }
+#workout-exercises.initial-animate .exercise-card:nth-child(5) { animation-delay: 0.2s; }
+#workout-exercises.initial-animate .exercise-card:nth-child(6) { animation-delay: 0.25s; }
+#workout-exercises.initial-animate .exercise-card:nth-child(7) { animation-delay: 0.3s; }
+
+/* ========== Welcome screen hero ========== */
+.welcome-video-card {
+  width: 180px; height: 180px;
+  margin: 0 auto 20px;
+  border-radius: 28px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-card-lg), 0 0 0 1px var(--accent-dim);
+  background: var(--surface);
+  position: relative;
+}
+.welcome-video-card video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.welcome-headsup {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  text-align: left;
+}
+.wh-title { font-size: var(--fs-sm); font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+.wh-session { font-size: var(--fs-lg); font-weight: 800; line-height: 1.2; margin-bottom: 4px; }
+.wh-meta { font-size: var(--fs-sm); color: var(--text2); }
+.welcome-streak {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: linear-gradient(135deg, rgba(251,146,60,0.14), transparent 60%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  text-align: left;
+}
+.welcome-streak-icon { font-size: 22px; }
+.welcome-streak-text { font-size: var(--fs-sm); color: var(--text); }
+.welcome-streak-text strong { color: var(--orange); font-weight: 800; }
+
+/* ========== Rest timer overlay refresh ========== */
+.overlay {
+  background: radial-gradient(ellipse at center, rgba(74,222,128,0.10), rgba(0,0,0,0.92) 70%);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  padding-top: calc(var(--safe-top) + 20px);
+  padding-bottom: calc(var(--safe-bottom) + 20px);
+}
+.timer-label {
+  position: static;
+  transform: none;
+  margin-top: 18px;
+  font-size: 12px;
+}
+
+/* ========== Empty-state unification ========== */
+.empty-state {
+  text-align: center;
+  padding: 36px 24px;
+  color: var(--text3);
+  font-size: 14px;
+  background: var(--surface);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+}
+
+/* ========== Chart empty illustration ========== */
+.chart-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  color: var(--text3);
+  font-size: 12px;
+  padding: 12px 8px;
+  text-align: center;
+}
+.chart-empty::before {
+  content: '';
+  width: 120px;
+  height: 40px;
+  background-image: linear-gradient(transparent 48%, var(--border) 48%, var(--border) 52%, transparent 52%),
+    radial-gradient(circle at 10% 70%, var(--border) 3px, transparent 3px),
+    radial-gradient(circle at 35% 40%, var(--border) 3px, transparent 3px),
+    radial-gradient(circle at 60% 55%, var(--border) 3px, transparent 3px),
+    radial-gradient(circle at 85% 25%, var(--border) 3px, transparent 3px);
+  background-repeat: no-repeat;
+  opacity: 0.7;
+}
+
+/* ========== Week strip: dotted empty days ========== */
+.ws-cell.empty {
+  opacity: 1;
+  background: transparent;
+  border: 1px dashed var(--border);
+}
+.ws-cell.empty .ws-session { color: var(--text3); font-weight: 600; }
+
+/* ========== Hero numbers: tabular-nums + bigger ========== */
+.hero-num {
+  font-size: 34px;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: -0.5px;
+  font-variant-numeric: tabular-nums;
+}
+.hero-num-sub { font-size: 11px; color: var(--text3); margin-top: 4px; letter-spacing: 0.4px; text-transform: uppercase; }
+.bw-current-val { font-variant-numeric: tabular-nums; }
+
+/* ========== Primary CTA consistency: promote key buttons ========== */
+.btn-primary.btn-lg { padding: 16px 20px; font-size: 16px; border-radius: var(--radius); }
+
+/* ========== Header context title gets tabular-nums when showing data ========== */
+#header-title.ctx { font-size: 20px; font-variant-numeric: tabular-nums; }

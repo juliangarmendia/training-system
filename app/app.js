@@ -488,50 +488,90 @@ async function checkAuth() {
 }
 
 // ==================== WELCOME SCREEN ====================
-function showWelcomeScreen() {
+async function showWelcomeScreen() {
   const name = state.settings.userName || 'there';
   const jsDay = new Date().getDay();
   const plan = WEEK_TEMPLATE[jsDay];
   const wk = getWeekNumber();
 
   let todayText = '';
-  let icon = '';
+  let headsUpHTML = '';
   if (plan.type === 'gym') {
     const session = PLAN.sessions[plan.session];
-    todayText = `Hoy te toca <strong>${session.name}</strong> — ${session.subtitle}`;
-    icon = session.icon;
-    if (isDeloadWeek(wk)) todayText += ' (Deload)';
+    const deload = isDeloadWeek(wk);
+    const numEx = session.exercises ? session.exercises.length : 0;
+    const estMin = Math.max(35, numEx * 9);
+    todayText = `Let's train`;
+    headsUpHTML = `
+      <div class="wh-title">Today</div>
+      <div class="wh-session">${session.icon || ''} ${session.name}${deload ? ' · Deload' : ''}</div>
+      <div class="wh-meta">${numEx} exercises · ~${estMin} min · ${session.subtitle}</div>
+    `;
   } else if (plan.type === 'run') {
     const runsAllowed = getRunsThisWeek(wk);
     if ((jsDay === 3 && runsAllowed < 2) || (jsDay === 0 && runsAllowed < 3)) {
-      todayText = 'Hoy es <strong>dia de descanso</strong>. Recupera bien.';
-      icon = '😴';
+      todayText = 'Rest day — recover well.';
     } else {
-      todayText = 'Hoy te toca <strong>Zone 2 Run</strong> — ritmo conversacional';
-      icon = '🏃';
+      todayText = `Let's run`;
+      headsUpHTML = `
+        <div class="wh-title">Today</div>
+        <div class="wh-session">🏃 Zone 2 Run</div>
+        <div class="wh-meta">Conversational pace · easy effort</div>
+      `;
     }
   } else {
-    todayText = 'Hoy es <strong>dia de descanso</strong>. Recupera bien.';
-    icon = '😴';
+    todayText = 'Rest day — recover well.';
     if (jsDay === 0 && getRunsThisWeek(wk) >= 3) {
-      todayText = 'Hoy podes hacer un <strong>run opcional</strong> o descansar.';
-      icon = '🏃';
+      todayText = 'Optional run today — or rest.';
     }
   }
 
-  document.getElementById('welcome-greeting').textContent = `Bienvenido, ${name}!`;
-  document.getElementById('welcome-today').innerHTML = todayText;
-  document.getElementById('welcome-icon').textContent = icon;
+  document.getElementById('welcome-greeting').textContent = `Hola, ${name}`;
+  document.getElementById('welcome-today').textContent = todayText;
+
+  const headsUp = document.getElementById('welcome-headsup');
+  if (headsUpHTML) {
+    headsUp.innerHTML = headsUpHTML;
+    headsUp.classList.remove('hidden');
+  } else {
+    headsUp.classList.add('hidden');
+  }
+
+  // Streak line — only if streak >= 2
+  try {
+    const workouts = await dbGetAll('workouts');
+    const runs = await dbGetAll('runs');
+    const trainingDates = new Set();
+    workouts.forEach(w => trainingDates.add(w.date));
+    runs.forEach(r => trainingDates.add(r.date));
+    let streak = 0;
+    const d = new Date();
+    for (let i = 0; i < 365; i++) {
+      const ds = d.toISOString().split('T')[0];
+      if (trainingDates.has(ds)) streak++;
+      else if (i !== 0) break;
+      d.setDate(d.getDate() - 1);
+    }
+    const streakEl = document.getElementById('welcome-streak');
+    if (streak >= 2) {
+      const fire = streak >= 7 ? '🔥🔥🔥' : streak >= 4 ? '🔥🔥' : '🔥';
+      streakEl.innerHTML = `<span class="welcome-streak-icon">${fire}</span><span class="welcome-streak-text"><strong>${streak}-day streak</strong> — keep it going</span>`;
+      streakEl.classList.remove('hidden');
+    } else {
+      streakEl.classList.add('hidden');
+    }
+  } catch (e) { /* noop */ }
+
   document.getElementById('welcome-screen').classList.remove('hidden');
 
   document.getElementById('btn-welcome-go').addEventListener('click', () => {
     document.getElementById('welcome-screen').classList.add('hidden');
-  });
+  }, { once: true });
 
-  // Auto-dismiss after 5 seconds
+  // Auto-dismiss after 6 seconds
   setTimeout(() => {
     document.getElementById('welcome-screen').classList.add('hidden');
-  }, 5000);
+  }, 6000);
 }
 
 // ==================== THEME ====================
@@ -575,11 +615,20 @@ function showView(view) {
 function updateHeader(tab) {
   const title = document.getElementById('header-title');
   const sub = document.getElementById('header-subtitle');
+  title.classList.remove('ctx');
   const wk = getWeekNumber();
   const deload = isDeloadWeek(wk);
+  // Day number since program start (used as lightweight phase marker)
+  const startDate = state.settings.programStart ? new Date(state.settings.programStart) : null;
+  let dayNum = null;
+  if (startDate) {
+    dayNum = Math.max(1, Math.floor((Date.now() - startDate.getTime()) / 86400000) + 1);
+  }
   if (tab === 'gym') {
+    // When actively in a workout, title was set by startWorkout — leave it.
+    if (state.currentView === 'workout' && state.activeSession) return;
     title.textContent = 'Training';
-    sub.textContent = deload ? `Week ${wk} · Deload` : `Week ${wk} · Cut Phase 1`;
+    sub.textContent = deload ? `Week ${wk} · Deload` : (dayNum ? `Day ${dayNum} · Cut` : `Week ${wk} · Cut`);
   } else if (tab === 'run') {
     title.textContent = 'Running';
     sub.textContent = `Week ${wk} · Zone 2`;
@@ -587,8 +636,9 @@ function updateHeader(tab) {
     title.textContent = 'Nutrition';
     sub.textContent = `Target: ${state.settings.proteinTarget}g protein`;
   } else if (tab === 'stats') {
-    title.textContent = 'Stats';
-    sub.textContent = `Week ${wk}`;
+    title.textContent = dayNum ? `Day ${dayNum}` : 'Stats';
+    title.classList.add('ctx');
+    sub.textContent = deload ? `Week ${wk} · Deload` : `Week ${wk} · Cut Phase`;
   } else if (tab === 'settings') {
     title.textContent = 'Settings';
     sub.textContent = '';
@@ -1171,6 +1221,9 @@ async function startWorkout(sessionId) {
   // Group exercises by superset
   const container = document.getElementById('workout-exercises');
   container.innerHTML = '';
+  // Trigger fadeSlideIn stagger only on this initial render — not on reloads
+  container.classList.add('initial-animate');
+  setTimeout(() => container.classList.remove('initial-animate'), 700);
 
   // Build groups: standalone exercises and superset groups
   const groups = [];
@@ -1220,8 +1273,20 @@ async function startWorkout(sessionId) {
     btn.addEventListener('click', () => {
       btn.classList.toggle('checked');
       const card = btn.closest('.exercise-card');
+      const row = btn.closest('.set-row');
+      // Row flash feedback + haptic (Android only; iOS no-op)
+      if (btn.classList.contains('checked')) {
+        if (row) {
+          row.classList.remove('flashed');
+          // Force reflow so the animation restarts
+          void row.offsetWidth;
+          row.classList.add('flashed');
+        }
+        if (navigator.vibrate) navigator.vibrate(12);
+      }
       updateExerciseStatus(card);
       updateSessionProgress();
+      updateNowNext();
       saveActiveWorkout();
       // Auto-start rest timer when checking a set (not unchecking)
       if (btn.classList.contains('checked')) {
@@ -1320,6 +1385,7 @@ async function startWorkout(sessionId) {
   });
 
   updateSessionProgress();
+  updateNowNext();
   startWorkoutTimer();
   showView('workout');
   document.getElementById('header-title').textContent = session.name;
@@ -1456,6 +1522,51 @@ function updateExerciseStatus(card) {
   }
 }
 
+// Highlight the current (first incomplete) set across all exercises and
+// update the Now / Next bar at the top of the workout view.
+function updateNowNext() {
+  const container = document.getElementById('workout-exercises');
+  if (!container) return;
+  // Clear current markers
+  container.querySelectorAll('.set-row.current').forEach(r => r.classList.remove('current'));
+  container.querySelectorAll('.set-row.completed').forEach(r => r.classList.remove('completed'));
+
+  const cards = [...container.querySelectorAll('.exercise-card')];
+  let nowExName = '—';
+  let nextExName = '—';
+  let foundCurrent = false;
+
+  for (const card of cards) {
+    const rows = [...card.querySelectorAll('.set-row')];
+    const allDone = rows.length > 0 && rows.every(r => r.querySelector('.set-check').classList.contains('checked'));
+    if (allDone) continue;
+
+    // Mark completed rows in this card
+    rows.forEach(r => {
+      if (r.querySelector('.set-check').classList.contains('checked')) r.classList.add('completed');
+    });
+
+    if (!foundCurrent) {
+      // First incomplete set in the first incomplete card
+      const firstOpen = rows.find(r => !r.querySelector('.set-check').classList.contains('checked'));
+      if (firstOpen) firstOpen.classList.add('current');
+      const nameEl = card.querySelector('.exercise-name');
+      nowExName = nameEl ? nameEl.childNodes[0].textContent.trim() : '—';
+      foundCurrent = true;
+      continue;
+    }
+    // Next incomplete exercise after the current
+    const nameEl = card.querySelector('.exercise-name');
+    nextExName = nameEl ? nameEl.childNodes[0].textContent.trim() : '—';
+    break;
+  }
+
+  const nowEl = document.getElementById('nn-now-val');
+  const nextEl = document.getElementById('nn-next-val');
+  if (nowEl) nowEl.textContent = nowExName;
+  if (nextEl) nextEl.textContent = nextExName === '—' ? 'Last one 💪' : nextExName;
+}
+
 // ==================== WORKOUT PERSISTENCE ====================
 function captureWorkoutState() {
   const exercises = [];
@@ -1590,6 +1701,10 @@ async function restoreActiveWorkout() {
   // Restore start time for timer (don't reset it)
   state.workoutStartTime = saved.startTime;
   updateSessionProgress();
+  updateNowNext();
+  // This is a restore, not a first render — drop the stagger animation
+  const wc = document.getElementById('workout-exercises');
+  if (wc) wc.classList.remove('initial-animate');
 
   return true;
 }
