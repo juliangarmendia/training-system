@@ -224,7 +224,7 @@ const WEEK_TEMPLATE = {
 
 // ==================== DATABASE ====================
 const DB_NAME = 'TrainingApp';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 let db = null;
 
 function openDB() {
@@ -238,6 +238,8 @@ function openDB() {
       if (!d.objectStoreNames.contains('settings')) d.createObjectStore('settings', { keyPath: 'key' });
       if (!d.objectStoreNames.contains('sync_queue')) d.createObjectStore('sync_queue', { keyPath: 'id' });
       if (!d.objectStoreNames.contains('bodyweight')) d.createObjectStore('bodyweight', { keyPath: 'date' });
+      // Trash: soft-deleted items kept locally for 2 days
+      if (!d.objectStoreNames.contains('trash')) d.createObjectStore('trash', { keyPath: 'trashId' });
     };
     req.onsuccess = (e) => { db = e.target.result; resolve(db); };
     req.onerror = (e) => reject(e);
@@ -1138,28 +1140,136 @@ async function saveEditWorkout() {
 
 async function deleteEditWorkout() {
   if (!_editWorkoutId) return;
-  const confirmed = confirm('Delete this workout permanently? This cannot be undone after a few seconds.');
+  const confirmed = confirm('Delete this workout? It will be kept in Trash for 2 days so you can restore it.');
   if (!confirmed) return;
   const wId = _editWorkoutId;
-  const deletedW = await dbGet('workouts', wId);
-  await smartDelete('workouts', wId);
+  const w = await dbGet('workouts', wId);
   closeEditWorkout();
+  if (!w) return;
+  await moveToTrash('workouts', w);
+  await smartDelete('workouts', wId);
   renderRecentWorkouts();
   renderWeekStrip();
   renderStreakBanner();
-  toast('Workout deleted', {
+  toast('Moved to Trash (2 days)', {
     label: 'Undo',
     callback: async () => {
-      if (!deletedW) return;
-      // Strip _updated_at so smartPut re-stamps it (keeps ordering consistent)
-      delete deletedW._updated_at;
-      await smartPut('workouts', deletedW);
+      await restoreFromTrash(w.id);
       renderRecentWorkouts();
       renderWeekStrip();
       renderStreakBanner();
       toast('Workout restored');
     }
   });
+}
+
+// ==================== TRASH (soft delete) ====================
+const TRASH_TTL_MS = 2 * 24 * 60 * 60 * 1000;
+
+async function moveToTrash(store, item) {
+  const clone = { ...item };
+  delete clone._updated_at;
+  const entry = {
+    trashId: `${store}:${item.id}`,
+    store,
+    originalId: item.id,
+    data: clone,
+    deletedAt: Date.now(),
+  };
+  await dbPut('trash', entry);
+}
+
+async function restoreFromTrash(originalId) {
+  const all = await dbGetAll('trash');
+  const entry = all.find(t => t.originalId === originalId);
+  if (!entry) return false;
+  await smartPut(entry.store, entry.data);
+  await dbDelete('trash', entry.trashId);
+  return true;
+}
+
+async function purgeExpiredTrash() {
+  try {
+    const all = await dbGetAll('trash');
+    const now = Date.now();
+    for (const t of all) {
+      if (now - t.deletedAt > TRASH_TTL_MS) {
+        await dbDelete('trash', t.trashId);
+      }
+    }
+  } catch (e) { console.warn('[Trash] Purge failed:', e); }
+}
+
+async function renderTrashList() {
+  const host = document.getElementById('trash-list');
+  if (!host) return;
+  const all = (await dbGetAll('trash')).sort((a, b) => b.deletedAt - a.deletedAt);
+  if (!all.length) {
+    host.innerHTML = '<p class="muted" style="font-size:12px">Trash is empty.</p>';
+    return;
+  }
+  const now = Date.now();
+  host.innerHTML = all.map(t => {
+    const remainingMs = TRASH_TTL_MS - (now - t.deletedAt);
+    const hoursLeft = Math.max(0, Math.floor(remainingMs / (60 * 60 * 1000)));
+    const d = t.data || {};
+    const session = PLAN.sessions[d.session];
+    const name = session ? session.name : (d.session || t.store);
+    return `
+      <div class="trash-item">
+        <div class="ti-left">
+          <div class="ti-title">${name}</div>
+          <div class="ti-sub">${d.date || ''} · expires in ${hoursLeft}h</div>
+        </div>
+        <button class="btn-secondary" data-restore="${t.originalId}" style="padding:6px 10px;font-size:12px">Restore</button>
+      </div>
+    `;
+  }).join('');
+  host.querySelectorAll('[data-restore]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      await restoreFromTrash(btn.dataset.restore);
+      renderTrashList();
+      renderRecentWorkouts();
+      renderWeekStrip();
+      renderStreakBanner();
+      toast('Restored');
+    });
+  });
+}
+
+// ==================== LOG PAST WORKOUT ====================
+async function logPastWorkout() {
+  // Simple flow: prompt for session, then create blank workout with today's
+  // date and open the edit modal so the user can tweak date + fill in sets.
+  const sessions = Object.values(PLAN.sessions);
+  const labels = sessions.map((s, i) => `${i + 1}. ${s.name}`).join('\n');
+  const pick = prompt(`Which session?\n\n${labels}\n\nEnter 1-${sessions.length}:`);
+  if (!pick) return;
+  const idx = parseInt(pick, 10) - 1;
+  if (isNaN(idx) || idx < 0 || idx >= sessions.length) {
+    toast('Invalid selection');
+    return;
+  }
+  const session = sessions[idx];
+
+  const workout = {
+    id: uid(),
+    date: today(),
+    session: session.id,
+    week: getWeekNumber(),
+    startTime: '00:00',
+    duration: '',
+    exercises: session.exercises.map(ex => ({
+      exerciseId: ex.id,
+      sets: Array.from({ length: ex.sets }, () => ({ weight: 0, reps: 0, rpe: null, done: false })),
+    })),
+    quality: null,
+    notes: '',
+  };
+  await smartPut('workouts', workout);
+  renderRecentWorkouts();
+  toast('Draft created — edit the details');
+  openEditWorkout(workout.id);
 }
 
 // ==================== STREAK COUNTER ====================
@@ -4116,6 +4226,7 @@ function bindEvents() {
     showView('settings');
     updateHeader('settings');
     document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+    renderTrashList();
   });
 
   // Back from workout
@@ -4260,6 +4371,9 @@ function bindEvents() {
   document.getElementById('ew-close').addEventListener('click', closeEditWorkout);
   document.getElementById('ew-save').addEventListener('click', saveEditWorkout);
   document.getElementById('ew-delete').addEventListener('click', deleteEditWorkout);
+
+  // Log past workout
+  document.getElementById('btn-log-past').addEventListener('click', logPastWorkout);
 
   // Data recovery buttons (Settings)
   const recoveryOut = document.getElementById('recovery-output');
@@ -4447,6 +4561,7 @@ async function init() {
   await runMigrations();
   await migrateWorkoutDatesToLocal();
   await oneShotCloudRecovery();
+  await purgeExpiredTrash();
 
   // Service Worker
   registerServiceWorker();

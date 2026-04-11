@@ -115,7 +115,10 @@
           <div class="section-label">This Week</div>
           <div class="week-strip" id="week-strip"></div>
           <div id="streak-banner"></div>
-          <div class="section-label" style="margin-top:20px">Recent Workouts</div>
+          <div class="section-label" style="margin-top:20px;display:flex;justify-content:space-between;align-items:center">
+            <span>Recent Workouts</span>
+            <button id="btn-log-past" class="btn-secondary" style="padding:4px 10px;font-size:11px;font-weight:600">+ Log past</button>
+          </div>
           <div id="recent-workouts" class="recent-list"></div>
         </div>
       </section>
@@ -359,6 +362,11 @@
             </div>
             <p class="muted" style="font-size:11px;margin-top:6px">Get reminded on training days and to track protein.</p>
           </div>
+          <div class="section-label" style="margin-top:24px">Trash (2-day recovery)</div>
+          <div class="card">
+            <div id="trash-list"></div>
+          </div>
+
           <div class="section-label" style="margin-top:24px">Data Recovery</div>
           <div class="card">
             <p class="muted" style="margin:0 0 10px;font-size:12px">Scans sync queue + cloud to restore anything missing locally.</p>
@@ -368,7 +376,7 @@
           </div>
           <div class="section-label" style="margin-top:24px">App</div>
           <div class="card">
-            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v8.5<br>Data stored locally + cloud sync.<br>Works offline.</p>
+            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v8.6<br>Data stored locally + cloud sync.<br>Works offline.</p>
             <button id="btn-force-update" class="btn-secondary btn-full" style="text-align:center">Force Update App</button>
           </div>
         </div>
