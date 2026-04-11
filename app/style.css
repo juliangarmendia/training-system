@@ -14,7 +14,7 @@
   --nav-h: 80px; --header-h: 56px;
   --safe-top: env(safe-area-inset-top, 0px); --safe-bottom: env(safe-area-inset-bottom, 0px);
   /* Nav tunables (overridable via localStorage by debug overlay) */
-  --nav-padb: 4px; --nav-btn-padt: 2px; --nav-btn-padb: 0px; --nav-icon-h: 24px;
+  --nav-padb: 6px; --nav-btn-padt: 10px; --nav-btn-padb: 8px; --nav-icon-h: 28px;
   /* Typography scale */
   --fs-xs: 11px; --fs-sm: 13px; --fs-md: 15px; --fs-lg: 18px; --fs-xl: 22px; --fs-display: 28px;
 }
@@ -83,14 +83,16 @@ main { flex: 1; overflow: hidden; position: relative; }
 .view-scroll { height: 100%; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 8px 16px 16px; border-top: 2px solid var(--section-accent, transparent); }
 
 /* ========== Navigation ========== */
-nav { display: flex; background: var(--surface); border-top: 1px solid var(--border); padding-bottom: calc(var(--safe-bottom) + 6px); flex-shrink: 0; z-index: 100; margin-top: auto; }
-@media (display-mode: standalone) {
-  /* iOS PWA: shrink the nav strip so it sits lower on screen. Values driven
-     by CSS vars so the debug overlay can tune them live. */
-  nav { padding-bottom: max(var(--safe-bottom), var(--nav-padb)); }
-  .nav-btn { padding: var(--nav-btn-padt) 0 var(--nav-btn-padb); gap: 1px; }
-  .nav-btn .nav-icon-wrap { height: var(--nav-icon-h); }
+/* Nav geometry driven by CSS vars so the debug overlay can tune live in both
+   browser and PWA modes. In PWA the safe-area inset reserves home-indicator
+   space; --nav-padb ADDS to it (can be negative to ignore it). */
+nav {
+  display: flex; background: var(--surface); border-top: 1px solid var(--border);
+  padding-bottom: calc(var(--safe-bottom) + var(--nav-padb));
+  flex-shrink: 0; z-index: 100; margin-top: auto;
 }
+nav .nav-btn { padding: var(--nav-btn-padt) 0 var(--nav-btn-padb); gap: 1px; }
+nav .nav-btn .nav-icon-wrap { height: var(--nav-icon-h); }
 .nav-btn { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 10px 0 8px; background: none; border: none; color: var(--text3); font-size: 10px; font-weight: 600; cursor: pointer; position: relative; transition: color 0.15s; }
 .nav-btn.active { color: var(--accent); }
 .nav-btn.active::before { content: ''; position: absolute; top: 0; left: 25%; width: 50%; height: 2px; background: var(--accent); border-radius: 0 0 2px 2px; }

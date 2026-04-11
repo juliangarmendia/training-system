@@ -4302,16 +4302,18 @@ window.addEventListener('pagehide', () => {
 (function initNavDebug() {
   const el = document.getElementById('nav-debug');
   if (!el) return;
-  const LS_KEY = 'nav_debug_vals_v1';
+  const LS_KEY = 'nav_debug_vals_v2';
   const LS_HIDE = 'nav_debug_hidden_v1';
+  localStorage.removeItem('nav_debug_vals_v1');
   const root = document.documentElement;
-  const defaults = { padb: 4, padt: 2 };
+  const defaults = { padb: 6, padt: 10, padbBtn: 8 };
   const saved = (() => { try { return JSON.parse(localStorage.getItem(LS_KEY)) || {}; } catch { return {}; } })();
   const vals = { ...defaults, ...saved };
 
   function apply() {
     root.style.setProperty('--nav-padb', vals.padb + 'px');
     root.style.setProperty('--nav-btn-padt', vals.padt + 'px');
+    root.style.setProperty('--nav-btn-padb', vals.padbBtn + 'px');
     localStorage.setItem(LS_KEY, JSON.stringify(vals));
     render();
   }
@@ -4328,9 +4330,11 @@ window.addEventListener('pagehide', () => {
     document.getElementById('nd-ich').textContent = iconWrap ? getComputedStyle(iconWrap).height : '—';
   }
   el.querySelectorAll('.nd-ctrls button').forEach(b => {
-    b.addEventListener('click', () => {
+    b.addEventListener('click', (ev) => {
+      ev.stopPropagation();
       const k = b.dataset.k, d = parseInt(b.dataset.d, 10);
-      vals[k] = Math.max(0, vals[k] + d);
+      // padb can go negative (bite into safe-area); others stay >= 0
+      vals[k] = (k === 'padb') ? (vals[k] + d) : Math.max(0, vals[k] + d);
       apply();
       console.log('[nav-debug]', JSON.stringify(vals));
     });
