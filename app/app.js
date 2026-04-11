@@ -306,9 +306,56 @@ const state = {
   selectedStrengthLift: 'bench-press',
 };
 
+// ==================== ONE-SHOT MIGRATION: tz date fix ====================
+// Previous versions used toISOString() which is UTC. For users east/west of
+// UTC, evening workouts were saved to the next (or previous) day. This runs
+// once: for each workout/run from the last 60 days, if the stored `date` is
+// exactly 1 day off from what the id's epoch converts to in local time, fix it.
+async function migrateWorkoutDatesToLocal() {
+  if (localStorage.getItem('tz_date_migration_v1')) return;
+  try {
+    let fixed = 0;
+    const fixCollection = async (storeName) => {
+      const items = await dbGetAll(storeName);
+      for (const item of items) {
+        if (!item.id || !item.date) continue;
+        // uid() = Date.now().toString(36) + random — first 9 chars = epoch
+        const epochMs = parseInt(item.id.slice(0, 9), 36);
+        if (!isFinite(epochMs) || epochMs <= 0) continue;
+        if (Date.now() - epochMs > 60 * 86400000) continue;
+        const localDate = dateStr(new Date(epochMs));
+        if (localDate === item.date) continue;
+        const stored = new Date(item.date + 'T00:00:00');
+        const inferred = new Date(localDate + 'T00:00:00');
+        const diffDays = Math.round((stored - inferred) / 86400000);
+        // Only auto-fix the classic +1 day UTC drift
+        if (diffDays === 1) {
+          item.date = localDate;
+          await smartPut(storeName, item);
+          fixed++;
+        }
+      }
+    };
+    await fixCollection('workouts');
+    await fixCollection('runs');
+    localStorage.setItem('tz_date_migration_v1', String(Date.now()));
+    if (fixed > 0) {
+      console.log(`[migration] Fixed ${fixed} workout/run date(s) to local tz`);
+      setTimeout(() => {
+        if (typeof toast === 'function') toast(`Fixed ${fixed} workout date${fixed === 1 ? '' : 's'}`);
+      }, 1800);
+    }
+  } catch (e) {
+    console.warn('[migration] tz date fix failed:', e);
+  }
+}
+
 // ==================== UTILITIES ====================
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
-function today() { return new Date().toISOString().split('T')[0]; }
+// Local-date YYYY-MM-DD (NOT UTC — toISOString() drifts by tz and breaks streaks
+// for users east/west of UTC. Julian is in UTC-3 so evening workouts were
+// getting logged as the next day.)
+function today() { return dateStr(new Date()); }
 
 function formatDate(d) {
   const dt = new Date(d + 'T12:00:00');
@@ -384,7 +431,12 @@ function getWeekDates() {
 }
 
 function dateStr(d) {
-  return d.toISOString().split('T')[0];
+  // Local YYYY-MM-DD — must NOT use toISOString() (it converts to UTC and drops
+  // evening workouts into the wrong day for any non-UTC user).
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 // Epley formula: 1RM = weight × (1 + reps/30)
@@ -547,7 +599,7 @@ async function showWelcomeScreen() {
     let streak = 0;
     const d = new Date();
     for (let i = 0; i < 365; i++) {
-      const ds = d.toISOString().split('T')[0];
+      const ds = dateStr(d);
       if (trainingDates.has(ds)) streak++;
       else if (i !== 0) break;
       d.setDate(d.getDate() - 1);
@@ -1007,7 +1059,7 @@ async function renderStreakBanner() {
   const d = new Date();
   // Start from today and go backwards
   for (let i = 0; i < 365; i++) {
-    const ds = d.toISOString().split('T')[0];
+    const ds = dateStr(d);
     if (trainingDates.has(ds)) {
       streak++;
     } else if (i === 0) {
@@ -1737,8 +1789,8 @@ async function finishWorkout() {
     exercises.push({ exerciseId: exId, sets });
   });
 
-  // Use the date the workout was started, not when it was finished
-  const startDate = new Date(state.workoutStartTime).toISOString().split('T')[0];
+  // Use the date the workout was started, not when it was finished (local tz)
+  const startDate = dateStr(new Date(state.workoutStartTime));
   const workout = {
     id: uid(),
     date: startDate,
@@ -4172,6 +4224,7 @@ async function init() {
 
   // Run data migrations
   await runMigrations();
+  await migrateWorkoutDatesToLocal();
 
   // Service Worker
   registerServiceWorker();
