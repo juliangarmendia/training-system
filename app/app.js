@@ -681,7 +681,8 @@ function estimate1RM(weight, reps) {
 
 // Get exercise name from ID
 function getExerciseName(exId) {
-  for (const s of Object.values(PLAN.sessions)) {
+  if (exerciseLibrary[exId]) return exerciseLibrary[exId].name;
+  for (const s of Object.values(activePlan.sessions)) {
     const ex = s.exercises.find(e => e.id === exId);
     if (ex) return ex.name;
   }
@@ -776,13 +777,13 @@ async function checkAuth() {
 async function showWelcomeScreen() {
   const name = state.settings.userName || 'there';
   const jsDay = new Date().getDay();
-  const plan = WEEK_TEMPLATE[jsDay];
+  const plan = activeWeekTemplate[jsDay];
   const wk = getWeekNumber();
 
   let todayText = '';
   let headsUpHTML = '';
   if (plan.type === 'gym') {
-    const session = PLAN.sessions[plan.session];
+    const session = activePlan.sessions[plan.session];
     const deload = isDeloadWeek(wk);
     const numEx = session.exercises ? session.exercises.length : 0;
     const estMin = Math.max(35, numEx * 9);
@@ -960,7 +961,7 @@ async function saveWeekSchedule(schedule) {
 function getPlannedSession(jsDay, customSchedule, ds) {
   // Custom override for this specific date
   if (customSchedule[ds] !== undefined) return customSchedule[ds]; // null = empty, string = sessionId
-  const plan = WEEK_TEMPLATE[jsDay];
+  const plan = activeWeekTemplate[jsDay];
   return plan.type === 'gym' ? plan.session : null;
 }
 
@@ -1004,12 +1005,12 @@ async function renderWeekStrip() {
 
     let gymLabel = '', gymDone = false;
     if (dayWorkout) {
-      const s = PLAN.sessions[dayWorkout.session];
+      const s = activePlan.sessions[dayWorkout.session];
       gymLabel = s ? s.name.replace(/Upper |Lower /, '').charAt(0) + s.name.slice(-1) : '✓';
       gymDone = true;
       gymCell.classList.add('done');
     } else if (plannedSession) {
-      const s = PLAN.sessions[plannedSession];
+      const s = activePlan.sessions[plannedSession];
       gymLabel = s ? s.name.replace('Upper ', 'U').replace('Lower ', 'L') : '?';
     } else {
       gymLabel = isPast ? 'rest' : '—';
@@ -1018,17 +1019,17 @@ async function renderWeekStrip() {
 
     // Determine icon for the cell
     let cellIcon = '';
-    if (gymDone && dayWorkout && PLAN.sessions[dayWorkout.session]) {
-      cellIcon = PLAN.sessions[dayWorkout.session].icon;
-    } else if (!gymDone && plannedSession && PLAN.sessions[plannedSession]) {
-      cellIcon = PLAN.sessions[plannedSession].icon;
+    if (gymDone && dayWorkout && activePlan.sessions[dayWorkout.session]) {
+      cellIcon = activePlan.sessions[dayWorkout.session].icon;
+    } else if (!gymDone && plannedSession && activePlan.sessions[plannedSession]) {
+      cellIcon = activePlan.sessions[plannedSession].icon;
     }
 
     gymCell.innerHTML = `
       <div class="ws-day">${dayNames[i]}</div>
       ${cellIcon ? `<div class="ws-icon">${cellIcon}</div>` : ''}
       <div class="ws-session${gymDone ? ' ws-done' : ''}">${gymDone ? '✓' : gymLabel}</div>
-      <div class="ws-sub">${gymDone && dayWorkout ? (PLAN.sessions[dayWorkout.session]?.name.replace('Upper ', 'U').replace('Lower ', 'L') || '') : ''}</div>
+      <div class="ws-sub">${gymDone && dayWorkout ? (activePlan.sessions[dayWorkout.session]?.name.replace('Upper ', 'U').replace('Lower ', 'L') || '') : ''}</div>
     `;
 
     // Click handler
@@ -1037,7 +1038,7 @@ async function renderWeekStrip() {
     } else if (plannedSession) {
       gymCell.addEventListener('click', () => showSessionPicker(plannedSession));
     } else {
-      gymCell.addEventListener('click', () => showSessionPicker(Object.keys(PLAN.sessions)[0], ds));
+      gymCell.addEventListener('click', () => showSessionPicker(Object.keys(activePlan.sessions)[0], ds));
     }
 
     // Long-press to change/clear assignment
@@ -1059,7 +1060,7 @@ async function renderWeekStrip() {
 
     const runKey = 'run_' + ds;
     const customRun = customSchedule[runKey];
-    const defaultRun = WEEK_TEMPLATE[jsDay].type === 'run';
+    const defaultRun = activeWeekTemplate[jsDay].type === 'run';
     const planRun = customRun !== undefined ? customRun === true : defaultRun;
 
     if (dayRun) {
@@ -1132,8 +1133,8 @@ function showActionSheet(title, options) {
 }
 
 async function changeGymDay(ds, jsDay, customSchedule) {
-  const sessions = Object.entries(PLAN.sessions);
-  const current = customSchedule[ds] !== undefined ? customSchedule[ds] : (WEEK_TEMPLATE[jsDay].type === 'gym' ? WEEK_TEMPLATE[jsDay].session : null);
+  const sessions = Object.entries(activePlan.sessions);
+  const current = customSchedule[ds] !== undefined ? customSchedule[ds] : (activeWeekTemplate[jsDay].type === 'gym' ? activeWeekTemplate[jsDay].session : null);
   const dayLabel = new Date(ds + 'T12:00:00').toLocaleDateString('en', { weekday: 'long', month: 'short', day: 'numeric' });
 
   const options = [
@@ -1150,7 +1151,7 @@ async function changeGymDay(ds, jsDay, customSchedule) {
   customSchedule[ds] = newVal;
   await saveWeekSchedule(customSchedule);
   renderWeekStrip();
-  toast(newVal ? `Set to ${PLAN.sessions[newVal].name}` : 'Set to rest day');
+  toast(newVal ? `Set to ${activePlan.sessions[newVal].name}` : 'Set to rest day');
 }
 
 function showSkeleton(container, count = 3) {
@@ -1180,7 +1181,7 @@ async function renderRecentWorkouts() {
   }
 
   container.innerHTML = workouts.map(w => {
-    const session = PLAN.sessions[w.session];
+    const session = activePlan.sessions[w.session];
     const totalSets = w.exercises.reduce((sum, ex) => sum + ex.sets.filter(s => s.done).length, 0);
     return `
       <div class="history-item" data-edit-workout="${w.id}">
@@ -1213,7 +1214,7 @@ async function openEditWorkout(id) {
   if (!w) { toast('Workout not found'); return; }
   _editWorkoutId = id;
 
-  const session = PLAN.sessions[w.session];
+  const session = activePlan.sessions[w.session];
   document.getElementById('ew-title').textContent = session ? session.name : w.session;
   document.getElementById('ew-date').value = w.date || '';
   document.getElementById('ew-quality').value = w.quality || '';
@@ -1383,7 +1384,7 @@ async function renderTrashList() {
     const remainingMs = TRASH_TTL_MS - (now - t.deletedAt);
     const hoursLeft = Math.max(0, Math.floor(remainingMs / (60 * 60 * 1000)));
     const d = t.data || {};
-    const session = PLAN.sessions[d.session];
+    const session = activePlan.sessions[d.session];
     const name = session ? session.name : (d.session || t.store);
     return `
       <div class="trash-item">
@@ -1409,7 +1410,7 @@ async function renderTrashList() {
 
 // ==================== LOG PAST WORKOUT ====================
 async function logPastWorkout() {
-  const sessions = Object.values(PLAN.sessions);
+  const sessions = Object.values(activePlan.sessions);
   const labels = sessions.map((s, i) => `${i + 1}. ${s.name}`).join('\n');
   const pick = prompt(`Which session?\n\n${labels}\n\nEnter 1-${sessions.length}:`);
   if (!pick) return;
@@ -1458,7 +1459,7 @@ async function renderActivityRings() {
   const weekDates = getWeekDates().map(d => dateStr(d));
 
   // Ring 1: Training sessions this week (target: planned gym days)
-  const planned = Object.values(WEEK_TEMPLATE).filter(d => d.type === 'gym').length;
+  const planned = Object.values(activeWeekTemplate).filter(d => d.type === 'gym').length;
   const sessionsThisWeek = workouts.filter(w => weekDates.includes(w.date)).length;
   const sessionPct = Math.min(sessionsThisWeek / planned, 1);
 
@@ -1473,7 +1474,7 @@ async function renderActivityRings() {
   const proteinPct = daysWithData.length > 0 ? Math.min(proteinDaysMet / daysWithData.length, 1) : 0;
 
   // Ring 3: Running this week (target: planned run days)
-  const plannedRuns = Object.values(WEEK_TEMPLATE).filter(d => d.type === 'run').length;
+  const plannedRuns = Object.values(activeWeekTemplate).filter(d => d.type === 'run').length;
   const runsThisWeek = runs.filter(r => weekDates.includes(r.date)).length;
   const runPct = plannedRuns > 0 ? Math.min(runsThisWeek / plannedRuns, 1) : 0;
 
@@ -1575,7 +1576,7 @@ function updateSessionProgress() {
 
 // ==================== SESSION PICKER (day swap) ====================
 async function showSessionPicker(defaultSession, dateOverride) {
-  const sessions = Object.entries(PLAN.sessions);
+  const sessions = Object.entries(activePlan.sessions);
   const options = sessions.map(([id, s]) => ({
     value: id, label: s.name + ' — ' + s.subtitle, icon: s.icon, selected: id === defaultSession
   }));
@@ -1588,7 +1589,7 @@ async function showSessionPicker(defaultSession, dateOverride) {
 // ==================== VIEW COMPLETED WORKOUT (read-only) ====================
 function viewCompletedWorkout(workout) {
   state.viewingCompleted = true;
-  const session = PLAN.sessions[workout.session];
+  const session = activePlan.sessions[workout.session];
   const sessionName = session ? session.name : workout.session;
 
   document.getElementById('workout-timer').textContent = workout.duration || '--:--';
@@ -1668,7 +1669,7 @@ function viewCompletedWorkout(workout) {
 
 // ==================== WORKOUT ====================
 async function startWorkout(sessionId) {
-  const session = PLAN.sessions[sessionId];
+  const session = activePlan.sessions[sessionId];
   if (!session) return;
 
   state.activeSession = sessionId;
@@ -2132,7 +2133,7 @@ async function showResumeBanner() {
     if (weekBanner) weekBanner.classList.remove('hidden');
     return;
   }
-  const session = PLAN.sessions[saved.sessionId];
+  const session = activePlan.sessions[saved.sessionId];
   if (!session) { await clearActiveWorkout(); return; }
   if (weekBanner) weekBanner.classList.add('hidden');
 
@@ -2169,7 +2170,7 @@ async function showResumeBanner() {
 async function restoreActiveWorkout() {
   const saved = await dbGet('settings', 'activeWorkout');
   if (!saved || !saved.sessionId) return false;
-  const session = PLAN.sessions[saved.sessionId];
+  const session = activePlan.sessions[saved.sessionId];
   if (!session) { await clearActiveWorkout(); return false; }
 
   // Restore state
@@ -2257,6 +2258,8 @@ async function finishWorkout() {
     id: uid(),
     date: startDate,
     session: state.activeSession,
+    sessionName: activePlan.sessions[state.activeSession]?.name || state.activeSession,
+    planVersion: activePlan.version || 1,
     week: getWeekNumber(),
     startTime: new Date(state.workoutStartTime).toTimeString().slice(0, 5),
     duration,
@@ -2978,7 +2981,7 @@ async function renderWeeklySummary() {
 
   const totalKm = thisWeekRuns.reduce((sum, r) => sum + (r.distance || 0), 0);
   const adherence = thisWeek.length;
-  const planned = Object.values(WEEK_TEMPLATE).filter(d => d.type === 'gym').length;
+  const planned = Object.values(activeWeekTemplate).filter(d => d.type === 'gym').length;
 
   container.innerHTML = `
     <div class="ws-grid">
@@ -3139,7 +3142,7 @@ async function startCustomWorkout(template) {
   template.exercises.forEach((tex, idx) => {
     // Find exercise in PLAN
     let exDef = null;
-    Object.values(PLAN.sessions).forEach(s => {
+    Object.values(activePlan.sessions).forEach(s => {
       const found = s.exercises.find(e => e.id === tex.exerciseId);
       if (found) exDef = found;
     });
@@ -3195,12 +3198,10 @@ async function startCustomWorkout(template) {
 }
 
 function getExerciseMuscle(exId) {
-  for (const session of Object.values(PLAN.sessions)) {
+  if (exerciseLibrary[exId]) return exerciseLibrary[exId].muscle;
+  for (const session of Object.values(activePlan.sessions)) {
     const ex = session.exercises.find(e => e.id === exId);
     if (ex) return ex.muscle;
-  }
-  for (const [muscle, alts] of Object.entries(EXERCISE_ALTERNATIVES)) {
-    if (alts.find(a => a.id === exId)) return muscle;
   }
   return null;
 }
@@ -3922,7 +3923,7 @@ async function exportCSV() {
   csv += '=== WORKOUTS ===\n';
   csv += 'Date,Session,Exercise,Set,Weight,Reps,RPE,Done,Quality,Duration\n';
   workouts.forEach(w => {
-    const session = PLAN.sessions[w.session];
+    const session = activePlan.sessions[w.session];
     w.exercises.forEach(ex => {
       ex.sets.forEach((s, i) => {
         csv += `${w.date},${session ? session.name : w.session},${getExerciseName(ex.exerciseId)},${i + 1},${s.weight},${s.reps},${s.rpe || ''},${s.done},${w.quality || ''},${w.duration || ''}\n`;
@@ -4039,7 +4040,7 @@ async function renderMuscleVolume() {
   workouts.forEach(w => {
     w.exercises.forEach(ex => {
       let muscle = null;
-      for (const s of Object.values(PLAN.sessions)) {
+      for (const s of Object.values(activePlan.sessions)) {
         const found = s.exercises.find(e => e.id === ex.exerciseId);
         if (found) { muscle = found.muscle; break; }
       }
@@ -4117,7 +4118,7 @@ async function renderSwimlaneTL() {
   const dayData = weekStrs.map((ds, i) => {
     const w = workouts.find(w => w.date === ds);
     const r = runs.find(r => r.date === ds);
-    const sched = customSchedule || WEEK_TEMPLATE;
+    const sched = customSchedule || activeWeekTemplate;
     const jsDay = weekDates[i].getDay();
     const planned = sched[jsDay] || { type: 'rest' };
     return { date: ds, day: dayNames[i], workout: w, run: r, planned };
@@ -4140,7 +4141,7 @@ async function renderSwimlaneTL() {
       if (lane.id === 'gym') {
         if (d.workout) {
           active = true;
-          const sess = PLAN.sessions[d.workout.session];
+          const sess = activePlan.sessions[d.workout.session];
           label = sess ? sess.name.replace(/Upper |Lower /, '').charAt(0) : '✓';
         } else if (d.planned.type === 'gym' && d.date >= todayStr) {
           label = '·';
@@ -4578,7 +4579,7 @@ function bindEvents() {
     res.rows.forEach(r => {
       const w = r.data || {};
       const sessKey = w.session || '?';
-      const session = PLAN.sessions[sessKey];
+      const session = activePlan.sessions[sessKey];
       const name = session ? session.name : sessKey;
       lines.push(`  ${w.date || '?'} · ${name} · id=${(w.id || '').slice(0, 6)}`);
     });
@@ -4645,11 +4646,11 @@ async function checkAndNotify() {
   if (lastNotif === todayStr) return; // one notification per day max
 
   const jsDay = now.getDay();
-  const plan = WEEK_TEMPLATE[jsDay];
+  const plan = activeWeekTemplate[jsDay];
 
   // Morning training reminder (7-10 AM)
   if (hour >= 7 && hour <= 10 && plan.type !== 'rest') {
-    const label = plan.type === 'gym' ? PLAN.sessions[plan.session].name : 'Zone 2 Run';
+    const label = plan.type === 'gym' ? activePlan.sessions[plan.session].name : 'Zone 2 Run';
     new Notification('Training Day', { body: `Today: ${label}. Let's go!`, tag: 'training-day' });
     localStorage.setItem('training_last_notif', todayStr);
     return;
