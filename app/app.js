@@ -1215,35 +1215,95 @@ async function openEditWorkout(id) {
   _editWorkoutId = id;
 
   const session = activePlan.sessions[w.session];
-  document.getElementById('ew-title').textContent = session ? session.name : w.session;
+  const sessionName = session ? session.name : (w.sessionName || w.session);
+  document.getElementById('ew-title').textContent = sessionName;
   document.getElementById('ew-date').value = w.date || '';
   document.getElementById('ew-quality').value = w.quality || '';
   document.getElementById('ew-notes').value = w.notes || '';
 
   const appUnit = state.settings.unit || 'kg';
   const unit = w.inputUnit || appUnit;
-  // Show a banner if the workout will be stored in a different unit than entered
   const titleEl = document.getElementById('ew-title');
   if (w.inputUnit && w.inputUnit !== appUnit) {
-    titleEl.innerHTML = `${session ? session.name : w.session} <span style="font-size:11px;color:var(--accent);font-weight:600">· input: ${unit.toUpperCase()}</span>`;
+    titleEl.innerHTML = `${sessionName} <span style="font-size:11px;color:var(--accent);font-weight:600">· input: ${unit.toUpperCase()}</span>`;
   }
+
+  // Load previous workouts for this session (for ghost sets / 1RM)
+  const allSessionWorkouts = (await dbGetAll('workouts'))
+    .filter(wk => wk.session === w.session && wk.id !== w.id)
+    .sort((a, b) => b.date.localeCompare(a.date));
+  const previous = allSessionWorkouts[0] || null;
+
   const exHost = document.getElementById('ew-exercises');
   exHost.innerHTML = w.exercises.map((ex, exi) => {
-    const name = getExerciseName(ex.exerciseId);
-    const rows = ex.sets.map((s, i) => `
-      <div class="ew-set" data-ex="${exi}" data-set="${i}">
-        <div class="ew-num">${i + 1}</div>
-        <input type="number" inputmode="decimal" step="0.5" data-f="weight" value="${s.weight || ''}" placeholder="${unit}">
-        <input type="number" inputmode="numeric" data-f="reps" value="${s.reps || ''}" placeholder="reps">
-        <input type="number" inputmode="decimal" step="0.5" data-f="rpe" value="${s.rpe || ''}" placeholder="rpe">
-        <button class="ew-done ${s.done ? 'checked' : ''}" data-f="done" type="button">✓</button>
-      </div>
-    `).join('');
+    const exName = getExerciseName(ex.exerciseId);
+    const muscle = getExerciseMuscle(ex.exerciseId);
+    const muscleColor = MUSCLE_COLORS[muscle] || '#666';
+
+    // Find plan exercise definition for target info + notes
+    const planEx = session ? session.exercises.find(e => e.id === ex.exerciseId) : null;
+    const targetHTML = planEx
+      ? `<div class="exercise-target">${planEx.sets} × ${planEx.reps} @ RPE ${planEx.rpe} · Rest ${Math.floor((planEx.defaultRest || 120) / 60)}:${((planEx.defaultRest || 120) % 60).toString().padStart(2, '0')}</div>`
+      : '';
+    const notesHTML = planEx && planEx.notes
+      ? `<div class="exercise-notes" style="margin-top:6px">${planEx.notes}</div>`
+      : '';
+
+    // Previous workout ghost data
+    const prevEx = previous ? previous.exercises.find(e => e.exerciseId === ex.exerciseId) : null;
+    const prevDoneSets = prevEx ? prevEx.sets.filter(s => s.done && (s.weight > 0 || (planEx && planEx.bw))) : [];
+    const prevSummary = prevDoneSets.length > 0
+      ? prevDoneSets.map(s => `${planEx && planEx.bw ? '+' : ''}${s.weight}×${s.reps}`).join('  ')
+      : '';
+    const prevHeaderHTML = prevSummary ? `<div class="prev-header">Last: ${prevSummary}</div>` : '';
+
+    // Est 1RM from all history
+    let best1RM = 0;
+    allSessionWorkouts.concat([w]).forEach(wk => {
+      const wex = wk.exercises.find(e => e.exerciseId === ex.exerciseId);
+      if (wex) wex.sets.filter(s => s.done && s.weight > 0 && s.reps > 0).forEach(s => {
+        const e1rm = estimate1RM(s.weight, s.reps);
+        if (e1rm > best1RM) best1RM = e1rm;
+      });
+    });
+    const e1rmHTML = best1RM > 0 ? `<div class="exercise-1rm">Est. 1RM: ${best1RM} ${appUnit}</div>` : '';
+
+    const rows = ex.sets.map((s, i) => {
+      const ghostSet = prevEx && prevEx.sets[i];
+      const ghostHTML = ghostSet && ghostSet.done
+        ? `<div class="ghost-set ew-ghost"><span>${planEx && planEx.bw ? '+' : ''}${ghostSet.weight}</span><span>${ghostSet.reps}</span><span>${ghostSet.rpe || ''}</span></div>`
+        : '';
+      return `
+        ${ghostHTML}
+        <div class="ew-set" data-ex="${exi}" data-set="${i}">
+          <div class="ew-num">${i + 1}</div>
+          <input type="number" inputmode="decimal" step="0.5" data-f="weight" value="${s.weight || ''}" placeholder="${unit}">
+          <input type="number" inputmode="numeric" data-f="reps" value="${s.reps || ''}" placeholder="reps">
+          <select data-f="rpe" class="ew-rpe-select" style="${s.rpe ? 'color:' + rpeColor(s.rpe) : ''}">
+            <option value="">RPE</option>
+            ${[6,6.5,7,7.5,8,8.5,9,9.5,10].map(v => `<option value="${v}"${s.rpe == v ? ' selected' : ''}>${v}</option>`).join('')}
+          </select>
+          <button class="ew-done ${s.done ? 'checked' : ''}" data-f="done" type="button">✓</button>
+        </div>
+      `;
+    }).join('');
+
+    const supersetTag = planEx && planEx.superset
+      ? `<span class="ew-superset-tag">SS ${planEx.superset}</span>` : '';
+
     return `
       <div class="ew-ex">
-        <div class="ew-ex-name">${name}</div>
-        <div class="ew-set-head"><span></span><span>Weight</span><span>Reps</span><span>RPE</span><span>Done</span></div>
+        <div class="exercise-name-row" style="margin-bottom:4px">
+          <span class="exercise-name" style="font-size:14px;font-weight:700">${exName}</span>
+          ${muscle ? `<span class="muscle-badge" style="background:${muscleColor}20;color:${muscleColor}">${muscle}</span>` : ''}
+          ${supersetTag}
+        </div>
+        ${targetHTML}
+        ${prevHeaderHTML}
+        ${e1rmHTML}
+        <div class="ew-set-head"><span></span><span>${planEx && planEx.bw ? '+' + unit : unit}</span><span>Reps</span><span>RPE</span><span>Done</span></div>
         ${rows}
+        ${notesHTML}
       </div>
     `;
   }).join('');
@@ -1251,6 +1311,14 @@ async function openEditWorkout(id) {
   // Toggle done buttons
   exHost.querySelectorAll('.ew-done').forEach(btn => {
     btn.addEventListener('click', () => btn.classList.toggle('checked'));
+  });
+
+  // RPE color on change
+  exHost.querySelectorAll('.ew-rpe-select').forEach(sel => {
+    sel.addEventListener('change', () => {
+      const val = parseFloat(sel.value);
+      sel.style.color = val ? rpeColor(val) : '';
+    });
   });
 
   document.getElementById('edit-workout-modal').classList.remove('hidden');
@@ -1292,7 +1360,8 @@ async function saveEditWorkout() {
     const rawWeight = parseFloat(row.querySelector('[data-f="weight"]').value) || 0;
     s.weight = convert(rawWeight);
     s.reps = parseInt(row.querySelector('[data-f="reps"]').value, 10) || 0;
-    const rpeVal = parseFloat(row.querySelector('[data-f="rpe"]').value);
+    const rpeEl = row.querySelector('[data-f="rpe"]');
+    const rpeVal = parseFloat(rpeEl.value);
     s.rpe = isNaN(rpeVal) ? null : rpeVal;
     s.done = row.querySelector('[data-f="done"]').classList.contains('checked');
   });
@@ -1411,24 +1480,31 @@ async function renderTrashList() {
 // ==================== LOG PAST WORKOUT ====================
 async function logPastWorkout() {
   const sessions = Object.values(activePlan.sessions);
-  const labels = sessions.map((s, i) => `${i + 1}. ${s.name}`).join('\n');
-  const pick = prompt(`Which session?\n\n${labels}\n\nEnter 1-${sessions.length}:`);
-  if (!pick) return;
-  const idx = parseInt(pick, 10) - 1;
-  if (isNaN(idx) || idx < 0 || idx >= sessions.length) {
-    toast('Invalid selection');
-    return;
-  }
-  const session = sessions[idx];
 
-  const unitPick = prompt('Enter weights in:\n\n1. kg\n2. lb\n\nChoose 1 or 2:', '1');
-  if (!unitPick) return;
-  const inputUnit = unitPick.trim() === '2' ? 'lb' : 'kg';
+  // Step 1: Pick session via action sheet buttons
+  const sessionOptions = sessions.map(s => ({
+    value: s.id, label: s.name + ' — ' + s.subtitle, icon: s.icon
+  }));
+  const sessionId = await showActionSheet('Which session?', sessionOptions);
+  if (!sessionId) return;
+  const session = activePlan.sessions[sessionId];
+  if (!session) return;
+
+  // Step 2: Pick unit via action sheet buttons
+  const appUnit = state.settings.unit || 'kg';
+  const unitOptions = [
+    { value: 'kg', label: 'Kilograms (kg)', icon: '🏋️', selected: appUnit === 'kg' },
+    { value: 'lb', label: 'Pounds (lb)', icon: '🏋️', selected: appUnit === 'lb' },
+  ];
+  const inputUnit = await showActionSheet('Enter weights in', unitOptions);
+  if (!inputUnit) return;
 
   const workout = {
     id: uid(),
     date: today(),
     session: session.id,
+    sessionName: session.name,
+    planVersion: activePlan.version || 1,
     week: getWeekNumber(),
     startTime: '00:00',
     duration: '',
@@ -1438,7 +1514,7 @@ async function logPastWorkout() {
     })),
     quality: null,
     notes: '',
-    inputUnit, // remembered so the editor shows the right placeholder
+    inputUnit,
   };
   await smartPut('workouts', workout);
   renderRecentWorkouts();

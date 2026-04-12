@@ -952,17 +952,26 @@ nav { display: flex; background: var(--surface); border-top: 1px solid var(--bor
 #header-title.ctx { font-size: 20px; font-variant-numeric: tabular-nums; }
 
 /* ========== Edit Workout modal ========== */
-.ew-ex { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px; margin-bottom: 10px; }
-.ew-ex-name { font-size: 14px; font-weight: 700; margin-bottom: 8px; color: var(--text); }
+.ew-ex { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; margin-bottom: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+.ew-ex .exercise-name-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.ew-ex .exercise-target { font-size: 11px; color: var(--text2); margin-top: 2px; }
+.ew-ex .prev-header { font-size: 11px; color: var(--teal); font-weight: 600; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.ew-ex .exercise-1rm { font-size: 10px; color: var(--accent); font-weight: 600; margin-top: 1px; }
+.ew-ex .exercise-notes { font-size: 11px; color: var(--text2); margin-top: 8px; padding: 8px; background: var(--bg2); border-radius: var(--radius-xs); border-left: 3px solid var(--accent-dim); line-height: 1.4; }
+.ew-superset-tag { font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 20px; background: var(--purple)20; color: var(--purple); text-transform: uppercase; letter-spacing: 0.3px; }
 .ew-set-head, .ew-set { display: grid; grid-template-columns: 24px 1fr 1fr 54px 30px; gap: 6px; align-items: center; }
-.ew-set-head { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; padding: 2px 0; font-weight: 700; }
+.ew-set-head { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; padding: 6px 0 2px; font-weight: 700; border-top: 1px solid var(--border); margin-top: 6px; }
 .ew-set-head span { text-align: center; }
 .ew-set { padding: 3px 0; }
 .ew-set .ew-num { text-align: center; font-size: 12px; color: var(--text2); font-weight: 600; }
-.ew-set input { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 14px; padding: 6px 4px; text-align: center; width: 100%; -webkit-appearance: none; font-variant-numeric: tabular-nums; }
-.ew-set input:focus { border-color: var(--accent); outline: none; }
+.ew-set input, .ew-set select { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 14px; padding: 6px 4px; text-align: center; width: 100%; -webkit-appearance: none; font-variant-numeric: tabular-nums; }
+.ew-set input:focus, .ew-set select:focus { border-color: var(--accent); outline: none; }
+.ew-rpe-select { font-size: 12px !important; padding: 6px 2px !important; }
 .ew-set .ew-done { width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--border); background: transparent; color: transparent; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; margin: 0 auto; font-size: 14px; }
 .ew-set .ew-done.checked { background: var(--accent); border-color: var(--accent); color: var(--on-accent, #000); }
+.ew-ghost { display: grid; grid-template-columns: 24px 1fr 1fr 54px 30px; gap: 6px; padding: 2px 0; opacity: 0.25; font-size: 11px; color: var(--text2); font-weight: 500; pointer-events: none; }
+.ew-ghost span { text-align: center; }
+.ew-ghost span:first-child { grid-column: 2; }
 
 /* ========== Trash list ========== */
 .trash-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border); }
