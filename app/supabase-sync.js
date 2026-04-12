@@ -236,7 +236,7 @@ async function syncAll() {
   await drainSyncQueue();
 
   // Pull from cloud for each store
-  const stores = ['workouts', 'runs', 'nutrition', 'settings', 'bodyweight'];
+  const stores = ['workouts', 'runs', 'nutrition', 'settings', 'bodyweight', 'plans', 'exercises'];
   const lastSync = await dbGet('settings', 'lastSyncTimestamp');
   const since = lastSync ? lastSync.data : '1970-01-01T00:00:00Z';
 

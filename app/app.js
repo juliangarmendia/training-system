@@ -222,9 +222,156 @@ const WEEK_TEMPLATE = {
   0: { type: 'rest', label: 'Rest' },
 };
 
+// ==================== DYNAMIC PLAN SYSTEM ====================
+// Module-level state — loaded from IDB at startup, fallback to hardcoded PLAN
+let activePlan = null;           // { sessions, weekTemplate, version, ... }
+let activeWeekTemplate = null;   // shortcut to activePlan.weekTemplate
+let exerciseLibrary = {};        // { exerciseId: { id, name, muscle, movementPattern, ... } }
+
+// Movement pattern mapping for every known exercise
+const MOVEMENT_PATTERNS = {
+  // Horizontal press
+  'bench-press': 'horizontal-press', 'incline-db-press': 'horizontal-press',
+  'db-bench': 'horizontal-press', 'machine-chest-press': 'horizontal-press',
+  'cable-fly': 'horizontal-press', 'pushup': 'horizontal-press',
+  'dips': 'horizontal-press', 'close-grip-bench': 'horizontal-press',
+  'floor-press': 'horizontal-press',
+  // Vertical press
+  'ohp': 'vertical-press', 'db-shoulder-press': 'vertical-press',
+  'machine-shoulder-press': 'vertical-press', 'arnold-press': 'vertical-press',
+  // Horizontal pull
+  'barbell-row': 'horizontal-pull', 'landmine-row': 'horizontal-pull',
+  'cable-row': 'horizontal-pull', 'db-row': 'horizontal-pull',
+  't-bar-row': 'horizontal-pull',
+  // Vertical pull
+  'chinups': 'vertical-pull', 'pullups': 'vertical-pull',
+  'lat-pulldown': 'vertical-pull',
+  // Squat pattern
+  'back-squat': 'squat', 'front-squat': 'squat', 'leg-press': 'squat',
+  'goblet-squat': 'squat', 'hack-squat': 'squat', 'bss': 'single-leg',
+  // Hinge
+  'sumo-dl': 'hinge', 'conv-dl': 'hinge', 'trap-bar-dl': 'hinge',
+  'rdl': 'hinge', 'db-rdl': 'hinge', 'good-morning': 'hinge',
+  // Isolation legs
+  'leg-extension': 'isolation-quad', 'leg-curl-a': 'isolation-ham',
+  'leg-curl-b': 'isolation-ham', 'nordic-curl': 'isolation-ham',
+  'calf-raise': 'isolation-calf', 'seated-calf-raise': 'isolation-calf',
+  'leg-press-calf': 'isolation-calf',
+  // Glute
+  'hip-thrust': 'glute', 'cable-kickback': 'glute', 'glute-bridge': 'glute',
+  // Isolation shoulder
+  'lateral-raise': 'isolation-shoulder', 'cable-lateral': 'isolation-shoulder',
+  'face-pull': 'isolation-rear-delt', 'rear-delt-fly': 'isolation-rear-delt',
+  'band-pull-apart': 'isolation-rear-delt', 'reverse-pec-deck': 'isolation-rear-delt',
+  // Isolation arms
+  'tricep-pushdown': 'isolation-tricep', 'overhead-ext': 'isolation-tricep',
+  'skull-crusher': 'isolation-tricep',
+  'incline-curl': 'isolation-bicep', 'barbell-curl': 'isolation-bicep',
+  'hammer-curl': 'isolation-bicep', 'cable-curl': 'isolation-bicep',
+  'preacher-curl': 'isolation-bicep',
+  // Core
+  'ab-wheel': 'core', 'hanging-leg-raise': 'core', 'pallof-press': 'core',
+  'cable-crunch': 'core', 'plank': 'core', 'dead-bug': 'core',
+};
+
+// Seed the plans store with the hardcoded PLAN if empty
+async function ensurePlanSeeded() {
+  const plans = await dbGetAll('plans');
+  if (plans.length > 0) return;
+  const seedPlan = {
+    id: 'plan_v1',
+    version: 1,
+    createdAt: new Date().toISOString(),
+    weekNumber: null,
+    label: 'Upper/Lower 4-Day Split',
+    sessions: JSON.parse(JSON.stringify(PLAN.sessions)),
+    weekTemplate: JSON.parse(JSON.stringify(WEEK_TEMPLATE)),
+  };
+  await dbPut('plans', seedPlan);
+  console.log('[Plan] Seeded plan_v1 from hardcoded PLAN');
+}
+
+// Build the exercise library from PLAN sessions + EXERCISE_ALTERNATIVES
+async function ensureExerciseLibrarySeeded() {
+  const existing = await dbGetAll('exercises');
+  if (existing.length > 0) return;
+  const exMap = {};
+  // From PLAN sessions
+  for (const s of Object.values(PLAN.sessions)) {
+    for (const ex of s.exercises) {
+      if (!exMap[ex.id]) {
+        exMap[ex.id] = {
+          id: ex.id, name: ex.name, muscle: ex.muscle,
+          movementPattern: MOVEMENT_PATTERNS[ex.id] || 'other',
+          bw: !!ex.bw, defaultNotes: ex.notes || '', custom: false,
+        };
+      }
+    }
+  }
+  // From EXERCISE_ALTERNATIVES
+  for (const [muscle, alts] of Object.entries(EXERCISE_ALTERNATIVES)) {
+    for (const alt of alts) {
+      if (!exMap[alt.id]) {
+        exMap[alt.id] = {
+          id: alt.id, name: alt.name, muscle,
+          movementPattern: MOVEMENT_PATTERNS[alt.id] || 'other',
+          bw: false, defaultNotes: '', custom: false,
+        };
+      }
+    }
+  }
+  for (const ex of Object.values(exMap)) {
+    await dbPut('exercises', ex);
+  }
+  console.log(`[Plan] Seeded ${Object.keys(exMap).length} exercises`);
+}
+
+// Load the highest-version plan into memory
+async function loadActivePlan() {
+  const plans = await dbGetAll('plans');
+  if (plans.length > 0) {
+    plans.sort((a, b) => b.version - a.version);
+    activePlan = plans[0];
+    activeWeekTemplate = activePlan.weekTemplate;
+  } else {
+    // Fallback to hardcoded (should not happen after seed)
+    activePlan = { sessions: PLAN.sessions, weekTemplate: WEEK_TEMPLATE, version: 0, label: 'Fallback' };
+    activeWeekTemplate = WEEK_TEMPLATE;
+  }
+  console.log(`[Plan] Active: v${activePlan.version} "${activePlan.label}"`);
+}
+
+// Load exercise library into memory for fast lookups
+async function loadExerciseLibrary() {
+  const all = await dbGetAll('exercises');
+  exerciseLibrary = {};
+  all.forEach(ex => { exerciseLibrary[ex.id] = ex; });
+  console.log(`[Plan] Exercise library: ${all.length} exercises loaded`);
+}
+
+// Create a new plan version (for weekly updates)
+async function createNewPlanVersion(modifications) {
+  const plans = await dbGetAll('plans');
+  const currentVersion = Math.max(...plans.map(p => p.version), 0);
+  const newPlan = {
+    id: `plan_v${currentVersion + 1}`,
+    version: currentVersion + 1,
+    createdAt: new Date().toISOString(),
+    weekNumber: modifications.weekNumber || getWeekNumber(),
+    label: modifications.label || activePlan.label,
+    sessions: JSON.parse(JSON.stringify(modifications.sessions || activePlan.sessions)),
+    weekTemplate: JSON.parse(JSON.stringify(modifications.weekTemplate || activeWeekTemplate)),
+  };
+  await smartPut('plans', newPlan);
+  activePlan = newPlan;
+  activeWeekTemplate = newPlan.weekTemplate;
+  console.log(`[Plan] Created v${newPlan.version} "${newPlan.label}"`);
+  return newPlan;
+}
+
 // ==================== DATABASE ====================
 const DB_NAME = 'TrainingApp';
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 let db = null;
 
 function openDB() {
@@ -240,6 +387,9 @@ function openDB() {
       if (!d.objectStoreNames.contains('bodyweight')) d.createObjectStore('bodyweight', { keyPath: 'date' });
       // Trash: soft-deleted items kept locally for 2 days
       if (!d.objectStoreNames.contains('trash')) d.createObjectStore('trash', { keyPath: 'trashId' });
+      // Dynamic plans (versioned snapshots) and exercise library
+      if (!d.objectStoreNames.contains('plans')) d.createObjectStore('plans', { keyPath: 'id' });
+      if (!d.objectStoreNames.contains('exercises')) d.createObjectStore('exercises', { keyPath: 'id' });
     };
     req.onsuccess = (e) => { db = e.target.result; resolve(db); };
     req.onerror = (e) => reject(e);
@@ -4578,6 +4728,13 @@ async function init() {
   await openDB();
   await loadSettings();
   loadTheme();
+
+  // Seed and load dynamic plan + exercise library
+  await ensurePlanSeeded();
+  await ensureExerciseLibrarySeeded();
+  await loadActivePlan();
+  await loadExerciseLibrary();
+
   bindEvents();
 
   // Run data migrations
