@@ -1365,6 +1365,8 @@ async function saveEditWorkout() {
     s.rpe = isNaN(rpeVal) ? null : rpeVal;
     s.done = row.querySelector('[data-f="done"]').classList.contains('checked');
   });
+  // Record the unit weights are stored in (after conversion).
+  w.unit = appUnit;
   // One-time conversion only: strip inputUnit after saving so future edits
   // use the app's canonical unit directly.
   delete w.inputUnit;
@@ -2342,6 +2344,7 @@ async function finishWorkout() {
     exercises,
     quality: state.sessionQuality,
     notes: document.getElementById('workout-notes').value.trim(),
+    unit: state.settings.unit || 'kg',
   };
 
   await smartPut('workouts', workout);
@@ -4783,6 +4786,30 @@ async function runMigrations() {
   const migKey = 'migrations_done';
   const done = (await dbGet('settings', migKey)) || { key: migKey, data: [] };
   if (!done.data) done.data = [];
+
+  // Migration: backfill `unit` on all workouts + convert known lb workouts to kg
+  if (!done.data.includes('backfill-unit')) {
+    const appUnit = state.settings.unit || 'kg';
+    const workouts = await dbGetAll('workouts');
+    // These workouts were saved in lb without conversion (known from initial data audit)
+    const lbWorkoutIds = ['mnuj7m3zh2anjq', 'mns1m5s1j5yrol'];
+    for (const w of workouts) {
+      if (w.unit) continue; // already tagged
+      if (lbWorkoutIds.includes(w.id) && appUnit === 'kg') {
+        // Convert lb weights to kg
+        w.exercises.forEach(ex => {
+          ex.sets.forEach(s => {
+            if (s.weight) s.weight = +(s.weight * 0.453592).toFixed(2);
+          });
+        });
+        console.log(`[Migration] Converted workout ${w.id} from lb to kg`);
+      }
+      w.unit = appUnit;
+      await smartPut('workouts', w);
+    }
+    done.data.push('backfill-unit');
+    await dbPut('settings', done);
+  }
 
   // Migration: fix duplicate workouts on 2026-04-08 — move Upper A to 2026-04-07
   if (!done.data.includes('fix-apr8-dup')) {

@@ -1,10 +1,12 @@
 # Training Plan — Cut Phase 1
 
-> Version: 2.0
+> Version: 3.0
 > Created: 2026-04-06
+> Updated: 2026-04-13
 > Phase: Fat Loss / Strength Maintenance
-> Duration: 9 weeks (4 training + 1 deload + 4 training, then reassess)
-> Next review: Week 5 (deload), Week 9 (full reassessment)
+> Duration: 9 weeks — Block A (weeks 1-4) + Deload (week 5) + Block B (weeks 6-9)
+> Current week: 2 (Block A)
+> Next review: Week 5 (deload + exercise rotation), Week 9 (full reassessment)
 
 ---
 
@@ -34,6 +36,94 @@ Your previous program had 30-40+ working sets per session including CrossFit-sty
 - Every set that doesn't contribute to the primary goals (strength maintenance, muscle preservation) is stealing recovery from sets that do
 - Conditioning comes from structured running (separate sessions), not from metabolic work bolted onto lifting sessions
 - Target: 16-20 hard working sets per session. Done in 50-60 minutes. Walk out.
+
+---
+
+## Block Periodization
+
+The program uses two training blocks with exercise rotation to prevent adaptation and overuse:
+
+### Block A — Weeks 1-4 (Current)
+Establish baselines. Same exercises each week to track progression accurately. RPE 7-8.
+
+### Block B — Weeks 6-9
+Main compounds stay. Accessories and secondary movements rotate to:
+- Provide new stimulus after 4 weeks of the same movement patterns
+- Reduce overuse stress on joints (especially shoulders and knees)
+- Maintain motivation through variety
+- Target muscle groups from different angles
+
+| Block A (Weeks 1-4) | Block B (Weeks 6-9) | Why the swap |
+|---|---|---|
+| Incline DB Press | DB Floor Press | Different ROM emphasis, less shoulder stress |
+| Barbell Row (overhand) | Pendlay Row | Stricter form, more explosive concentric |
+| RDL | Stiff-Leg Deadlift | Greater hamstring stretch, slightly different loading |
+| Leg Press | Hack Squat (or Front Squat) | More quad isolation, different spinal loading |
+| Incline DB Curl | Hammer Curl | Brachialis emphasis, forearm development |
+| Cable Lateral Raise | Machine Lateral Raise (or DB partials) | Different resistance curve |
+| Ab Wheel | Plank (weighted) or Dead Bug | Different core stimulus, anti-extension variety |
+| Cable Pallof Press | Landmine Anti-Rotation | Same pattern, different resistance profile |
+
+**Main compounds that DO NOT change:** Bench Press, Back Squat, Sumo Deadlift, OHP, Chin-ups. These are your strength markers — consistency is how you measure progress.
+
+### Week 5 — Deload + Transition
+50% volume, RPE 6, eat at maintenance. Use this week to practice Block B exercises at light weight to find working loads before week 6.
+
+---
+
+## Week 1 Baselines (2026-04-07 to 2026-04-12)
+
+**Sessions completed: 3/4** (missed Lower B — no deadlift baseline yet)
+**Body weight: 88.3 kg** (down 0.3 from 88.6 baseline)
+**Runs: 0** (plan called for 1 zone 2 run)
+**Quality: 4/5 across all sessions**
+
+### Upper A Baselines (April 7) — 59 min
+| Exercise | Working sets | RPE | Notes |
+|---|---|---|---|
+| Bench Press | 84 kg × 8, 88.45 kg × 6, 88.45 kg × 8 | 8-8.5 | Good starting point. 88.45 kg ≈ RPE 8.5 on last set — this is the working weight |
+| Barbell Row | 60 kg × 10, 60 kg × 10, 65.77 kg × 10, 65.77 kg × 10 | 7.5-8.5 | Ramped well. 65.77 kg working weight |
+| Incline DB Press | 20 kg × 12, 22.7 kg × 12, 22.7 kg × 12 | 6.5-7 | Per DB. Room to push harder |
+| Face Pull | 17 × 15, 21.55 × 15, 21.55 × 15 | 6.5-8 | Good |
+| Lateral Raise | 7 kg × 15 × 3 | 7-7.5 | Stable |
+| Tricep Pushdown | 21.55 × 15 × 2 | 7.5-8.5 | Only 2 sets (plan says 2) |
+
+### Lower A Baselines (April 8)
+| Exercise | Working sets | RPE | Notes |
+|---|---|---|---|
+| Back Squat | 93 kg × 8, 97.5 kg × 8, 97.5 kg × 8 | 7-8 | **First real squat baseline.** 97.5 kg × 8 @ RPE 8 is solid for a first week. Logged in lb (205, 215) |
+| RDL | 61.2 kg × 10, 70.3 kg × 10, 70.3 kg × 10 | 6.5-7 | Room to increase. Logged in lb (135, 155) |
+| Leg Press | 81.6 kg × 12 × 3 | 7 | Stable. Logged in lb (180) |
+| Leg Curl | 31.8 kg × 12 × 3 | 7 | Good. Logged in lb (70) |
+| Calf Raise | 43.1 kg × 15 × 3 | 7 | Good. Logged in lb (95) |
+| Ab Wheel | **Skipped** | — | Needs substitute or commitment. Suggest weighted plank if ab wheel doesn't work |
+
+### Upper B Baselines (April 9)
+| Exercise | Working sets | RPE | Notes |
+|---|---|---|---|
+| Chin-ups | BW × 8 × 4 | 7-7.5 | Excellent — 4×8 at ~88 kg BW. Ready to add weight next session |
+| OHP | 43.1 kg × 8, 47.6 kg × 8, 52.2 kg × 8, 52.2 kg × 8 | 6.5-7.5 | **First OHP baseline.** 52.2 kg × 8 @ RPE 7.5. Room to grow. Logged in lb (95, 105, 115) |
+| Landmine Row | 40.8 kg × 12, 49.9 kg × 12, 49.9 kg × 12 | 7 | Per side. Good. Logged in lb (90, 110) |
+| Incline Curl | 11.3 kg × 12 × 3 | 7 | Per DB. Logged in lb (25) |
+| Cable Lateral | Inconsistent (12.5, 7.5, 9.5) | 6.5-8 | Finding the weight. Settle at ~10 for week 2 |
+| Hanging Leg Raise | BW × 12 × 3 | 7 | Good |
+
+### Lower B Baselines — NOT DONE
+No data. Deadlift, BSS, leg extension, hip thrust baselines still needed. **Priority for week 2.**
+
+---
+
+## Week 2 Targets (2026-04-14 to 2026-04-20)
+
+**Priority: Complete all 4 sessions + 1 zone 2 run**
+
+| Session | Key targets |
+|---|---|
+| Upper A | Bench: stay at 88.45 kg, aim for 7-8 reps on all working sets. Row: start at 65.77 kg. |
+| Lower A | Squat: stay at 97.5 kg, aim for 8 reps × 3 sets @ RPE 7-8. RDL: try 72.5 kg. Do the ab wheel or sub in weighted plank. |
+| Upper B | Chin-ups: add 2.5 kg (belt or DB). OHP: start at 52.2 kg, push for consistency. Cable lateral: settle at one weight. |
+| Lower B | **Must do.** Find baselines for: Sumo DL, Bulgarian Split Squat, Leg Extension, Hip Thrust. Start conservative (RPE 7). |
+| Run | 1 × 4-5 km zone 2 (Wed or Sat). HR < 140 bpm. |
 
 ---
 
@@ -314,3 +404,4 @@ This data feeds into weekly check-ins and progress tracking.
 |------|--------|--------|
 | 2026-04-06 | v1.0 created | Initial assessment |
 | 2026-04-06 | v2.0 rewrite | Full evidence-based review. Added research citations, detailed rationale, RPE phase targets, warm-up protocol, rest period guidelines, deload + diet break integration, weekly volume audit |
+| 2026-04-13 | v3.0 — Block periodization + Week 1 data | Added Block A/B exercise rotation (accessories swap at week 6, compounds stay). Registered Week 1 baselines from Supabase data (3/4 sessions). Added Week 2 targets. Flagged: app stores weights without unit indicator (kg vs lb mixed) |
