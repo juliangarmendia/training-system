@@ -609,7 +609,7 @@ nav { display: flex; background: var(--surface); border-top: 1px solid var(--bor
 /* ========== Meal input row ========== */
 .meal-input-row { display: flex; gap: 8px; }
 .meal-input-row #meal-name { flex: 1; }
-.meal-protein-input { width: 70px; flex-shrink: 0; text-align: center; }
+.meal-protein-input { width: 70px; min-width: 70px; max-width: 70px; flex: 0 0 70px; text-align: center; }
 
 /* ========== Inline-row wrappers ========== */
 .bw-row, .plate-input-row { display: flex; gap: 8px; align-items: center; }
