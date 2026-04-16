@@ -672,6 +672,33 @@ function dateStr(d) {
   return `${y}-${m}-${day}`;
 }
 
+// Plate breakdown: "95lb → bar + 25 × side"
+function plateBreakdown(weight, unit) {
+  const bar = unit === 'lb' ? 45 : 20;
+  if (weight <= bar) return '';
+  const perSide = (weight - bar) / 2;
+  const available = unit === 'lb' ? [45, 35, 25, 10, 5, 2.5] : [25, 20, 15, 10, 5, 2.5, 1.25];
+  let remaining = perSide;
+  const plates = [];
+  for (const p of available) {
+    while (remaining >= p - 0.01) {
+      plates.push(p);
+      remaining -= p;
+    }
+  }
+  if (remaining > 0.01 || plates.length === 0) return '';
+  // Group plates: [25,25,10] → "25×2 + 10"
+  const grouped = [];
+  let i = 0;
+  while (i < plates.length) {
+    let count = 1;
+    while (i + count < plates.length && plates[i + count] === plates[i]) count++;
+    grouped.push(count > 1 ? `${plates[i]}×${count}` : `${plates[i]}`);
+    i += count;
+  }
+  return `bar + ${grouped.join(' + ')} /side`;
+}
+
 // Epley formula: 1RM = weight × (1 + reps/30)
 function estimate1RM(weight, reps) {
   if (!weight || !reps || reps <= 0) return 0;
@@ -1813,7 +1840,10 @@ async function startWorkout(sessionId) {
         warmupHTML += `
           <div class="warmup-auto">
             <div class="warmup-auto-title">${ex.name} (${topWeight}${state.settings.unit})</div>
-            ${warmupSets.map(s => `<div class="warmup-auto-set"><span class="warmup-pct">${s.pct === 0 ? 'Bar' : s.pct + '%'}</span><span class="warmup-weight">${s.w}${state.settings.unit}</span><span class="warmup-reps">× ${s.reps}</span></div>`).join('')}
+            ${warmupSets.map(s => {
+              const pb = plateBreakdown(s.w, state.settings.unit);
+              return `<div class="warmup-auto-set"><span class="warmup-pct">${s.pct === 0 ? 'Bar' : s.pct + '%'}</span><span class="warmup-weight">${s.w}${state.settings.unit}${pb ? `<span class="warmup-plates">${pb}</span>` : ''}</span><span class="warmup-reps">× ${s.reps}</span></div>`;
+            }).join('')}
           </div>`;
       }
     }
@@ -1895,8 +1925,7 @@ async function startWorkout(sessionId) {
       // Auto-start rest timer when checking a set (not unchecking)
       if (btn.classList.contains('checked')) {
         const inSuperset = card.closest('.superset-group');
-        const configInput = card.querySelector('[data-rest-config]');
-        const fullRest = parseInt(configInput.value) || 120;
+        const fullRest = parseInt(card.dataset.rest) || 120;
         // In a superset: short rest (15s) between exercises, full rest after last exercise in group
         if (inSuperset) {
           const cards = inSuperset.querySelectorAll('.exercise-card');
@@ -1917,25 +1946,9 @@ async function startWorkout(sessionId) {
     });
   });
 
-  // Event: rest timer
-  container.querySelectorAll('.btn-rest').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const card = btn.closest('.exercise-card');
-      const configInput = card.querySelector('[data-rest-config]');
-      const seconds = parseInt(configInput.value) || 120;
-      startRestTimer(seconds);
-    });
-  });
-
-  // Event: rest config save
-  container.querySelectorAll('[data-rest-config]').forEach(input => {
-    input.addEventListener('change', async () => {
-      const exId = input.dataset.restConfig;
-      const val = parseInt(input.value) || 120;
-      const rs = await dbGet('settings', 'restTimes') || { key: 'restTimes', data: {} };
-      rs.data[exId] = val;
-      await dbPut('settings', rs);
-    });
+  // Event: per-exercise notes auto-save
+  container.querySelectorAll('.ex-note').forEach(textarea => {
+    textarea.addEventListener('input', () => saveActiveWorkout());
   });
 
   // Event: RPE color on change + auto-save
@@ -1997,13 +2010,73 @@ async function startWorkout(sessionId) {
   saveActiveWorkout();
 }
 
+// Generate a smart coach note for an exercise based on recent performance
+function generateCoachNote(ex, allWorkouts) {
+  // Get last 2 sessions for this exercise (most recent first)
+  const history = allWorkouts
+    .map(w => ({ date: w.date, ex: w.exercises.find(e => e.exerciseId === ex.id) }))
+    .filter(h => h.ex && h.ex.sets.some(s => s.done && s.weight > 0))
+    .slice(0, 2);
+
+  if (history.length === 0) return ex.notes; // no data yet, keep static note
+
+  const last = history[0].ex;
+  const doneSets = last.sets.filter(s => s.done && s.weight > 0);
+  if (doneSets.length === 0) return ex.notes;
+
+  // Parse rep range: "5-8" → [5, 8], "10-12" → [10, 12]
+  const repRange = ex.reps.toString().replace(/\/side/, '').split('-').map(Number);
+  const minReps = repRange[0] || 0;
+  const maxReps = repRange[1] || repRange[0] || 0;
+  const targetRpe = parseFloat(ex.rpe) || 0;
+
+  const topWeight = Math.max(...doneSets.map(s => s.weight));
+  const avgReps = Math.round(doneSets.reduce((sum, s) => sum + s.reps, 0) / doneSets.length);
+  const avgRpe = doneSets.filter(s => s.rpe).length > 0
+    ? doneSets.filter(s => s.rpe).reduce((sum, s) => sum + s.rpe, 0) / doneSets.filter(s => s.rpe).length
+    : 0;
+
+  const allHitMax = doneSets.every(s => s.reps >= maxReps);
+  const allHitMin = doneSets.every(s => s.reps >= minReps);
+  const rpeControlled = avgRpe > 0 && avgRpe <= (targetRpe || 8);
+  const rpeHigh = avgRpe > 8.5;
+
+  // Decision logic
+  if (allHitMax && rpeControlled) {
+    const bump = state.settings.unit === 'lb' ? '5lb' : '2.5kg';
+    return `↑ All sets hit ${maxReps} reps @ RPE ${avgRpe.toFixed(1)}. Increase to ${topWeight + (state.settings.unit === 'lb' ? 5 : 2.5)}${state.settings.unit}, aim for ${minReps} reps.`;
+  }
+  if (allHitMax && rpeHigh) {
+    return `⚡ Hit ${maxReps} reps but RPE was ${avgRpe.toFixed(1)}. Stay at ${topWeight}${state.settings.unit} — bring RPE down to ${targetRpe || 8} before increasing.`;
+  }
+  if (!allHitMin) {
+    return `↓ Didn't hit min ${minReps} reps on all sets. Consider dropping to ${topWeight - (state.settings.unit === 'lb' ? 5 : 2.5)}${state.settings.unit} or repeat same weight.`;
+  }
+  if (history.length >= 2) {
+    const prev = history[1].ex;
+    const prevDone = prev.sets.filter(s => s.done && s.weight > 0);
+    const prevTop = Math.max(...prevDone.map(s => s.weight));
+    const prevAvgReps = Math.round(prevDone.reduce((sum, s) => sum + s.reps, 0) / prevDone.length);
+    if (topWeight === prevTop && avgReps === prevAvgReps) {
+      return `→ Same weight and reps as last time. Push for +1 rep per set to progress.`;
+    }
+    if (topWeight > prevTop) {
+      return `✓ Weight up from ${prevTop} to ${topWeight}. Solid — build reps at this weight.`;
+    }
+  }
+  return `→ ${topWeight}${state.settings.unit} × ${avgReps} avg. Keep building reps within ${ex.reps} range.`;
+}
+
 function buildExerciseCard(ex, exIdx, previous, restSettings, exerciseNotes, deload, session, allWorkouts) {
   const prevEx = previous ? previous.exercises.find(e => e.exerciseId === ex.id) : null;
   const customRest = (restSettings.data && restSettings.data[ex.id]) || ex.defaultRest;
   const numSets = deload ? Math.ceil(ex.sets / 2) : ex.sets;
   const rpeDisplay = deload && ex.rpe !== '-' ? 'RPE 5-6' : `RPE ${ex.rpe}`;
   const muscleColor = MUSCLE_COLORS[ex.muscle] || '#666';
-  const userNote = (exerciseNotes.data && exerciseNotes.data[ex.id]) || '';
+
+  const coachNote = deload
+    ? '<strong>Deload:</strong> lighter weight, focus on form.'
+    : generateCoachNote(ex, allWorkouts);
 
   // Calculate est. 1RM from all history for this exercise
   let best1RM = 0;
@@ -2050,7 +2123,6 @@ function buildExerciseCard(ex, exIdx, previous, restSettings, exerciseNotes, del
     : '';
 
   const e1rmHTML = best1RM > 0 ? `<div class="exercise-1rm">Est. 1RM: ${best1RM} ${state.settings.unit}</div>` : '';
-  const userNoteHTML = userNote ? `<div class="exercise-notes" style="border-left-color:var(--purple)">${userNote}</div>` : '';
 
   card.innerHTML = `
     <div class="exercise-header">
@@ -2077,22 +2149,13 @@ function buildExerciseCard(ex, exIdx, previous, restSettings, exerciseNotes, del
           </div>
           ${setsHTML}
         </div>
-        <div class="rest-btn-row">
-          <button class="btn-rest" data-rest-start="${customRest}">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-            Rest Timer
-          </button>
-          <div class="rest-config">
-            <input type="number" value="${customRest}" data-rest-config="${ex.id}" inputmode="numeric" min="0" step="15">
-            <span>sec</span>
-          </div>
-        </div>
-        <div class="exercise-notes">${ex.notes}${deload ? '<br><strong>Deload: lighter weight, focus on form.</strong>' : ''}</div>
-        ${userNoteHTML}
+        <div class="exercise-notes">${coachNote}</div>
+        <textarea class="ex-note" data-ex-note="${ex.id}" placeholder="Notes for this exercise..." rows="1"></textarea>
         <button class="btn-swap" data-swap-muscle="${ex.muscle}" data-swap-ex-id="${ex.id}">↔ Swap exercise</button>
       </div>
     </div>
   `;
+  card.dataset.rest = customRest;
   return card;
 }
 
@@ -2186,14 +2249,16 @@ function captureWorkoutState() {
         done: row.querySelector('.set-check').classList.contains('checked'),
       });
     });
-    exercises.push({ exerciseId: exId, sets, expanded });
+    const noteEl = card.querySelector('.ex-note');
+    const note = noteEl ? noteEl.value : '';
+    exercises.push({ exerciseId: exId, sets, expanded, note });
   });
   return {
     key: 'activeWorkout',
     sessionId: state.activeSession,
     startTime: state.workoutStartTime,
     quality: state.sessionQuality,
-    notes: document.getElementById('workout-notes').value,
+    notes: '',
     exercises,
   };
 }
@@ -2296,8 +2361,15 @@ async function restoreActiveWorkout() {
     });
   });
 
-  // Restore notes and quality
-  document.getElementById('workout-notes').value = saved.notes || '';
+  // Restore per-exercise notes
+  saved.exercises.forEach(savedEx => {
+    const card = [...cards].find(c => c.dataset.exerciseId === savedEx.exerciseId);
+    if (!card) return;
+    const noteEl = card.querySelector('.ex-note');
+    if (noteEl && savedEx.note) noteEl.value = savedEx.note;
+  });
+
+  // Restore quality
   document.querySelectorAll('#quality-stars button').forEach(b => {
     b.classList.toggle('selected', parseInt(b.dataset.v) === state.sessionQuality);
   });
@@ -2338,7 +2410,9 @@ async function finishWorkout() {
       const done = row.querySelector('.set-check').classList.contains('checked');
       sets.push({ weight, reps, rpe, done });
     });
-    exercises.push({ exerciseId: exId, sets });
+    const noteEl = card.querySelector('.ex-note');
+    const note = noteEl ? noteEl.value.trim() : '';
+    exercises.push({ exerciseId: exId, sets, note });
   });
 
   // Use the date the workout was started, not when it was finished (local tz)
@@ -2354,7 +2428,7 @@ async function finishWorkout() {
     duration,
     exercises,
     quality: state.sessionQuality,
-    notes: document.getElementById('workout-notes').value.trim(),
+    notes: '',
     unit: state.settings.unit || 'kg',
   };
 

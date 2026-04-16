@@ -205,6 +205,9 @@ nav { display: flex; background: var(--surface); border-top: 1px solid var(--bor
 .rest-config input { width: 52px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-xs); color: var(--text); font-size: 13px; padding: 5px; text-align: center; -webkit-appearance: none; }
 .rest-config span { font-size: 11px; color: var(--text2); }
 .exercise-notes { font-size: 11px; color: var(--text2); margin-top: 6px; padding: 8px; background: var(--bg2); border-radius: var(--radius-xs); border-left: 3px solid var(--accent-dim); line-height: 1.4; }
+.ex-note { width: 100%; box-sizing: border-box; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-xs); color: var(--text); font-size: 12px; padding: 8px; margin-top: 6px; font-family: inherit; resize: none; -webkit-appearance: none; }
+.ex-note:focus { border-color: var(--accent); outline: none; }
+.ex-note::placeholder { color: var(--text3); }
 
 /* ========== Buttons ========== */
 .btn-primary { background: var(--accent); color: #000; border: none; border-radius: var(--radius-sm); padding: 14px 20px; font-size: 15px; font-weight: 700; cursor: pointer; width: 100%; transition: all 0.15s; }
@@ -409,7 +412,8 @@ nav { display: flex; background: var(--surface); border-top: 1px solid var(--bor
 .warmup-auto-title { font-size: 11px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
 .warmup-auto-set { display: flex; gap: 12px; padding: 4px 0; font-size: 13px; }
 .warmup-pct { color: var(--text3); width: 36px; text-align: right; }
-.warmup-weight { font-weight: 700; width: 60px; }
+.warmup-weight { font-weight: 700; min-width: 60px; }
+.warmup-plates { display: block; font-weight: 400; font-size: 11px; color: var(--text3); }
 .warmup-reps { color: var(--text2); }
 
 /* ========== Streak Calendar ========== */
