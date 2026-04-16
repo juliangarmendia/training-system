@@ -882,8 +882,10 @@ function switchTab(tab) {
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
 
   if (tab === 'gym') {
-    showView(state.currentView === 'workout' ? 'workout' : 'gym');
-    if (state.currentView !== 'workout') { renderWeekStrip(); renderRecentWorkouts(); renderStreakBanner(); }
+    // Use activeSession (not currentView) — currentView gets overwritten by other tabs
+    const inWorkout = !!state.activeSession;
+    showView(inWorkout ? 'workout' : 'gym');
+    if (!inWorkout) { renderWeekStrip(); renderRecentWorkouts(); renderStreakBanner(); }
   } else if (tab === 'run') { showView('run'); renderRunPlanBanner(); renderRunHistory(); }
   else if (tab === 'nutrition') { showView('nutrition'); renderNutrition(); }
   else if (tab === 'stats') { showView('stats'); renderStats(); }
@@ -1661,6 +1663,15 @@ async function showSessionPicker(defaultSession, dateOverride) {
 
   const choice = await showActionSheet('Start workout', options);
   if (choice === null) return;
+
+  // Persist the day swap in weekSchedule so the strip updates
+  if (choice !== defaultSession) {
+    const ds = dateOverride || today();
+    const customSchedule = await getWeekSchedule();
+    customSchedule[ds] = choice;
+    await saveWeekSchedule(customSchedule);
+  }
+
   startWorkout(choice);
 }
 
