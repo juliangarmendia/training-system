@@ -416,7 +416,7 @@ nav { display: flex; background: var(--surface); border-top: 1px solid var(--bor
 .warmup-pct { color: var(--text3); width: 36px; text-align: right; flex-shrink: 0; }
 .warmup-weight { font-weight: 700; min-width: 50px; }
 .warmup-reps { color: var(--text2); white-space: nowrap; }
-.warmup-plates { font-size: 11px; color: var(--text3); margin-left: auto; white-space: nowrap; }
+.warmup-plates { font-size: 11px; color: var(--text3); margin-left: auto; padding-right: 6px; white-space: nowrap; }
 
 /* ========== Streak Calendar ========== */
 .streak-cal-stats { display: flex; justify-content: space-between; font-size: 11px; color: var(--text3); margin-bottom: 8px; }
