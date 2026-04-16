@@ -672,31 +672,14 @@ function dateStr(d) {
   return `${y}-${m}-${day}`;
 }
 
-// Plate breakdown: "95lb → bar + 25 × side"
+// Plate breakdown: total weight per side — "bar + 25 /side"
 function plateBreakdown(weight, unit) {
   const bar = unit === 'lb' ? 45 : 20;
-  if (weight <= bar) return '';
+  if (weight <= bar) return 'bar only';
   const perSide = (weight - bar) / 2;
-  const available = unit === 'lb' ? [45, 35, 25, 10, 5, 2.5] : [25, 20, 15, 10, 5, 2.5, 1.25];
-  let remaining = perSide;
-  const plates = [];
-  for (const p of available) {
-    while (remaining >= p - 0.01) {
-      plates.push(p);
-      remaining -= p;
-    }
-  }
-  if (remaining > 0.01 || plates.length === 0) return '';
-  // Group plates: [25,25,10] → "25×2 + 10"
-  const grouped = [];
-  let i = 0;
-  while (i < plates.length) {
-    let count = 1;
-    while (i + count < plates.length && plates[i + count] === plates[i]) count++;
-    grouped.push(count > 1 ? `${plates[i]}×${count}` : `${plates[i]}`);
-    i += count;
-  }
-  return `bar + ${grouped.join(' + ')} /side`;
+  // Show clean number: drop ".0" but keep real decimals like 18.75
+  const display = perSide % 1 === 0 ? perSide.toFixed(0) : perSide;
+  return `bar + ${display} /side`;
 }
 
 // Epley formula: 1RM = weight × (1 + reps/30)
@@ -1801,6 +1784,9 @@ async function startWorkout(sessionId) {
   const restSettings = await dbGet('settings', 'restTimes') || { key: 'restTimes', data: {} };
   const exerciseNotes = await dbGet('settings', 'exerciseNotes') || { key: 'exerciseNotes', data: {} };
 
+  // Set unit toggle to current unit
+  document.getElementById('btn-unit-toggle').textContent = state.settings.unit || 'kg';
+
   // Render warm-up with auto warm-up sets
   const warmupBody = document.getElementById('warmup-body');
   let warmupHTML = `<ul class="warmup-list">${session.warmup.map(w => `<li>${w}</li>`).join('')}</ul>`;
@@ -1842,8 +1828,7 @@ async function startWorkout(sessionId) {
             <div class="warmup-auto-title">${ex.name} (${topWeight}${state.settings.unit})</div>
             ${warmupSets.map(s => {
               const pb = plateBreakdown(s.w, state.settings.unit);
-              const platesLabel = pb || (s.w <= bar ? 'bar only' : '');
-              return `<div class="warmup-auto-set"><span class="warmup-pct">${s.pct === 0 ? 'Bar' : s.pct + '%'}</span><span class="warmup-weight">${s.w}${state.settings.unit}${platesLabel ? `<span class="warmup-plates">${platesLabel}</span>` : ''}</span><span class="warmup-reps">× ${s.reps}</span></div>`;
+              return `<div class="warmup-auto-set"><span class="warmup-pct">${s.pct === 0 ? 'Bar' : s.pct + '%'}</span><span class="warmup-weight">${s.w}${state.settings.unit}</span><span class="warmup-reps">× ${s.reps}</span><span class="warmup-plates">${pb}</span></div>`;
             }).join('')}
           </div>`;
       }
@@ -4603,6 +4588,34 @@ function bindEvents() {
     updateHeader('settings');
     document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
     renderTrashList();
+  });
+
+  // Unit toggle in workout header
+  const unitToggleBtn = document.getElementById('btn-unit-toggle');
+  unitToggleBtn.addEventListener('click', async () => {
+    const newUnit = state.settings.unit === 'kg' ? 'lb' : 'kg';
+    state.settings.unit = newUnit;
+    unitToggleBtn.textContent = newUnit;
+    await dbPut('settings', { key: 'userSettings', data: state.settings });
+    // Update column headers to reflect new unit
+    document.querySelectorAll('#workout-exercises .set-table-header').forEach(header => {
+      const cols = header.children;
+      if (cols[1]) {
+        const ex = header.closest('.exercise-card');
+        const isBw = ex && ex.querySelector('.set-input[data-field="weight"]')?.placeholder === '0';
+        cols[1].textContent = isBw ? '+' + newUnit : newUnit;
+      }
+    });
+    // Update warm-up plate breakdowns
+    document.querySelectorAll('.warmup-plates').forEach(el => {
+      const setEl = el.closest('.warmup-auto-set');
+      if (!setEl) return;
+      const weightSpan = setEl.querySelector('.warmup-weight');
+      if (!weightSpan) return;
+      const w = parseFloat(weightSpan.textContent);
+      if (!isNaN(w)) el.textContent = plateBreakdown(w, newUnit);
+    });
+    toast(`Units: ${newUnit.toUpperCase()}`);
   });
 
   // Back from workout
