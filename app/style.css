@@ -156,8 +156,9 @@ nav { display: flex; background: var(--surface); border-top: 1px solid var(--bor
 /* ========== Workout View ========== */
 .workout-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
 .back-btn { background: none; border: none; color: var(--accent); font-size: 15px; font-weight: 600; cursor: pointer; padding: 8px 0; }
-.unit-toggle { background: var(--surface2); border: 1px solid var(--border); border-radius: 20px; color: var(--text2); font-size: 12px; font-weight: 700; padding: 5px 12px; cursor: pointer; text-transform: uppercase; letter-spacing: 0.5px; transition: all 0.15s; }
-.unit-toggle:active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+.unit-toggle { display: flex; background: var(--bg); border: 1px solid var(--border); border-radius: 20px; overflow: hidden; padding: 2px; gap: 2px; }
+.unit-opt { background: none; border: none; color: var(--text3); font-size: 11px; font-weight: 700; padding: 4px 12px; border-radius: 16px; cursor: pointer; transition: all 0.2s; letter-spacing: 0.5px; }
+.unit-opt.active { background: var(--accent); color: var(--bg); box-shadow: 0 0 8px var(--accent-glow); }
 .workout-timer { font-size: 15px; font-weight: 700; color: var(--text2); font-variant-numeric: tabular-nums; background: var(--surface); padding: 5px 12px; border-radius: 20px; border: 1px solid var(--border); }
 
 /* Superset grouping */

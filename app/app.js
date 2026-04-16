@@ -1785,7 +1785,8 @@ async function startWorkout(sessionId) {
   const exerciseNotes = await dbGet('settings', 'exerciseNotes') || { key: 'exerciseNotes', data: {} };
 
   // Set unit toggle to current unit
-  document.getElementById('btn-unit-toggle').textContent = state.settings.unit || 'kg';
+  const curUnit = state.settings.unit || 'kg';
+  document.querySelectorAll('#unit-toggle .unit-opt').forEach(b => b.classList.toggle('active', b.dataset.unit === curUnit));
 
   // Render warm-up with auto warm-up sets
   const warmupBody = document.getElementById('warmup-body');
@@ -4590,12 +4591,14 @@ function bindEvents() {
     renderTrashList();
   });
 
-  // Unit toggle in workout header
-  const unitToggleBtn = document.getElementById('btn-unit-toggle');
-  unitToggleBtn.addEventListener('click', async () => {
-    const newUnit = state.settings.unit === 'kg' ? 'lb' : 'kg';
+  // Unit toggle in workout header (segmented control)
+  document.getElementById('unit-toggle').addEventListener('click', async (e) => {
+    const btn = e.target.closest('.unit-opt');
+    if (!btn) return;
+    const newUnit = btn.dataset.unit;
+    if (newUnit === state.settings.unit) return;
     state.settings.unit = newUnit;
-    unitToggleBtn.textContent = newUnit;
+    document.querySelectorAll('#unit-toggle .unit-opt').forEach(b => b.classList.toggle('active', b.dataset.unit === newUnit));
     await dbPut('settings', { key: 'userSettings', data: state.settings });
     // Update column headers to reflect new unit
     document.querySelectorAll('#workout-exercises .set-table-header').forEach(header => {
@@ -4615,7 +4618,6 @@ function bindEvents() {
       const w = parseFloat(weightSpan.textContent);
       if (!isNaN(w)) el.textContent = plateBreakdown(w, newUnit);
     });
-    toast(`Units: ${newUnit.toUpperCase()}`);
   });
 
   // Back from workout
