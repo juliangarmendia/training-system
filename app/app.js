@@ -1842,7 +1842,8 @@ async function startWorkout(sessionId) {
             <div class="warmup-auto-title">${ex.name} (${topWeight}${state.settings.unit})</div>
             ${warmupSets.map(s => {
               const pb = plateBreakdown(s.w, state.settings.unit);
-              return `<div class="warmup-auto-set"><span class="warmup-pct">${s.pct === 0 ? 'Bar' : s.pct + '%'}</span><span class="warmup-weight">${s.w}${state.settings.unit}${pb ? `<span class="warmup-plates">${pb}</span>` : ''}</span><span class="warmup-reps">× ${s.reps}</span></div>`;
+              const platesLabel = pb || (s.w <= bar ? 'bar only' : '');
+              return `<div class="warmup-auto-set"><span class="warmup-pct">${s.pct === 0 ? 'Bar' : s.pct + '%'}</span><span class="warmup-weight">${s.w}${state.settings.unit}${platesLabel ? `<span class="warmup-plates">${platesLabel}</span>` : ''}</span><span class="warmup-reps">× ${s.reps}</span></div>`;
             }).join('')}
           </div>`;
       }
@@ -3394,6 +3395,7 @@ function startRestTimer(seconds, autoStart = false) {
   state.restTimerTotal = seconds;
   state.restTimerRemaining = seconds;
   state.restTimerRunning = false;
+  state.restTimerEndAt = null; // wall-clock target (set when countdown begins)
 
   const overlay = document.getElementById('rest-timer-overlay');
   const textEl = document.getElementById('timer-text');
@@ -3405,6 +3407,18 @@ function startRestTimer(seconds, autoStart = false) {
   overlay.classList.remove('hidden');
   if (state.restTimerInterval) clearInterval(state.restTimerInterval);
 
+  // Remove previous visibility handler if any
+  if (state._timerVisHandler) {
+    document.removeEventListener('visibilitychange', state._timerVisHandler);
+    state._timerVisHandler = null;
+  }
+
+  function syncFromClock() {
+    if (!state.restTimerEndAt) return;
+    const remaining = Math.round((state.restTimerEndAt - Date.now()) / 1000);
+    state.restTimerRemaining = Math.max(remaining, 0);
+  }
+
   function updateDisplay() {
     const min = Math.floor(state.restTimerRemaining / 60);
     const sec = state.restTimerRemaining % 60;
@@ -3413,27 +3427,46 @@ function startRestTimer(seconds, autoStart = false) {
     ringFill.style.strokeDashoffset = circumference * (1 - progress);
   }
 
+  function finishTimer() {
+    clearInterval(state.restTimerInterval);
+    state.restTimerRemaining = 0;
+    state.restTimerRunning = false;
+    state.restTimerEndAt = null;
+    updateDisplay();
+    labelEl.textContent = 'DONE';
+    playTimerBeep();
+    if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 200]);
+    setTimeout(() => overlay.classList.add('hidden'), 1500);
+  }
+
   function beginCountdown() {
     if (state.restTimerRunning) return;
     state.restTimerRunning = true;
+    state.restTimerEndAt = Date.now() + seconds * 1000;
     labelEl.textContent = 'REST';
     timerDisplay.style.cursor = 'default';
 
     state.restTimerInterval = setInterval(() => {
-      state.restTimerRemaining--;
+      syncFromClock();
       if (state.restTimerRemaining <= 0) {
-        clearInterval(state.restTimerInterval);
-        state.restTimerRemaining = 0;
-        state.restTimerRunning = false;
-        updateDisplay();
-        labelEl.textContent = 'DONE';
-        playTimerBeep();
-        if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 200]);
-        setTimeout(() => overlay.classList.add('hidden'), 1500);
+        finishTimer();
         return;
       }
       updateDisplay();
     }, 1000);
+
+    // When app returns from background, immediately sync with real clock
+    state._timerVisHandler = () => {
+      if (document.visibilityState === 'visible' && state.restTimerRunning) {
+        syncFromClock();
+        if (state.restTimerRemaining <= 0) {
+          finishTimer();
+        } else {
+          updateDisplay();
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', state._timerVisHandler);
   }
 
   updateDisplay();
@@ -3455,7 +3488,12 @@ function startRestTimer(seconds, autoStart = false) {
 
 function stopRestTimer() {
   if (state.restTimerInterval) clearInterval(state.restTimerInterval);
+  if (state._timerVisHandler) {
+    document.removeEventListener('visibilitychange', state._timerVisHandler);
+    state._timerVisHandler = null;
+  }
   state.restTimerRunning = false;
+  state.restTimerEndAt = null;
   document.getElementById('rest-timer-overlay').classList.add('hidden');
 }
 
@@ -4671,10 +4709,12 @@ function bindEvents() {
   document.getElementById('timer-skip').addEventListener('click', stopRestTimer);
   document.getElementById('timer-minus').addEventListener('click', () => {
     state.restTimerRemaining = Math.max(0, state.restTimerRemaining - 15);
+    if (state.restTimerEndAt) state.restTimerEndAt -= 15000;
   });
   document.getElementById('timer-plus').addEventListener('click', () => {
     state.restTimerRemaining += 15;
     state.restTimerTotal = Math.max(state.restTimerTotal, state.restTimerRemaining);
+    if (state.restTimerEndAt) state.restTimerEndAt += 15000;
   });
 
   // Body weight
