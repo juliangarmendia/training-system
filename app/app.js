@@ -672,6 +672,162 @@ function dateStr(d) {
   return `${y}-${m}-${day}`;
 }
 
+// ==================== BLOCK TIMERS (per-block estimated + actual durations) ====================
+// A "block" is a derived UI grouping of the workout: warmup + each exercise (or superset group).
+// We estimate per-block duration up front and track actual time the user spends on each.
+function parseRepsAvg(repsStr) {
+  if (!repsStr) return 8;
+  const s = String(repsStr).trim();
+  const m = s.match(/(\d+)\s*-\s*(\d+)/);
+  if (m) return (parseInt(m[1]) + parseInt(m[2])) / 2;
+  const n = parseFloat(s);
+  return isFinite(n) && n > 0 ? n : 8;
+}
+
+function estimateExerciseSec(ex, deload) {
+  const sets = deload ? Math.ceil(ex.sets / 2) : ex.sets;
+  const reps = parseRepsAvg(ex.reps);
+  const rest = ex.defaultRest || 120;
+  const setSec = reps * 4 + 20; // ~4s/rep + 20s setup
+  // sets working time + rest between sets (no rest after last set, since user moves on)
+  return sets * setSec + Math.max(0, sets - 1) * rest;
+}
+
+function computeBlocks(session, deload) {
+  const blocks = [];
+  // Warmup block: rough estimate based on warmup item count
+  const warmupCount = (session.warmup && session.warmup.length) || 0;
+  blocks.push({
+    id: 'warmup',
+    label: 'Warm-up',
+    type: 'warmup',
+    exerciseIds: [],
+    estimatedSec: Math.max(180, warmupCount * 45 + 120), // ramp sets add time
+  });
+
+  let currentSS = null;
+  session.exercises.forEach((ex) => {
+    if (ex.superset) {
+      if (currentSS && currentSS.label === ex.superset) {
+        currentSS.exercises.push(ex);
+      } else {
+        currentSS = { label: ex.superset, exercises: [ex] };
+        const id = `ss-${ex.superset}`;
+        blocks.push({ id, label: `Superset ${ex.superset}`, type: 'superset', _ref: currentSS, exerciseIds: [ex.id] });
+      }
+      // Update exerciseIds on the existing block for this superset
+      const ssBlock = blocks.find(b => b.id === `ss-${ex.superset}`);
+      if (ssBlock && !ssBlock.exerciseIds.includes(ex.id)) ssBlock.exerciseIds.push(ex.id);
+    } else {
+      currentSS = null;
+      blocks.push({
+        id: `ex-${ex.id}`,
+        label: ex.name,
+        type: 'single',
+        exerciseIds: [ex.id],
+        estimatedSec: estimateExerciseSec(ex, deload),
+      });
+    }
+  });
+
+  // Estimate superset blocks (sum of exercises + short rest between)
+  blocks.forEach(b => {
+    if (b.type === 'superset') {
+      const exs = session.exercises.filter(e => b.exerciseIds.includes(e.id));
+      const total = exs.reduce((s, e) => s + estimateExerciseSec(e, deload), 0);
+      b.estimatedSec = total;
+      delete b._ref;
+    }
+  });
+  return blocks;
+}
+
+function getBlockIdForExerciseId(exId) {
+  if (!state.activeBlocks) return null;
+  const b = state.activeBlocks.find(blk => blk.exerciseIds.includes(exId));
+  return b ? b.id : null;
+}
+
+function formatBlockMin(sec) {
+  const m = Math.floor(sec / 60);
+  const s = Math.round(sec % 60);
+  if (m === 0) return `${s}s`;
+  if (s === 0) return `${m}m`;
+  return `${m}m ${s.toString().padStart(2, '0')}s`;
+}
+
+function startBlockTimer(blockId) {
+  if (!blockId) return;
+  if (state.activeBlockId === blockId) return;
+  state.activeBlockId = blockId;
+  state.activeBlockStartedAt = Date.now();
+  if (state.blockTimerInterval) clearInterval(state.blockTimerInterval);
+  state.blockTimerInterval = setInterval(updateActiveBlockChip, 1000);
+  updateActiveBlockChip();
+}
+
+function endBlockTimer(blockId) {
+  if (!blockId || state.activeBlockId !== blockId) return;
+  const dur = Math.round((Date.now() - state.activeBlockStartedAt) / 1000);
+  const block = (state.activeBlocks || []).find(b => b.id === blockId);
+  state.blockTimings = state.blockTimings || [];
+  // Remove any prior entry for this blockId (in case of re-finalization)
+  state.blockTimings = state.blockTimings.filter(t => t.blockId !== blockId);
+  state.blockTimings.push({
+    blockId,
+    label: block ? block.label : blockId,
+    estimatedSec: block ? block.estimatedSec : 0,
+    startedAt: state.activeBlockStartedAt,
+    endedAt: Date.now(),
+    durationSec: dur,
+  });
+  if (state.blockTimerInterval) { clearInterval(state.blockTimerInterval); state.blockTimerInterval = null; }
+  // Mark the block header chip as final
+  const headerEl = document.querySelector(`[data-block-id="${blockId}"] .block-time-actual`);
+  if (headerEl) {
+    headerEl.classList.remove('hidden');
+    headerEl.classList.add('done');
+    headerEl.textContent = formatBlockMin(dur);
+  }
+  state.activeBlockId = null;
+  state.activeBlockStartedAt = null;
+}
+
+function updateActiveBlockChip() {
+  if (!state.activeBlockId || !state.activeBlockStartedAt) return;
+  const sec = Math.round((Date.now() - state.activeBlockStartedAt) / 1000);
+  const block = (state.activeBlocks || []).find(b => b.id === state.activeBlockId);
+  const el = document.querySelector(`[data-block-id="${state.activeBlockId}"] .block-time-actual`);
+  if (!el) return;
+  el.classList.remove('hidden', 'done');
+  el.textContent = formatBlockMin(sec);
+  if (block && block.estimatedSec && sec > block.estimatedSec * 1.25) {
+    el.classList.add('over');
+  } else {
+    el.classList.remove('over');
+  }
+}
+
+// Determine which block the user is currently working on, based on which exercise
+// has its first unchecked set (or warmup if none started). Then finalize prior + start new.
+function advanceBlockIfNeeded() {
+  if (!state.activeBlocks) return;
+  const cards = [...document.querySelectorAll('#workout-exercises .exercise-card')];
+  let nextBlockId = null;
+  for (const card of cards) {
+    const checks = card.querySelectorAll('.set-check');
+    if (!checks.length) continue;
+    const unchecked = [...checks].some(c => !c.classList.contains('checked'));
+    if (unchecked) { nextBlockId = getBlockIdForExerciseId(card.dataset.exerciseId); break; }
+  }
+  // If everything is checked, leave activeBlockId as-is (user will hit Finish)
+  if (!nextBlockId) return;
+  if (state.activeBlockId !== nextBlockId) {
+    if (state.activeBlockId) endBlockTimer(state.activeBlockId);
+    startBlockTimer(nextBlockId);
+  }
+}
+
 // Plate breakdown: total weight per side — "bar + 25 /side"
 function plateBreakdown(weight, unit) {
   const bar = unit === 'lb' ? 45 : 20;
@@ -896,7 +1052,7 @@ function switchTab(tab) {
     const inWorkout = !!state.activeSession;
     showView(inWorkout ? 'workout' : 'gym');
     if (!inWorkout) { renderWeekStrip(); renderRecentWorkouts(); renderStreakBanner(); }
-  } else if (tab === 'run') { showView('run'); renderRunPlanBanner(); renderRunHistory(); }
+  } else if (tab === 'run') { showView('run'); renderRunPlanBanner(); renderRunTotals(); renderRunHistory(); }
   else if (tab === 'nutrition') { showView('nutrition'); renderNutrition(); }
   else if (tab === 'stats') { showView('stats'); renderStats(); }
 
@@ -908,6 +1064,14 @@ function showView(view) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   const el = document.getElementById('view-' + view);
   if (el) el.classList.add('active');
+  // FAB visible only during active workout
+  const fab = document.getElementById('plate-fab');
+  if (fab) fab.classList.toggle('hidden', view !== 'workout');
+  // Auto-close the plate sheet if leaving the workout view
+  if (view !== 'workout') {
+    const sheet = document.getElementById('plate-sheet');
+    if (sheet && !sheet.classList.contains('hidden')) closePlateSheet();
+  }
 }
 
 function updateHeader(tab) {
@@ -1238,6 +1402,44 @@ async function openEditWorkout(id) {
   const titleEl = document.getElementById('ew-title');
   if (w.inputUnit && w.inputUnit !== appUnit) {
     titleEl.innerHTML = `${sessionName} <span style="font-size:11px;color:var(--accent);font-weight:600">· input: ${unit.toUpperCase()}</span>`;
+  }
+
+  // Block timings — only shown if recorded for this workout
+  const btContainer = document.getElementById('ew-block-timings');
+  if (btContainer) {
+    if (w.blockTimings && w.blockTimings.length) {
+      const totalActual = w.blockTimings.reduce((s, t) => s + (t.durationSec || 0), 0);
+      const totalEstimated = w.blockTimings.reduce((s, t) => s + (t.estimatedSec || 0), 0);
+      btContainer.innerHTML = `
+        <div class="section-label" style="margin-top:12px">Time per Block</div>
+        <div class="card" style="padding:8px 12px">
+          <div class="bt-row bt-row-head">
+            <span>Block</span><span>Est.</span><span>Real</span><span>Δ</span>
+          </div>
+          ${w.blockTimings.map(t => {
+            const est = t.estimatedSec || 0;
+            const real = t.durationSec || 0;
+            const delta = real - est;
+            const cls = delta <= 0 ? 'pos' : (delta > est * 0.25 ? 'neg' : 'neutral');
+            const sign = delta >= 0 ? '+' : '−';
+            return `<div class="bt-row">
+              <span class="bt-label">${t.label}</span>
+              <span class="bt-est">${est ? formatBlockMin(est) : '—'}</span>
+              <span class="bt-real">${formatBlockMin(real)}</span>
+              <span class="bt-delta ${cls}">${est ? sign + formatBlockMin(Math.abs(delta)) : '—'}</span>
+            </div>`;
+          }).join('')}
+          <div class="bt-row bt-row-total">
+            <span>Total</span>
+            <span>${totalEstimated ? formatBlockMin(totalEstimated) : '—'}</span>
+            <span>${formatBlockMin(totalActual)}</span>
+            <span></span>
+          </div>
+        </div>
+      `;
+    } else {
+      btContainer.innerHTML = '';
+    }
   }
 
   // Load previous workouts for this session (for ghost sets / 1RM)
@@ -1774,6 +1976,14 @@ async function startWorkout(sessionId) {
   state.activeSession = sessionId;
   state.workoutStartTime = Date.now();
   state.sessionQuality = 3;
+  // Reset block timer state for the new session (warmup starts immediately)
+  state.blockTimings = [];
+  state.activeBlockId = null;
+  state.activeBlockStartedAt = null;
+  state.suggestionsShown = new Set();
+  if (state.blockTimerInterval) { clearInterval(state.blockTimerInterval); state.blockTimerInterval = null; }
+  // Unlock audio with this gesture so the rest-timer cue is audible on iOS PWA.
+  primeAudio();
 
   const wk = getWeekNumber();
   const deload = isDeloadWeek(wk);
@@ -1863,19 +2073,67 @@ async function startWorkout(sessionId) {
     }
   });
 
-  groups.forEach(group => {
+  // Compute blocks (warmup + exercises/supersets) and store on state for timer logic.
+  // Warmup itself is rendered separately above (#warmup-section), so we only
+  // inject block headers for the exercise blocks here. The warmup chip lives
+  // on the warmup-section header (see below).
+  state.activeBlocks = computeBlocks(session, deload);
+
+  const blockHeaderHTML = (block) => `
+    <div class="block-header" data-block-id="${block.id}">
+      <span class="block-title">${block.label}</span>
+      <div class="block-times">
+        <span class="block-time-est">~${formatBlockMin(block.estimatedSec || 0)}</span>
+        <span class="block-time-actual hidden">0s</span>
+      </div>
+    </div>
+  `;
+
+  groups.forEach((group, gi) => {
     if (group.type === 'superset') {
+      const block = state.activeBlocks.find(b => b.id === `ss-${group.label}`);
       const wrapper = document.createElement('div');
-      wrapper.className = 'superset-group';
-      wrapper.innerHTML = `<div class="superset-label">Superset ${group.label}</div>`;
+      wrapper.className = 'block-wrapper';
+      wrapper.dataset.blockId = block ? block.id : '';
+      if (block) wrapper.insertAdjacentHTML('beforeend', blockHeaderHTML(block));
+      const inner = document.createElement('div');
+      inner.className = 'superset-group';
+      inner.innerHTML = `<div class="superset-label">Superset ${group.label}</div>`;
       group.exercises.forEach(({ ex, idx }) => {
-        wrapper.appendChild(buildExerciseCard(ex, idx, previous, restSettings, exerciseNotes, deload, session, workouts));
+        inner.appendChild(buildExerciseCard(ex, idx, previous, restSettings, exerciseNotes, deload, session, workouts));
       });
+      wrapper.appendChild(inner);
       container.appendChild(wrapper);
     } else {
-      container.appendChild(buildExerciseCard(group.ex, group.idx, previous, restSettings, exerciseNotes, deload, session, workouts));
+      const block = state.activeBlocks.find(b => b.id === `ex-${group.ex.id}`);
+      const wrapper = document.createElement('div');
+      wrapper.className = 'block-wrapper';
+      wrapper.dataset.blockId = block ? block.id : '';
+      if (block) wrapper.insertAdjacentHTML('beforeend', blockHeaderHTML(block));
+      wrapper.appendChild(buildExerciseCard(group.ex, group.idx, previous, restSettings, exerciseNotes, deload, session, workouts));
+      container.appendChild(wrapper);
     }
   });
+
+  // Warmup block chip on the warm-up section header (inserted before chevron)
+  const warmupBlock = state.activeBlocks.find(b => b.id === 'warmup');
+  const warmupHeader = document.getElementById('warmup-toggle');
+  if (warmupBlock && warmupHeader) {
+    const existing = warmupHeader.querySelector('.block-times[data-block-id="warmup"]');
+    if (existing) existing.remove();
+    const chevron = warmupHeader.querySelector('.warmup-chevron');
+    const chip = document.createElement('div');
+    chip.className = 'block-times';
+    chip.dataset.blockId = 'warmup';
+    chip.style.marginLeft = 'auto';
+    chip.style.marginRight = '8px';
+    chip.innerHTML = `
+      <span class="block-time-est">~${formatBlockMin(warmupBlock.estimatedSec)}</span>
+      <span class="block-time-actual hidden">0s</span>
+    `;
+    if (chevron) warmupHeader.insertBefore(chip, chevron);
+    else warmupHeader.appendChild(chip);
+  }
 
   // Event: expand/collapse
   container.querySelectorAll('.exercise-header').forEach(h => {
@@ -1908,6 +2166,9 @@ async function startWorkout(sessionId) {
       updateExerciseStatus(card);
       updateSessionProgress();
       updateNowNext();
+      advanceBlockIfNeeded();
+      // RPE-based progression suggestion (only when checking, not unchecking)
+      if (btn.classList.contains('checked')) suggestProgressionIfReady(card);
       saveActiveWorkout();
       // Auto-start rest timer when checking a set (not unchecking)
       if (btn.classList.contains('checked')) {
@@ -1994,6 +2255,14 @@ async function startWorkout(sessionId) {
   showView('workout');
   document.getElementById('header-title').textContent = session.name;
   document.getElementById('header-subtitle').textContent = session.subtitle + (deload ? ' (Deload)' : '');
+  // Start the warmup block timer immediately (workoutStartTime is reference)
+  if (!state.blockTimings.length && !state.activeBlockId) {
+    state.activeBlockId = 'warmup';
+    state.activeBlockStartedAt = state.workoutStartTime;
+    if (state.blockTimerInterval) clearInterval(state.blockTimerInterval);
+    state.blockTimerInterval = setInterval(updateActiveBlockChip, 1000);
+    updateActiveBlockChip();
+  }
   saveActiveWorkout();
 }
 
@@ -2247,6 +2516,9 @@ function captureWorkoutState() {
     quality: state.sessionQuality,
     notes: '',
     exercises,
+    blockTimings: state.blockTimings || [],
+    activeBlockId: state.activeBlockId || null,
+    activeBlockStartedAt: state.activeBlockStartedAt || null,
   };
 }
 
@@ -2262,6 +2534,11 @@ async function clearActiveWorkout() {
   if (banner) { banner.classList.add('hidden'); banner.innerHTML = ''; }
   const weekBanner = document.getElementById('week-banner');
   if (weekBanner) weekBanner.classList.remove('hidden');
+  // Stop any block timer leftover (discard/finish)
+  if (state.blockTimerInterval) { clearInterval(state.blockTimerInterval); state.blockTimerInterval = null; }
+  state.activeBlockId = null;
+  state.activeBlockStartedAt = null;
+  state.blockTimings = [];
 }
 
 async function showResumeBanner() {
@@ -2369,6 +2646,27 @@ async function restoreActiveWorkout() {
   const wc = document.getElementById('workout-exercises');
   if (wc) wc.classList.remove('initial-animate');
 
+  // Restore block timer state and re-render finalized chips
+  if (state.blockTimerInterval) { clearInterval(state.blockTimerInterval); state.blockTimerInterval = null; }
+  state.blockTimings = saved.blockTimings || [];
+  state.blockTimings.forEach(t => {
+    const el = document.querySelector(`[data-block-id="${t.blockId}"] .block-time-actual`);
+    if (el) {
+      el.classList.remove('hidden');
+      el.classList.add('done');
+      el.textContent = formatBlockMin(t.durationSec);
+    }
+  });
+  state.activeBlockId = saved.activeBlockId || null;
+  state.activeBlockStartedAt = saved.activeBlockStartedAt || null;
+  // If there was an active block, resume its ticking; otherwise figure out where we are
+  if (state.activeBlockId && state.activeBlockStartedAt) {
+    state.blockTimerInterval = setInterval(updateActiveBlockChip, 1000);
+    updateActiveBlockChip();
+  } else {
+    advanceBlockIfNeeded();
+  }
+
   return true;
 }
 
@@ -2402,6 +2700,9 @@ async function finishWorkout() {
     exercises.push({ exerciseId: exId, sets, note });
   });
 
+  // Finalize the active block (whatever the user was on when hitting Finish)
+  if (state.activeBlockId) endBlockTimer(state.activeBlockId);
+
   // Use the date the workout was started, not when it was finished (local tz)
   const startDate = dateStr(new Date(state.workoutStartTime));
   const workout = {
@@ -2417,22 +2718,33 @@ async function finishWorkout() {
     quality: state.sessionQuality,
     notes: '',
     unit: state.settings.unit || 'kg',
+    blockTimings: (state.blockTimings || []).slice(),
   };
 
   await smartPut('workouts', workout);
   await clearActiveWorkout();
 
-  // PR detection
-  await detectPRs(workout);
-
+  // Clear state and navigate home BEFORE running async PR detection so the
+  // user lands on Gym immediately. PR toast will appear ~500ms later.
   if (state.workoutTimerInterval) clearInterval(state.workoutTimerInterval);
+  if (state.blockTimerInterval) clearInterval(state.blockTimerInterval);
   state.activeSession = null;
   state.workoutStartTime = null;
   state.currentView = 'gym';
-  document.getElementById('workout-notes').value = '';
+  state.activeBlockTimings = null;
+  state.activeBlockId = null;
+  const notesEl = document.getElementById('workout-notes');
+  if (notesEl) notesEl.value = '';
 
   toast('Workout saved!');
   switchTab('gym');
+  // Force-refresh home widgets so the new workout is visible without reload
+  renderWeekStrip();
+  renderRecentWorkouts();
+  renderStreakBanner();
+
+  // PR detection runs after navigation — its toast appears with a small delay
+  detectPRs(workout).catch(() => {});
 }
 
 // ==================== EXERCISE HISTORY MODAL ====================
@@ -3358,16 +3670,33 @@ function getExerciseMuscle(exId) {
 }
 
 // ==================== REST TIMER ====================
-// Beep using Web Audio API
-function playTimerBeep() {
+// Singleton AudioContext — iOS PWA requires creation/resume from a user gesture.
+// We unlock it once per session in primeAudio() (called from startWorkout) so the
+// rest-timer end cue is reliably audible even after backgrounding.
+let _audioCtx = null;
+function primeAudio() {
   try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (!_audioCtx) {
+      const Ctor = window.AudioContext || window.webkitAudioContext;
+      if (!Ctor) return;
+      _audioCtx = new Ctor();
+    }
+    if (_audioCtx.state === 'suspended') _audioCtx.resume();
+  } catch { /* audio not available */ }
+}
+
+function playTimerBeep() {
+  if (state.settings && state.settings.audioFeedback === false) return;
+  try {
+    primeAudio();
+    const ctx = _audioCtx;
+    if (!ctx) return;
     const beep = (freq, start, dur) => {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.connect(gain); gain.connect(ctx.destination);
       osc.frequency.value = freq;
-      gain.gain.value = 0.3;
+      gain.gain.value = 0.4;
       osc.start(ctx.currentTime + start);
       osc.stop(ctx.currentTime + start + dur);
     };
@@ -3533,7 +3862,55 @@ async function logRun() {
   setStarValue('run-feel', 3);
 
   toast('Run logged!');
+  renderRunTotals();
   renderRunHistory();
+}
+
+async function renderRunTotals() {
+  const container = document.getElementById('run-totals-card');
+  if (!container) return;
+  const runs = await dbGetAll('runs');
+
+  const now = new Date();
+  // ISO week start: Monday 00:00 local
+  const dow = (now.getDay() + 6) % 7; // Mon=0..Sun=6
+  const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dow);
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const yearStart = new Date(now.getFullYear(), 0, 1);
+
+  const inRange = (r, start) => {
+    if (!r.date) return false;
+    // r.date is YYYY-MM-DD local — parse as local
+    const [y, m, d] = r.date.split('-').map(Number);
+    const rd = new Date(y, m - 1, d);
+    return rd >= start;
+  };
+
+  const sum = (arr) => arr.reduce((s, r) => s + (parseFloat(r.distance) || 0), 0);
+  const wk = sum(runs.filter(r => inRange(r, weekStart)));
+  const mo = sum(runs.filter(r => inRange(r, monthStart)));
+  const yr = sum(runs.filter(r => inRange(r, yearStart)));
+
+  const fmt = (n) => n >= 100 ? n.toFixed(0) : n.toFixed(1);
+  container.innerHTML = `
+    <div class="totals-grid">
+      <div class="totals-cell">
+        <div class="totals-num">${fmt(wk)}</div>
+        <div class="totals-unit">km</div>
+        <div class="totals-label">This week</div>
+      </div>
+      <div class="totals-cell">
+        <div class="totals-num">${fmt(mo)}</div>
+        <div class="totals-unit">km</div>
+        <div class="totals-label">This month</div>
+      </div>
+      <div class="totals-cell">
+        <div class="totals-num">${fmt(yr)}</div>
+        <div class="totals-unit">km</div>
+        <div class="totals-label">${now.getFullYear()}</div>
+      </div>
+    </div>
+  `;
 }
 
 async function renderRunHistory() {
@@ -3566,12 +3943,14 @@ async function renderRunHistory() {
       const runId = btn.dataset.deleteRun;
       const deletedRun = await dbGet('runs', runId);
       await smartDelete('runs', runId);
+      renderRunTotals();
       renderRunHistory();
       toast('Run deleted', {
         label: 'Undo',
         callback: async () => {
           if (deletedRun) {
             await smartPut('runs', deletedRun);
+            renderRunTotals();
             renderRunHistory();
           }
         }
@@ -3814,6 +4193,56 @@ async function detectPRs(workout) {
   }
 }
 
+// ==================== RPE-BASED PROGRESSION SUGGESTION ====================
+// Triggered when the user finishes the last set of an exercise. Suggests load
+// adjustment based on average RPE: ≤7 → suggest more weight, ≥9 → suggest less.
+// Materializes the overload principle from CLAUDE.md without forcing decisions.
+function suggestProgressionIfReady(card) {
+  if (!card) return;
+  const exId = card.dataset.exerciseId;
+  if (!exId) return;
+  // Dedupe: only one suggestion per exercise per workout
+  state.suggestionsShown = state.suggestionsShown || new Set();
+  if (state.suggestionsShown.has(exId)) return;
+
+  const checks = card.querySelectorAll('.set-check');
+  const total = checks.length;
+  const checked = card.querySelectorAll('.set-check.checked').length;
+  // Only when ALL sets done
+  if (total === 0 || checked < total) return;
+
+  // Gather RPE from done sets
+  const rows = card.querySelectorAll('.set-row');
+  const rpes = [];
+  let avgWeight = 0; let weightCount = 0;
+  rows.forEach(row => {
+    if (!row.querySelector('.set-check').classList.contains('checked')) return;
+    const rpeStr = row.querySelector('[data-field="rpe"]').value;
+    const wStr = row.querySelector('[data-field="weight"]').value;
+    if (rpeStr) rpes.push(parseFloat(rpeStr));
+    const w = parseFloat(wStr);
+    if (w > 0) { avgWeight += w; weightCount++; }
+  });
+  if (rpes.length < 2) return; // need at least 2 sets with RPE
+
+  const avgRpe = rpes.reduce((a, b) => a + b, 0) / rpes.length;
+  const exName = getExerciseName(exId);
+  const unit = state.settings.unit || 'kg';
+  const inc = unit === 'lb' ? 5 : 2.5;
+
+  let msg = null;
+  if (avgRpe <= 7) {
+    msg = `💡 ${exName}: avg RPE ${avgRpe.toFixed(1)} — try +${inc}${unit} next time`;
+  } else if (avgRpe >= 9) {
+    msg = `💡 ${exName}: avg RPE ${avgRpe.toFixed(1)} — consider −${inc}${unit} next time`;
+  }
+  if (!msg) return;
+
+  state.suggestionsShown.add(exId);
+  // Delay so it doesn't compete with rest-timer auto-start
+  setTimeout(() => toast(msg), 800);
+}
+
 // ==================== EXERCISE SWAP ====================
 function getAlternatives(muscle, currentId) {
   const alts = EXERCISE_ALTERNATIVES[muscle] || [];
@@ -3982,14 +4411,14 @@ function calculatePlates(targetWeight, unit) {
   return { bar: barWeight, perSide, total: actual };
 }
 
-function renderPlateCalculator() {
-  const input = document.getElementById('plate-calc-input');
-  const result = document.getElementById('plate-calc-result');
+function renderPlateInto(inputId, resultId, unit) {
+  const input = document.getElementById(inputId);
+  const result = document.getElementById(resultId);
+  if (!input || !result) return;
   const target = parseFloat(input.value);
 
   if (!target || target <= 0) { result.innerHTML = ''; return; }
 
-  const unit = plateCalcUnit;
   const { bar, perSide, total } = calculatePlates(target, unit);
 
   if (perSide.length === 0) {
@@ -3997,10 +4426,8 @@ function renderPlateCalculator() {
     return;
   }
 
-  // Count plates
   const counts = {};
   perSide.forEach(p => { counts[p] = (counts[p] || 0) + 1; });
-
   const plateList = Object.entries(counts).map(([w, c]) => `${c}× ${w}${unit}`).join(' + ');
 
   result.innerHTML = `
@@ -4011,6 +4438,56 @@ function renderPlateCalculator() {
       ${total !== target ? `<div class="plate-note">Closest: ${total} ${unit} (${target - total > 0 ? '-' : '+'}${Math.abs(target - total).toFixed(1)})</div>` : ''}
     </div>
   `;
+}
+
+function renderPlateCalculator() {
+  renderPlateInto('plate-calc-input', 'plate-calc-result', plateCalcUnit);
+}
+
+// ==================== PLATE CALCULATOR FLOATING SHEET ====================
+function openPlateSheet(prefillWeight) {
+  const sheet = document.getElementById('plate-sheet');
+  const backdrop = document.getElementById('plate-sheet-backdrop');
+  const input = document.getElementById('plate-sheet-input');
+  if (!sheet || !backdrop || !input) return;
+
+  // Sync unit with app setting on open
+  const unit = state.settings.unit || 'kg';
+  document.querySelectorAll('#plate-sheet-unit-toggle .toggle-btn').forEach(b => {
+    b.classList.toggle('selected', b.dataset.sheetUnit === unit);
+  });
+
+  // Prefill: explicit value > last used > current focused set weight
+  if (prefillWeight && prefillWeight > 0) {
+    input.value = prefillWeight;
+  } else if (state.lastPlateCalcInput) {
+    input.value = state.lastPlateCalcInput;
+  }
+
+  backdrop.classList.remove('hidden');
+  sheet.classList.remove('hidden');
+  // Force reflow then add visible class for slide-up animation
+  void sheet.offsetWidth;
+  backdrop.classList.add('visible');
+  sheet.classList.add('visible');
+
+  renderPlateInto('plate-sheet-input', 'plate-sheet-result', unit);
+  setTimeout(() => input.focus(), 200);
+}
+
+function closePlateSheet() {
+  const sheet = document.getElementById('plate-sheet');
+  const backdrop = document.getElementById('plate-sheet-backdrop');
+  if (!sheet || !backdrop) return;
+  sheet.classList.remove('visible');
+  backdrop.classList.remove('visible');
+  setTimeout(() => {
+    sheet.classList.add('hidden');
+    backdrop.classList.add('hidden');
+  }, 250);
+  // Persist input for next open
+  const input = document.getElementById('plate-sheet-input');
+  if (input && input.value) state.lastPlateCalcInput = input.value;
 }
 
 // ==================== DELOAD REMINDER ====================
@@ -4644,7 +5121,12 @@ function bindEvents() {
   });
 
   // Finish workout
-  document.getElementById('btn-finish-workout').addEventListener('click', finishWorkout);
+  document.getElementById('btn-finish-workout').addEventListener('click', () => {
+    if (!state.activeSession) return;
+    if (confirm('Finish workout? It will be saved to your history.')) {
+      finishWorkout();
+    }
+  });
 
   // Warm-up toggle
   document.getElementById('warmup-toggle').addEventListener('click', () => {
@@ -4738,7 +5220,7 @@ function bindEvents() {
     if (e.key === 'Enter') logBodyWeight();
   });
 
-  // Plate calculator
+  // Plate calculator (Stats > Tools)
   document.getElementById('plate-calc-input').addEventListener('input', renderPlateCalculator);
   document.querySelectorAll('#plate-unit-toggle .toggle-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -4747,6 +5229,48 @@ function bindEvents() {
         b.classList.toggle('selected', b === btn);
       });
       renderPlateCalculator();
+    });
+  });
+
+  // Plate calculator FAB + bottom-sheet (during workout)
+  const plateFab = document.getElementById('plate-fab');
+  if (plateFab) {
+    plateFab.addEventListener('click', () => {
+      // Try to prefill from the currently focused weight input
+      const focused = document.activeElement;
+      let prefill = null;
+      if (focused && focused.matches('[data-field="weight"]')) {
+        const v = parseFloat(focused.value);
+        if (v > 0) prefill = v;
+      }
+      openPlateSheet(prefill);
+    });
+  }
+  const sheetClose = document.getElementById('plate-sheet-close');
+  if (sheetClose) sheetClose.addEventListener('click', closePlateSheet);
+  const sheetBackdrop = document.getElementById('plate-sheet-backdrop');
+  if (sheetBackdrop) sheetBackdrop.addEventListener('click', closePlateSheet);
+
+  const sheetInput = document.getElementById('plate-sheet-input');
+  if (sheetInput) sheetInput.addEventListener('input', () => {
+    const activeBtn = document.querySelector('#plate-sheet-unit-toggle .toggle-btn.selected');
+    const unit = (activeBtn && activeBtn.dataset.sheetUnit) || (state.settings.unit || 'kg');
+    renderPlateInto('plate-sheet-input', 'plate-sheet-result', unit);
+  });
+
+  document.querySelectorAll('#plate-sheet-unit-toggle .toggle-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const newUnit = btn.dataset.sheetUnit;
+      document.querySelectorAll('#plate-sheet-unit-toggle .toggle-btn').forEach(b => {
+        b.classList.toggle('selected', b === btn);
+      });
+      // Sync app-wide unit so it matches the workout view
+      state.settings.unit = newUnit;
+      await dbPut('settings', { key: 'userSettings', data: state.settings });
+      document.querySelectorAll('#unit-toggle .unit-opt').forEach(b => {
+        b.classList.toggle('active', b.dataset.unit === newUnit);
+      });
+      renderPlateInto('plate-sheet-input', 'plate-sheet-result', newUnit);
     });
   });
 
@@ -4808,6 +5332,24 @@ function bindEvents() {
   // Notification toggles
   document.getElementById('notif-on').addEventListener('click', () => toggleNotifications(true));
   document.getElementById('notif-off').addEventListener('click', () => toggleNotifications(false));
+
+  // Audio feedback toggle (rest timer beep)
+  const audioOn = document.getElementById('audio-on');
+  const audioOff = document.getElementById('audio-off');
+  if (audioOn && audioOff) {
+    const initial = state.settings.audioFeedback !== false;
+    audioOn.classList.toggle('selected', initial);
+    audioOff.classList.toggle('selected', !initial);
+    const setAudio = async (on) => {
+      state.settings.audioFeedback = on;
+      audioOn.classList.toggle('selected', on);
+      audioOff.classList.toggle('selected', !on);
+      await dbPut('settings', { key: 'userSettings', data: state.settings });
+      if (on) primeAudio();
+    };
+    audioOn.addEventListener('click', () => setAudio(true));
+    audioOff.addEventListener('click', () => setAudio(false));
+  }
 
 }
 

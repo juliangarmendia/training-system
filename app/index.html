@@ -64,6 +64,7 @@
       </div>
       <div class="form-row"><label>Date</label><input type="date" id="ew-date" class="text-input"></div>
       <div class="form-row"><label>Quality (1-5)</label><input type="number" id="ew-quality" class="text-input" min="1" max="5" inputmode="numeric"></div>
+      <div id="ew-block-timings"></div>
       <div class="section-label" style="margin-top:12px">Exercises</div>
       <div id="ew-exercises"></div>
       <div class="section-label" style="margin-top:12px">Notes</div>
@@ -168,7 +169,26 @@
             <button id="btn-finish-workout" class="btn-primary btn-lg">Finish Workout</button>
           </div>
         </div>
+        <button id="plate-fab" class="plate-fab hidden" aria-label="Plate calculator" title="Plate calculator">⚖️</button>
       </section>
+
+      <!-- Plate Calculator Bottom Sheet (shared across views) -->
+      <div id="plate-sheet-backdrop" class="plate-sheet-backdrop hidden"></div>
+      <div id="plate-sheet" class="plate-sheet hidden" role="dialog" aria-label="Plate calculator">
+        <div class="plate-sheet-handle"></div>
+        <div class="plate-sheet-header">
+          <span class="plate-sheet-title">Plate Calculator</span>
+          <button id="plate-sheet-close" class="plate-sheet-close" aria-label="Close">×</button>
+        </div>
+        <div class="plate-input-row">
+          <input type="number" id="plate-sheet-input" class="text-input" placeholder="Target weight" inputmode="decimal" step="0.5">
+          <div id="plate-sheet-unit-toggle" class="toggle-group">
+            <button class="toggle-btn selected" data-sheet-unit="kg">kg</button>
+            <button class="toggle-btn" data-sheet-unit="lb">lb</button>
+          </div>
+        </div>
+        <div id="plate-sheet-result"></div>
+      </div>
 
       <!-- Running -->
       <section id="view-run" class="view">
@@ -183,6 +203,8 @@
             <div class="form-row"><textarea id="run-notes" class="input-notes" placeholder="Notes (optional)" rows="2"></textarea></div>
             <button id="btn-log-run" class="btn-primary btn-lg">Log Run</button>
           </div>
+          <div class="section-label" style="margin-top:24px">Distance Totals</div>
+          <div id="run-totals-card" class="card run-totals-card"></div>
           <div class="section-label" style="margin-top:24px">Run History</div>
           <div id="run-history" class="recent-list"></div>
         </div>
@@ -364,6 +386,10 @@
               <div class="toggle-group"><button id="notif-on" class="toggle-btn">On</button><button id="notif-off" class="toggle-btn selected">Off</button></div>
             </div>
             <p class="muted" style="font-size:11px;margin-top:6px">Get reminded on training days and to track protein.</p>
+            <div class="form-row inline" style="margin-top:12px"><label>Rest timer sound</label>
+              <div class="toggle-group"><button id="audio-on" class="toggle-btn selected">On</button><button id="audio-off" class="toggle-btn">Off</button></div>
+            </div>
+            <p class="muted" style="font-size:11px;margin-top:6px">Beep when rest period ends. Useful in noisy gyms.</p>
           </div>
           <div class="section-label" style="margin-top:24px">Trash (2-day recovery)</div>
           <div class="card">
@@ -379,7 +405,7 @@
           </div>
           <div class="section-label" style="margin-top:24px">App</div>
           <div class="card">
-            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v9.0<br>Data stored locally + cloud sync.<br>Works offline.</p>
+            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v10.3<br>Data stored locally + cloud sync.<br>Works offline.</p>
             <button id="btn-force-update" class="btn-secondary btn-full" style="text-align:center">Force Update App</button>
           </div>
         </div>
