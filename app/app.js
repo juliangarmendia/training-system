@@ -1051,7 +1051,7 @@ function switchTab(tab) {
     // Use activeSession (not currentView) — currentView gets overwritten by other tabs
     const inWorkout = !!state.activeSession;
     showView(inWorkout ? 'workout' : 'gym');
-    if (!inWorkout) { renderWeekStrip(); renderRecentWorkouts(); renderStreakBanner(); }
+    if (!inWorkout) { renderActivityRings(); renderWeekStrip(); renderRecentWorkouts(); renderStreakBanner(); }
   } else if (tab === 'run') { showView('run'); renderRunPlanBanner(); renderRunTotals(); renderRunHistory(); }
   else if (tab === 'nutrition') { showView('nutrition'); renderNutrition(); }
   else if (tab === 'stats') { showView('stats'); renderStats(); }
@@ -1356,16 +1356,18 @@ async function renderRecentWorkouts() {
     return;
   }
 
+  const iconBarbell = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="2" y1="12" x2="22" y2="12"/><rect x="3" y="8.5" width="2" height="7" rx="0.6"/><rect x="6" y="6.5" width="2.5" height="11" rx="0.6"/><rect x="15.5" y="6.5" width="2.5" height="11" rx="0.6"/><rect x="19" y="8.5" width="2" height="7" rx="0.6"/></svg>`;
   container.innerHTML = workouts.map(w => {
     const session = activePlan.sessions[w.session];
     const totalSets = w.exercises.reduce((sum, ex) => sum + ex.sets.filter(s => s.done).length, 0);
     return `
       <div class="history-item" data-edit-workout="${w.id}">
+        <div class="hi-icon" style="background:var(--tint-orange);color:var(--orange)">${iconBarbell}</div>
         <div class="hi-left">
           <div class="hi-title">${session ? session.name : w.session}</div>
           <div class="hi-sub">${formatDate(w.date)} · ${totalSets} sets · ${w.duration || ''}</div>
         </div>
-        <div class="hi-right" style="display:flex;align-items:center">
+        <div class="hi-right">
           <div>
             <div class="hi-stat">${w.quality || '-'}/5</div>
             <div class="hi-stat-sub">quality</div>
@@ -2739,6 +2741,7 @@ async function finishWorkout() {
   toast('Workout saved!');
   switchTab('gym');
   // Force-refresh home widgets so the new workout is visible without reload
+  renderActivityRings();
   renderWeekStrip();
   renderRecentWorkouts();
   renderStreakBanner();
@@ -3864,6 +3867,82 @@ async function logRun() {
   toast('Run logged!');
   renderRunTotals();
   renderRunHistory();
+  renderActivityRings();
+}
+
+// ==================== ACTIVITY RINGS (Apple Health style, home) ====================
+// 3 concentric rings showing today's progress:
+//   • Outer (orange):   Workouts done today / planned today
+//   • Middle (blue):    Run km today / weekly run-target / 7
+//   • Inner (green):    Protein logged today / target
+async function renderActivityRings() {
+  const container = document.getElementById('activity-rings-home');
+  if (!container) return;
+
+  const todayStr = today();
+  // Workouts today
+  const allWorkouts = await dbGetAll('workouts');
+  const workoutsToday = allWorkouts.filter(w => w.date === todayStr).length;
+  const plannedToday = 1; // baseline target: 1 workout/day max — could be tied to schedule later
+  // Runs today
+  const allRuns = await dbGetAll('runs');
+  const kmToday = allRuns.filter(r => r.date === todayStr).reduce((s, r) => s + (parseFloat(r.distance) || 0), 0);
+  // Daily run target = (weekly target) / 7 — assume ~5km on a run day, ~0.7km/day baseline
+  const runTargetDaily = 0.7;
+  // Protein today
+  const nut = await dbGet('nutrition', todayStr);
+  const proteinToday = (nut && nut.protein) || 0;
+  const proteinTarget = (state.settings && state.settings.proteinTarget) || 170;
+
+  // Compute fill ratios capped at 1 for the visual ring (allow >100% display)
+  const r1 = workoutsToday > 0 ? Math.min(workoutsToday / plannedToday, 1) : 0;
+  const r2 = Math.min(kmToday / Math.max(runTargetDaily, 0.01), 1);
+  const r3 = Math.min(proteinToday / Math.max(proteinTarget, 1), 1);
+
+  // Geometry: 3 concentric rings inside a 124×124 box
+  // Outer R=52, mid R=40, inner R=28; stroke 11
+  const circ = (r) => 2 * Math.PI * r;
+  const offset = (r, ratio) => circ(r) * (1 - ratio);
+
+  container.innerHTML = `
+    <div class="activity-rings-card" id="activity-rings-tap">
+      <div class="ar-rings-wrap">
+        <svg viewBox="0 0 124 124">
+          <circle cx="62" cy="62" r="52" class="ar-ring-bg ar-ring-1-bg"/>
+          <circle cx="62" cy="62" r="52" class="ar-ring-fill ar-ring-1-fill"
+            stroke-dasharray="${circ(52)}" stroke-dashoffset="${offset(52, r1)}"/>
+          <circle cx="62" cy="62" r="40" class="ar-ring-bg ar-ring-2-bg"/>
+          <circle cx="62" cy="62" r="40" class="ar-ring-fill ar-ring-2-fill"
+            stroke-dasharray="${circ(40)}" stroke-dashoffset="${offset(40, r2)}"/>
+          <circle cx="62" cy="62" r="28" class="ar-ring-bg ar-ring-3-bg"/>
+          <circle cx="62" cy="62" r="28" class="ar-ring-fill ar-ring-3-fill"
+            stroke-dasharray="${circ(28)}" stroke-dashoffset="${offset(28, r3)}"/>
+        </svg>
+      </div>
+      <div class="ar-legend">
+        <div class="ar-legend-row" data-ring-tab="gym">
+          <span class="ar-dot ar-dot-orange"></span>
+          <span class="ar-legend-label">Workouts</span>
+          <span class="ar-legend-val">${workoutsToday}/${plannedToday}</span>
+        </div>
+        <div class="ar-legend-row" data-ring-tab="run">
+          <span class="ar-dot ar-dot-blue"></span>
+          <span class="ar-legend-label">Run today</span>
+          <span class="ar-legend-val">${kmToday.toFixed(1)} km</span>
+        </div>
+        <div class="ar-legend-row" data-ring-tab="nutrition">
+          <span class="ar-dot ar-dot-green"></span>
+          <span class="ar-legend-label">Protein</span>
+          <span class="ar-legend-val">${Math.round(proteinToday)}/${proteinTarget}g</span>
+        </div>
+      </div>
+    </div>
+  `;
+
+  // Tap a legend row → switch to that tab
+  container.querySelectorAll('[data-ring-tab]').forEach(row => {
+    row.addEventListener('click', () => switchTab(row.dataset.ringTab));
+  });
 }
 
 async function renderRunTotals() {
@@ -3877,38 +3956,58 @@ async function renderRunTotals() {
   const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dow);
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const yearStart = new Date(now.getFullYear(), 0, 1);
+  // Previous period starts (for trend deltas)
+  const prevWeekStart = new Date(weekStart); prevWeekStart.setDate(prevWeekStart.getDate() - 7);
+  const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const prevYearStart = new Date(now.getFullYear() - 1, 0, 1);
 
-  const inRange = (r, start) => {
+  const inRange = (r, start, end) => {
     if (!r.date) return false;
-    // r.date is YYYY-MM-DD local — parse as local
     const [y, m, d] = r.date.split('-').map(Number);
     const rd = new Date(y, m - 1, d);
-    return rd >= start;
+    return rd >= start && (!end || rd < end);
   };
 
   const sum = (arr) => arr.reduce((s, r) => s + (parseFloat(r.distance) || 0), 0);
   const wk = sum(runs.filter(r => inRange(r, weekStart)));
   const mo = sum(runs.filter(r => inRange(r, monthStart)));
   const yr = sum(runs.filter(r => inRange(r, yearStart)));
+  const prevWk = sum(runs.filter(r => inRange(r, prevWeekStart, weekStart)));
+  const prevMo = sum(runs.filter(r => inRange(r, prevMonthStart, monthStart)));
 
   const fmt = (n) => n >= 100 ? n.toFixed(0) : n.toFixed(1);
+  const trendHTML = (curr, prev, label) => {
+    if (prev <= 0 && curr <= 0) return `<div class="metric-card-trend">No ${label} yet</div>`;
+    if (prev <= 0) return `<div class="metric-card-trend">First ${label}</div>`;
+    const delta = curr - prev;
+    const pct = Math.round(Math.abs(delta) / prev * 100);
+    if (Math.abs(delta) < 0.1) return `<div class="metric-card-trend">Same as ${label}</div>`;
+    const cls = delta > 0 ? 'up' : 'down';
+    const arrow = delta > 0 ? '↑' : '↓';
+    return `<div class="metric-card-trend"><span class="metric-trend ${cls}">${arrow} ${pct}%</span> <span style="margin-left:6px">vs ${label}</span></div>`;
+  };
+
+  // Reusable inline SVG icons (24×24, currentColor)
+  const iconRun = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13" cy="4" r="2"/><path d="M5 21l3-9 2.5 2V21M15 11l-3-3-4 4 2 2"/></svg>`;
+  const iconCal = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="3" x2="8" y2="7"/><line x1="16" y1="3" x2="16" y2="7"/></svg>`;
+  const iconYear = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 010 18M12 3a14 14 0 000 18"/></svg>`;
+
+  const card = (icon, label, value, trend, tint, color) => `
+    <div class="metric-card">
+      <div class="metric-card-icon" style="background:${tint};color:${color}">${icon}</div>
+      <div class="metric-card-body">
+        <div class="metric-card-label">${label}</div>
+        <div class="metric-card-value">${fmt(value)}<span class="metric-unit">km</span></div>
+        ${trend}
+      </div>
+    </div>
+  `;
+
   container.innerHTML = `
-    <div class="totals-grid">
-      <div class="totals-cell">
-        <div class="totals-num">${fmt(wk)}</div>
-        <div class="totals-unit">km</div>
-        <div class="totals-label">This week</div>
-      </div>
-      <div class="totals-cell">
-        <div class="totals-num">${fmt(mo)}</div>
-        <div class="totals-unit">km</div>
-        <div class="totals-label">This month</div>
-      </div>
-      <div class="totals-cell">
-        <div class="totals-num">${fmt(yr)}</div>
-        <div class="totals-unit">km</div>
-        <div class="totals-label">${now.getFullYear()}</div>
-      </div>
+    <div class="card-stack">
+      ${card(iconRun, 'This week', wk, trendHTML(wk, prevWk, 'last week'), 'var(--tint-blue)', 'var(--blue)')}
+      ${card(iconCal, 'This month', mo, trendHTML(mo, prevMo, 'last month'), 'var(--tint-blue)', 'var(--blue)')}
+      ${card(iconYear, now.getFullYear().toString(), yr, '<div class="metric-card-trend">Year to date</div>', 'var(--tint-blue)', 'var(--blue)')}
     </div>
   `;
 }
@@ -3922,13 +4021,15 @@ async function renderRunHistory() {
     return;
   }
 
+  const iconRunner = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13" cy="4" r="2"/><path d="M5 21l3-9 2.5 2V21M15 11l-3-3-4 4 2 2"/></svg>`;
   container.innerHTML = runs.map(r => `
     <div class="history-item">
+      <div class="hi-icon" style="background:var(--tint-blue);color:var(--blue)">${iconRunner}</div>
       <div class="hi-left">
         <div class="hi-title">${r.distance} km · ${r.avgPace}/km</div>
         <div class="hi-sub">${formatDate(r.date)} · ${r.duration} min${r.avgHR ? ` · ${r.avgHR} bpm` : ''}${r.week ? ` · Wk ${r.week}` : ''}</div>
       </div>
-      <div class="hi-right" style="display:flex;align-items:center">
+      <div class="hi-right">
         <div>
           <div class="hi-stat">${r.feel}/5</div>
           <div class="hi-stat-sub">feel</div>

@@ -2,19 +2,30 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root, [data-theme="dark"] {
-  --bg: #0a0a0a; --bg2: #0f0f0f;
-  --surface: #141414; --surface2: #1c1c1c; --surface3: #242424;
-  --border: #262626; --border2: #333;
-  --text: #f0f0f0; --text2: #a0a0a0; --text3: #666;
+  /* Apple Health dark palette: true black bg, surfaces ~10% lighter, borders nearly invisible */
+  --bg: #000000; --bg2: #0a0a0a;
+  --surface: #1c1c1e; --surface2: #2c2c2e; --surface3: #3a3a3c;
+  --border: #2c2c2e; --border2: #3a3a3c;
+  --text: #ffffff; --text2: #98989f; --text3: #6c6c70;
   --accent: #4ade80; --accent2: #22c55e;
-  --accent-dim: rgba(74,222,128,0.12); --accent-glow: rgba(74,222,128,0.2);
-  --blue: #60a5fa; --orange: #fb923c; --red: #f87171; --yellow: #fbbf24;
-  --purple: #a78bfa; --pink: #f472b6; --teal: #34d399;
+  --accent-dim: rgba(74,222,128,0.15); --accent-glow: rgba(74,222,128,0.25);
+  /* Apple Health category palette */
+  --blue: #5ac8fa; --orange: #ff9f0a; --red: #ff453a; --yellow: #ffd60a;
+  --purple: #bf5af2; --pink: #ff375f; --teal: #64d2ff; --indigo: #5e5ce6;
   --radius: 16px; --radius-sm: 10px; --radius-xs: 8px; --radius-lg: 20px;
   --nav-h: 80px; --header-h: 56px;
   --safe-top: env(safe-area-inset-top, 0px); --safe-bottom: env(safe-area-inset-bottom, 0px);
-  /* Typography scale */
-  --fs-xs: 11px; --fs-sm: 13px; --fs-md: 15px; --fs-lg: 18px; --fs-xl: 22px; --fs-display: 28px;
+  /* Typography scale (Apple Health-like: tighter hierarchy with bigger jumps) */
+  --fs-xs: 11px; --fs-sm: 13px; --fs-md: 15px; --fs-lg: 17px; --fs-xl: 22px; --fs-display: 34px; --fs-hero: 44px;
+  /* Tinted accents per category (used for icon chips) */
+  --tint-orange: rgba(255,159,10,0.18);
+  --tint-blue: rgba(90,200,250,0.18);
+  --tint-green: rgba(74,222,128,0.18);
+  --tint-purple: rgba(191,90,242,0.18);
+  --tint-red: rgba(255,69,58,0.18);
+  --tint-teal: rgba(100,210,255,0.18);
+  --tint-yellow: rgba(255,214,10,0.18);
+  --tint-indigo: rgba(94,92,230,0.18);
 }
 
 [data-theme="light"] {
@@ -29,10 +40,33 @@
 html { height: 100%; }
 body {
   height: 100%; height: 100dvh;
-  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', system-ui, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
   background: var(--bg); color: var(--text);
-  -webkit-font-smoothing: antialiased; overflow: hidden; touch-action: manipulation;
+  -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
+  overflow: hidden; touch-action: manipulation;
+  letter-spacing: -0.01em;
 }
+
+/* Apple Health hero number style — used for primary metrics */
+.metric-hero {
+  font-size: var(--fs-hero); font-weight: 700; letter-spacing: -1.2px;
+  line-height: 1; font-variant-numeric: tabular-nums; color: var(--text);
+}
+.metric-hero .metric-unit {
+  font-size: 16px; font-weight: 600; color: var(--text2);
+  letter-spacing: 0; margin-left: 4px; vertical-align: baseline;
+}
+.metric-display {
+  font-size: var(--fs-display); font-weight: 700; letter-spacing: -0.8px;
+  line-height: 1.05; font-variant-numeric: tabular-nums;
+}
+.metric-trend {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 20px;
+}
+.metric-trend.up { color: var(--accent); background: var(--tint-green); }
+.metric-trend.down { color: var(--red); background: var(--tint-red); }
+.metric-trend.flat { color: var(--text3); background: var(--surface2); }
 
 #app { display: flex; flex-direction: column; height: 100%; height: 100dvh; max-width: 480px; margin: 0 auto; }
 
@@ -92,15 +126,37 @@ nav { display: flex; background: var(--surface); border-top: 1px solid var(--bor
 .nav-btn.active svg { stroke: var(--accent); }
 
 /* ========== Cards ========== */
-.card { background: var(--surface); border-radius: var(--radius); padding: 16px; border: 1px solid var(--border); box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+/* Apple Health style cards — borderless, generous padding, soft elevation */
+.card { background: var(--surface); border-radius: var(--radius); padding: 18px; border: none; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
 .form-card { display: flex; flex-direction: column; gap: 16px; }
 .nutrition-card { display: flex; flex-direction: column; gap: 14px; }
-.section-label { font-size: var(--fs-xs); font-weight: 700; color: var(--section-accent, var(--text3)); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 10px; padding: 4px 4px; opacity: 0.85; transition: font-size 0.15s, padding 0.15s; }
+
+/* Card stack: consecutive .card siblings inside .card-stack share outer corners */
+.card-stack { display: flex; flex-direction: column; gap: 1px; border-radius: var(--radius); overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
+.card-stack > .card { border-radius: 0; box-shadow: none; }
+.card-stack > .card:first-child { border-radius: var(--radius) var(--radius) 0 0; }
+.card-stack > .card:last-child { border-radius: 0 0 var(--radius) var(--radius); }
+.card-stack > .card:only-child { border-radius: var(--radius); }
+
+/* Section labels — sentence-case, bigger, friendlier (Apple Health "Highlights" vibe) */
+.section-label { font-size: var(--fs-lg); font-weight: 700; color: var(--text); letter-spacing: -0.3px; margin-bottom: 12px; padding: 4px 4px 0; transition: font-size 0.15s, padding 0.15s; text-transform: none; }
 /* Only root-level labels (direct children of .view-scroll) are sticky */
 .view-scroll > .section-label { position: sticky; top: 0; z-index: 20; background: var(--bg); }
-.view-scroll > .section-label ~ .section-label { margin-top: 24px; }
-.view-scroll > .section-label.stuck { font-size: 10px; padding: 3px 8px; background: var(--surface); border-radius: 0 0 var(--radius-xs) var(--radius-xs); box-shadow: 0 2px 8px rgba(0,0,0,0.2); margin-left: -8px; margin-right: -8px; }
+.view-scroll > .section-label ~ .section-label { margin-top: 28px; }
+.view-scroll > .section-label.stuck { font-size: 14px; padding: 6px 8px; background: rgba(0,0,0,0.85); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); border-radius: 0; box-shadow: 0 1px 0 var(--border); margin-left: -16px; margin-right: -16px; }
 .divider { height: 1px; background: var(--border); margin: 4px 0; }
+
+/* Apple Health-style section header with icon chip + optional Show All */
+.section-head { display: flex; align-items: center; gap: 10px; padding: 4px 4px 0; margin-bottom: 12px; position: relative; }
+.view-scroll > .section-head { position: sticky; top: 0; z-index: 20; background: var(--bg); }
+.view-scroll > .section-head ~ .section-head,
+.view-scroll > .section-head ~ .section-label,
+.view-scroll > .section-label ~ .section-head { margin-top: 28px; }
+.section-head-icon { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.section-head-icon svg { width: 16px; height: 16px; }
+.section-head-title { font-size: var(--fs-lg); font-weight: 700; color: var(--text); letter-spacing: -0.3px; flex: 1; min-width: 0; }
+.section-head-link { font-size: 14px; font-weight: 600; color: var(--accent); text-decoration: none; padding: 4px 0 4px 8px; cursor: pointer; flex-shrink: 0; }
+.section-head-link:active { opacity: 0.6; }
 
 /* ========== Week Banner ========== */
 .week-banner { background: linear-gradient(135deg, var(--accent-dim), transparent 60%); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 16px; display: flex; flex-direction: column; gap: 6px; box-shadow: 0 2px 12px rgba(0,0,0,0.15); }
@@ -259,19 +315,25 @@ nav { display: flex; background: var(--surface); border-top: 1px solid var(--bor
 .rpb-detail { font-size: 12px; color: var(--text2); line-height: 1.5; }
 .rpb-badge { display: inline-block; font-size: 11px; font-weight: 600; color: var(--blue); background: rgba(96,165,250,0.12); padding: 2px 8px; border-radius: 20px; margin-top: 6px; }
 
-/* ========== History List ========== */
-.recent-list { display: flex; flex-direction: column; gap: 8px; }
-.history-item { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px 14px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 1px 4px rgba(0,0,0,0.1); transition: background 0.15s, border-color 0.15s; cursor: pointer; }
-.history-item:active { background: var(--surface2); border-color: var(--accent); }
+/* ========== History List — Apple Health "Highlights" cards ========== */
+.recent-list { display: flex; flex-direction: column; gap: 1px; border-radius: var(--radius); overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
+.recent-list .empty-state { background: var(--surface); border-radius: var(--radius); }
+.history-item { background: var(--surface); border: none; border-radius: 0; padding: 14px 16px; display: flex; justify-content: space-between; align-items: center; transition: background 0.15s; cursor: pointer; gap: 12px; }
+.history-item:first-child { border-radius: var(--radius) var(--radius) 0 0; }
+.history-item:last-child { border-radius: 0 0 var(--radius) var(--radius); }
+.history-item:only-child { border-radius: var(--radius); }
+.history-item:active { background: var(--surface2); }
+.hi-icon { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.hi-icon svg { width: 18px; height: 18px; }
 .hi-left { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
-.hi-title { font-size: 14px; font-weight: 600; }
-.hi-sub { font-size: 12px; color: var(--text2); }
-.hi-right { text-align: right; flex-shrink: 0; }
-.hi-stat { font-size: 14px; font-weight: 700; color: var(--accent); }
+.hi-title { font-size: 15px; font-weight: 600; color: var(--text); letter-spacing: -0.2px; }
+.hi-sub { font-size: 13px; color: var(--text2); }
+.hi-right { text-align: right; flex-shrink: 0; display: flex; align-items: center; gap: 4px; }
+.hi-stat { font-size: 15px; font-weight: 600; color: var(--text); }
 .hi-stat-sub { font-size: 11px; color: var(--text3); }
 .empty-state { text-align: center; padding: 32px 24px; color: var(--text3); font-size: 14px; }
-.hi-delete { background: none; border: none; color: var(--text3); font-size: 18px; padding: 4px 8px; cursor: pointer; margin-left: 8px; }
-.hi-chev { color: var(--text3); font-size: 22px; font-weight: 400; margin-left: 10px; line-height: 1; }
+.hi-delete { background: none; border: none; color: var(--text3); font-size: 18px; padding: 4px 8px; cursor: pointer; margin-left: 4px; }
+.hi-chev { color: var(--text3); font-size: 18px; font-weight: 300; margin-left: 4px; line-height: 1; opacity: 0.6; }
 
 /* ========== Protein Ring ========== */
 .macro-ring-container, .protein-ring-container { display: flex; justify-content: center; margin-bottom: 4px; }
@@ -1000,14 +1062,38 @@ nav { display: flex; background: var(--surface); border-top: 1px solid var(--bor
 .bt-delta.neg { color: var(--orange); }
 .bt-delta.neutral { color: var(--text3); }
 
-/* ========== Run totals (week / month / year) ========== */
-.run-totals-card { padding: 14px 12px; }
-.totals-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; align-items: end; }
-.totals-cell { text-align: center; padding: 6px 4px; }
-.totals-cell + .totals-cell { border-left: 1px solid var(--border); }
-.totals-num { font-size: 26px; font-weight: 800; color: var(--text); line-height: 1; letter-spacing: -0.5px; }
-.totals-unit { display: inline-block; font-size: 11px; color: var(--text3); font-weight: 600; margin-left: 2px; vertical-align: top; margin-top: 4px; }
-.totals-label { font-size: 11px; color: var(--text2); margin-top: 6px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
+/* ========== Run totals (week / month / year) — Apple Health hero metric cards ========== */
+.run-totals-card { padding: 0; background: transparent; box-shadow: none; }
+/* Stacked metric cards (3 rows) */
+.metric-card { background: var(--surface); padding: 16px 18px; display: flex; align-items: center; gap: 14px; }
+.metric-card-icon { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.metric-card-icon svg { width: 18px; height: 18px; }
+.metric-card-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.metric-card-label { font-size: 13px; color: var(--text2); font-weight: 500; letter-spacing: -0.1px; }
+.metric-card-value { font-size: var(--fs-display); font-weight: 700; line-height: 1; letter-spacing: -0.8px; color: var(--text); font-variant-numeric: tabular-nums; margin-top: 2px; }
+.metric-card-value .metric-unit { font-size: 14px; font-weight: 600; color: var(--text2); margin-left: 4px; letter-spacing: 0; }
+.metric-card-trend { font-size: 12px; color: var(--text3); margin-top: 2px; }
+
+/* ========== Apple Health Activity Rings (home) ========== */
+.activity-rings-card { background: var(--surface); border-radius: var(--radius); padding: 18px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.3); display: flex; align-items: center; gap: 18px; }
+.ar-rings-wrap { position: relative; width: 124px; height: 124px; flex-shrink: 0; }
+.ar-rings-wrap svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.ar-ring-bg { fill: none; stroke-width: 11; }
+.ar-ring-fill { fill: none; stroke-width: 11; stroke-linecap: round; transition: stroke-dasharray 0.6s ease-out; }
+.ar-ring-1-bg { stroke: rgba(255,159,10,0.18); }
+.ar-ring-1-fill { stroke: var(--orange); }
+.ar-ring-2-bg { stroke: rgba(90,200,250,0.18); }
+.ar-ring-2-fill { stroke: var(--blue); }
+.ar-ring-3-bg { stroke: rgba(74,222,128,0.18); }
+.ar-ring-3-fill { stroke: var(--accent); }
+.ar-legend { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.ar-legend-row { display: flex; align-items: center; gap: 10px; }
+.ar-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.ar-dot-orange { background: var(--orange); }
+.ar-dot-blue { background: var(--blue); }
+.ar-dot-green { background: var(--accent); }
+.ar-legend-label { font-size: 13px; color: var(--text2); font-weight: 500; min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ar-legend-val { font-size: 14px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; flex-shrink: 0; }
 
 /* ========== Block headers + timers (workout) ========== */
 .block-header { display: flex; align-items: center; justify-content: space-between; margin: 14px 0 6px; padding: 0 4px; }

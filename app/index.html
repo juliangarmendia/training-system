@@ -113,12 +113,21 @@
         <div class="view-scroll" id="gym-scroll">
           <div id="resume-workout-banner" class="hidden"></div>
           <div class="week-banner" id="week-banner"></div>
-          <div class="section-label">This Week</div>
+          <div id="activity-rings-home"></div>
+          <div class="section-head">
+            <div class="section-head-icon" style="background:var(--tint-orange);color:var(--orange)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M8 6v12M16 6v12M3 9v6M21 9v6M8 12h8"/></svg>
+            </div>
+            <span class="section-head-title">This Week</span>
+          </div>
           <div class="week-strip" id="week-strip"></div>
           <div id="streak-banner"></div>
-          <div class="section-label" style="margin-top:20px;display:flex;justify-content:space-between;align-items:center">
-            <span>Recent Workouts</span>
-            <button id="btn-log-past" class="btn-secondary" style="padding:4px 10px;font-size:11px;font-weight:600">+ Log past</button>
+          <div class="section-head" style="margin-top:24px">
+            <div class="section-head-icon" style="background:var(--tint-orange);color:var(--orange)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h18M7 8v8M17 8v8"/></svg>
+            </div>
+            <span class="section-head-title">Recent Workouts</span>
+            <button id="btn-log-past" class="section-head-link" style="background:none;border:none;cursor:pointer">+ Log past</button>
           </div>
           <div id="recent-workouts" class="recent-list"></div>
         </div>
@@ -202,7 +211,12 @@
       <section id="view-run" class="view">
         <div class="view-scroll">
           <div class="run-plan-banner" id="run-plan-banner"></div>
-          <div class="section-label">Log a Run</div>
+          <div class="section-head">
+            <div class="section-head-icon" style="background:var(--tint-blue);color:var(--blue)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13" cy="4" r="2"/><path d="M5 21l3-9 2.5 2V21M15 11l-3-3-4 4 2 2"/></svg>
+            </div>
+            <span class="section-head-title">Log a Run</span>
+          </div>
           <div class="card form-card">
             <div class="form-row"><label>Distance (km)</label><input type="number" id="run-distance" step="0.1" min="0" placeholder="5.0" inputmode="decimal"></div>
             <div class="form-row"><label>Duration (min)</label><input type="number" id="run-duration" step="1" min="0" placeholder="38" inputmode="numeric"></div>
@@ -211,9 +225,19 @@
             <div class="form-row"><textarea id="run-notes" class="input-notes" placeholder="Notes (optional)" rows="2"></textarea></div>
             <button id="btn-log-run" class="btn-primary btn-lg">Log Run</button>
           </div>
-          <div class="section-label" style="margin-top:24px">Distance Totals</div>
-          <div id="run-totals-card" class="card run-totals-card"></div>
-          <div class="section-label" style="margin-top:24px">Run History</div>
+          <div class="section-head" style="margin-top:28px">
+            <div class="section-head-icon" style="background:var(--tint-blue);color:var(--blue)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 17 9 11 13 15 21 7"/><polyline points="14 7 21 7 21 14"/></svg>
+            </div>
+            <span class="section-head-title">Distance Totals</span>
+          </div>
+          <div id="run-totals-card" class="run-totals-card"></div>
+          <div class="section-head" style="margin-top:28px">
+            <div class="section-head-icon" style="background:var(--tint-blue);color:var(--blue)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>
+            </div>
+            <span class="section-head-title">Run History</span>
+          </div>
           <div id="run-history" class="recent-list"></div>
         </div>
       </section>
@@ -221,7 +245,12 @@
       <!-- Nutrition -->
       <section id="view-nutrition" class="view">
         <div class="view-scroll">
-          <div class="section-label" id="nutrition-date-label">Today</div>
+          <div class="section-head">
+            <div class="section-head-icon" style="background:var(--tint-green);color:var(--accent)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8h1a4 4 0 010 8h-1"/><path d="M2 8h16v9a4 4 0 01-4 4H6a4 4 0 01-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>
+            </div>
+            <span class="section-head-title" id="nutrition-date-label">Today</span>
+          </div>
           <div class="card nutrition-card">
             <div class="protein-ring-container">
               <div class="macro-ring" id="protein-ring">
@@ -413,7 +442,7 @@
           </div>
           <div class="section-label" style="margin-top:24px">App</div>
           <div class="card">
-            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v10.3<br>Data stored locally + cloud sync.<br>Works offline.</p>
+            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v10.4<br>Data stored locally + cloud sync.<br>Works offline.</p>
             <button id="btn-force-update" class="btn-secondary btn-full" style="text-align:center">Force Update App</button>
           </div>
         </div>
