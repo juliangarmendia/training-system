@@ -1096,6 +1096,15 @@ nav { display: flex; background: var(--surface); border-top: 1px solid var(--bor
 .mob-active-name { font-size: 24px; font-weight: 700; color: var(--text); letter-spacing: -0.5px; line-height: 1.2; }
 .mob-active-reps { font-size: 14px; color: var(--teal); font-weight: 600; margin-top: 6px; }
 .mob-active-instructions { font-size: 13px; color: var(--text2); line-height: 1.5; margin: 14px auto 0; max-width: 320px; min-height: 60px; }
+
+/* Mobility video embed (YouTube short, autoplay muted loop) */
+.mob-video-wrap { width: 100%; max-width: 360px; margin: 14px auto 0; border-radius: 14px; overflow: hidden; background: #000; aspect-ratio: 9 / 16; max-height: 380px; position: relative; box-shadow: 0 4px 16px rgba(0,0,0,0.4); }
+.mob-video-wrap iframe { width: 100%; height: 100%; border: none; display: block; }
+.mob-video-fallback { width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--text2); padding: 20px; text-align: center; gap: 8px; background: var(--surface2); }
+.mob-video-fallback-icon { width: 40px; height: 40px; color: var(--teal); opacity: 0.6; }
+.mob-video-fallback-icon svg { width: 100%; height: 100%; }
+.mob-video-fallback-text { font-size: 13px; font-weight: 600; color: var(--text2); }
+.mob-video-fallback-sub { font-size: 11px; color: var(--text3); }
 .mob-active-timer-big { font-size: 72px; font-weight: 700; color: var(--text); letter-spacing: -2px; font-variant-numeric: tabular-nums; line-height: 1; margin-top: 18px; }
 .mob-active-timer-label { font-size: 12px; color: var(--text3); margin-top: 4px; text-transform: uppercase; letter-spacing: 0.6px; font-weight: 600; }
 .mob-active-controls { display: flex; flex-direction: column; gap: 10px; }

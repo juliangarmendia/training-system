@@ -130,11 +130,11 @@ const MOBILITY_LIBRARY = {
     color: 'teal',
     description: 'Daily hip flow. Counters sitting and primes the hips for lifting.',
     exercises: [
-      { name: '90/90 Hip Switch', reps: '8 each side', durationSec: 90, instructions: 'Sit with one leg in front (90°) and the other to the side (90°). Switch sides slowly, keeping chest tall.' },
-      { name: 'Couch Stretch', reps: '60s each side', durationSec: 120, instructions: 'Kneel facing away from a couch, back foot on the seat, front foot flat. Squeeze glutes, tuck pelvis. Switch sides at 60s.' },
-      { name: "World's Greatest Stretch", reps: '5 each side', durationSec: 90, instructions: 'Lunge forward, plant hand inside front foot, rotate other arm to ceiling. Alternate sides.' },
-      { name: 'Deep Squat Hold + Thoracic Reach', reps: '45s', durationSec: 45, instructions: 'Squat as deep as comfortable, elbows pushing knees out. Reach one arm up at a time, rotating thoracic spine.' },
-      { name: 'Glute Bridge', reps: '12 reps · pause 2s top', durationSec: 75, instructions: 'Lying on back, knees bent. Drive through heels, squeeze glutes hard at the top. 2-second pause.' },
+      { name: '90/90 Hip Switch', reps: '8 each side', durationSec: 90, youtubeId: 'oALcD7wEa-s', instructions: 'Sit with one leg in front (90°) and the other to the side (90°). Switch sides slowly, keeping chest tall.' },
+      { name: 'Couch Stretch', reps: '60s each side', durationSec: 120, youtubeId: 'TML8Vqy-ACQ', instructions: 'Kneel facing away from a couch, back foot on the seat, front foot flat. Squeeze glutes, tuck pelvis. Switch sides at 60s.' },
+      { name: "World's Greatest Stretch", reps: '5 each side', durationSec: 90, youtubeId: 'PE-UuERblwA', instructions: 'Lunge forward, plant hand inside front foot, rotate other arm to ceiling. Alternate sides.' },
+      { name: 'Deep Squat Hold + Thoracic Reach', reps: '45s', durationSec: 45, youtubeId: 'vlizhxKrgck', instructions: 'Squat as deep as comfortable, elbows pushing knees out. Reach one arm up at a time, rotating thoracic spine.' },
+      { name: 'Glute Bridge', reps: '12 reps · pause 2s top', durationSec: 75, youtubeId: 'MnluU4dEHQE', instructions: 'Lying on back, knees bent. Drive through heels, squeeze glutes hard at the top. 2-second pause.' },
     ],
   },
   'lumbar-decompression': {
@@ -145,12 +145,12 @@ const MOBILITY_LIBRARY = {
     color: 'purple',
     description: 'McGill-based core endurance work. Builds the spinal stability that prevents lumbar pain.',
     exercises: [
-      { name: 'Cat-Cow', reps: '8 reps slow', durationSec: 60, instructions: 'On hands and knees. Round spine up (cat), then arch and look up (cow). Move slowly, breathe deep.' },
-      { name: 'Bird Dog', reps: '8 each side · 3s pause', durationSec: 120, instructions: 'On hands and knees. Extend opposite arm and leg, hold 3s. Keep hips level — no rotation.' },
-      { name: 'Side Plank', reps: '30-45s each side', durationSec: 90, instructions: 'On forearm, body straight from head to feet. Hips stacked. Switch sides at midpoint.' },
-      { name: 'McGill Curl-Up', reps: '5 reps × 3 sets', durationSec: 120, instructions: 'Lying on back, one knee bent. Hands under lower back. Lift head and shoulders slightly — chin tucked, no full sit-up.' },
-      { name: 'Dead Bug', reps: '8 each side slow', durationSec: 90, instructions: 'On back, arms up, knees at 90°. Lower opposite arm and leg slowly without arching the lower back.' },
-      { name: 'Child\'s Pose + Lateral Reach', reps: '30s each side', durationSec: 60, instructions: 'Sit hips back to heels, arms forward. Walk both arms to one side to stretch the side body. Switch.' },
+      { name: 'Cat-Cow', reps: '8 reps slow', durationSec: 60, youtubeId: 'WHUevrqeKIg', instructions: 'On hands and knees. Round spine up (cat), then arch and look up (cow). Move slowly, breathe deep.' },
+      { name: 'Bird Dog', reps: '8 each side · 3s pause', durationSec: 120, youtubeId: 'S1QbyYZaXIg', instructions: 'On hands and knees. Extend opposite arm and leg, hold 3s. Keep hips level — no rotation.' },
+      { name: 'Side Plank', reps: '30-45s each side', durationSec: 90, youtubeId: '1qcsRZhtMyo', instructions: 'On forearm, body straight from head to feet. Hips stacked. Switch sides at midpoint.' },
+      { name: 'McGill Curl-Up', reps: '5 reps × 3 sets', durationSec: 120, youtubeId: '_tz9WGVH25g', instructions: 'Lying on back, one knee bent. Hands under lower back. Lift head and shoulders slightly — chin tucked, no full sit-up.' },
+      { name: 'Dead Bug', reps: '8 each side slow', durationSec: 90, youtubeId: 'Aoipu_fl3HA', instructions: 'On back, arms up, knees at 90°. Lower opposite arm and leg slowly without arching the lower back.' },
+      { name: 'Child\'s Pose + Lateral Reach', reps: '30s each side', durationSec: 60, youtubeId: 'I89NCXZ55i0', instructions: 'Sit hips back to heels, arms forward. Walk both arms to one side to stretch the side body. Switch.' },
     ],
   },
   'thoracic-posterior': {
@@ -161,12 +161,12 @@ const MOBILITY_LIBRARY = {
     color: 'blue',
     description: 'Opens up the upper back and primes the posterior chain. Great on upper-body lift days.',
     exercises: [
-      { name: 'Open-Book (Thoracic Rotation)', reps: '8 each side', durationSec: 90, instructions: 'Lying on side, knees bent, arms stacked in front. Rotate top arm back, opening the chest. Eyes follow the hand.' },
-      { name: 'Thread the Needle', reps: '6 each side', durationSec: 75, instructions: 'On hands and knees. Slide one arm under the other, lowering shoulder to floor. Pause, return.' },
-      { name: 'Wall Slides', reps: '10 reps', durationSec: 60, instructions: 'Back against wall, arms in goalpost. Slide arms up overhead while keeping forearms touching the wall.' },
-      { name: 'Prone Y-T-W', reps: '8 each shape', durationSec: 90, instructions: 'Face down on floor. Lift arms in Y shape (overhead), then T (out to sides), then W (elbows bent). 8 reps each.' },
-      { name: 'Romanian Deadlift (Unweighted)', reps: '12 reps slow', durationSec: 75, instructions: 'Stand tall. Hinge at hips, push butt back, slight knee bend. Slow eccentric to mid-shin, drive hips through.' },
-      { name: 'Hip Flexor Stretch + Reach', reps: '45s each side', durationSec: 90, instructions: 'Half-kneeling lunge. Squeeze the glute of the back leg. Reach same-side arm overhead and slightly to opposite side.' },
+      { name: 'Open-Book (Thoracic Rotation)', reps: '8 each side', durationSec: 90, youtubeId: 'peeW19ofFUg', instructions: 'Lying on side, knees bent, arms stacked in front. Rotate top arm back, opening the chest. Eyes follow the hand.' },
+      { name: 'Thread the Needle', reps: '6 each side', durationSec: 75, youtubeId: 'ds3umIYJDrE', instructions: 'On hands and knees. Slide one arm under the other, lowering shoulder to floor. Pause, return.' },
+      { name: 'Wall Slides', reps: '10 reps', durationSec: 60, youtubeId: 'GaP20t6ZOfU', instructions: 'Back against wall, arms in goalpost. Slide arms up overhead while keeping forearms touching the wall.' },
+      { name: 'Prone Y-T-W', reps: '8 each shape', durationSec: 90, youtubeId: 'FATPBjxNuvo', instructions: 'Face down on floor. Lift arms in Y shape (overhead), then T (out to sides), then W (elbows bent). 8 reps each.' },
+      { name: 'Romanian Deadlift (Unweighted)', reps: '12 reps slow', durationSec: 75, youtubeId: 'P9akD4PyOXk', instructions: 'Stand tall. Hinge at hips, push butt back, slight knee bend. Slow eccentric to mid-shin, drive hips through.' },
+      { name: 'Hip Flexor Stretch + Reach', reps: '45s each side', durationSec: 90, youtubeId: 'd9wYh4pRV6Q', instructions: 'Half-kneeling lunge. Squeeze the glute of the back leg. Reach same-side arm overhead and slightly to opposite side.' },
     ],
   },
 };
@@ -4170,6 +4170,42 @@ async function renderMobilityHistory() {
   });
 }
 
+// ==================== MOBILITY VIDEO EMBED ====================
+// YouTube embed (autoplay + mute + loop + no controls + playsinline) so the
+// video acts like a moving GIF demo. Falls back to a static placeholder when
+// the user is offline or when no youtubeId is set for the exercise.
+function renderMobilityVideo(ex) {
+  if (!ex.youtubeId || !navigator.onLine) {
+    const reason = !ex.youtubeId ? 'No demo video set' : 'Offline · video unavailable';
+    return `
+      <div class="mob-video-fallback">
+        <div class="mob-video-fallback-icon">${ICON_MOBILITY}</div>
+        <div class="mob-video-fallback-text">${reason}</div>
+        <div class="mob-video-fallback-sub">Follow the instructions below</div>
+      </div>
+    `;
+  }
+  const id = ex.youtubeId;
+  const src = `https://www.youtube.com/embed/${id}?autoplay=1&mute=1&loop=1&playlist=${id}&controls=0&playsinline=1&modestbranding=1&rel=0&disablekb=1`;
+  return `<iframe src="${src}" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen loading="lazy" title="Exercise demo"></iframe>`;
+}
+
+// Re-render current exercise's video when network state changes
+window.addEventListener('online', () => {
+  if (state.activeMobility) {
+    const ex = state.activeMobility.routine.exercises[state.activeMobility.exerciseIdx];
+    const videoEl = document.getElementById('mob-active-video');
+    if (videoEl && ex) videoEl.innerHTML = renderMobilityVideo(ex);
+  }
+});
+window.addEventListener('offline', () => {
+  if (state.activeMobility) {
+    const ex = state.activeMobility.routine.exercises[state.activeMobility.exerciseIdx];
+    const videoEl = document.getElementById('mob-active-video');
+    if (videoEl && ex) videoEl.innerHTML = renderMobilityVideo(ex);
+  }
+});
+
 // ==================== MOBILITY ACTIVE ROUTINE ====================
 async function startMobilityRoutine(routineId) {
   const routine = MOBILITY_LIBRARY[routineId];
@@ -4202,6 +4238,9 @@ function runCurrentMobilityExercise() {
   document.getElementById('mob-active-name').textContent = ex.name;
   document.getElementById('mob-active-reps').textContent = ex.reps;
   document.getElementById('mob-active-instructions').textContent = ex.instructions;
+  // Video embed (YouTube short, autoplay muted loop) — falls back to placeholder if offline
+  const videoEl = document.getElementById('mob-active-video');
+  if (videoEl) videoEl.innerHTML = renderMobilityVideo(ex);
 
   // Progress dots
   const dots = document.getElementById('mob-active-progress');
@@ -4270,6 +4309,9 @@ async function finishMobilityRoutine() {
   const am = state.activeMobility;
   if (!am) return;
   if (am.timerInterval) { clearInterval(am.timerInterval); am.timerInterval = null; }
+  // Stop the video iframe so it doesn't keep loading in the background
+  const videoEl = document.getElementById('mob-active-video');
+  if (videoEl) videoEl.innerHTML = '';
 
   // Pain after prompt
   const painAfter = await askPainRating('How does it feel now?');
@@ -4303,6 +4345,9 @@ function cancelMobilityRoutine() {
   if (!am) return;
   if (!confirm('End this mobility routine? Progress will not be saved.')) return;
   if (am.timerInterval) clearInterval(am.timerInterval);
+  // Stop the video iframe
+  const videoEl = document.getElementById('mob-active-video');
+  if (videoEl) videoEl.innerHTML = '';
   state.activeMobility = null;
   openMobilityView();
 }
