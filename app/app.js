@@ -117,6 +117,80 @@ const MUSCLE_COLORS = {
 // Key lifts for strength chart tracking
 const KEY_LIFTS = ['bench-press', 'back-squat', 'sumo-dl', 'ohp', 'barbell-row', 'chinups'];
 
+// ==================== MOBILITY LIBRARY (v10.5) ====================
+// Evidence-based mobility routines for back health & lifter recovery.
+// Sources: Lancet 2018 LBP series, McGill Big 3, NICE guidelines.
+// Each exercise has durationSec for the active-routine timer.
+const MOBILITY_LIBRARY = {
+  'hip-reset': {
+    id: 'hip-reset',
+    name: 'Hip Reset',
+    duration: 7,
+    area: 'hips',
+    color: 'teal',
+    description: 'Daily hip flow. Counters sitting and primes the hips for lifting.',
+    exercises: [
+      { name: '90/90 Hip Switch', reps: '8 each side', durationSec: 90, instructions: 'Sit with one leg in front (90°) and the other to the side (90°). Switch sides slowly, keeping chest tall.' },
+      { name: 'Couch Stretch', reps: '60s each side', durationSec: 120, instructions: 'Kneel facing away from a couch, back foot on the seat, front foot flat. Squeeze glutes, tuck pelvis. Switch sides at 60s.' },
+      { name: "World's Greatest Stretch", reps: '5 each side', durationSec: 90, instructions: 'Lunge forward, plant hand inside front foot, rotate other arm to ceiling. Alternate sides.' },
+      { name: 'Deep Squat Hold + Thoracic Reach', reps: '45s', durationSec: 45, instructions: 'Squat as deep as comfortable, elbows pushing knees out. Reach one arm up at a time, rotating thoracic spine.' },
+      { name: 'Glute Bridge', reps: '12 reps · pause 2s top', durationSec: 75, instructions: 'Lying on back, knees bent. Drive through heels, squeeze glutes hard at the top. 2-second pause.' },
+    ],
+  },
+  'lumbar-decompression': {
+    id: 'lumbar-decompression',
+    name: 'Lumbar Decompression + Core Endurance',
+    duration: 10,
+    area: 'lumbar',
+    color: 'purple',
+    description: 'McGill-based core endurance work. Builds the spinal stability that prevents lumbar pain.',
+    exercises: [
+      { name: 'Cat-Cow', reps: '8 reps slow', durationSec: 60, instructions: 'On hands and knees. Round spine up (cat), then arch and look up (cow). Move slowly, breathe deep.' },
+      { name: 'Bird Dog', reps: '8 each side · 3s pause', durationSec: 120, instructions: 'On hands and knees. Extend opposite arm and leg, hold 3s. Keep hips level — no rotation.' },
+      { name: 'Side Plank', reps: '30-45s each side', durationSec: 90, instructions: 'On forearm, body straight from head to feet. Hips stacked. Switch sides at midpoint.' },
+      { name: 'McGill Curl-Up', reps: '5 reps × 3 sets', durationSec: 120, instructions: 'Lying on back, one knee bent. Hands under lower back. Lift head and shoulders slightly — chin tucked, no full sit-up.' },
+      { name: 'Dead Bug', reps: '8 each side slow', durationSec: 90, instructions: 'On back, arms up, knees at 90°. Lower opposite arm and leg slowly without arching the lower back.' },
+      { name: 'Child\'s Pose + Lateral Reach', reps: '30s each side', durationSec: 60, instructions: 'Sit hips back to heels, arms forward. Walk both arms to one side to stretch the side body. Switch.' },
+    ],
+  },
+  'thoracic-posterior': {
+    id: 'thoracic-posterior',
+    name: 'Thoracic + Posterior Chain',
+    duration: 10,
+    area: 'thoracic',
+    color: 'blue',
+    description: 'Opens up the upper back and primes the posterior chain. Great on upper-body lift days.',
+    exercises: [
+      { name: 'Open-Book (Thoracic Rotation)', reps: '8 each side', durationSec: 90, instructions: 'Lying on side, knees bent, arms stacked in front. Rotate top arm back, opening the chest. Eyes follow the hand.' },
+      { name: 'Thread the Needle', reps: '6 each side', durationSec: 75, instructions: 'On hands and knees. Slide one arm under the other, lowering shoulder to floor. Pause, return.' },
+      { name: 'Wall Slides', reps: '10 reps', durationSec: 60, instructions: 'Back against wall, arms in goalpost. Slide arms up overhead while keeping forearms touching the wall.' },
+      { name: 'Prone Y-T-W', reps: '8 each shape', durationSec: 90, instructions: 'Face down on floor. Lift arms in Y shape (overhead), then T (out to sides), then W (elbows bent). 8 reps each.' },
+      { name: 'Romanian Deadlift (Unweighted)', reps: '12 reps slow', durationSec: 75, instructions: 'Stand tall. Hinge at hips, push butt back, slight knee bend. Slow eccentric to mid-shin, drive hips through.' },
+      { name: 'Hip Flexor Stretch + Reach', reps: '45s each side', durationSec: 90, instructions: 'Half-kneeling lunge. Squeeze the glute of the back leg. Reach same-side arm overhead and slightly to opposite side.' },
+    ],
+  },
+};
+
+// Schedule: which routine to recommend based on day of week (0=Sun..6=Sat)
+// Hip Reset is daily but the "main" recommended depends on day.
+function getRecommendedMobilityToday() {
+  const dow = new Date().getDay();
+  // Mon/Wed/Fri (1,3,5) -> lumbar; Tue/Thu (2,4) -> thoracic; Sat/Sun -> hip-reset
+  if (dow === 1 || dow === 3 || dow === 5) return MOBILITY_LIBRARY['lumbar-decompression'];
+  if (dow === 2 || dow === 4) return MOBILITY_LIBRARY['thoracic-posterior'];
+  return MOBILITY_LIBRARY['hip-reset'];
+}
+
+// Map color name → CSS var pair (token + tint)
+function mobilityColorVars(color) {
+  const map = {
+    teal: { color: 'var(--teal)', tint: 'var(--tint-teal)' },
+    purple: { color: 'var(--purple)', tint: 'var(--tint-purple)' },
+    blue: { color: 'var(--blue)', tint: 'var(--tint-blue)' },
+  };
+  return map[color] || map.teal;
+}
+
 // Exercise alternatives by muscle group (for swapping)
 const EXERCISE_ALTERNATIVES = {
   'Chest': [
@@ -371,7 +445,7 @@ async function createNewPlanVersion(modifications) {
 
 // ==================== DATABASE ====================
 const DB_NAME = 'TrainingApp';
-const DB_VERSION = 5;
+const DB_VERSION = 6;
 let db = null;
 
 function openDB() {
@@ -390,6 +464,8 @@ function openDB() {
       // Dynamic plans (versioned snapshots) and exercise library
       if (!d.objectStoreNames.contains('plans')) d.createObjectStore('plans', { keyPath: 'id' });
       if (!d.objectStoreNames.contains('exercises')) d.createObjectStore('exercises', { keyPath: 'id' });
+      // Mobility sessions — added v10.5 (DB v6)
+      if (!d.objectStoreNames.contains('mobility_sessions')) d.createObjectStore('mobility_sessions', { keyPath: 'id' });
     };
     req.onsuccess = (e) => { db = e.target.result; resolve(db); };
     req.onerror = (e) => reject(e);
@@ -1051,7 +1127,7 @@ function switchTab(tab) {
     // Use activeSession (not currentView) — currentView gets overwritten by other tabs
     const inWorkout = !!state.activeSession;
     showView(inWorkout ? 'workout' : 'gym');
-    if (!inWorkout) { renderActivityRings(); renderWeekStrip(); renderRecentWorkouts(); renderStreakBanner(); }
+    if (!inWorkout) { renderActivityRingsHome(); renderMobilityTodayCard(); renderWeekStrip(); renderRecentWorkouts(); renderStreakBanner(); }
   } else if (tab === 'run') { showView('run'); renderRunPlanBanner(); renderRunTotals(); renderRunHistory(); }
   else if (tab === 'nutrition') { showView('nutrition'); renderNutrition(); }
   else if (tab === 'stats') { showView('stats'); renderStats(); }
@@ -1153,16 +1229,22 @@ async function renderWeekStrip() {
   const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   const customSchedule = await getWeekSchedule();
 
-  // Build two-row layout
+  // Mobility counts per date (for I/II indicator on the 3rd row)
+  const mobCounts = await getMobilityCountsByDate();
+
+  // Build three-row layout (Strength / Running / Mobility)
   container.innerHTML = `
     <div class="ws-label">Strength</div>
     <div class="ws-row" id="ws-gym-row"></div>
     <div class="ws-label">Running</div>
     <div class="ws-row" id="ws-run-row"></div>
+    <div class="ws-label">Mobility</div>
+    <div class="ws-row" id="ws-mob-row"></div>
   `;
 
   const gymRow = document.getElementById('ws-gym-row');
   const runRow = document.getElementById('ws-run-row');
+  const mobRow = document.getElementById('ws-mob-row');
 
   weekDates.forEach((date, i) => {
     const ds = dateStr(date);
@@ -1269,6 +1351,19 @@ async function renderWeekStrip() {
     runCell.addEventListener('touchmove', () => clearTimeout(runPressTimer));
 
     runRow.appendChild(runCell);
+
+    // --- MOBILITY CELL ---
+    const mobCell = document.createElement('div');
+    mobCell.className = `ws-cell ws-mob-cell${isToday ? ' today' : ''}`;
+    const mobCount = mobCounts[ds] || 0;
+    let indicator = '';
+    if (mobCount === 1) indicator = '<span class="ws-mob-indicator">I</span>';
+    else if (mobCount === 2) indicator = '<span class="ws-mob-indicator">II</span>';
+    else if (mobCount >= 3) indicator = `<span class="ws-mob-indicator">${mobCount}</span>`;
+    if (mobCount > 0) mobCell.classList.add('done');
+    mobCell.innerHTML = `<div class="ws-day">${dayNames[i]}</div>${indicator || '<div class="ws-mob-empty">·</div>'}`;
+    mobCell.addEventListener('click', () => { switchTab('gym'); openMobilityView(); });
+    mobRow.appendChild(mobCell);
   });
 }
 
@@ -2741,7 +2836,8 @@ async function finishWorkout() {
   toast('Workout saved!');
   switchTab('gym');
   // Force-refresh home widgets so the new workout is visible without reload
-  renderActivityRings();
+  renderActivityRingsHome();
+  renderMobilityTodayCard();
   renderWeekStrip();
   renderRecentWorkouts();
   renderStreakBanner();
@@ -3867,7 +3963,361 @@ async function logRun() {
   toast('Run logged!');
   renderRunTotals();
   renderRunHistory();
-  renderActivityRings();
+  renderActivityRingsHome();
+}
+
+// ==================== MOBILITY (v10.5) ====================
+// Counts of mobility sessions per local date — used for week-strip indicator and streak
+async function getMobilityCountsByDate() {
+  const sessions = await dbGetAll('mobility_sessions');
+  const counts = {};
+  sessions.forEach(s => { if (s.date) counts[s.date] = (counts[s.date] || 0) + 1; });
+  return counts;
+}
+
+async function getMobilityStreak() {
+  const counts = await getMobilityCountsByDate();
+  // Walk back from today until we find a day without a session
+  let streak = 0;
+  const d = new Date();
+  // If today has none, start counting from yesterday (a streak shouldn't break mid-day)
+  if (!counts[dateStr(d)]) d.setDate(d.getDate() - 1);
+  while (counts[dateStr(d)]) {
+    streak++;
+    d.setDate(d.getDate() - 1);
+  }
+  return streak;
+}
+
+// Inline icon (sparkles / movement) for mobility cards
+const ICON_MOBILITY = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3M12 18v3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M3 12h3M18 12h3M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/></svg>`;
+const ICON_PLAY = `<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="6 4 20 12 6 20 6 4"/></svg>`;
+
+async function renderMobilityTodayCard() {
+  const container = document.getElementById('mobility-today-card');
+  if (!container) return;
+  const routine = getRecommendedMobilityToday();
+  const counts = await getMobilityCountsByDate();
+  const doneToday = counts[today()] || 0;
+  const cv = mobilityColorVars(routine.color);
+
+  container.innerHTML = `
+    <div class="mobility-today-card" id="mob-today-tap">
+      <div class="mob-today-icon" style="background:${cv.tint};color:${cv.color}">${ICON_MOBILITY}</div>
+      <div class="mob-today-body">
+        <div class="mob-today-label">${doneToday > 0 ? `Done today · ${doneToday > 1 ? doneToday + 'x' : '1x'}` : "Today's Mobility"}</div>
+        <div class="mob-today-name">${routine.name}</div>
+        <div class="mob-today-meta">${routine.duration} min · ${routine.exercises.length} exercises</div>
+      </div>
+      <button class="mob-today-start" id="mob-today-start" style="background:${cv.color}" aria-label="Start mobility routine">${ICON_PLAY}</button>
+    </div>
+  `;
+  const startBtn = document.getElementById('mob-today-start');
+  if (startBtn) startBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    startMobilityRoutine(routine.id);
+  });
+  const cardTap = document.getElementById('mob-today-tap');
+  if (cardTap) cardTap.addEventListener('click', () => openMobilityView());
+}
+
+function openMobilityView() {
+  showView('mobility');
+  renderMobilityView();
+}
+
+async function renderMobilityView() {
+  // Streak card
+  const streakContainer = document.getElementById('mobility-streak-card');
+  if (streakContainer) {
+    const streak = await getMobilityStreak();
+    const counts = await getMobilityCountsByDate();
+    const totalSessions = Object.values(counts).reduce((a, b) => a + b, 0);
+    streakContainer.innerHTML = `
+      <div class="card mob-streak-card">
+        <div class="mob-streak-row">
+          <div class="mob-streak-stat">
+            <div class="mob-streak-num">${streak}</div>
+            <div class="mob-streak-label">Day streak</div>
+          </div>
+          <div class="mob-streak-divider"></div>
+          <div class="mob-streak-stat">
+            <div class="mob-streak-num">${totalSessions}</div>
+            <div class="mob-streak-label">Total sessions</div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // Routines list
+  const routinesContainer = document.getElementById('mobility-routines-list');
+  if (routinesContainer) {
+    const today_dow = new Date().getDay();
+    const recommended = getRecommendedMobilityToday();
+    routinesContainer.innerHTML = '<div class="card-stack">' + Object.values(MOBILITY_LIBRARY).map(r => {
+      const cv = mobilityColorVars(r.color);
+      const isReco = r.id === recommended.id;
+      return `
+        <div class="card mob-routine-card" data-routine-id="${r.id}">
+          <div class="mob-routine-icon" style="background:${cv.tint};color:${cv.color}">${ICON_MOBILITY}</div>
+          <div class="mob-routine-body">
+            <div class="mob-routine-name">${r.name}${isReco ? ' <span class="mob-reco-pill">Today</span>' : ''}</div>
+            <div class="mob-routine-meta">${r.duration} min · ${r.exercises.length} exercises</div>
+            <div class="mob-routine-desc">${r.description}</div>
+          </div>
+          <button class="mob-routine-start" style="background:${cv.color}" data-start-routine="${r.id}">${ICON_PLAY}</button>
+        </div>
+      `;
+    }).join('') + '</div>';
+    routinesContainer.querySelectorAll('[data-start-routine]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        startMobilityRoutine(btn.dataset.startRoutine);
+      });
+    });
+  }
+
+  // Pain trend (last 14 days, avg painAfter per day)
+  await renderMobilityPainTrend();
+
+  // History
+  await renderMobilityHistory();
+}
+
+async function renderMobilityPainTrend() {
+  const container = document.getElementById('mobility-pain-trend');
+  if (!container) return;
+  const sessions = (await dbGetAll('mobility_sessions')).sort((a, b) => a.date.localeCompare(b.date));
+  if (sessions.length === 0) {
+    container.innerHTML = '<div class="empty-state">No pain data yet. Log a mobility session to start tracking.</div>';
+    return;
+  }
+  // Group by date, average painAfter
+  const byDate = {};
+  sessions.forEach(s => {
+    if (s.painAfter == null) return;
+    if (!byDate[s.date]) byDate[s.date] = [];
+    byDate[s.date].push(s.painAfter);
+  });
+  const dates = Object.keys(byDate).sort().slice(-14);
+  if (dates.length < 2) {
+    container.innerHTML = '<div class="empty-state">Need 2+ sessions with pain rating for trend.</div>';
+    return;
+  }
+  const labels = dates.map(d => formatDate(d));
+  const values = dates.map(d => {
+    const arr = byDate[d];
+    return Math.round(arr.reduce((a, b) => a + b, 0) / arr.length * 10) / 10;
+  });
+  // Reuse existing renderLineChart helper
+  container.innerHTML = renderLineChart(labels, values, { color: 'var(--purple)', height: 130, showDots: true, min: 1, max: 5 });
+}
+
+async function renderMobilityHistory() {
+  const container = document.getElementById('mobility-history');
+  if (!container) return;
+  const sessions = (await dbGetAll('mobility_sessions')).sort((a, b) => b.createdAt - a.createdAt).slice(0, 12);
+  if (sessions.length === 0) {
+    container.innerHTML = '<div class="empty-state">No sessions yet</div>';
+    return;
+  }
+  container.innerHTML = sessions.map(s => {
+    const routine = MOBILITY_LIBRARY[s.routineId] || { color: 'teal' };
+    const cv = mobilityColorVars(routine.color);
+    const painDelta = (s.painBefore != null && s.painAfter != null) ? s.painBefore - s.painAfter : null;
+    const painLabel = painDelta != null ? (painDelta > 0 ? `↓ ${painDelta}` : (painDelta < 0 ? `↑ ${-painDelta}` : '=')) : '—';
+    const painCls = painDelta > 0 ? 'pos' : (painDelta < 0 ? 'neg' : 'neutral');
+    return `
+      <div class="history-item" data-mob-session="${s.id}">
+        <div class="hi-icon" style="background:${cv.tint};color:${cv.color}">${ICON_MOBILITY}</div>
+        <div class="hi-left">
+          <div class="hi-title">${s.routineName}</div>
+          <div class="hi-sub">${formatDate(s.date)} · ${s.durationMin} min · pain ${s.painBefore ?? '—'} → ${s.painAfter ?? '—'}</div>
+        </div>
+        <div class="hi-right">
+          <div>
+            <div class="hi-stat bt-delta ${painCls}">${painLabel}</div>
+            <div class="hi-stat-sub">pain</div>
+          </div>
+          <button class="hi-delete" data-delete-mob="${s.id}">&times;</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  container.querySelectorAll('[data-delete-mob]').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const id = btn.dataset.deleteMob;
+      const removed = await dbGet('mobility_sessions', id);
+      await dbDelete('mobility_sessions', id);
+      renderMobilityView();
+      renderWeekStrip();
+      renderMobilityTodayCard();
+      toast('Mobility session deleted', {
+        label: 'Undo',
+        callback: async () => {
+          if (removed) {
+            await dbPut('mobility_sessions', removed);
+            renderMobilityView();
+            renderWeekStrip();
+            renderMobilityTodayCard();
+          }
+        }
+      });
+    });
+  });
+}
+
+// ==================== MOBILITY ACTIVE ROUTINE ====================
+async function startMobilityRoutine(routineId) {
+  const routine = MOBILITY_LIBRARY[routineId];
+  if (!routine) return;
+  // Pain before prompt
+  const painBefore = await askPainRating('How does your back feel right now?');
+  if (painBefore === null) return; // cancelled
+  state.activeMobility = {
+    routineId,
+    routine,
+    painBefore,
+    exerciseIdx: 0,
+    startedAt: Date.now(),
+    timerInterval: null,
+    timerRemaining: 0,
+    paused: false,
+  };
+  showView('mobility-active');
+  runCurrentMobilityExercise();
+}
+
+function runCurrentMobilityExercise() {
+  const am = state.activeMobility;
+  if (!am) return;
+  const ex = am.routine.exercises[am.exerciseIdx];
+  if (!ex) { finishMobilityRoutine(); return; }
+
+  // Update DOM
+  document.getElementById('mob-active-num').textContent = `${am.exerciseIdx + 1} / ${am.routine.exercises.length}`;
+  document.getElementById('mob-active-name').textContent = ex.name;
+  document.getElementById('mob-active-reps').textContent = ex.reps;
+  document.getElementById('mob-active-instructions').textContent = ex.instructions;
+
+  // Progress dots
+  const dots = document.getElementById('mob-active-progress');
+  if (dots) {
+    dots.innerHTML = am.routine.exercises.map((_, i) => {
+      const cls = i < am.exerciseIdx ? 'done' : (i === am.exerciseIdx ? 'current' : '');
+      return `<span class="mob-dot ${cls}"></span>`;
+    }).join('');
+  }
+
+  // Timer
+  am.timerRemaining = ex.durationSec;
+  am.paused = false;
+  const pauseBtn = document.getElementById('mob-pause-btn');
+  if (pauseBtn) pauseBtn.textContent = 'Pause';
+  updateMobilityTimerDisplay();
+  if (am.timerInterval) clearInterval(am.timerInterval);
+  am.timerInterval = setInterval(() => {
+    if (state.activeMobility !== am || am.paused) return;
+    am.timerRemaining--;
+    updateMobilityTimerDisplay();
+    if (am.timerRemaining <= 0) {
+      // Auto-advance
+      clearInterval(am.timerInterval);
+      am.timerInterval = null;
+      if (navigator.vibrate) navigator.vibrate(80);
+      advanceMobilityExercise();
+    }
+  }, 1000);
+}
+
+function updateMobilityTimerDisplay() {
+  const am = state.activeMobility;
+  if (!am) return;
+  const big = document.getElementById('mob-active-timer-big');
+  const top = document.getElementById('mob-routine-timer');
+  if (big) big.textContent = Math.max(0, am.timerRemaining);
+  if (top) {
+    const elapsed = Math.floor((Date.now() - am.startedAt) / 1000);
+    const m = Math.floor(elapsed / 60);
+    const s = elapsed % 60;
+    top.textContent = `${m}:${s.toString().padStart(2, '0')}`;
+  }
+}
+
+function advanceMobilityExercise() {
+  const am = state.activeMobility;
+  if (!am) return;
+  am.exerciseIdx++;
+  if (am.exerciseIdx >= am.routine.exercises.length) {
+    finishMobilityRoutine();
+  } else {
+    runCurrentMobilityExercise();
+  }
+}
+
+function pauseMobilityExercise() {
+  const am = state.activeMobility;
+  if (!am) return;
+  am.paused = !am.paused;
+  const pauseBtn = document.getElementById('mob-pause-btn');
+  if (pauseBtn) pauseBtn.textContent = am.paused ? 'Resume' : 'Pause';
+}
+
+async function finishMobilityRoutine() {
+  const am = state.activeMobility;
+  if (!am) return;
+  if (am.timerInterval) { clearInterval(am.timerInterval); am.timerInterval = null; }
+
+  // Pain after prompt
+  const painAfter = await askPainRating('How does it feel now?');
+  // Save session even if user dismisses (painAfter null is OK)
+  const session = {
+    id: uid(),
+    date: dateStr(new Date(am.startedAt)),
+    routineId: am.routineId,
+    routineName: am.routine.name,
+    durationMin: am.routine.duration,
+    painBefore: am.painBefore,
+    painAfter: painAfter,
+    notes: '',
+    createdAt: Date.now(),
+  };
+  // NOTE: using dbPut (local only) instead of smartPut — the Supabase
+  // mobility_sessions table doesn't exist yet, and a failed sync of one
+  // item blocks the entire sync queue. Mobility stays local until the
+  // user creates the table in Supabase.
+  await dbPut('mobility_sessions', session);
+  state.activeMobility = null;
+  toast('Mobility done · streak +1');
+  // Return to mobility view + refresh dependent UIs
+  openMobilityView();
+  renderWeekStrip();
+  renderMobilityTodayCard();
+}
+
+function cancelMobilityRoutine() {
+  const am = state.activeMobility;
+  if (!am) return;
+  if (!confirm('End this mobility routine? Progress will not be saved.')) return;
+  if (am.timerInterval) clearInterval(am.timerInterval);
+  state.activeMobility = null;
+  openMobilityView();
+}
+
+// Pain rating prompt — uses showActionSheet with 5 options. Returns 1-5 or null if cancelled.
+async function askPainRating(prompt) {
+  const choice = await showActionSheet(prompt, [
+    { value: '1', label: '1 — No pain', icon: '😄' },
+    { value: '2', label: '2 — Mild', icon: '🙂' },
+    { value: '3', label: '3 — Moderate', icon: '😐' },
+    { value: '4', label: '4 — Strong', icon: '😣' },
+    { value: '5', label: '5 — Severe', icon: '😖' },
+  ]);
+  if (choice === null) return null;
+  return parseInt(choice);
 }
 
 // ==================== ACTIVITY RINGS (Apple Health style, home) ====================
@@ -3875,7 +4325,7 @@ async function logRun() {
 //   • Outer (orange):   Workouts done today / planned today
 //   • Middle (blue):    Run km today / weekly run-target / 7
 //   • Inner (green):    Protein logged today / target
-async function renderActivityRings() {
+async function renderActivityRingsHome() {
   const container = document.getElementById('activity-rings-home');
   if (!container) return;
 
@@ -5197,6 +5647,22 @@ function bindEvents() {
       if (!isNaN(w)) el.textContent = plateBreakdown(w, newUnit);
     });
   });
+
+  // Mobility view: back button → gym home
+  const mobBack = document.getElementById('mob-back-btn');
+  if (mobBack) mobBack.addEventListener('click', () => switchTab('gym'));
+
+  // Mobility active: back/end button → confirm + cancel
+  const mobActiveBack = document.getElementById('mob-active-back-btn');
+  if (mobActiveBack) mobActiveBack.addEventListener('click', cancelMobilityRoutine);
+
+  // Mobility active: skip button → advance immediately
+  const mobSkip = document.getElementById('mob-skip-btn');
+  if (mobSkip) mobSkip.addEventListener('click', advanceMobilityExercise);
+
+  // Mobility active: pause/resume
+  const mobPause = document.getElementById('mob-pause-btn');
+  if (mobPause) mobPause.addEventListener('click', pauseMobilityExercise);
 
   // Back from workout
   document.getElementById('btn-back-gym').addEventListener('click', () => {

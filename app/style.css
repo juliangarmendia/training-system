@@ -1049,6 +1049,64 @@ nav { display: flex; background: var(--surface); border-top: 1px solid var(--bor
 .trash-item .ti-title { font-size: 13px; font-weight: 700; color: var(--text); }
 .trash-item .ti-sub { font-size: 11px; color: var(--text3); }
 
+/* ========== Mobility (v10.5) ========== */
+#view-mobility, #view-mobility-active { --section-accent: var(--teal); --section-glow: rgba(100,210,255,0.12); }
+
+/* "Today's Mobility" card on Gym home */
+.mobility-today-card { background: var(--surface); border-radius: var(--radius); padding: 14px 16px; display: flex; align-items: center; gap: 12px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.3); cursor: pointer; transition: background 0.15s; }
+.mobility-today-card:active { background: var(--surface2); }
+.mob-today-icon { width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.mob-today-icon svg { width: 20px; height: 20px; }
+.mob-today-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.mob-today-label { font-size: 12px; color: var(--text2); font-weight: 500; }
+.mob-today-name { font-size: 16px; color: var(--text); font-weight: 700; letter-spacing: -0.3px; line-height: 1.15; }
+.mob-today-meta { font-size: 12px; color: var(--text3); margin-top: 1px; }
+.mob-today-start { width: 44px; height: 44px; border-radius: 50%; border: none; color: #000; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+.mob-today-start svg { width: 16px; height: 16px; margin-left: 2px; }
+.mob-today-start:active { transform: scale(0.94); }
+
+/* Mobility view: streak card */
+.mob-streak-card { padding: 18px; }
+.mob-streak-row { display: flex; align-items: center; justify-content: space-around; }
+.mob-streak-stat { text-align: center; flex: 1; }
+.mob-streak-num { font-size: 38px; font-weight: 700; color: var(--teal); letter-spacing: -1px; line-height: 1; font-variant-numeric: tabular-nums; }
+.mob-streak-label { font-size: 12px; color: var(--text2); margin-top: 4px; font-weight: 500; }
+.mob-streak-divider { width: 1px; align-self: stretch; background: var(--border); margin: 4px 0; }
+
+/* Routine cards in the mobility view */
+.mob-routine-card { display: flex; align-items: center; gap: 12px; padding: 16px; }
+.mob-routine-icon { width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.mob-routine-icon svg { width: 20px; height: 20px; }
+.mob-routine-body { flex: 1; min-width: 0; }
+.mob-routine-name { font-size: 15px; font-weight: 700; color: var(--text); letter-spacing: -0.2px; }
+.mob-reco-pill { display: inline-block; font-size: 10px; font-weight: 700; color: var(--teal); background: var(--tint-teal); padding: 2px 8px; border-radius: 20px; margin-left: 6px; vertical-align: middle; text-transform: uppercase; letter-spacing: 0.4px; }
+.mob-routine-meta { font-size: 12px; color: var(--text2); margin-top: 2px; font-weight: 500; }
+.mob-routine-desc { font-size: 12px; color: var(--text3); margin-top: 4px; line-height: 1.35; }
+.mob-routine-start { width: 38px; height: 38px; border-radius: 50%; border: none; color: #000; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; }
+.mob-routine-start svg { width: 14px; height: 14px; margin-left: 2px; }
+.mob-routine-start:active { transform: scale(0.94); }
+
+/* Active mobility routine view */
+.mob-progress-dots { display: flex; gap: 6px; justify-content: center; margin: 8px 0 24px; }
+.mob-dot { width: 28px; height: 4px; border-radius: 2px; background: var(--border); transition: background 0.2s; }
+.mob-dot.done { background: var(--teal); }
+.mob-dot.current { background: var(--teal); box-shadow: 0 0 8px var(--tint-teal); }
+.mob-active-body { background: var(--surface); border-radius: var(--radius); padding: 24px 20px 32px; text-align: center; margin-bottom: 16px; }
+.mob-active-num { font-size: 12px; color: var(--text3); font-weight: 700; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 8px; }
+.mob-active-name { font-size: 24px; font-weight: 700; color: var(--text); letter-spacing: -0.5px; line-height: 1.2; }
+.mob-active-reps { font-size: 14px; color: var(--teal); font-weight: 600; margin-top: 6px; }
+.mob-active-instructions { font-size: 13px; color: var(--text2); line-height: 1.5; margin: 14px auto 0; max-width: 320px; min-height: 60px; }
+.mob-active-timer-big { font-size: 72px; font-weight: 700; color: var(--text); letter-spacing: -2px; font-variant-numeric: tabular-nums; line-height: 1; margin-top: 18px; }
+.mob-active-timer-label { font-size: 12px; color: var(--text3); margin-top: 4px; text-transform: uppercase; letter-spacing: 0.6px; font-weight: 600; }
+.mob-active-controls { display: flex; flex-direction: column; gap: 10px; }
+
+/* Week strip: mobility row indicator */
+.ws-mob-cell { padding: 6px 2px; min-height: 42px; }
+.ws-mob-indicator { font-size: 13px; font-weight: 800; color: var(--teal); margin-top: 4px; font-variant-numeric: tabular-nums; letter-spacing: 0.5px; }
+.ws-mob-empty { font-size: 14px; color: var(--text3); margin-top: 6px; opacity: 0.4; }
+.ws-mob-cell.done { background: var(--tint-teal); border-color: var(--teal); }
+.ws-mob-cell.today .ws-day { color: var(--teal); }
+
 /* ========== Block timings table (history modal) ========== */
 .bt-row { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 6px; padding: 6px 0; align-items: center; font-size: 12px; border-bottom: 1px solid var(--border); }
 .bt-row:last-child { border-bottom: none; }

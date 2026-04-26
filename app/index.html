@@ -114,6 +114,7 @@
           <div id="resume-workout-banner" class="hidden"></div>
           <div class="week-banner" id="week-banner"></div>
           <div id="activity-rings-home"></div>
+          <div id="mobility-today-card"></div>
           <div class="section-head">
             <div class="section-head-icon" style="background:var(--tint-orange);color:var(--orange)">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M8 6v12M16 6v12M3 9v6M21 9v6M8 12h8"/></svg>
@@ -377,6 +378,66 @@
         </div>
       </section>
 
+      <!-- Mobility (full list view) -->
+      <section id="view-mobility" class="view">
+        <div class="view-scroll">
+          <div class="workout-header">
+            <button id="mob-back-btn" class="back-btn">&larr; Back</button>
+          </div>
+          <div class="section-head">
+            <div class="section-head-icon" style="background:var(--tint-teal);color:var(--teal)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v6M12 22v-6M2 12h6M22 12h-6M5 5l4 4M19 19l-4-4M5 19l4-4M19 5l-4 4"/></svg>
+            </div>
+            <span class="section-head-title">Mobility</span>
+          </div>
+          <div id="mobility-streak-card"></div>
+          <div class="section-head" style="margin-top:24px">
+            <div class="section-head-icon" style="background:var(--tint-teal);color:var(--teal)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 12l3 3 5-6"/></svg>
+            </div>
+            <span class="section-head-title">Routines</span>
+          </div>
+          <div id="mobility-routines-list"></div>
+          <div class="section-head" style="margin-top:24px">
+            <div class="section-head-icon" style="background:var(--tint-purple);color:var(--purple)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><polyline points="14 7 21 7 21 14"/></svg>
+            </div>
+            <span class="section-head-title">Pain Trend (14 days)</span>
+          </div>
+          <div id="mobility-pain-trend" class="card"></div>
+          <div class="section-head" style="margin-top:24px">
+            <div class="section-head-icon" style="background:var(--tint-teal);color:var(--teal)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>
+            </div>
+            <span class="section-head-title">Recent Sessions</span>
+          </div>
+          <div id="mobility-history" class="recent-list"></div>
+        </div>
+      </section>
+
+      <!-- Active Mobility Routine -->
+      <section id="view-mobility-active" class="view">
+        <div class="view-scroll">
+          <div class="workout-header">
+            <button id="mob-active-back-btn" class="back-btn">&larr; End</button>
+            <div class="workout-timer" id="mob-routine-timer">0:00</div>
+          </div>
+          <div id="mob-active-progress" class="mob-progress-dots"></div>
+          <div class="mob-active-body">
+            <div class="mob-active-num" id="mob-active-num">1 / 5</div>
+            <div class="mob-active-name" id="mob-active-name">Exercise</div>
+            <div class="mob-active-reps" id="mob-active-reps">—</div>
+            <div class="mob-active-instructions" id="mob-active-instructions">—</div>
+            <div class="mob-active-timer-big" id="mob-active-timer-big">90</div>
+            <div class="mob-active-timer-label">seconds left</div>
+          </div>
+          <div class="mob-active-controls">
+            <button id="mob-skip-btn" class="btn-secondary btn-full" style="text-align:center">Skip to next</button>
+            <button id="mob-pause-btn" class="btn-primary btn-lg">Pause</button>
+          </div>
+        </div>
+      </section>
+
       <!-- Settings -->
       <section id="view-settings" class="view">
         <div class="view-scroll">
@@ -442,7 +503,7 @@
           </div>
           <div class="section-label" style="margin-top:24px">App</div>
           <div class="card">
-            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v10.4<br>Data stored locally + cloud sync.<br>Works offline.</p>
+            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v10.5<br>Data stored locally + cloud sync.<br>Works offline.</p>
             <button id="btn-force-update" class="btn-secondary btn-full" style="text-align:center">Force Update App</button>
           </div>
         </div>
