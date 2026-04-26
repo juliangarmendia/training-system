@@ -1021,20 +1021,22 @@ nav { display: flex; background: var(--surface); border-top: 1px solid var(--bor
 
 /* ========== Plate calculator FAB + bottom sheet ========== */
 .plate-fab {
-  position: fixed; right: 16px; bottom: calc(76px + env(safe-area-inset-bottom, 0px));
-  width: 52px; height: 52px; border-radius: 50%;
+  position: fixed; right: 16px; bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+  width: 54px; height: 54px; border-radius: 50%;
   background: var(--accent); color: #fff; border: none;
   display: flex; align-items: center; justify-content: center;
-  font-size: 24px; line-height: 1; cursor: pointer;
-  box-shadow: 0 6px 18px rgba(0,0,0,0.35), 0 0 0 1px rgba(255,255,255,0.04);
-  z-index: 80; transition: transform 0.15s ease, opacity 0.2s ease;
+  line-height: 1; cursor: pointer; padding: 0;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.06);
+  z-index: 105; transition: transform 0.15s ease, opacity 0.2s ease;
 }
+.plate-fab svg { display: block; }
 .plate-fab:active { transform: scale(0.94); }
 .plate-fab.hidden { display: none; }
 
 .plate-sheet-backdrop {
-  position: fixed; inset: 0; background: rgba(0,0,0,0.55);
-  z-index: 90; opacity: 0; transition: opacity 0.2s ease;
+  position: fixed; inset: 0; background: rgba(0,0,0,0.78);
+  backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px);
+  z-index: 110; opacity: 0; transition: opacity 0.2s ease;
 }
 .plate-sheet-backdrop.visible { opacity: 1; }
 .plate-sheet-backdrop.hidden { display: none; }
@@ -1044,9 +1046,9 @@ nav { display: flex; background: var(--surface); border-top: 1px solid var(--bor
   background: var(--card); border-top: 1px solid var(--border);
   border-radius: 18px 18px 0 0;
   padding: 12px 16px calc(20px + env(safe-area-inset-bottom, 0px));
-  z-index: 91; transform: translateY(100%); transition: transform 0.25s ease;
-  max-height: 70vh; overflow-y: auto;
-  box-shadow: 0 -8px 24px rgba(0,0,0,0.3);
+  z-index: 111; transform: translateY(100%); transition: transform 0.25s ease;
+  max-height: 75vh; overflow-y: auto;
+  box-shadow: 0 -8px 24px rgba(0,0,0,0.5);
 }
 .plate-sheet.visible { transform: translateY(0); }
 .plate-sheet.hidden { display: none; }
