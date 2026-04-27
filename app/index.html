@@ -108,24 +108,38 @@
     </header>
 
     <main id="main">
-      <!-- Gym Home -->
-      <section id="view-gym" class="view active">
-        <div class="view-scroll" id="gym-scroll">
+      <!-- Home (today summary, cross-domain) -->
+      <section id="view-home" class="view active">
+        <div class="view-scroll" id="home-scroll">
           <div id="resume-workout-banner" class="hidden"></div>
-          <div class="week-banner" id="week-banner"></div>
           <div id="activity-rings-home"></div>
+          <div id="todays-plan-card"></div>
           <div id="mobility-today-card"></div>
-          <div class="section-head">
+          <div id="streak-banner"></div>
+          <div class="section-head" style="margin-top:24px">
             <div class="section-head-icon" style="background:var(--tint-orange);color:var(--orange)">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M8 6v12M16 6v12M3 9v6M21 9v6M8 12h8"/></svg>
             </div>
             <span class="section-head-title">This Week</span>
           </div>
           <div class="week-strip" id="week-strip"></div>
-          <div id="streak-banner"></div>
           <div class="section-head" style="margin-top:24px">
+            <div class="section-head-icon" style="background:var(--tint-purple);color:var(--purple)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>
+            </div>
+            <span class="section-head-title">Recent Activity</span>
+          </div>
+          <div id="recent-activity" class="recent-list"></div>
+        </div>
+      </section>
+
+      <!-- Gym (lifting focus) -->
+      <section id="view-gym" class="view">
+        <div class="view-scroll" id="gym-scroll">
+          <div class="week-banner" id="week-banner"></div>
+          <div class="section-head">
             <div class="section-head-icon" style="background:var(--tint-orange);color:var(--orange)">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h18M7 8v8M17 8v8"/></svg>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="2" y1="12" x2="22" y2="12"/><rect x="3" y="8.5" width="2" height="7" rx="0.6"/><rect x="6" y="6.5" width="2.5" height="11" rx="0.6"/><rect x="15.5" y="6.5" width="2.5" height="11" rx="0.6"/><rect x="19" y="8.5" width="2" height="7" rx="0.6"/></svg>
             </div>
             <span class="section-head-title">Recent Workouts</span>
             <button id="btn-log-past" class="section-head-link" style="background:none;border:none;cursor:pointer">+ Log past</button>
@@ -315,7 +329,6 @@
           </div>
 
           <!-- ===== TODAY ===== -->
-          <div id="activity-rings" data-group="today"></div>
           <div id="deload-reminder" class="hidden" data-group="today"></div>
           <div class="streak-row" id="streak-row" data-group="today"></div>
           <div class="fatigue-card" id="fatigue-card" data-group="today"></div>
@@ -504,7 +517,7 @@
           </div>
           <div class="section-label" style="margin-top:24px">App</div>
           <div class="card">
-            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v10.6<br>Data stored locally + cloud sync.<br>Works offline.</p>
+            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v10.7<br>Data stored locally + cloud sync.<br>Works offline.</p>
             <button id="btn-force-update" class="btn-secondary btn-full" style="text-align:center">Force Update App</button>
           </div>
         </div>
@@ -527,7 +540,11 @@
 
     <!-- Bottom Nav -->
     <nav id="nav">
-      <button class="nav-btn active" data-tab="gym">
+      <button class="nav-btn active" data-tab="home">
+        <div class="nav-icon-wrap"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="3"/></svg></div>
+        <span>Home</span>
+      </button>
+      <button class="nav-btn" data-tab="gym">
         <div class="nav-icon-wrap"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="10" rx="1"/><line x1="6" y1="4" x2="6" y2="20"/><line x1="18" y1="4" x2="18" y2="20"/></svg></div>
         <span>Gym</span>
       </button>

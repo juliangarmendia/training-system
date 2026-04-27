@@ -101,6 +101,7 @@ header h1 { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
 .icon-btn:active { background: var(--surface3); transform: scale(0.93); }
 
 /* ========== Section Color Temperature ========== */
+#view-home { --section-accent: var(--accent); --section-glow: var(--accent-glow); }
 #view-gym, #view-workout { --section-accent: var(--orange); --section-glow: rgba(251,146,60,0.12); }
 #view-run { --section-accent: var(--blue); --section-glow: rgba(96,165,250,0.12); }
 #view-nutrition { --section-accent: var(--accent); --section-glow: rgba(74,222,128,0.12); }
@@ -183,10 +184,14 @@ nav { display: flex; background: var(--surface); border-top: 1px solid var(--bor
 .ws-session { font-size: 11px; font-weight: 800; color: var(--text); margin: 1px 0; line-height: 1; }
 .ws-done { color: var(--accent); }
 .ws-sub { font-size: 8px; color: var(--text3); line-height: 1; min-height: 10px; }
-.ws-run-cell { padding: 4px 2px; }
-.ws-run-dot { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--border); margin: 4px auto 0; }
-.ws-run-dot.planned { border-color: var(--blue); background: var(--blue)20; }
-.ws-run-dot.done { border-color: var(--accent); background: var(--accent); width: auto; height: auto; font-size: 10px; color: var(--bg); font-weight: 700; border-radius: var(--radius-xs); padding: 1px 0; }
+/* Run cell — Apple Health stylized pill (km label when done, ring when planned) */
+.ws-run-cell { padding: 6px 2px; min-height: 62px; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 6px; }
+.ws-run-pill { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.3px; transition: all 0.2s; }
+.ws-run-pill.done { background: var(--blue); color: #000; box-shadow: 0 0 10px rgba(90,200,250,0.35); }
+.ws-run-pill.planned { background: transparent; border: 2px solid var(--blue); color: var(--blue); }
+.ws-run-pill.empty { width: 6px; height: 6px; background: var(--text3); opacity: 0.25; }
+.ws-run-cell.today .ws-day { color: var(--blue); }
+.ws-run-cell.done { background: rgba(90,200,250,0.06); border-color: rgba(90,200,250,0.2); }
 
 /* ========== Session Progress ========== */
 .session-progress { margin-bottom: 12px; }
@@ -1052,6 +1057,24 @@ nav { display: flex; background: var(--surface); border-top: 1px solid var(--bor
 /* ========== Mobility (v10.5) ========== */
 #view-mobility, #view-mobility-active { --section-accent: var(--teal); --section-glow: rgba(100,210,255,0.12); }
 
+/* "Today's Plan" card stack — Apple Health style mini-rows */
+.todays-plan-stack { margin-bottom: 16px; }
+.todays-plan-row { display: flex; align-items: center; gap: 12px; padding: 14px 16px; cursor: pointer; transition: background 0.15s; }
+.todays-plan-row:active { background: var(--surface2); }
+.todays-plan-row.is-done { opacity: 0.6; }
+.todays-plan-icon { width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.todays-plan-icon svg { width: 18px; height: 18px; }
+.todays-plan-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.todays-plan-title { font-size: 15px; font-weight: 700; color: var(--text); letter-spacing: -0.2px; }
+.todays-plan-sub { font-size: 12px; color: var(--text2); font-weight: 500; }
+.todays-plan-cta { flex-shrink: 0; color: var(--text3); font-size: 18px; line-height: 1; }
+.todays-plan-check { color: var(--accent); font-size: 18px; font-weight: 700; }
+.todays-plan-rest { background: var(--surface); border-radius: var(--radius); padding: 16px 18px; margin-bottom: 16px; display: flex; align-items: center; gap: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
+.todays-plan-rest-icon { font-size: 26px; line-height: 1; }
+.todays-plan-rest-text { font-size: 14px; color: var(--text); }
+.todays-plan-rest-text strong { font-weight: 700; display: block; margin-bottom: 2px; }
+.todays-plan-rest-sub { font-size: 12px; color: var(--text2); font-weight: 500; }
+
 /* "Today's Mobility" card on Gym home */
 .mobility-today-card { background: var(--surface); border-radius: var(--radius); padding: 14px 16px; display: flex; align-items: center; gap: 12px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.3); cursor: pointer; transition: background 0.15s; }
 .mobility-today-card:active { background: var(--surface2); }
@@ -1109,11 +1132,14 @@ nav { display: flex; background: var(--surface); border-top: 1px solid var(--bor
 .mob-active-timer-label { font-size: 12px; color: var(--text3); margin-top: 4px; text-transform: uppercase; letter-spacing: 0.6px; font-weight: 600; }
 .mob-active-controls { display: flex; flex-direction: column; gap: 10px; }
 
-/* Week strip: mobility row indicator */
-.ws-mob-cell { padding: 6px 2px; min-height: 42px; }
-.ws-mob-indicator { font-size: 13px; font-weight: 800; color: var(--teal); margin-top: 4px; font-variant-numeric: tabular-nums; letter-spacing: 0.5px; }
-.ws-mob-empty { font-size: 14px; color: var(--text3); margin-top: 6px; opacity: 0.4; }
-.ws-mob-cell.done { background: var(--tint-teal); border-color: var(--teal); }
+/* Week strip: mobility row — stacked teal dots (Apple Health stylized) */
+.ws-mob-cell { padding: 6px 2px; min-height: 62px; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 6px; }
+.ws-mob-dots { display: flex; flex-direction: column; align-items: center; gap: 3px; min-height: 24px; justify-content: center; }
+.ws-mob-dot { width: 9px; height: 9px; border-radius: 50%; transition: all 0.2s; }
+.ws-mob-dot.filled { background: var(--teal); box-shadow: 0 0 6px rgba(100,210,255,0.35); }
+.ws-mob-dot.empty { background: var(--text3); opacity: 0.25; width: 6px; height: 6px; }
+.ws-mob-count { font-size: 12px; font-weight: 800; color: var(--teal); background: var(--tint-teal); border-radius: 50%; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; font-variant-numeric: tabular-nums; }
+.ws-mob-cell.done { background: rgba(100,210,255,0.06); border-color: rgba(100,210,255,0.2); }
 .ws-mob-cell.today .ws-day { color: var(--teal); }
 
 /* ========== Block timings table (history modal) ========== */

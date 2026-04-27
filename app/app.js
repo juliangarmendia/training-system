@@ -520,8 +520,8 @@ function smartDelete(store, key) {
 
 // ==================== STATE ====================
 const state = {
-  currentTab: 'gym',
-  currentView: 'gym',
+  currentTab: 'home',
+  currentView: 'home',
   activeSession: null,
   viewingCompleted: false,
   workoutStartTime: null,
@@ -1123,11 +1123,14 @@ function switchTab(tab) {
   state.currentTab = tab;
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
 
-  if (tab === 'gym') {
+  if (tab === 'home') {
+    showView('home');
+    renderHomeView();
+  } else if (tab === 'gym') {
     // Use activeSession (not currentView) — currentView gets overwritten by other tabs
     const inWorkout = !!state.activeSession;
     showView(inWorkout ? 'workout' : 'gym');
-    if (!inWorkout) { renderActivityRingsHome(); renderMobilityTodayCard(); renderWeekStrip(); renderRecentWorkouts(); renderStreakBanner(); }
+    if (!inWorkout) renderRecentWorkouts();
   } else if (tab === 'run') { showView('run'); renderRunPlanBanner(); renderRunTotals(); renderRunHistory(); }
   else if (tab === 'nutrition') { showView('nutrition'); renderNutrition(); }
   else if (tab === 'stats') { showView('stats'); renderStats(); }
@@ -1323,10 +1326,17 @@ async function renderWeekStrip() {
 
     if (dayRun) {
       runCell.classList.add('done');
-      runCell.innerHTML = `<div class="ws-day">${dayNames[i]}</div><div class="ws-run-dot done">✓</div>`;
+      // Done: filled blue pill with km label (tabular-nums, more visual than a generic dot)
+      const kmLabel = (parseFloat(dayRun.distance) || 0).toFixed(1);
+      runCell.innerHTML = `<div class="ws-day">${dayNames[i]}</div><div class="ws-run-pill done">${kmLabel}</div>`;
+      runCell.addEventListener('click', () => { switchTab('run'); });
+    } else if (planRun) {
+      // Planned but not done: outlined blue ring
+      runCell.innerHTML = `<div class="ws-day">${dayNames[i]}</div><div class="ws-run-pill planned"></div>`;
       runCell.addEventListener('click', () => { switchTab('run'); });
     } else {
-      runCell.innerHTML = `<div class="ws-day">${dayNames[i]}</div><div class="ws-run-dot${planRun ? ' planned' : ''}"></div>`;
+      // No plan, no run: very subtle empty marker
+      runCell.innerHTML = `<div class="ws-day">${dayNames[i]}</div><div class="ws-run-pill empty"></div>`;
       runCell.addEventListener('click', () => { switchTab('run'); });
     }
 
@@ -1356,12 +1366,18 @@ async function renderWeekStrip() {
     const mobCell = document.createElement('div');
     mobCell.className = `ws-cell ws-mob-cell${isToday ? ' today' : ''}`;
     const mobCount = mobCounts[ds] || 0;
-    let indicator = '';
-    if (mobCount === 1) indicator = '<span class="ws-mob-indicator">I</span>';
-    else if (mobCount === 2) indicator = '<span class="ws-mob-indicator">II</span>';
-    else if (mobCount >= 3) indicator = `<span class="ws-mob-indicator">${mobCount}</span>`;
+    let mobIndicatorHTML = '';
+    if (mobCount === 0) {
+      mobIndicatorHTML = '<div class="ws-mob-dots"><span class="ws-mob-dot empty"></span></div>';
+    } else if (mobCount === 1) {
+      mobIndicatorHTML = '<div class="ws-mob-dots"><span class="ws-mob-dot filled"></span></div>';
+    } else if (mobCount === 2) {
+      mobIndicatorHTML = '<div class="ws-mob-dots"><span class="ws-mob-dot filled"></span><span class="ws-mob-dot filled"></span></div>';
+    } else {
+      mobIndicatorHTML = `<div class="ws-mob-dots"><span class="ws-mob-count">${mobCount}</span></div>`;
+    }
     if (mobCount > 0) mobCell.classList.add('done');
-    mobCell.innerHTML = `<div class="ws-day">${dayNames[i]}</div>${indicator || '<div class="ws-mob-empty">·</div>'}`;
+    mobCell.innerHTML = `<div class="ws-day">${dayNames[i]}</div>${mobIndicatorHTML}`;
     mobCell.addEventListener('click', () => { switchTab('gym'); openMobilityView(); });
     mobRow.appendChild(mobCell);
   });
@@ -2827,20 +2843,15 @@ async function finishWorkout() {
   if (state.blockTimerInterval) clearInterval(state.blockTimerInterval);
   state.activeSession = null;
   state.workoutStartTime = null;
-  state.currentView = 'gym';
+  state.currentView = 'home';
   state.activeBlockTimings = null;
   state.activeBlockId = null;
   const notesEl = document.getElementById('workout-notes');
   if (notesEl) notesEl.value = '';
 
   toast('Workout saved!');
-  switchTab('gym');
-  // Force-refresh home widgets so the new workout is visible without reload
-  renderActivityRingsHome();
-  renderMobilityTodayCard();
-  renderWeekStrip();
-  renderRecentWorkouts();
-  renderStreakBanner();
+  // Navigate to Home after finishing — rings light up, recent activity shows the workout
+  switchTab('home');
 
   // PR detection runs after navigation — its toast appears with a small delay
   detectPRs(workout).catch(() => {});
@@ -4370,6 +4381,170 @@ async function askPainRating(prompt) {
 //   • Outer (orange):   Workouts done today / planned today
 //   • Middle (blue):    Run km today / weekly run-target / 7
 //   • Inner (green):    Protein logged today / target
+// ==================== HOME VIEW ORCHESTRATOR (v10.7) ====================
+async function renderHomeView() {
+  await Promise.all([
+    showResumeBanner(),
+    renderActivityRingsHome(),
+    renderTodaysPlan(),
+    renderMobilityTodayCard(),
+    renderStreakBanner(),
+    renderWeekStrip(),
+    renderRecentActivity(),
+  ]);
+}
+
+// ==================== TODAY'S PLAN CARD ====================
+async function renderTodaysPlan() {
+  const container = document.getElementById('todays-plan-card');
+  if (!container) return;
+  const ds = today();
+  const jsDay = new Date().getDay();
+  const customSchedule = await getWeekSchedule();
+  const plannedSession = getPlannedSession(jsDay, customSchedule, ds);
+  const runKey = 'run_' + ds;
+  const customRun = customSchedule[runKey];
+  const defaultRun = activeWeekTemplate[jsDay] && activeWeekTemplate[jsDay].type === 'run';
+  const planRun = customRun !== undefined ? customRun === true : defaultRun;
+
+  // Already-done state
+  const allWorkouts = await dbGetAll('workouts');
+  const allRuns = await dbGetAll('runs');
+  const doneWorkout = allWorkouts.find(w => w.date === ds);
+  const doneRun = allRuns.find(r => r.date === ds);
+
+  const iconBarbell = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="2" y1="12" x2="22" y2="12"/><rect x="3" y="8.5" width="2" height="7" rx="0.6"/><rect x="6" y="6.5" width="2.5" height="11" rx="0.6"/><rect x="15.5" y="6.5" width="2.5" height="11" rx="0.6"/><rect x="19" y="8.5" width="2" height="7" rx="0.6"/></svg>`;
+  const iconRunner = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13" cy="4" r="2"/><path d="M5 21l3-9 2.5 2V21M15 11l-3-3-4 4 2 2"/></svg>`;
+
+  const rows = [];
+  if (plannedSession) {
+    const s = activePlan.sessions[plannedSession];
+    const name = s ? s.name : plannedSession;
+    const subtitle = doneWorkout ? `Done · ${doneWorkout.duration || ''}` : `${s?.subtitle || 'Strength session'} · ~50 min`;
+    rows.push({
+      icon: iconBarbell, tint: 'var(--tint-orange)', color: 'var(--orange)',
+      title: name, subtitle,
+      done: !!doneWorkout,
+      onTap: doneWorkout ? () => openEditWorkout(doneWorkout.id) : () => showSessionPicker(plannedSession),
+    });
+  }
+  if (planRun) {
+    const subtitle = doneRun ? `Done · ${doneRun.distance} km · ${doneRun.avgPace}/km` : 'Zone 2 · HR < 140 bpm';
+    rows.push({
+      icon: iconRunner, tint: 'var(--tint-blue)', color: 'var(--blue)',
+      title: doneRun ? `${doneRun.distance} km run` : 'Zone 2 Run',
+      subtitle,
+      done: !!doneRun,
+      onTap: () => switchTab('run'),
+    });
+  }
+
+  if (rows.length === 0) {
+    container.innerHTML = `
+      <div class="todays-plan-card todays-plan-rest">
+        <div class="todays-plan-rest-icon">😌</div>
+        <div class="todays-plan-rest-text"><strong>Rest day</strong><div class="todays-plan-rest-sub">No training planned. Recovery counts.</div></div>
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = `
+    <div class="card-stack todays-plan-stack">
+      ${rows.map((r, i) => `
+        <div class="card todays-plan-row${r.done ? ' is-done' : ''}" data-tp-row="${i}">
+          <div class="todays-plan-icon" style="background:${r.tint};color:${r.color}">${r.icon}</div>
+          <div class="todays-plan-body">
+            <div class="todays-plan-title">${r.title}</div>
+            <div class="todays-plan-sub">${r.subtitle}</div>
+          </div>
+          <div class="todays-plan-cta">${r.done ? '<span class="todays-plan-check">✓</span>' : '<span class="hi-chev">›</span>'}</div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+  rows.forEach((r, i) => {
+    const el = container.querySelector(`[data-tp-row="${i}"]`);
+    if (el) el.addEventListener('click', r.onTap);
+  });
+}
+
+// ==================== RECENT ACTIVITY (mixed feed) ====================
+async function renderRecentActivity() {
+  const container = document.getElementById('recent-activity');
+  if (!container) return;
+  const [workouts, runs, mobs] = await Promise.all([
+    dbGetAll('workouts'),
+    dbGetAll('runs'),
+    dbGetAll('mobility_sessions'),
+  ]);
+
+  // Normalize all to a common shape: { date, ts, kind, title, subtitle, onTap, icon, tint, color }
+  const iconBarbell = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="2" y1="12" x2="22" y2="12"/><rect x="3" y="8.5" width="2" height="7" rx="0.6"/><rect x="6" y="6.5" width="2.5" height="11" rx="0.6"/><rect x="15.5" y="6.5" width="2.5" height="11" rx="0.6"/><rect x="19" y="8.5" width="2" height="7" rx="0.6"/></svg>`;
+  const iconRunner = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13" cy="4" r="2"/><path d="M5 21l3-9 2.5 2V21M15 11l-3-3-4 4 2 2"/></svg>`;
+  const iconMob = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3M12 18v3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M3 12h3M18 12h3M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/></svg>`;
+
+  const items = [];
+  workouts.forEach(w => {
+    const session = activePlan.sessions[w.session];
+    const totalSets = w.exercises.reduce((sum, ex) => sum + ex.sets.filter(s => s.done).length, 0);
+    items.push({
+      date: w.date,
+      ts: w.startTime ? new Date(`${w.date}T${w.startTime}:00`).getTime() : new Date(`${w.date}T12:00:00`).getTime(),
+      kind: 'workout',
+      title: session ? session.name : w.session,
+      subtitle: `${totalSets} sets · ${w.duration || ''}`,
+      icon: iconBarbell, tint: 'var(--tint-orange)', color: 'var(--orange)',
+      onTap: () => openEditWorkout(w.id),
+    });
+  });
+  runs.forEach(r => {
+    items.push({
+      date: r.date,
+      ts: new Date(`${r.date}T${(r.time || '08:00')}:00`).getTime(),
+      kind: 'run',
+      title: `${r.distance} km · ${r.avgPace}/km`,
+      subtitle: `${r.duration} min${r.avgHR ? ` · ${r.avgHR} bpm` : ''}`,
+      icon: iconRunner, tint: 'var(--tint-blue)', color: 'var(--blue)',
+      onTap: () => switchTab('run'),
+    });
+  });
+  mobs.forEach(m => {
+    items.push({
+      date: m.date,
+      ts: m.createdAt || new Date(`${m.date}T12:00:00`).getTime(),
+      kind: 'mobility',
+      title: m.routineName,
+      subtitle: `${m.durationMin} min${(m.painBefore != null && m.painAfter != null) ? ` · pain ${m.painBefore}→${m.painAfter}` : ''}`,
+      icon: iconMob, tint: 'var(--tint-teal)', color: 'var(--teal)',
+      onTap: () => { switchTab('gym'); openMobilityView(); },
+    });
+  });
+
+  items.sort((a, b) => b.ts - a.ts);
+  const top = items.slice(0, 6);
+
+  if (top.length === 0) {
+    container.innerHTML = '<div class="empty-state" style="background:var(--surface);border-radius:var(--radius);padding:24px">No activity yet · log a workout, run or mobility session</div>';
+    return;
+  }
+
+  container.innerHTML = top.map((it, i) => `
+    <div class="history-item" data-ra-row="${i}">
+      <div class="hi-icon" style="background:${it.tint};color:${it.color}">${it.icon}</div>
+      <div class="hi-left">
+        <div class="hi-title">${it.title}</div>
+        <div class="hi-sub">${formatDate(it.date)} · ${it.subtitle}</div>
+      </div>
+      <span class="hi-chev" aria-hidden="true">›</span>
+    </div>
+  `).join('');
+  top.forEach((it, i) => {
+    const el = container.querySelector(`[data-ra-row="${i}"]`);
+    if (el) el.addEventListener('click', it.onTap);
+  });
+}
+
 async function renderActivityRingsHome() {
   const container = document.getElementById('activity-rings-home');
   if (!container) return;
@@ -5716,19 +5891,19 @@ function bindEvents() {
       state.viewingCompleted = false;
       document.getElementById('btn-finish-workout').style.display = '';
       document.getElementById('workout-notes').style.display = '';
-      state.currentView = 'gym';
-      switchTab('gym');
+      state.currentView = 'home';
+      switchTab('home');
     } else if (state.activeSession) {
       if (confirm('Abandon workout? Progress will be lost.')) {
         if (state.workoutTimerInterval) clearInterval(state.workoutTimerInterval);
         state.activeSession = null;
         clearActiveWorkout();
-        state.currentView = 'gym';
-        switchTab('gym');
+        state.currentView = 'home';
+        switchTab('home');
       }
     } else {
-      state.currentView = 'gym';
-      switchTab('gym');
+      state.currentView = 'home';
+      switchTab('home');
     }
   });
 
