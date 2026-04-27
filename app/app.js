@@ -4162,7 +4162,7 @@ async function renderMobilityHistory() {
       e.stopPropagation();
       const id = btn.dataset.deleteMob;
       const removed = await dbGet('mobility_sessions', id);
-      await dbDelete('mobility_sessions', id);
+      await smartDelete('mobility_sessions', id);
       renderMobilityView();
       renderWeekStrip();
       renderMobilityTodayCard();
@@ -4170,7 +4170,7 @@ async function renderMobilityHistory() {
         label: 'Undo',
         callback: async () => {
           if (removed) {
-            await dbPut('mobility_sessions', removed);
+            await smartPut('mobility_sessions', removed);
             renderMobilityView();
             renderWeekStrip();
             renderMobilityTodayCard();
@@ -4338,11 +4338,7 @@ async function finishMobilityRoutine() {
     notes: '',
     createdAt: Date.now(),
   };
-  // NOTE: using dbPut (local only) instead of smartPut — the Supabase
-  // mobility_sessions table doesn't exist yet, and a failed sync of one
-  // item blocks the entire sync queue. Mobility stays local until the
-  // user creates the table in Supabase.
-  await dbPut('mobility_sessions', session);
+  await smartPut('mobility_sessions', session);
   state.activeMobility = null;
   toast('Mobility done · streak +1');
   // Return to mobility view + refresh dependent UIs
