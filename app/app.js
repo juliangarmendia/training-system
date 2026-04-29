@@ -130,9 +130,9 @@ const MOBILITY_LIBRARY = {
     color: 'teal',
     description: 'Daily hip flow. Counters sitting and primes the hips for lifting.',
     exercises: [
-      { name: '90/90 Hip Switch', reps: '8 each side', durationSec: 90, youtubeId: 'oALcD7wEa-s', instructions: 'Sit with one leg in front (90°) and the other to the side (90°). Switch sides slowly, keeping chest tall.' },
-      { name: 'Couch Stretch', reps: '60s each side', durationSec: 120, youtubeId: 'TML8Vqy-ACQ', instructions: 'Kneel facing away from a couch, back foot on the seat, front foot flat. Squeeze glutes, tuck pelvis. Switch sides at 60s.' },
-      { name: "World's Greatest Stretch", reps: '5 each side', durationSec: 90, youtubeId: 'PE-UuERblwA', instructions: 'Lunge forward, plant hand inside front foot, rotate other arm to ceiling. Alternate sides.' },
+      { name: '90/90 Hip Switch', reps: '8 each side', durationSec: 90, perSide: true, youtubeId: 'oALcD7wEa-s', instructions: 'Sit with one leg in front (90°) and the other to the side (90°). Switch sides slowly, keeping chest tall.' },
+      { name: 'Couch Stretch', reps: '60s each side', durationSec: 120, perSide: true, youtubeId: 'TML8Vqy-ACQ', instructions: 'Kneel facing away from a couch, back foot on the seat, front foot flat. Squeeze glutes, tuck pelvis.' },
+      { name: "World's Greatest Stretch", reps: '5 each side', durationSec: 90, perSide: true, youtubeId: 'PE-UuERblwA', instructions: 'Lunge forward, plant hand inside front foot, rotate other arm to ceiling. Alternate sides.' },
       { name: 'Deep Squat Hold + Thoracic Reach', reps: '45s', durationSec: 45, youtubeId: 'vlizhxKrgck', instructions: 'Squat as deep as comfortable, elbows pushing knees out. Reach one arm up at a time, rotating thoracic spine.' },
       { name: 'Glute Bridge', reps: '12 reps · pause 2s top', durationSec: 75, youtubeId: 'MnluU4dEHQE', instructions: 'Lying on back, knees bent. Drive through heels, squeeze glutes hard at the top. 2-second pause.' },
     ],
@@ -146,11 +146,11 @@ const MOBILITY_LIBRARY = {
     description: 'McGill-based core endurance work. Builds the spinal stability that prevents lumbar pain.',
     exercises: [
       { name: 'Cat-Cow', reps: '8 reps slow', durationSec: 60, youtubeId: 'WHUevrqeKIg', instructions: 'On hands and knees. Round spine up (cat), then arch and look up (cow). Move slowly, breathe deep.' },
-      { name: 'Bird Dog', reps: '8 each side · 3s pause', durationSec: 120, youtubeId: 'S1QbyYZaXIg', instructions: 'On hands and knees. Extend opposite arm and leg, hold 3s. Keep hips level — no rotation.' },
-      { name: 'Side Plank', reps: '30-45s each side', durationSec: 90, youtubeId: '1qcsRZhtMyo', instructions: 'On forearm, body straight from head to feet. Hips stacked. Switch sides at midpoint.' },
+      { name: 'Bird Dog', reps: '8 each side · 3s pause', durationSec: 120, perSide: true, youtubeId: 'S1QbyYZaXIg', instructions: 'On hands and knees. Extend opposite arm and leg, hold 3s. Keep hips level — no rotation.' },
+      { name: 'Side Plank', reps: '30-45s each side', durationSec: 90, perSide: true, youtubeId: '1qcsRZhtMyo', instructions: 'On forearm, body straight from head to feet. Hips stacked.' },
       { name: 'McGill Curl-Up', reps: '5 reps × 3 sets', durationSec: 120, youtubeId: '_tz9WGVH25g', instructions: 'Lying on back, one knee bent. Hands under lower back. Lift head and shoulders slightly — chin tucked, no full sit-up.' },
-      { name: 'Dead Bug', reps: '8 each side slow', durationSec: 90, youtubeId: 'Aoipu_fl3HA', instructions: 'On back, arms up, knees at 90°. Lower opposite arm and leg slowly without arching the lower back.' },
-      { name: 'Child\'s Pose + Lateral Reach', reps: '30s each side', durationSec: 60, youtubeId: 'I89NCXZ55i0', instructions: 'Sit hips back to heels, arms forward. Walk both arms to one side to stretch the side body. Switch.' },
+      { name: 'Dead Bug', reps: '8 each side slow', durationSec: 90, perSide: true, youtubeId: 'Aoipu_fl3HA', instructions: 'On back, arms up, knees at 90°. Lower opposite arm and leg slowly without arching the lower back.' },
+      { name: 'Child\'s Pose + Lateral Reach', reps: '30s each side', durationSec: 60, perSide: true, youtubeId: 'I89NCXZ55i0', instructions: 'Sit hips back to heels, arms forward. Walk both arms to one side to stretch the side body.' },
     ],
   },
   'thoracic-posterior': {
@@ -161,12 +161,12 @@ const MOBILITY_LIBRARY = {
     color: 'blue',
     description: 'Opens up the upper back and primes the posterior chain. Great on upper-body lift days.',
     exercises: [
-      { name: 'Open-Book (Thoracic Rotation)', reps: '8 each side', durationSec: 90, youtubeId: 'peeW19ofFUg', instructions: 'Lying on side, knees bent, arms stacked in front. Rotate top arm back, opening the chest. Eyes follow the hand.' },
-      { name: 'Thread the Needle', reps: '6 each side', durationSec: 75, youtubeId: 'ds3umIYJDrE', instructions: 'On hands and knees. Slide one arm under the other, lowering shoulder to floor. Pause, return.' },
+      { name: 'Open-Book (Thoracic Rotation)', reps: '8 each side', durationSec: 90, perSide: true, youtubeId: 'peeW19ofFUg', instructions: 'Lying on side, knees bent, arms stacked in front. Rotate top arm back, opening the chest. Eyes follow the hand.' },
+      { name: 'Thread the Needle', reps: '6 each side', durationSec: 75, perSide: true, youtubeId: 'ds3umIYJDrE', instructions: 'On hands and knees. Slide one arm under the other, lowering shoulder to floor. Pause, return.' },
       { name: 'Wall Slides', reps: '10 reps', durationSec: 60, youtubeId: 'GaP20t6ZOfU', instructions: 'Back against wall, arms in goalpost. Slide arms up overhead while keeping forearms touching the wall.' },
       { name: 'Prone Y-T-W', reps: '8 each shape', durationSec: 90, youtubeId: 'FATPBjxNuvo', instructions: 'Face down on floor. Lift arms in Y shape (overhead), then T (out to sides), then W (elbows bent). 8 reps each.' },
       { name: 'Romanian Deadlift (Unweighted)', reps: '12 reps slow', durationSec: 75, youtubeId: 'P9akD4PyOXk', instructions: 'Stand tall. Hinge at hips, push butt back, slight knee bend. Slow eccentric to mid-shin, drive hips through.' },
-      { name: 'Hip Flexor Stretch + Reach', reps: '45s each side', durationSec: 90, youtubeId: 'd9wYh4pRV6Q', instructions: 'Half-kneeling lunge. Squeeze the glute of the back leg. Reach same-side arm overhead and slightly to opposite side.' },
+      { name: 'Hip Flexor Stretch + Reach', reps: '45s each side', durationSec: 90, perSide: true, youtubeId: 'd9wYh4pRV6Q', instructions: 'Half-kneeling lunge. Squeeze the glute of the back leg. Reach same-side arm overhead and slightly to opposite side.' },
     ],
   },
 };
@@ -2704,9 +2704,12 @@ async function clearActiveWorkout() {
 
 async function showResumeBanner() {
   const banner = document.getElementById('resume-workout-banner');
+  const weekBanner = document.getElementById('week-banner');
+  // Render the mobility banner in parallel — independent of the workout one.
+  await showResumeMobilityBanner();
+
   if (!banner) return;
   const saved = await dbGet('settings', 'activeWorkout');
-  const weekBanner = document.getElementById('week-banner');
   if (!saved || !saved.sessionId) {
     banner.classList.add('hidden');
     if (weekBanner) weekBanner.classList.remove('hidden');
@@ -2742,6 +2745,47 @@ async function showResumeBanner() {
       return;
     }
     await restoreActiveWorkout();
+    banner.classList.add('hidden');
+  });
+}
+
+async function showResumeMobilityBanner() {
+  const banner = document.getElementById('resume-mobility-banner');
+  if (!banner) return;
+  const saved = await dbGet('settings', 'activeMobility');
+  if (!saved || !saved.routineId) {
+    banner.classList.add('hidden');
+    banner.innerHTML = '';
+    return;
+  }
+  const routine = MOBILITY_LIBRARY[saved.routineId];
+  if (!routine) { await clearActiveMobility(); return; }
+
+  const elapsed = Math.floor((Date.now() - (saved.startedAt || Date.now())) / 1000);
+  const total = routine.exercises.length;
+  const idx = Math.min(saved.exerciseIdx || 0, total - 1);
+
+  banner.classList.remove('hidden');
+  banner.innerHTML = `
+    <div class="resume-banner resume-banner-mobility" id="resume-mobility-tap">
+      <div class="resume-banner-icon">🧘</div>
+      <div class="resume-banner-info">
+        <div class="resume-banner-title">${routine.name} in progress</div>
+        <div class="resume-banner-sub">${idx + 1}/${total} exercises · ${formatDuration(elapsed)} elapsed</div>
+      </div>
+      <button class="resume-banner-discard" id="resume-mobility-discard">Discard</button>
+    </div>
+  `;
+
+  document.getElementById('resume-mobility-tap').addEventListener('click', async (e) => {
+    if (e.target.id === 'resume-mobility-discard') {
+      e.stopPropagation();
+      if (confirm('Discard this mobility session? Progress will be lost.')) {
+        await clearActiveMobility();
+      }
+      return;
+    }
+    await restoreActiveMobility();
     banner.classList.add('hidden');
   });
 }
@@ -4271,12 +4315,42 @@ window.addEventListener('offline', () => {
 });
 
 // ==================== MOBILITY ACTIVE ROUTINE ====================
+// Phase machine per exercise:
+//   prep (5s)  → side1 (dur/2) → switch (2s, audio cue) → side2 (dur/2)   for perSide
+//   prep (5s)  → hold  (full duration)                                     otherwise
+const MOB_PREP_SEC = 5;
+const MOB_SWITCH_SEC = 2;
+
+// Distinct two-tone ascending cue (440 → 660 Hz) so the user clearly distinguishes
+// "switch side" from the end-of-exercise/end-of-rest beep.
+function playSwitchCue() {
+  if (state.settings && state.settings.audioFeedback === false) return;
+  try {
+    primeAudio();
+    const ctx = _audioCtx;
+    if (!ctx) return;
+    const beep = (freq, start, dur) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.frequency.value = freq;
+      gain.gain.value = 0.4;
+      osc.start(ctx.currentTime + start);
+      osc.stop(ctx.currentTime + start + dur);
+    };
+    beep(440, 0, 0.2);
+    beep(660, 0.22, 0.3);
+  } catch (e) { console.warn('Switch cue failed', e); }
+}
+
 async function startMobilityRoutine(routineId) {
   const routine = MOBILITY_LIBRARY[routineId];
   if (!routine) return;
   // Pain before prompt
   const painBefore = await askPainRating('How does your back feel right now?');
   if (painBefore === null) return; // cancelled
+  // iOS PWA: prime audio on the user-gesture so the cue is audible later.
+  primeAudio();
   state.activeMobility = {
     routineId,
     routine,
@@ -4286,9 +4360,25 @@ async function startMobilityRoutine(routineId) {
     timerInterval: null,
     timerRemaining: 0,
     paused: false,
+    phase: 'prep',
+    phaseEndAt: null, // wall-clock target so background/lock doesn't drift
   };
   showView('mobility-active');
   runCurrentMobilityExercise();
+}
+
+// Build the ordered list of phases for an exercise.
+function buildMobilityPhases(ex) {
+  const phases = [{ name: 'prep', label: 'GET READY', seconds: MOB_PREP_SEC }];
+  if (ex.perSide) {
+    const half = Math.max(1, Math.round(ex.durationSec / 2));
+    phases.push({ name: 'side1', label: 'LEFT SIDE', seconds: half });
+    phases.push({ name: 'switch', label: 'SWITCH SIDE', seconds: MOB_SWITCH_SEC });
+    phases.push({ name: 'side2', label: 'RIGHT SIDE', seconds: half });
+  } else {
+    phases.push({ name: 'hold', label: 'GO', seconds: ex.durationSec });
+  }
+  return phases;
 }
 
 function runCurrentMobilityExercise() {
@@ -4297,12 +4387,11 @@ function runCurrentMobilityExercise() {
   const ex = am.routine.exercises[am.exerciseIdx];
   if (!ex) { finishMobilityRoutine(); return; }
 
-  // Update DOM
+  // Update DOM (exercise-level info)
   document.getElementById('mob-active-num').textContent = `${am.exerciseIdx + 1} / ${am.routine.exercises.length}`;
   document.getElementById('mob-active-name').textContent = ex.name;
   document.getElementById('mob-active-reps').textContent = ex.reps;
   document.getElementById('mob-active-instructions').textContent = ex.instructions;
-  // Video embed (YouTube short, autoplay muted loop) — falls back to placeholder if offline
   const videoEl = document.getElementById('mob-active-video');
   if (videoEl) videoEl.innerHTML = renderMobilityVideo(ex);
 
@@ -4315,25 +4404,90 @@ function runCurrentMobilityExercise() {
     }).join('');
   }
 
-  // Timer
-  am.timerRemaining = ex.durationSec;
+  // Build phase queue and start at first phase (or resume from saved phase)
+  am.phases = buildMobilityPhases(ex);
+  // If restoring from save, am.phaseIdx + am.timerRemaining are already set;
+  // otherwise start at phase 0 with full seconds.
+  if (typeof am.phaseIdx !== 'number' || am.phaseIdx < 0 || am.phaseIdx >= am.phases.length) {
+    am.phaseIdx = 0;
+    am.timerRemaining = am.phases[0].seconds;
+  }
   am.paused = false;
   const pauseBtn = document.getElementById('mob-pause-btn');
   if (pauseBtn) pauseBtn.textContent = 'Pause';
-  updateMobilityTimerDisplay();
+
+  startMobilityPhaseTick();
+}
+
+function startMobilityPhaseTick() {
+  const am = state.activeMobility;
+  if (!am) return;
+  applyMobilityPhaseUI();
   if (am.timerInterval) clearInterval(am.timerInterval);
+  am.phaseEndAt = Date.now() + am.timerRemaining * 1000;
+  saveActiveMobility();
+
   am.timerInterval = setInterval(() => {
-    if (state.activeMobility !== am || am.paused) return;
-    am.timerRemaining--;
+    if (state.activeMobility !== am) return;
+    if (am.paused) {
+      // While paused, push the wall-clock target forward so seconds don't bleed.
+      am.phaseEndAt = Date.now() + am.timerRemaining * 1000;
+      return;
+    }
+    am.timerRemaining = Math.max(0, Math.round((am.phaseEndAt - Date.now()) / 1000));
     updateMobilityTimerDisplay();
     if (am.timerRemaining <= 0) {
-      // Auto-advance
       clearInterval(am.timerInterval);
       am.timerInterval = null;
-      if (navigator.vibrate) navigator.vibrate(80);
-      advanceMobilityExercise();
+      advanceMobilityPhase();
+    } else {
+      // Persist roughly every tick so a crash/close keeps us within 1s.
+      saveActiveMobility();
     }
   }, 1000);
+  updateMobilityTimerDisplay();
+}
+
+function applyMobilityPhaseUI() {
+  const am = state.activeMobility;
+  if (!am) return;
+  const phase = am.phases[am.phaseIdx];
+  const phaseEl = document.getElementById('mob-active-phase');
+  const labelEl = document.getElementById('mob-active-timer-label');
+  const overlay = document.getElementById('mob-switch-overlay');
+  if (phaseEl) {
+    phaseEl.textContent = phase.label;
+    phaseEl.className = 'mob-active-phase phase-' + phase.name;
+  }
+  if (labelEl) {
+    labelEl.textContent = phase.name === 'prep' ? 'get ready' :
+                          phase.name === 'switch' ? '' : 'seconds left';
+  }
+  // Switch overlay: show during switch phase
+  if (overlay) {
+    if (phase.name === 'switch') {
+      overlay.classList.remove('hidden');
+      playSwitchCue();
+      if (navigator.vibrate) navigator.vibrate([120, 80, 120]);
+    } else {
+      overlay.classList.add('hidden');
+    }
+  }
+}
+
+function advanceMobilityPhase() {
+  const am = state.activeMobility;
+  if (!am) return;
+  am.phaseIdx++;
+  if (am.phaseIdx >= am.phases.length) {
+    // End of exercise — short vibrate, advance to next exercise
+    if (navigator.vibrate) navigator.vibrate(80);
+    am.phaseIdx = 0;
+    advanceMobilityExercise();
+    return;
+  }
+  am.timerRemaining = am.phases[am.phaseIdx].seconds;
+  startMobilityPhaseTick();
 }
 
 function updateMobilityTimerDisplay() {
@@ -4353,7 +4507,11 @@ function updateMobilityTimerDisplay() {
 function advanceMobilityExercise() {
   const am = state.activeMobility;
   if (!am) return;
+  if (am.timerInterval) { clearInterval(am.timerInterval); am.timerInterval = null; }
   am.exerciseIdx++;
+  // Reset phase state so a Skip/auto-advance doesn't carry stale phase from prev exercise.
+  am.phaseIdx = undefined;
+  am.timerRemaining = 0;
   if (am.exerciseIdx >= am.routine.exercises.length) {
     finishMobilityRoutine();
   } else {
@@ -4367,6 +4525,59 @@ function pauseMobilityExercise() {
   am.paused = !am.paused;
   const pauseBtn = document.getElementById('mob-pause-btn');
   if (pauseBtn) pauseBtn.textContent = am.paused ? 'Resume' : 'Pause';
+  if (!am.paused) {
+    // On resume, recompute wall-clock target from current remaining
+    am.phaseEndAt = Date.now() + am.timerRemaining * 1000;
+  }
+  saveActiveMobility();
+}
+
+// ----- Persistence (resume after accidental exit) -----
+async function saveActiveMobility() {
+  const am = state.activeMobility;
+  if (!am) return;
+  try {
+    await dbPut('settings', {
+      key: 'activeMobility',
+      routineId: am.routineId,
+      painBefore: am.painBefore,
+      exerciseIdx: am.exerciseIdx,
+      phaseIdx: am.phaseIdx,
+      timerRemaining: am.timerRemaining,
+      paused: am.paused,
+      startedAt: am.startedAt,
+      savedAt: Date.now(),
+    });
+  } catch (e) { console.warn('saveActiveMobility failed', e); }
+}
+
+async function clearActiveMobility() {
+  try { await dbDelete('settings', 'activeMobility'); } catch {}
+  const banner = document.getElementById('resume-mobility-banner');
+  if (banner) { banner.classList.add('hidden'); banner.innerHTML = ''; }
+}
+
+async function restoreActiveMobility() {
+  const saved = await dbGet('settings', 'activeMobility');
+  if (!saved || !saved.routineId) return false;
+  const routine = MOBILITY_LIBRARY[saved.routineId];
+  if (!routine) { await clearActiveMobility(); return false; }
+  primeAudio();
+  state.activeMobility = {
+    routineId: saved.routineId,
+    routine,
+    painBefore: saved.painBefore,
+    exerciseIdx: saved.exerciseIdx || 0,
+    startedAt: saved.startedAt || Date.now(),
+    timerInterval: null,
+    timerRemaining: saved.timerRemaining || 0,
+    paused: !!saved.paused,
+    phaseIdx: saved.phaseIdx || 0,
+    phaseEndAt: null,
+  };
+  showView('mobility-active');
+  runCurrentMobilityExercise();
+  return true;
 }
 
 async function finishMobilityRoutine() {
@@ -4393,6 +4604,7 @@ async function finishMobilityRoutine() {
   };
   await smartPut('mobility_sessions', session);
   state.activeMobility = null;
+  await clearActiveMobility();
   toast('Mobility done · streak +1');
   // Return to mobility view + refresh dependent UIs
   openMobilityView();
@@ -4400,7 +4612,7 @@ async function finishMobilityRoutine() {
   renderMobilityTodayCard();
 }
 
-function cancelMobilityRoutine() {
+async function cancelMobilityRoutine() {
   const am = state.activeMobility;
   if (!am) return;
   if (!confirm('End this mobility routine? Progress will not be saved.')) return;
@@ -4409,6 +4621,7 @@ function cancelMobilityRoutine() {
   const videoEl = document.getElementById('mob-active-video');
   if (videoEl) videoEl.innerHTML = '';
   state.activeMobility = null;
+  await clearActiveMobility();
   openMobilityView();
 }
 

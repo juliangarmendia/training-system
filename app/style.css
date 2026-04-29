@@ -649,6 +649,62 @@ nav { display: flex; background: var(--surface); border-top: 1px solid var(--bor
 .resume-banner-title { font-size: 15px; font-weight: 800; color: var(--accent); }
 .resume-banner-sub { font-size: 12px; color: var(--text2); margin-top: 2px; }
 .resume-banner-discard { background: none; border: none; color: var(--text3); font-size: 11px; padding: 4px 8px; cursor: pointer; }
+.resume-banner-mobility { background: linear-gradient(135deg, rgba(167,139,250,0.18), rgba(96,165,250,0.10)); border-color: #a78bfa; }
+.resume-banner-mobility .resume-banner-title { color: #a78bfa; }
+
+/* ========== Mobility phase label + switch overlay ========== */
+.mob-active-phase {
+  text-align: center;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text2);
+  margin: 8px 0 -4px;
+  min-height: 16px;
+}
+.mob-active-phase.phase-prep { color: var(--orange); }
+.mob-active-phase.phase-side1 { color: var(--blue); }
+.mob-active-phase.phase-side2 { color: var(--accent); }
+.mob-active-phase.phase-switch { color: #a78bfa; }
+.mob-active-phase.phase-hold { color: var(--text); }
+
+.mob-switch-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(167,139,250,0.18);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 9000;
+  animation: switchFlash 0.5s ease-out;
+}
+.mob-switch-overlay.hidden { display: none; }
+.mob-switch-arrow {
+  font-size: 96px;
+  line-height: 1;
+  color: #a78bfa;
+  animation: switchArrowPulse 0.6s ease-in-out infinite alternate;
+}
+.mob-switch-text {
+  font-size: 28px;
+  font-weight: 900;
+  letter-spacing: 0.15em;
+  color: #fff;
+  margin-top: 16px;
+  text-shadow: 0 2px 16px rgba(0,0,0,0.5);
+}
+@keyframes switchFlash {
+  0% { background: rgba(167,139,250,0.5); }
+  100% { background: rgba(167,139,250,0.18); }
+}
+@keyframes switchArrowPulse {
+  0% { transform: scale(1); opacity: 0.85; }
+  100% { transform: scale(1.15); opacity: 1; }
+}
 
 .streak-fire { display: flex; align-items: center; gap: 8px; background: linear-gradient(135deg, rgba(251,146,60,0.12), transparent 60%); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 12px; }
 .streak-fire-icon { font-size: 28px; }
