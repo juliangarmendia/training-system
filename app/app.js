@@ -4832,19 +4832,12 @@ async function renderTodaysPlan() {
   const jsDay = new Date().getDay();
   const customSchedule = await getWeekSchedule();
   const plannedSession = getPlannedSession(jsDay, customSchedule, ds);
-  const runKey = 'run_' + ds;
-  const customRun = customSchedule[runKey];
-  const defaultRun = activeWeekTemplate[jsDay] && activeWeekTemplate[jsDay].type === 'run';
-  const planRun = customRun !== undefined ? customRun === true : defaultRun;
 
   // Already-done state
   const allWorkouts = await dbGetAll('workouts');
-  const allRuns = await dbGetAll('runs');
   const doneWorkout = allWorkouts.find(w => w.date === ds);
-  const doneRun = allRuns.find(r => r.date === ds);
 
   const iconBarbell = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="2" y1="12" x2="22" y2="12"/><rect x="3" y="8.5" width="2" height="7" rx="0.6"/><rect x="6" y="6.5" width="2.5" height="11" rx="0.6"/><rect x="15.5" y="6.5" width="2.5" height="11" rx="0.6"/><rect x="19" y="8.5" width="2" height="7" rx="0.6"/></svg>`;
-  const iconRunner = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13" cy="4" r="2"/><path d="M5 21l3-9 2.5 2V21M15 11l-3-3-4 4 2 2"/></svg>`;
 
   const rows = [];
   if (plannedSession) {
@@ -4858,16 +4851,10 @@ async function renderTodaysPlan() {
       onTap: doneWorkout ? () => openEditWorkout(doneWorkout.id) : () => showSessionPicker(plannedSession),
     });
   }
-  if (planRun) {
-    const subtitle = doneRun ? `Done · ${doneRun.distance} km · ${doneRun.avgPace}/km` : 'Zone 2 · HR < 140 bpm';
-    rows.push({
-      icon: iconRunner, tint: 'var(--tint-blue)', color: 'var(--blue)',
-      title: doneRun ? `${doneRun.distance} km run` : 'Zone 2 Run',
-      subtitle,
-      done: !!doneRun,
-      onTap: () => switchTab('run'),
-    });
-  }
+  // Run is logged after-the-fact (form-only, no in-progress concept).
+  // Showing a "Zone 2 Run" pending row in Today's Plan reads as an active
+  // session that needs dismissing — confusing. Once logged, the run shows
+  // up in Recent Activity below; no need to surface it here too.
 
   if (rows.length === 0) {
     container.innerHTML = `
