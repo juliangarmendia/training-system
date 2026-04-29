@@ -74,13 +74,26 @@ For each of `bench-press`, `back-squat`, `sumo-dl`, `ohp`, `barbell-row`, `chinu
 - Average protein.
 
 ### 2.6 Apply the coaching rules
-Per `.claude/rules/training-rules.md` and CLAUDE.md, flag:
-- RPE ≤ 7 average across all sets of a key lift → suggest +2.5 kg / +5 lb next week.
-- RPE ≥ 9 → suggest hold weight, reduce reps, OR pause progression.
-- 2 consecutive sessions with quality ≤ 2 → flag possible deload.
+Per `.claude/rules/training-rules.md` and CLAUDE.md, the priority order for progression is **reps → load → add a set** (the last is paused during a deficit). Flag:
+
+For each main compound (`bench-press`, `back-squat`, `sumo-dl`, `ohp`, `barbell-row`, `chinups`):
+- Avg RPE ≤ 7 AND minimum reps below the prescribed top of range → "**+1 rep next session**, hold weight" (do NOT propose load yet).
+- Avg RPE ≤ 7 AND minimum reps at the top of range → "**+2.5 kg / +5 lb** next session".
+- Avg RPE 7.5–8.5 → "hold weight, push 1 rep within range if possible" (no load change).
+- Avg RPE ≥ 9 → "**hold or reduce reps**; do not add load".
+- Avg RPE ≥ 9 across 2 consecutive sessions → "**flag deload** next week (-40% volume)".
+
+For accessories (target RPE 6–8, non-compound exercises):
+- Same rep/load logic but use smaller increments (+1.25 kg / +2.5 lb) and DB exercises move by next available DB pair.
+
+Cross-cutting flags:
+- 2 consecutive sessions with quality ≤ 2 → suppress load increases; flag possible deload.
 - Body weight loss > 1% / week sustained → flag too-aggressive deficit.
 - Pain not trending down across 2+ weeks → re-evaluate mobility approach.
 - Adherence < 70% → flag program sustainability.
+- Deficit is the default state (per `docs/goals.md`); never propose **adding sets** unless adherence and recovery both look strong.
+
+Distinguish compound vs accessory using the `compound: true` flag on plan exercises. Volume calculations should already account for dumbbells (peso × reps × 2).
 
 ## Phase 3 — Compose the review file (in memory first)
 
@@ -143,6 +156,17 @@ Use AskUserQuestion to ask which changes to apply. Group as:
 
 For each "yes":
 - **Review file**: write to `tracking/weekly-reviews/2026-W{NN}.md`. Create the folder if it doesn't exist (use Bash `mkdir -p`).
+- **Bridge to PWA**: ALSO write `tracking/weekly-reviews/latest.json` with the structure below — the deployed PWA fetches it on Stats > Today and renders the "Coach Review" card. This must be written every time a review is generated; otherwise the in-app card stays stale.
+  ```json
+  {
+    "weekKey": "2026-W{NN}",
+    "generatedAt": <Date.now() ms>,
+    "source": "auto",
+    "observed": "- bullet markdown of 'What worked' + 'What didn't'\n- ...",
+    "planNext": "- bullet markdown of 'Proposed adjustments for week {NN+1}'\n- ..."
+  }
+  ```
+  The `observed` and `planNext` fields are markdown — keep them concise (3-6 bullets each) and prefer `**bold**` for the key change. The PWA renders a tiny markdown subset (bullets + bold + paragraphs).
 - **Plan changes**: BEFORE editing `plans/training-plan.md`, copy the current version to `plans/archive/training-plan-2026-W{NN}.md` (mkdir archive folder if needed). Then apply the edits to `plans/training-plan.md`. Append a 1-line entry to `plans/changelog.md` (create file if missing): `- W{NN} ({date}): [summary], reason: [signal]`.
 - **Progress log**: append the latest metrics row to `tracking/progress-log.md`.
 - **Weekly checkins**: append a brief 4-6 line summary to the TOP of `tracking/weekly-checkins.md` (newest first per CLAUDE.md).

@@ -302,8 +302,12 @@ nav { display: flex; background: var(--surface); border-top: 1px solid var(--bor
 .toggle-group { display: flex; gap: 6px; }
 .toggle-btn { padding: 8px 16px; border-radius: var(--radius-xs); border: 1px solid var(--border); background: var(--bg); color: var(--text2); font-size: 13px; font-weight: 600; cursor: pointer; }
 .toggle-btn.selected { background: var(--accent); color: #000; border-color: var(--accent); }
-.quality-select { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.quality-select { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
 .quality-select .label { font-size: 14px; color: var(--text2); }
+.quality-select .stars { align-self: stretch; justify-content: space-between; }
+.quality-legend { font-size: 11px; color: var(--text3); text-align: center; letter-spacing: 0.02em; }
+.quality-legend-row { padding-top: 0; }
+.quality-legend-row .quality-legend { text-align: right; flex: 1; }
 
 /* Checklist & Quick Add */
 .checklist { display: flex; flex-direction: column; gap: 12px; }
@@ -794,6 +798,80 @@ nav { display: flex; background: var(--surface); border-top: 1px solid var(--bor
 .bw-h-weight { font-size: 14px; font-weight: 600; }
 .bw-h-delta { font-size: 13px; font-weight: 600; min-width: 56px; text-align: right; }
 .bw-h-delta.muted { color: var(--text3); font-weight: 500; }
+
+/* ========== Body Weight chart legend ========== */
+.bw-chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  align-items: center;
+  padding: 6px 4px 0;
+  font-size: 12px;
+  color: var(--text2);
+}
+.bw-chart-legend:empty { display: none; }
+.bw-leg-row { display: inline-flex; align-items: center; gap: 6px; }
+.bw-leg-line { width: 18px; height: 2px; border-radius: 1px; display: inline-block; }
+.bw-leg-line-dashed {
+  background: transparent !important;
+  border-top: 2px dashed var(--orange);
+  height: 0;
+}
+.bw-chart-hint {
+  flex-basis: 100%;
+  color: var(--text3);
+  font-size: 11px;
+  line-height: 1.45;
+  margin-top: 4px;
+}
+
+/* ========== Edit-workout calorie row ========== */
+.ew-calories {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  margin: 8px 0 4px;
+  background: linear-gradient(135deg, rgba(251,146,60,0.10), transparent 70%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 13px;
+}
+.ew-calories:empty { display: none; }
+.ew-cal-icon { font-size: 16px; }
+.ew-cal-method { margin-left: auto; font-size: 11px; color: var(--text3); }
+
+/* ========== Weekly coach card ========== */
+.weekly-coach-card {
+  border-left: 3px solid var(--accent);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.weekly-coach-card.hidden { display: none; }
+.wcc-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+.wcc-week { font-size: 13px; font-weight: 800; color: var(--accent); letter-spacing: 0.04em; }
+.wcc-source { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; }
+.wcc-section-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text2);
+  margin-bottom: 4px;
+}
+.wcc-section-body { font-size: 13px; line-height: 1.5; color: var(--text); }
+.wcc-section-body p { margin: 0 0 6px; }
+.wcc-section-body p:last-child { margin-bottom: 0; }
+.wcc-section-body ul { margin: 4px 0; padding-left: 20px; }
+.wcc-section-body li { margin-bottom: 3px; }
+.wcc-section-body strong { color: var(--accent); }
 
 /* ========== Login form spacing ========== */
 .login-row { margin-bottom: 10px; }

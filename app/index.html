@@ -64,6 +64,7 @@
       </div>
       <div class="form-row"><label>Date</label><input type="date" id="ew-date" class="text-input"></div>
       <div class="form-row"><label>Quality (1-5)</label><input type="number" id="ew-quality" class="text-input" min="1" max="5" inputmode="numeric"></div>
+      <div id="ew-calories" class="ew-calories"></div>
       <div id="ew-block-timings"></div>
       <div class="section-label" style="margin-top:12px">Exercises</div>
       <div id="ew-exercises"></div>
@@ -187,10 +188,11 @@
           <div id="workout-exercises"></div>
           <div class="workout-actions">
             <div class="quality-select">
-              <span class="label">Session quality</span>
+              <span class="label">How did it feel?</span>
               <div id="quality-stars" class="stars">
-                <button data-v="1">1</button><button data-v="2">2</button><button data-v="3" class="selected">3</button><button data-v="4">4</button><button data-v="5">5</button>
+                <button data-v="1" data-label="Terrible">1</button><button data-v="2" data-label="Poor">2</button><button data-v="3" class="selected" data-label="OK">3</button><button data-v="4" data-label="Good">4</button><button data-v="5" data-label="Crushed it">5</button>
               </div>
+              <div class="quality-legend">1 Terrible · 2 Poor · 3 OK · 4 Good · 5 Crushed it</div>
             </div>
             <button id="btn-finish-workout" class="btn-primary btn-lg">Finish Workout</button>
           </div>
@@ -238,7 +240,8 @@
             <div class="form-row"><label>Distance (km)</label><input type="number" id="run-distance" step="0.1" min="0" placeholder="5.0" inputmode="decimal"></div>
             <div class="form-row"><label>Duration (min)</label><input type="number" id="run-duration" step="1" min="0" placeholder="38" inputmode="numeric"></div>
             <div class="form-row"><label>Avg HR (bpm)</label><input type="number" id="run-hr" step="1" min="0" placeholder="129" inputmode="numeric"></div>
-            <div class="form-row"><label>How it felt</label><div id="run-feel" class="stars"><button data-v="1">1</button><button data-v="2">2</button><button data-v="3" class="selected">3</button><button data-v="4">4</button><button data-v="5">5</button></div></div>
+            <div class="form-row"><label>How it felt</label><div id="run-feel" class="stars"><button data-v="1" data-label="Terrible">1</button><button data-v="2" data-label="Poor">2</button><button data-v="3" class="selected" data-label="OK">3</button><button data-v="4" data-label="Good">4</button><button data-v="5" data-label="Crushed it">5</button></div></div>
+            <div class="form-row quality-legend-row"><span></span><div class="quality-legend">1 Terrible · 2 Poor · 3 OK · 4 Good · 5 Crushed it</div></div>
             <div class="form-row"><textarea id="run-notes" class="input-notes" placeholder="Notes (optional)" rows="2"></textarea></div>
             <button id="btn-log-run" class="btn-primary btn-lg">Log Run</button>
           </div>
@@ -339,6 +342,8 @@
           <div class="section-label" data-group="today">Weekly Timeline</div>
           <div class="card" id="swimlane-timeline" data-group="today"></div>
           <div id="whoop-recovery" class="card hidden" data-group="today"></div>
+          <div class="section-label" data-group="today">Coach Review</div>
+          <div class="card weekly-coach-card hidden" id="weekly-coach-card" data-group="today"></div>
           <div class="section-label" data-group="today">Weekly Report</div>
           <div class="report-card" id="weekly-report" data-group="today"></div>
           <div class="section-label" data-group="today">Week vs Week</div>
@@ -359,6 +364,7 @@
             </div>
           </div>
           <div class="chart-box" id="bw-chart" data-group="body"></div>
+          <div class="bw-chart-legend" id="bw-chart-legend" data-group="body"></div>
           <div class="bw-history" id="bw-history" data-group="body"></div>
           <div class="section-label" data-group="body">Body Composition</div>
           <div class="card" id="bodycomp-section" data-group="body"></div>
@@ -526,7 +532,7 @@
           </div>
           <div class="section-label" style="margin-top:24px">App</div>
           <div class="card">
-            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v10.10<br>Data stored locally + cloud sync.<br>Works offline.</p>
+            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v10.11<br>Data stored locally + cloud sync.<br>Works offline.</p>
             <button id="btn-force-update" class="btn-secondary btn-full" style="text-align:center">Force Update App</button>
           </div>
         </div>

@@ -74,13 +74,26 @@ For each of `bench-press`, `back-squat`, `sumo-dl`, `ohp`, `barbell-row`, `chinu
 - Average protein.
 
 ### 2.6 Apply the coaching rules
-Per `.claude/rules/training-rules.md` and CLAUDE.md, flag:
-- RPE ≤ 7 average across all sets of a key lift → suggest +2.5 kg / +5 lb next week.
-- RPE ≥ 9 → suggest hold weight, reduce reps, OR pause progression.
-- 2 consecutive sessions with quality ≤ 2 → flag possible deload.
+Per `.claude/rules/training-rules.md` and CLAUDE.md, the priority order for progression is **reps → load → add a set** (the last is paused during a deficit). Flag:
+
+For each main compound (`bench-press`, `back-squat`, `sumo-dl`, `ohp`, `barbell-row`, `chinups`):
+- Avg RPE ≤ 7 AND minimum reps below the prescribed top of range → "**+1 rep next session**, hold weight" (do NOT propose load yet).
+- Avg RPE ≤ 7 AND minimum reps at the top of range → "**+2.5 kg / +5 lb** next session".
+- Avg RPE 7.5–8.5 → "hold weight, push 1 rep within range if possible" (no load change).
+- Avg RPE ≥ 9 → "**hold or reduce reps**; do not add load".
+- Avg RPE ≥ 9 across 2 consecutive sessions → "**flag deload** next week (-40% volume)".
+
+For accessories (target RPE 6–8, non-compound exercises):
+- Same rep/load logic but use smaller increments (+1.25 kg / +2.5 lb) and DB exercises move by next available DB pair.
+
+Cross-cutting flags:
+- 2 consecutive sessions with quality ≤ 2 → suppress load increases; flag possible deload.
 - Body weight loss > 1% / week sustained → flag too-aggressive deficit.
 - Pain not trending down across 2+ weeks → re-evaluate mobility approach.
 - Adherence < 70% → flag program sustainability.
+- Deficit is the default state (per `docs/goals.md`); never propose **adding sets** unless adherence and recovery both look strong.
+
+Distinguish compound vs accessory using the `compound: true` flag on plan exercises. Volume calculations should already account for dumbbells (peso × reps × 2).
 
 ## Phase 3 — Compose the review file
 
@@ -132,11 +145,22 @@ Build the markdown for `tracking/weekly-reviews/2026-W{NN}.md` using this exact 
 Execute every write in this order:
 
 1. **Review file**: write to `tracking/weekly-reviews/2026-W{NN}.md`. Create the folder if it doesn't exist (`mkdir -p`).
-2. **Plan archive**: copy current `plans/training-plan.md` to `plans/archive/training-plan-2026-W{NN}.md` (`mkdir -p` for archive). Skip if no plan changes will be applied.
-3. **Plan update**: edit `plans/training-plan.md` with the proposed adjustments from Phase 3. Document the change in the plan's "Change Log" section if one exists at the bottom of the file.
-4. **Changelog**: append a 1-line entry to `plans/changelog.md` (create file with header if missing): `- W{NN} ({date}): [summary], reason: [signal]`.
-5. **Progress log**: append the latest metrics row to `tracking/progress-log.md`.
-6. **Weekly checkins**: prepend a brief 4-6 line summary to the TOP of `tracking/weekly-checkins.md` (newest first per CLAUDE.md).
+2. **Bridge to PWA**: ALSO write `tracking/weekly-reviews/latest.json` with this exact structure — the deployed PWA fetches it on Stats > Today and renders the "Coach Review" card. Required every run; otherwise the in-app card stays stale.
+   ```json
+   {
+     "weekKey": "2026-W{NN}",
+     "generatedAt": <Date.now() ms>,
+     "source": "auto",
+     "observed": "- bullet markdown of 'What worked' + 'What didn't'\n- ...",
+     "planNext": "- bullet markdown of 'Proposed adjustments for week {NN+1}'\n- ..."
+   }
+   ```
+   `observed` and `planNext` are markdown — keep concise (3-6 bullets each), use `**bold**` for the key change. The PWA renders bullets + bold + paragraphs.
+3. **Plan archive**: copy current `plans/training-plan.md` to `plans/archive/training-plan-2026-W{NN}.md` (`mkdir -p` for archive). Skip if no plan changes will be applied.
+4. **Plan update**: edit `plans/training-plan.md` with the proposed adjustments from Phase 3. Document the change in the plan's "Change Log" section if one exists at the bottom of the file.
+5. **Changelog**: append a 1-line entry to `plans/changelog.md` (create file with header if missing): `- W{NN} ({date}): [summary], reason: [signal]`.
+6. **Progress log**: append the latest metrics row to `tracking/progress-log.md`.
+7. **Weekly checkins**: prepend a brief 4-6 line summary to the TOP of `tracking/weekly-checkins.md` (newest first per CLAUDE.md).
 
 If a plan adjustment is contentious (e.g., suggesting a deload), still apply it but flag it loudly in the final summary.
 

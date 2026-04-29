@@ -16,11 +16,11 @@ const PLAN = {
         'Bench press: bar × 10, 50% × 6, 70% × 4, 85% × 2',
       ],
       exercises: [
-        { id: 'bench-press', name: 'Barbell Bench Press', muscle: 'Chest', sets: 4, reps: '5-8', rpe: '7-8', defaultRest: 150, notes: 'Main press. Full ROM, control the eccentric.' },
-        { id: 'barbell-row', name: 'Barbell Row', muscle: 'Back', sets: 4, reps: '6-10', rpe: '7-8', defaultRest: 150, notes: 'Overhand grip. Strict form, no heaving.' },
-        { id: 'incline-db-press', name: 'Incline DB Press', muscle: 'Chest', sets: 3, reps: '8-12', rpe: '7', defaultRest: 90, notes: '30-45° angle.', superset: 'A' },
+        { id: 'bench-press', name: 'Barbell Bench Press', muscle: 'Chest', sets: 4, reps: '5-8', rpe: '7-8', defaultRest: 150, notes: 'Main press. Full ROM, control the eccentric.', compound: true },
+        { id: 'barbell-row', name: 'Barbell Row', muscle: 'Back', sets: 4, reps: '6-10', rpe: '7-8', defaultRest: 150, notes: 'Overhand grip. Strict form, no heaving.', compound: true },
+        { id: 'incline-db-press', name: 'Incline DB Press', muscle: 'Chest', sets: 3, reps: '8-12', rpe: '7', defaultRest: 90, notes: '30-45° angle.', superset: 'A', db: true },
         { id: 'face-pull', name: 'Cable Face Pull', muscle: 'Rear Delt', sets: 3, reps: '12-15', rpe: '7', defaultRest: 60, notes: 'Shoulder health. Non-negotiable.', superset: 'A' },
-        { id: 'lateral-raise', name: 'DB Lateral Raise', muscle: 'Shoulders', sets: 3, reps: '12-15', rpe: '7', defaultRest: 60, notes: 'Light, controlled, full ROM.', superset: 'B' },
+        { id: 'lateral-raise', name: 'DB Lateral Raise', muscle: 'Shoulders', sets: 3, reps: '12-15', rpe: '7', defaultRest: 60, notes: 'Light, controlled, full ROM.', superset: 'B', db: true },
         { id: 'tricep-pushdown', name: 'Tricep Pushdown', muscle: 'Triceps', sets: 2, reps: '10-15', rpe: '7', defaultRest: 60, notes: 'Optional — skip if short on time.', superset: 'B' },
       ]
     },
@@ -36,7 +36,7 @@ const PLAN = {
         'Squat: bar × 10, 50% × 6, 70% × 4, 85% × 2',
       ],
       exercises: [
-        { id: 'back-squat', name: 'Barbell Back Squat', muscle: 'Quads', sets: 4, reps: '5-8', rpe: '7-8', defaultRest: 180, notes: 'Priority #1. Use rack safeties.' },
+        { id: 'back-squat', name: 'Barbell Back Squat', muscle: 'Quads', sets: 4, reps: '5-8', rpe: '7-8', defaultRest: 180, notes: 'Priority #1. Use rack safeties.', compound: true },
         { id: 'rdl', name: 'Barbell RDL', muscle: 'Hamstrings', sets: 3, reps: '8-10', rpe: '7', defaultRest: 150, notes: '3 sec eccentric. Stop at mid-shin.' },
         { id: 'leg-press', name: 'Leg Press', muscle: 'Quads', sets: 3, reps: '10-12', rpe: '7-8', defaultRest: 120, notes: 'Quad volume without spinal load.' },
         { id: 'leg-curl-a', name: 'Leg Curl', muscle: 'Hamstrings', sets: 3, reps: '10-12', rpe: '7', defaultRest: 90, notes: 'Focus on contraction quality.', superset: 'A' },
@@ -55,10 +55,10 @@ const PLAN = {
         'Chin-up: BW × 3-5 easy, or lat pulldown light × 10',
       ],
       exercises: [
-        { id: 'chinups', name: 'Chin-ups', muscle: 'Back', sets: 4, reps: '5-8', rpe: '7-8', defaultRest: 150, notes: 'Add weight when you get 4×8. Use lat pulldown if <5 reps.', bw: true },
-        { id: 'ohp', name: 'Overhead Press', muscle: 'Shoulders', sets: 4, reps: '5-8', rpe: '7-8', defaultRest: 150, notes: 'Standing. Strict form, no leg drive.' },
+        { id: 'chinups', name: 'Chin-ups', muscle: 'Back', sets: 4, reps: '5-8', rpe: '7-8', defaultRest: 150, notes: 'Add weight when you get 4×8. Use lat pulldown if <5 reps.', bw: true, compound: true },
+        { id: 'ohp', name: 'Overhead Press', muscle: 'Shoulders', sets: 4, reps: '5-8', rpe: '7-8', defaultRest: 150, notes: 'Standing. Strict form, no leg drive.', compound: true },
         { id: 'landmine-row', name: 'Landmine Row', muscle: 'Back', sets: 3, reps: '8-12/side', rpe: '7', defaultRest: 90, notes: 'Unilateral. Use landmine attachment.' },
-        { id: 'incline-curl', name: 'Incline DB Curl', muscle: 'Biceps', sets: 3, reps: '10-12', rpe: '7', defaultRest: 60, notes: 'Stretch at bottom.', superset: 'A' },
+        { id: 'incline-curl', name: 'Incline DB Curl', muscle: 'Biceps', sets: 3, reps: '10-12', rpe: '7', defaultRest: 60, notes: 'Stretch at bottom.', superset: 'A', db: true },
         { id: 'cable-lateral', name: 'Cable Lateral Raise', muscle: 'Shoulders', sets: 3, reps: '12-15', rpe: '7', defaultRest: 60, notes: 'Constant tension throughout ROM.', superset: 'A' },
         { id: 'hanging-leg-raise', name: 'Hanging Leg Raise', muscle: 'Core', sets: 3, reps: '8-12', rpe: '-', defaultRest: 60, notes: 'Scale to knee raises if needed.', bw: true },
       ]
@@ -75,8 +75,8 @@ const PLAN = {
         'Deadlift: bar × 8, 50% × 5, 70% × 3, 85% × 1',
       ],
       exercises: [
-        { id: 'sumo-dl', name: 'Sumo Deadlift', muscle: 'Posterior', sets: 4, reps: '3-6', rpe: '7-8', defaultRest: 210, notes: 'Reset each rep from floor. No touch-and-go.' },
-        { id: 'bss', name: 'Bulgarian Split Squat', muscle: 'Quads', sets: 3, reps: '8-10/side', rpe: '7-8', defaultRest: 90, notes: 'DB in each hand, rear foot on bench.' },
+        { id: 'sumo-dl', name: 'Sumo Deadlift', muscle: 'Posterior', sets: 4, reps: '3-6', rpe: '7-8', defaultRest: 210, notes: 'Reset each rep from floor. No touch-and-go.', compound: true },
+        { id: 'bss', name: 'Bulgarian Split Squat', muscle: 'Quads', sets: 3, reps: '8-10/side', rpe: '7-8', defaultRest: 90, notes: 'DB in each hand, rear foot on bench.', db: true },
         { id: 'leg-extension', name: 'Leg Extension', muscle: 'Quads', sets: 3, reps: '10-15', rpe: '7-8', defaultRest: 90, notes: 'Controlled 2-3 sec eccentric.', superset: 'A' },
         { id: 'leg-curl-b', name: 'Leg Curl', muscle: 'Hamstrings', sets: 3, reps: '10-12', rpe: '7', defaultRest: 90, notes: 'Second hit of the week.', superset: 'A' },
         { id: 'hip-thrust', name: 'Barbell Hip Thrust', muscle: 'Glutes', sets: 3, reps: '8-12', rpe: '7', defaultRest: 120, notes: 'Heavy is fine but stay at RPE 7.' },
@@ -116,6 +116,72 @@ const MUSCLE_COLORS = {
 
 // Key lifts for strength chart tracking
 const KEY_LIFTS = ['bench-press', 'back-squat', 'sumo-dl', 'ohp', 'barbell-row', 'chinups'];
+
+// Estimate calories burned for a session.
+// Uses Keytel et al. (2005) HR-based formula when avgHr is available
+// (most accurate for runs). Falls back to MET × kg × hours otherwise.
+// Returns { kcal, method } or null if there's not enough info.
+function estimateCalories({ type, durationMin, bodyweightKg, avgHr, avgRpe, distanceKm, age }) {
+  if (!durationMin || !bodyweightKg) return null;
+  const kg = bodyweightKg;
+  const a = age || 30;
+  const hours = durationMin / 60;
+  if (type === 'run' && avgHr && avgHr > 60) {
+    const kcalPerMin = (-55.0969 + 0.6309 * avgHr + 0.1988 * kg + 0.2017 * a) / 4.184;
+    return { kcal: Math.max(0, Math.round(kcalPerMin * durationMin)), method: 'hr' };
+  }
+  if (type === 'run' && distanceKm > 0) {
+    const paceMinPerKm = durationMin / distanceKm;
+    let met;
+    if (paceMinPerKm > 7) met = 7;
+    else if (paceMinPerKm > 5.5) met = 9.8;
+    else if (paceMinPerKm > 4.5) met = 11.5;
+    else met = 14;
+    return { kcal: Math.round(met * kg * hours), method: 'met-pace' };
+  }
+  if (type === 'gym') {
+    // Rough strength-training MET (vigorous ≈ 5-6); modulate by avg RPE
+    const met = avgRpe >= 8.5 ? 6 : avgRpe >= 7 ? 5 : 4;
+    return { kcal: Math.round(met * kg * hours), method: 'met-rpe' };
+  }
+  return null;
+}
+
+// Latest body weight from IDB. Cached on first hit per session.
+let _bwCache = null;
+async function getBodyweightLatest() {
+  if (_bwCache) return _bwCache;
+  const all = await dbGetAll('bodyweight');
+  if (!all || all.length === 0) return null;
+  const sorted = all.sort((a, b) => a.date.localeCompare(b.date));
+  _bwCache = sorted[sorted.length - 1].weight;
+  return _bwCache;
+}
+
+// Avg RPE across all done sets in a workout (used for calorie estimation).
+function workoutAvgRpe(w) {
+  const rpes = [];
+  w.exercises.forEach(ex => ex.sets.filter(s => s.done && s.rpe).forEach(s => rpes.push(s.rpe)));
+  return rpes.length ? rpes.reduce((a, b) => a + b, 0) / rpes.length : null;
+}
+
+// Parse "MM:SS" duration string back to total minutes.
+function durationToMinutes(durStr) {
+  if (!durStr) return 0;
+  const [m, s] = String(durStr).split(':').map(n => parseInt(n) || 0);
+  return m + (s || 0) / 60;
+}
+
+// Volume helper: dumbbell exercises count both hands (peso × reps × 2). Uses
+// the snapshot meta on saved exercises (set in finishWorkout); for legacy
+// workouts without it, falls back to the plan definition by id.
+function volumeForExercise(ex) {
+  const planEx = activePlan && activePlan.sessions
+    ? Object.values(activePlan.sessions).flatMap(s => s.exercises).find(e => e.id === ex.exerciseId)
+    : null;
+  const factor = (ex.db || planEx?.db) ? 2 : 1;
+  return ex.sets.filter(s => s.done).reduce((sum, s) => sum + (s.weight || 0) * (s.reps || 0) * factor, 0);
+}
 
 // ==================== MOBILITY LIBRARY (v10.5) ====================
 // Evidence-based mobility routines for back health & lifter recovery.
@@ -445,7 +511,7 @@ async function createNewPlanVersion(modifications) {
 
 // ==================== DATABASE ====================
 const DB_NAME = 'TrainingApp';
-const DB_VERSION = 6;
+const DB_VERSION = 7;
 let db = null;
 
 function openDB() {
@@ -466,6 +532,8 @@ function openDB() {
       if (!d.objectStoreNames.contains('exercises')) d.createObjectStore('exercises', { keyPath: 'id' });
       // Mobility sessions — added v10.5 (DB v6)
       if (!d.objectStoreNames.contains('mobility_sessions')) d.createObjectStore('mobility_sessions', { keyPath: 'id' });
+      // Weekly review cards — added v10.11 (DB v7)
+      if (!d.objectStoreNames.contains('weekly_reviews')) d.createObjectStore('weekly_reviews', { keyPath: 'weekKey' });
     };
     req.onsuccess = (e) => { db = e.target.result; resolve(db); };
     req.onerror = (e) => reject(e);
@@ -1517,6 +1585,17 @@ async function openEditWorkout(id) {
     titleEl.innerHTML = `${sessionName} <span style="font-size:11px;color:var(--accent);font-weight:600">· input: ${unit.toUpperCase()}</span>`;
   }
 
+  // Calorie estimate row
+  const calEl = document.getElementById('ew-calories');
+  if (calEl) {
+    const bw = await getBodyweightLatest();
+    const dur = durationToMinutes(w.duration);
+    const cal = estimateCalories({ type: 'gym', durationMin: dur, bodyweightKg: bw || 80, avgRpe: workoutAvgRpe(w), age: state.settings.age });
+    calEl.innerHTML = cal
+      ? `<span class="ew-cal-icon">🔥</span><span>~${cal.kcal} kcal estimated</span><span class="ew-cal-method">${cal.method === 'met-rpe' ? 'MET × RPE' : cal.method}${bw ? '' : ' · using 80 kg fallback'}</span>`
+      : '';
+  }
+
   // Block timings — only shown if recorded for this workout
   const btContainer = document.getElementById('ew-block-timings');
   if (btContainer) {
@@ -1628,7 +1707,7 @@ async function openEditWorkout(id) {
         ${targetHTML}
         ${prevHeaderHTML}
         ${e1rmHTML}
-        <div class="ew-set-head"><span></span><span>${planEx && planEx.bw ? '+' + unit : unit}</span><span>Reps</span><span>RPE</span><span>Done</span></div>
+        <div class="ew-set-head"><span></span><span>${planEx && planEx.bw ? '+' + unit : (planEx && planEx.db ? unit + '/DB' : unit)}</span><span>Reps</span><span>RPE</span><span>Done</span></div>
         ${rows}
         ${notesHTML}
       </div>
@@ -1658,7 +1737,7 @@ function closeEditWorkout() {
 
 // Build a plain-text summary of the workout for pasting into WHOOP's
 // activity notes so its AI can credit strain accurately.
-function buildWhoopTranscript(w) {
+function buildWhoopTranscript(w, ctx = {}) {
   const session = activePlan.sessions[w.session];
   const sessionName = session ? session.name : (w.sessionName || w.session);
   const unit = w.unit || state.settings.unit || 'kg';
@@ -1666,19 +1745,23 @@ function buildWhoopTranscript(w) {
   if (w.date) headerBits.push(formatDate(w.date));
   if (w.duration) headerBits.push(w.duration);
   const lines = [headerBits.join(' — ')];
+  if (ctx.kcal) lines.push(`Est. burn: ~${ctx.kcal} kcal`);
 
   w.exercises.forEach(ex => {
     const doneSets = ex.sets.filter(s => s.done && s.reps > 0);
     if (doneSets.length === 0) return;
     const exName = getExerciseName(ex.exerciseId);
     const planEx = session ? session.exercises.find(e => e.id === ex.exerciseId) : null;
-    const isBW = !!(planEx && planEx.bw);
+    const isBW = !!(ex.bw || planEx?.bw);
+    const isDB = !!(ex.db || planEx?.db);
     lines.push('');
     lines.push(exName);
     doneSets.forEach(s => {
       let load;
       if (isBW) {
         load = s.weight > 0 ? `BW + ${s.weight} ${unit}` : 'BW';
+      } else if (isDB) {
+        load = `${s.weight} ${unit}/DB`;
       } else {
         load = `${s.weight} ${unit}`;
       }
@@ -1694,7 +1777,9 @@ async function copyWhoopTranscript() {
   if (!_editWorkoutId) return;
   const w = await dbGet('workouts', _editWorkoutId);
   if (!w) { toast('Workout not found'); return; }
-  const text = buildWhoopTranscript(w);
+  const bw = await getBodyweightLatest();
+  const cal = estimateCalories({ type: 'gym', durationMin: durationToMinutes(w.duration), bodyweightKg: bw || 80, avgRpe: workoutAvgRpe(w), age: state.settings.age });
+  const text = buildWhoopTranscript(w, { kcal: cal?.kcal });
   try {
     await navigator.clipboard.writeText(text);
     toast('Copied for WHOOP');
@@ -2559,7 +2644,7 @@ function buildExerciseCard(ex, exIdx, previous, restSettings, exerciseNotes, del
         <div class="set-table">
           <div class="set-table-header">
             <div>Set</div>
-            <div>${ex.bw ? '+' + state.settings.unit : state.settings.unit}</div>
+            <div>${ex.bw ? '+' + state.settings.unit : (ex.db ? state.settings.unit + '/DB' : state.settings.unit)}</div>
             <div>Reps</div>
             <div>RPE</div>
             <div></div>
@@ -2890,6 +2975,7 @@ async function finishWorkout() {
   const duration = formatDuration(elapsed);
 
   const exercises = [];
+  const sessionDef = activePlan.sessions[state.activeSession];
   document.querySelectorAll('#workout-exercises .exercise-card').forEach(card => {
     const exId = card.dataset.exerciseId;
     const sets = [];
@@ -2902,7 +2988,14 @@ async function finishWorkout() {
     });
     const noteEl = card.querySelector('.ex-note');
     const note = noteEl ? noteEl.value.trim() : '';
-    exercises.push({ exerciseId: exId, sets, note });
+    // Snapshot exercise meta flags so volume/calorie calc doesn't depend on
+    // the plan still containing this exercise definition later.
+    const planEx = sessionDef ? sessionDef.exercises.find(e => e.id === exId) : null;
+    const meta = {};
+    if (planEx?.db) meta.db = true;
+    if (planEx?.bw) meta.bw = true;
+    if (planEx?.compound) meta.compound = true;
+    exercises.push({ exerciseId: exId, sets, note, ...meta });
   });
 
   // Finalize the active block (whatever the user was on when hitting Finish)
@@ -3139,6 +3232,7 @@ async function renderStats() {
   await renderFatigueScore();
   await renderDeloadReminder();
   await renderWeeklySummary();
+  await loadAndRenderWeeklyCoach();
   await renderWeeklyReport();
   await renderWeekComparison();
   await renderStreakCalendar();
@@ -3299,6 +3393,89 @@ async function renderFatigueScore() {
   `;
 }
 
+// ==================== WEEKLY COACH CARD ====================
+// Reads `tracking/weekly-reviews/latest.json` published by the /weekly-review
+// slash command. If newer than what's in IDB, upserts. Renders the latest
+// observed/planNext into Stats > Today > Coach Review.
+async function fetchLatestWeeklyReview() {
+  try {
+    const url = './tracking/weekly-reviews/latest.json?ts=' + Date.now();
+    const res = await fetch(url, { cache: 'no-store' });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!data || !data.weekKey) return null;
+    return data;
+  } catch { return null; }
+}
+
+async function loadAndRenderWeeklyCoach() {
+  const card = document.getElementById('weekly-coach-card');
+  if (!card) return;
+
+  // Try fetching from deployed JSON manifest. Falls back silently to whatever's in IDB.
+  const fetched = await fetchLatestWeeklyReview();
+  if (fetched) {
+    const existing = await dbGet('weekly_reviews', fetched.weekKey);
+    const isNewer = !existing || (fetched.generatedAt && fetched.generatedAt > (existing.generatedAt || 0));
+    if (isNewer) {
+      await dbPut('weekly_reviews', { ...fetched, source: fetched.source || 'auto' });
+    }
+  }
+
+  // Render most recent stored review (any week)
+  const all = await dbGetAll('weekly_reviews');
+  if (!all || all.length === 0) {
+    card.classList.add('hidden');
+    card.innerHTML = '';
+    return;
+  }
+  const latest = all.sort((a, b) => (b.generatedAt || 0) - (a.generatedAt || 0))[0];
+  card.classList.remove('hidden');
+
+  const dt = latest.generatedAt ? new Date(latest.generatedAt) : null;
+  const dtStr = dt ? `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}` : '';
+
+  card.innerHTML = `
+    <div class="wcc-header">
+      <span class="wcc-week">${escapeHtml(latest.weekKey)}</span>
+      <span class="wcc-source">${latest.source === 'manual' ? 'manual' : '/weekly-review'}${dtStr ? ' · ' + dtStr : ''}</span>
+    </div>
+    <div class="wcc-section">
+      <div class="wcc-section-title">What I observed</div>
+      <div class="wcc-section-body">${markdownToBasicHtml(latest.observed || '— no notes —')}</div>
+    </div>
+    <div class="wcc-section">
+      <div class="wcc-section-title">Plan next week</div>
+      <div class="wcc-section-body">${markdownToBasicHtml(latest.planNext || '— no plan —')}</div>
+    </div>
+  `;
+}
+
+// Tiny markdown subset: bold (**...**), bullets ("- "), and line breaks.
+function markdownToBasicHtml(md) {
+  if (!md) return '';
+  const safe = escapeHtml(md);
+  const lines = safe.split('\n');
+  const out = [];
+  let inList = false;
+  lines.forEach(line => {
+    const isBullet = /^\s*[-*]\s+/.test(line);
+    if (isBullet) {
+      if (!inList) { out.push('<ul>'); inList = true; }
+      out.push('<li>' + line.replace(/^\s*[-*]\s+/, '') + '</li>');
+    } else {
+      if (inList) { out.push('</ul>'); inList = false; }
+      if (line.trim() !== '') out.push('<p>' + line + '</p>');
+    }
+  });
+  if (inList) out.push('</ul>');
+  return out.join('').replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+}
+
 async function renderWeeklyReport() {
   const container = document.getElementById('weekly-report');
   const workouts = await dbGetAll('workouts');
@@ -3311,14 +3488,10 @@ async function renderWeeklyReport() {
   const weekRuns = runs.filter(r => weekDates.includes(r.date));
   const weekNutrition = nutrition.filter(n => weekDates.includes(n.date));
 
-  // Total volume this week
+  // Total volume this week (DB exercises count both hands via volumeForExercise)
   let totalVolume = 0;
   weekWorkouts.forEach(w => {
-    w.exercises.forEach(ex => {
-      ex.sets.filter(s => s.done).forEach(s => {
-        totalVolume += (s.weight || 0) * (s.reps || 0);
-      });
-    });
+    w.exercises.forEach(ex => { totalVolume += volumeForExercise(ex); });
   });
 
   // Avg protein
@@ -3402,16 +3575,12 @@ async function renderVolumeChart() {
     return;
   }
 
-  // Group by week
+  // Group by week (DB exercises count both hands via volumeForExercise)
   const weekVolumes = {};
   workouts.forEach(w => {
     const wk = w.week || 1;
     if (!weekVolumes[wk]) weekVolumes[wk] = 0;
-    w.exercises.forEach(ex => {
-      ex.sets.filter(s => s.done).forEach(s => {
-        weekVolumes[wk] += (s.weight || 0) * (s.reps || 0);
-      });
-    });
+    w.exercises.forEach(ex => { weekVolumes[wk] += volumeForExercise(ex); });
   });
 
   const weeks = Object.keys(weekVolumes).sort((a, b) => a - b);
@@ -3452,7 +3621,7 @@ async function renderWeekComparison() {
     const nt = nutrition.filter(n => dates.includes(n.date));
 
     let volume = 0;
-    wk.forEach(w => w.exercises.forEach(ex => ex.sets.filter(s => s.done).forEach(s => { volume += (s.weight || 0) * (s.reps || 0); })));
+    wk.forEach(w => w.exercises.forEach(ex => { volume += volumeForExercise(ex); }));
 
     const avgProtein = nt.length > 0 ? Math.round(nt.reduce((s, n) => s + (n.protein || 0), 0) / nt.length) : 0;
     const avgQuality = wk.length > 0 ? +(wk.reduce((s, w) => s + (w.quality || 3), 0) / wk.length).toFixed(1) : 0;
@@ -3634,10 +3803,9 @@ async function renderWeeklySummary() {
 
   thisWeek.forEach(w => {
     w.exercises.forEach(ex => {
-      const exName = getExerciseName(ex.exerciseId);
       const muscle = getExerciseMuscle(ex.exerciseId);
-      ex.sets.filter(s => s.done).forEach(s => {
-        totalVolume += (s.weight || 0) * (s.reps || 0);
+      totalVolume += volumeForExercise(ex);
+      ex.sets.filter(s => s.done).forEach(() => {
         totalSets++;
         if (muscle) muscleSets[muscle] = (muscleSets[muscle] || 0) + 1;
       });
@@ -4953,13 +5121,17 @@ async function renderRunHistory() {
     return;
   }
 
+  const bw = await getBodyweightLatest();
   const iconRunner = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13" cy="4" r="2"/><path d="M5 21l3-9 2.5 2V21M15 11l-3-3-4 4 2 2"/></svg>`;
-  container.innerHTML = runs.map(r => `
+  container.innerHTML = runs.map(r => {
+    const cal = estimateCalories({ type: 'run', durationMin: parseFloat(r.duration) || 0, bodyweightKg: bw || 80, avgHr: r.avgHR, distanceKm: r.distance, age: state.settings.age });
+    const calBit = cal ? ` · ~${cal.kcal} kcal` : '';
+    return `
     <div class="history-item">
       <div class="hi-icon" style="background:var(--tint-blue);color:var(--blue)">${iconRunner}</div>
       <div class="hi-left">
         <div class="hi-title">${r.distance} km · ${r.avgPace}/km</div>
-        <div class="hi-sub">${formatDate(r.date)} · ${r.duration} min${r.avgHR ? ` · ${r.avgHR} bpm` : ''}${r.week ? ` · Wk ${r.week}` : ''}</div>
+        <div class="hi-sub">${formatDate(r.date)} · ${r.duration} min${r.avgHR ? ` · ${r.avgHR} bpm` : ''}${calBit}${r.week ? ` · Wk ${r.week}` : ''}</div>
       </div>
       <div class="hi-right">
         <div>
@@ -4969,7 +5141,8 @@ async function renderRunHistory() {
         <button class="hi-delete" data-delete-run="${r.id}">&times;</button>
       </div>
     </div>
-  `).join('');
+  `;
+  }).join('');
 
   container.querySelectorAll('[data-delete-run]').forEach(btn => {
     btn.addEventListener('click', async () => {
@@ -5227,52 +5400,96 @@ async function detectPRs(workout) {
 }
 
 // ==================== RPE-BASED PROGRESSION SUGGESTION ====================
-// Triggered when the user finishes the last set of an exercise. Suggests load
-// adjustment based on average RPE: ≤7 → suggest more weight, ≥9 → suggest less.
-// Materializes the overload principle from CLAUDE.md without forcing decisions.
+// Triggered when the user finishes the last set of an exercise.
+//
+// Audit notes vs CLAUDE.md / training-rules.md:
+// - Old logic: only checked avg RPE ≤ 7 (→ +inc) or ≥ 9 (→ −inc). Ignored the
+//   rep range entirely, so it would suggest +load even when reps were below
+//   the top of the prescribed range, contradicting "add reps within range,
+//   then load, then add a set" (training-rules.md).
+// - Old logic also didn't distinguish compound vs accessory — same delta for
+//   bench (compound, RPE 7-9 target) and lateral raise (accessory, RPE 6-8).
+// - DB exercises: increment was kg-flat instead of "next available DB pair".
+//
+// New logic prefers reps over load when reps aren't yet at the top of range,
+// and uses smaller deltas for accessories. Returns the rationale so the user
+// can see *why*, not just the number.
+function parseRepRangeTop(repsStr) {
+  if (!repsStr) return null;
+  const cleaned = String(repsStr).replace(/\/.*$/, '').trim(); // strip "/side"
+  const m = cleaned.match(/(\d+)\s*-\s*(\d+)/);
+  if (m) return parseInt(m[2]);
+  const single = cleaned.match(/(\d+)/);
+  return single ? parseInt(single[1]) : null;
+}
+
 function suggestProgressionIfReady(card) {
   if (!card) return;
   const exId = card.dataset.exerciseId;
   if (!exId) return;
-  // Dedupe: only one suggestion per exercise per workout
   state.suggestionsShown = state.suggestionsShown || new Set();
   if (state.suggestionsShown.has(exId)) return;
 
   const checks = card.querySelectorAll('.set-check');
   const total = checks.length;
   const checked = card.querySelectorAll('.set-check.checked').length;
-  // Only when ALL sets done
   if (total === 0 || checked < total) return;
 
-  // Gather RPE from done sets
+  // Gather done-set data
   const rows = card.querySelectorAll('.set-row');
   const rpes = [];
-  let avgWeight = 0; let weightCount = 0;
+  const reps = [];
   rows.forEach(row => {
     if (!row.querySelector('.set-check').classList.contains('checked')) return;
     const rpeStr = row.querySelector('[data-field="rpe"]').value;
-    const wStr = row.querySelector('[data-field="weight"]').value;
+    const repsStr = row.querySelector('[data-field="reps"]').value;
     if (rpeStr) rpes.push(parseFloat(rpeStr));
-    const w = parseFloat(wStr);
-    if (w > 0) { avgWeight += w; weightCount++; }
+    const r = parseInt(repsStr);
+    if (r > 0) reps.push(r);
   });
-  if (rpes.length < 2) return; // need at least 2 sets with RPE
+  if (rpes.length < 2) return;
+
+  // Look up plan exercise to know rep range, compound flag, db flag
+  const session = activePlan?.sessions?.[state.activeSession];
+  const planEx = session?.exercises?.find(e => e.id === exId);
+  const isCompound = !!planEx?.compound;
+  const isDB = !!planEx?.db;
+  const repTop = parseRepRangeTop(planEx?.reps);
 
   const avgRpe = rpes.reduce((a, b) => a + b, 0) / rpes.length;
+  const minReps = reps.length ? Math.min(...reps) : 0;
   const exName = getExerciseName(exId);
   const unit = state.settings.unit || 'kg';
-  const inc = unit === 'lb' ? 5 : 2.5;
+
+  // Compound: target 7-9 RPE. Accessory: target 6-8 RPE. Increments differ.
+  const loadInc = isDB ? (unit === 'lb' ? 5 : 2.5) : isCompound ? (unit === 'lb' ? 5 : 2.5) : (unit === 'lb' ? 2.5 : 1.25);
 
   let msg = null;
+  let action = null;
+
   if (avgRpe <= 7) {
-    msg = `💡 ${exName}: avg RPE ${avgRpe.toFixed(1)} — try +${inc}${unit} next time`;
+    if (repTop && minReps < repTop) {
+      // Below top of range → add reps first (training-rules.md priority order)
+      action = 'add_reps';
+      msg = `💡 ${exName}: avg RPE ${avgRpe.toFixed(1)} · ${minReps}/${repTop} reps — push for +1 rep next time before adding load`;
+    } else {
+      action = 'add_load';
+      msg = `💡 ${exName}: avg RPE ${avgRpe.toFixed(1)}${repTop ? ` · hit ${repTop} reps` : ''} — try +${loadInc} ${unit}${isDB ? '/DB' : ''} next time`;
+    }
   } else if (avgRpe >= 9) {
-    msg = `💡 ${exName}: avg RPE ${avgRpe.toFixed(1)} — consider −${inc}${unit} next time`;
+    action = 'reduce';
+    msg = `💡 ${exName}: avg RPE ${avgRpe.toFixed(1)} — too hard. Hold weight, drop 1-2 reps, or −${loadInc} ${unit}${isDB ? '/DB' : ''} next time`;
+  } else if (avgRpe >= 7.5 && avgRpe <= 8.5) {
+    // Sweet spot: do not nudge unless they're below range top, in which case
+    // rep progression is on the table even at moderate intensity
+    if (repTop && minReps < repTop) {
+      action = 'add_reps';
+      msg = `💡 ${exName}: avg RPE ${avgRpe.toFixed(1)} · ${minReps}/${repTop} reps — push +1 rep, hold weight`;
+    }
   }
   if (!msg) return;
 
   state.suggestionsShown.add(exId);
-  // Delay so it doesn't compete with rest-timer auto-start
   setTimeout(() => toast(msg), 800);
 }
 
@@ -5324,6 +5541,7 @@ async function logBodyWeight() {
   if (!weight || weight < 20 || weight > 300) { toast('Enter a valid weight'); return; }
 
   await smartPut('bodyweight', { date: today(), weight, timestamp: Date.now() });
+  _bwCache = weight; // refresh cached value used for calorie estimation
   input.value = '';
   toast(`${weight} kg logged`);
   renderBodyWeightChart();
@@ -5448,12 +5666,14 @@ async function renderBodyWeightChart() {
   const currentEl = document.getElementById('bw-current');
   const metricsEl = document.getElementById('bw-metrics');
   const historyEl = document.getElementById('bw-history');
+  const legendEl = document.getElementById('bw-chart-legend');
   const entries = (await dbGetAll('bodyweight')).sort((a, b) => a.date.localeCompare(b.date));
 
   if (entries.length === 0) {
     currentEl.textContent = '--';
     if (metricsEl) metricsEl.innerHTML = '';
     if (historyEl) historyEl.innerHTML = '';
+    if (legendEl) legendEl.innerHTML = '';
     showEmptyState(container, '⚖️', 'No weigh-ins yet', 'Log your weight above to start tracking trends.');
     return;
   }
@@ -5515,7 +5735,8 @@ async function renderBodyWeightChart() {
   );
 
   // Overlay moving average if enough data
-  if (recent.length >= 7) {
+  const hasMA = recent.length >= 7;
+  if (hasMA) {
     const svgEl = container.querySelector('svg');
     if (svgEl) {
       const width = 320, pad = { top: 20, right: 15, bottom: 30, left: 40 };
@@ -5539,6 +5760,15 @@ async function renderBodyWeightChart() {
       avgPath.setAttribute('opacity', '0.7');
       svgEl.appendChild(avgPath);
     }
+  }
+
+  // Legend below chart so the user knows what each line is
+  if (legendEl) {
+    legendEl.innerHTML = `
+      <span class="bw-leg-row"><span class="bw-leg-line" style="background:var(--blue)"></span>Daily weight</span>
+      ${hasMA ? '<span class="bw-leg-row"><span class="bw-leg-line bw-leg-line-dashed" style="background:var(--orange)"></span>7-day avg (trend)</span>' : ''}
+      <div class="bw-chart-hint">Daily weight bounces with food, water, sleep. The orange line smooths the noise — focus on its direction.</div>
+    `;
   }
 }
 
@@ -6726,7 +6956,11 @@ async function init() {
   renderWeekStrip();
   renderRecentWorkouts();
   renderStreakBanner();
-  updateHeader('gym');
+
+  // Populate the initial tab. HTML defaults to view-home being .active, so
+  // without this the user sees an empty Home until they switch tabs.
+  const startTab = state.currentTab || 'home';
+  await switchTab(startTab);
 
   // Check for in-progress workout
   await showResumeBanner();
