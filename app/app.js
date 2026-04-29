@@ -511,7 +511,7 @@ async function createNewPlanVersion(modifications) {
 
 // ==================== DATABASE ====================
 const DB_NAME = 'TrainingApp';
-const DB_VERSION = 7;
+const DB_VERSION = 8;
 let db = null;
 
 function openDB() {
@@ -534,6 +534,8 @@ function openDB() {
       if (!d.objectStoreNames.contains('mobility_sessions')) d.createObjectStore('mobility_sessions', { keyPath: 'id' });
       // Weekly review cards — added v10.11 (DB v7)
       if (!d.objectStoreNames.contains('weekly_reviews')) d.createObjectStore('weekly_reviews', { keyPath: 'weekKey' });
+      // Daily steps — added v10.13 (DB v8)
+      if (!d.objectStoreNames.contains('steps')) d.createObjectStore('steps', { keyPath: 'date' });
     };
     req.onsuccess = (e) => { db = e.target.result; resolve(db); };
     req.onerror = (e) => reject(e);
@@ -4816,12 +4818,15 @@ async function renderHomeView() {
   await Promise.all([
     showResumeBanner(),
     renderActivityRingsHome(),
+    renderStepsCard(),
     renderTodaysPlan(),
     renderMobilityTodayCard(),
     renderStreakBanner(),
     renderWeekStrip(),
     renderRecentActivity(),
   ]);
+  // Pull latest cloud steps in the background; refresh card when done.
+  syncStepsFromCloud().then(() => renderStepsCard()).catch(() => {});
 }
 
 // ==================== TODAY'S PLAN CARD ====================
@@ -5519,6 +5524,115 @@ function showSwapUI(card, ex, session) {
   });
 
   card.querySelector('.exercise-body-inner').appendChild(panel);
+}
+
+// ==================== DAILY STEPS ====================
+// Steps land in Supabase via the steps-ingest Edge Function (called by an
+// iOS Shortcut nightly Personal Automation). The app pulls last 30 days
+// on each render and caches in IDB. Manual entry is the fallback.
+const STEPS_INGEST_URL = 'https://ycfodifvpvosukepcxie.supabase.co/functions/v1/steps-ingest';
+
+async function syncStepsFromCloud() {
+  if (typeof getUser !== 'function' || !window.supabaseClient) return;
+  const user = await getUser();
+  if (!user) return;
+  try {
+    const since = dateStr(new Date(Date.now() - 30 * 86400000));
+    const url = `${SUPABASE_URL}/rest/v1/steps?user_id=eq.${user.id}&record_id=gte.${since}&select=record_id,data`;
+    const session = await window.supabaseClient.auth.getSession();
+    const token = session?.data?.session?.access_token || SUPABASE_ANON_KEY;
+    const res = await fetch(url, {
+      headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return;
+    const rows = await res.json();
+    for (const r of rows) {
+      const d = r.data || {};
+      await dbPut('steps', { date: r.record_id, steps: d.steps || 0, source: d.source || 'shortcut', ts: d.ts || Date.now() });
+    }
+  } catch (e) {
+    console.warn('[Steps] sync failed', e);
+  }
+}
+
+async function getStepsToday() {
+  const e = await dbGet('steps', today());
+  return e ? (e.steps || 0) : 0;
+}
+
+async function getStepsAvg7d() {
+  const all = await dbGetAll('steps');
+  const cutoff = dateStr(new Date(Date.now() - 7 * 86400000));
+  const recent = (all || []).filter(e => e.date >= cutoff);
+  if (recent.length === 0) return 0;
+  return Math.round(recent.reduce((s, e) => s + (e.steps || 0), 0) / recent.length);
+}
+
+async function postStepsToCloud(stepsValue, dateStrOverride) {
+  const secret = state.settings && state.settings.stepsSecret;
+  if (!secret) return { error: 'No secret configured. Generate one in Settings → Daily Steps.' };
+  try {
+    const res = await fetch(STEPS_INGEST_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        secret,
+        date: dateStrOverride || today(),
+        steps: stepsValue,
+        source: 'manual',
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) return { error: data.error || `HTTP ${res.status}` };
+    return { ok: true };
+  } catch (e) {
+    return { error: e.message };
+  }
+}
+
+async function logStepsManual(stepsValue) {
+  const n = parseInt(stepsValue);
+  if (!Number.isFinite(n) || n < 0 || n > 200000) { toast('Invalid steps value'); return; }
+  await dbPut('steps', { date: today(), steps: n, source: 'manual', ts: Date.now() });
+  // Best-effort cloud push so the value is preserved across devices/reinstalls.
+  postStepsToCloud(n).then(r => {
+    if (r && r.error) console.warn('[Steps] cloud push failed:', r.error);
+  });
+  renderStepsCard();
+}
+
+async function renderStepsCard() {
+  const el = document.getElementById('steps-card');
+  if (!el) return;
+  const target = (state.settings && state.settings.stepsTarget) || 8000;
+  const today_ = await getStepsToday();
+  const avg7 = await getStepsAvg7d();
+  const pct = Math.min(today_ / target, 1);
+  const circumference = 220;
+  const dashOffset = circumference - circumference * pct;
+  const ringColor = pct >= 1 ? 'var(--accent)' : pct >= 0.7 ? 'var(--blue)' : 'var(--orange)';
+
+  el.innerHTML = `
+    <div class="steps-row">
+      <svg class="steps-ring" viewBox="0 0 80 80" width="64" height="64" aria-hidden="true">
+        <circle cx="40" cy="40" r="35" fill="none" stroke="var(--border)" stroke-width="6"/>
+        <circle cx="40" cy="40" r="35" fill="none" stroke="${ringColor}" stroke-width="6"
+                stroke-linecap="round" stroke-dasharray="${circumference}" stroke-dashoffset="${dashOffset}"
+                transform="rotate(-90 40 40)" style="transition:stroke-dashoffset 0.6s ease-out"/>
+      </svg>
+      <div class="steps-info">
+        <div class="steps-num">${today_.toLocaleString()}<span class="steps-target"> / ${target.toLocaleString()}</span></div>
+        <div class="steps-sub">steps today · 7d avg ${avg7.toLocaleString()}</div>
+      </div>
+      <button class="steps-edit" id="steps-manual-btn" aria-label="Log manually">✎</button>
+    </div>
+  `;
+  const btn = document.getElementById('steps-manual-btn');
+  if (btn) btn.addEventListener('click', () => {
+    const cur = today_ || '';
+    const v = prompt('Steps today (manual override):', String(cur));
+    if (v !== null && v.trim() !== '') logStepsManual(v.trim());
+  });
 }
 
 // ==================== BODY WEIGHT TRACKING ====================
@@ -6339,7 +6453,7 @@ async function loadSettings() {
 }
 
 function applySettingsToUI() {
-  const { unit, proteinTarget, calorieTarget, startDate, userName, audioFeedback } = state.settings;
+  const { unit, proteinTarget, calorieTarget, startDate, userName, audioFeedback, stepsTarget, stepsSecret } = state.settings;
   document.getElementById('unit-kg').classList.toggle('selected', unit === 'kg');
   document.getElementById('unit-lb').classList.toggle('selected', unit === 'lb');
   document.getElementById('setting-protein-target').value = proteinTarget;
@@ -6353,6 +6467,12 @@ function applySettingsToUI() {
     audioOnEl.classList.toggle('selected', on);
     audioOffEl.classList.toggle('selected', !on);
   }
+  const stepsTargetEl = document.getElementById('setting-steps-target');
+  if (stepsTargetEl) stepsTargetEl.value = stepsTarget || 8000;
+  const stepsSecretEl = document.getElementById('steps-secret');
+  if (stepsSecretEl) stepsSecretEl.value = stepsSecret || '';
+  const stepsEndpointEl = document.getElementById('steps-endpoint-url');
+  if (stepsEndpointEl) stepsEndpointEl.value = STEPS_INGEST_URL;
 }
 
 async function saveSettings() {
@@ -6361,10 +6481,41 @@ async function saveSettings() {
   const calorieTarget = parseInt(document.getElementById('setting-calorie-target').value) || 2500;
   const startDate = document.getElementById('setting-start-date').value || today();
   const userName = document.getElementById('setting-name').value.trim();
+  const stepsTargetEl = document.getElementById('setting-steps-target');
+  const stepsTarget = stepsTargetEl ? (parseInt(stepsTargetEl.value) || 8000) : (state.settings.stepsTarget || 8000);
 
-  state.settings = { ...state.settings, unit, proteinTarget, calorieTarget, startDate, userName };
+  state.settings = { ...state.settings, unit, proteinTarget, calorieTarget, startDate, userName, stepsTarget };
   await dbPut('settings', { key: 'userSettings', data: state.settings });
   toast('Settings saved!');
+  renderStepsCard();
+}
+
+// Generate a steps secret on demand. The value must be copied by the user
+// into the Supabase Function env (STEPS_INGEST_SECRET) and into the iOS
+// Shortcut. Stored locally so the same secret is reused for "Test connection".
+async function generateStepsSecret() {
+  const bytes = new Uint8Array(24);
+  crypto.getRandomValues(bytes);
+  const secret = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+  state.settings = { ...state.settings, stepsSecret: secret };
+  await dbPut('settings', { key: 'userSettings', data: state.settings });
+  applySettingsToUI();
+  toast('Secret generated. Copy it to the Supabase env var + your Shortcut.');
+}
+
+async function testStepsConnection() {
+  const secret = state.settings && state.settings.stepsSecret;
+  if (!secret) { toast('Generate a secret first'); return; }
+  const out = document.getElementById('steps-test-output');
+  if (out) out.textContent = 'Testing…';
+  const r = await postStepsToCloud(0, today());
+  if (r.ok) {
+    if (out) out.textContent = '✓ OK — endpoint accepted the secret. Test row written for today (steps=0). Now build the Shortcut to push real values.';
+    toast('Connection OK');
+  } else {
+    if (out) out.textContent = '✗ ' + (r.error || 'Unknown error');
+    toast('Test failed: ' + r.error);
+  }
 }
 
 // ==================== BACKUP / RESTORE ====================
@@ -6564,6 +6715,18 @@ function bindEvents() {
 
   // Settings save
   document.getElementById('btn-save-settings').addEventListener('click', saveSettings);
+
+  // Steps: generate-secret + test-connection buttons in Settings
+  const genBtn = document.getElementById('btn-steps-generate');
+  if (genBtn) genBtn.addEventListener('click', generateStepsSecret);
+  const testBtn = document.getElementById('btn-steps-test');
+  if (testBtn) testBtn.addEventListener('click', testStepsConnection);
+  const copyBtn = document.getElementById('btn-steps-copy-payload');
+  if (copyBtn) copyBtn.addEventListener('click', async () => {
+    const secret = state.settings.stepsSecret || '<GENERATE A SECRET FIRST>';
+    const sample = JSON.stringify({ secret, date: 'YYYY-MM-DD', steps: 0, source: 'shortcut' }, null, 2);
+    try { await navigator.clipboard.writeText(sample); toast('Sample payload copied'); } catch { toast('Copy failed'); }
+  });
 
   // Force update
   document.getElementById('btn-force-update').addEventListener('click', async () => {
@@ -6943,6 +7106,11 @@ async function init() {
   renderWeekStrip();
   renderRecentWorkouts();
   renderStreakBanner();
+
+  // Pull steps from cloud in the background; doesn't block UI.
+  syncStepsFromCloud().then(() => {
+    if (state.currentTab === 'home') renderStepsCard();
+  }).catch(() => {});
 
   // Populate the initial tab. HTML defaults to view-home being .active, so
   // without this the user sees an empty Home until they switch tabs.

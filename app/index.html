@@ -116,6 +116,7 @@
           <div id="resume-workout-banner" class="hidden"></div>
           <div id="resume-mobility-banner" class="hidden"></div>
           <div id="activity-rings-home"></div>
+          <div class="card steps-card-wrap"><div id="steps-card"></div></div>
           <div id="todays-plan-card"></div>
           <div id="mobility-today-card"></div>
           <div id="streak-banner"></div>
@@ -474,6 +475,39 @@
           <div class="card" id="auth-section">
             <p class="muted" style="font-size:13px;margin:0">Loading...</p>
           </div>
+          <div class="section-label" style="margin-top:24px">Daily Steps</div>
+          <div class="card">
+            <div class="form-row"><label>Daily target</label><input type="number" id="setting-steps-target" class="text-input" min="0" max="50000" step="500" placeholder="8000"></div>
+            <p class="muted" style="font-size:11px;margin-top:6px">During a deficit, NEAT (steps + daily activity) drives most of the actual fat loss. 8-10k is a good baseline.</p>
+            <details class="setup-details" style="margin-top:14px">
+              <summary>Connect via iOS Shortcut (one-time setup, ~5 min)</summary>
+              <ol class="setup-steps">
+                <li><strong>Generate a secret</strong> below, then set it as <code>STEPS_INGEST_SECRET</code> in your Supabase Function env (and also <code>STEPS_USER_ID</code> = your user UUID — see the panel under "Cloud sync").</li>
+                <li>iPhone → Shortcuts app → New Shortcut. Name it <strong>"Sync Steps"</strong>.</li>
+                <li>Add action <strong>Find Health Sample</strong>: Sample Type = Steps · Filter "Start Date is Today" · Sort by End Date.</li>
+                <li>Add action <strong>Get Numbers from Input</strong> → <strong>Calculate Statistics</strong> (Sum). This gives "Sum".</li>
+                <li>Add action <strong>Format Date</strong> → Current Date · Format = ISO 8601 · Date only.</li>
+                <li>Add action <strong>Get Contents of URL</strong>:
+                  <ul>
+                    <li>URL: the endpoint shown below</li>
+                    <li>Method: POST</li>
+                    <li>Headers: <code>Content-Type: application/json</code></li>
+                    <li>Request Body: JSON. Tap "Add new field" and add: <code>secret</code> (text, your secret), <code>date</code> (text, the formatted date variable), <code>steps</code> (number, the Sum variable), <code>source</code> (text, <code>shortcut</code>).</li>
+                  </ul>
+                </li>
+                <li>Save the Shortcut. Test it manually once → then check this app to see today's row.</li>
+                <li>iOS Settings → Shortcuts → Personal Automations → New → Time of Day → 11:50 PM, Daily → Run "Sync Steps". Disable "Ask Before Running".</li>
+              </ol>
+              <div class="form-row"><label>Endpoint URL</label><input type="text" id="steps-endpoint-url" class="text-input" readonly></div>
+              <div class="form-row"><label>Secret (copy this)</label><input type="text" id="steps-secret" class="text-input" readonly placeholder="(no secret yet — click Generate)"></div>
+              <div class="steps-btn-row">
+                <button id="btn-steps-generate" class="btn-secondary">Generate Secret</button>
+                <button id="btn-steps-copy-payload" class="btn-secondary">Copy Sample JSON</button>
+                <button id="btn-steps-test" class="btn-secondary">Test connection</button>
+              </div>
+              <pre id="steps-test-output" class="muted" style="font-size:11px;margin-top:10px;white-space:pre-wrap"></pre>
+            </details>
+          </div>
           <div class="section-label" style="margin-top:24px">WHOOP</div>
           <div class="card" id="whoop-section">
             <p class="muted" style="font-size:13px;margin:0">Loading...</p>
@@ -532,7 +566,7 @@
           </div>
           <div class="section-label" style="margin-top:24px">App</div>
           <div class="card">
-            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v10.12<br>Data stored locally + cloud sync.<br>Works offline.</p>
+            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v10.13<br>Data stored locally + cloud sync.<br>Works offline.</p>
             <button id="btn-force-update" class="btn-secondary btn-full" style="text-align:center">Force Update App</button>
           </div>
         </div>
