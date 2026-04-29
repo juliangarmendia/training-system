@@ -70,6 +70,7 @@
       <div class="section-label" style="margin-top:12px">Notes</div>
       <textarea id="ew-notes" class="input-notes" rows="3" placeholder="Workout notes..."></textarea>
       <button id="ew-save" class="btn-primary btn-lg" style="margin-top:12px">Save Changes</button>
+      <button id="ew-copy-whoop" class="btn-secondary btn-full" style="margin-top:8px;text-align:center">Copy for WHOOP</button>
       <button id="ew-delete" class="btn-secondary btn-full" style="margin-top:8px;text-align:center;color:var(--red);border-color:var(--red)">Delete Workout</button>
     </div>
   </div>
@@ -350,12 +351,14 @@
               <span id="bw-current" class="bw-current-val">--</span>
             </div>
             <div id="bw-rate" class="bw-rate"></div>
+            <div class="bw-metrics" id="bw-metrics"></div>
             <div class="bw-row">
               <input type="number" id="bw-input" class="text-input" placeholder="e.g. 82.5" inputmode="decimal" step="0.1">
               <button id="btn-log-bw" class="btn-primary">Log</button>
             </div>
           </div>
           <div class="chart-box" id="bw-chart" data-group="body"></div>
+          <div class="bw-history" id="bw-history" data-group="body"></div>
           <div class="section-label" data-group="body">Body Composition</div>
           <div class="card" id="bodycomp-section" data-group="body"></div>
           <div class="section-label" data-group="body">Daily Protein (14 days)</div>
@@ -517,7 +520,7 @@
           </div>
           <div class="section-label" style="margin-top:24px">App</div>
           <div class="card">
-            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v10.8<br>Data stored locally + cloud sync.<br>Works offline.</p>
+            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v10.9<br>Data stored locally + cloud sync.<br>Works offline.</p>
             <button id="btn-force-update" class="btn-secondary btn-full" style="text-align:center">Force Update App</button>
           </div>
         </div>

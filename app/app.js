@@ -1656,6 +1656,54 @@ function closeEditWorkout() {
   _editWorkoutId = null;
 }
 
+// Build a plain-text summary of the workout for pasting into WHOOP's
+// activity notes so its AI can credit strain accurately.
+function buildWhoopTranscript(w) {
+  const session = activePlan.sessions[w.session];
+  const sessionName = session ? session.name : (w.sessionName || w.session);
+  const unit = w.unit || state.settings.unit || 'kg';
+  const headerBits = [sessionName];
+  if (w.date) headerBits.push(formatDate(w.date));
+  if (w.duration) headerBits.push(w.duration);
+  const lines = [headerBits.join(' — ')];
+
+  w.exercises.forEach(ex => {
+    const doneSets = ex.sets.filter(s => s.done && s.reps > 0);
+    if (doneSets.length === 0) return;
+    const exName = getExerciseName(ex.exerciseId);
+    const planEx = session ? session.exercises.find(e => e.id === ex.exerciseId) : null;
+    const isBW = !!(planEx && planEx.bw);
+    lines.push('');
+    lines.push(exName);
+    doneSets.forEach(s => {
+      let load;
+      if (isBW) {
+        load = s.weight > 0 ? `BW + ${s.weight} ${unit}` : 'BW';
+      } else {
+        load = `${s.weight} ${unit}`;
+      }
+      const rpePart = s.rpe ? ` @ RPE ${s.rpe}` : '';
+      lines.push(`  ${load} x ${s.reps}${rpePart}`);
+    });
+  });
+
+  return lines.join('\n');
+}
+
+async function copyWhoopTranscript() {
+  if (!_editWorkoutId) return;
+  const w = await dbGet('workouts', _editWorkoutId);
+  if (!w) { toast('Workout not found'); return; }
+  const text = buildWhoopTranscript(w);
+  try {
+    await navigator.clipboard.writeText(text);
+    toast('Copied for WHOOP');
+  } catch (e) {
+    console.warn('Clipboard write failed', e);
+    toast('Copy failed');
+  }
+}
+
 async function saveEditWorkout() {
   if (!_editWorkoutId) return;
   const w = await dbGet('workouts', _editWorkoutId);
@@ -3813,10 +3861,15 @@ function playTimerBeep() {
     beep(880, 0, 0.15);
     beep(880, 0.25, 0.15);
     beep(1320, 0.5, 0.3);
-  } catch { /* audio not available */ }
+  } catch (e) { console.warn('Timer beep failed', e); }
 }
 
 function startRestTimer(seconds, autoStart = false) {
+  // Re-arm AudioContext on every fresh user gesture (set-completion tap).
+  // iOS PWA suspends the context after backgrounding/lock; resuming here
+  // is the most reliable way to keep the end-of-rest beep audible.
+  primeAudio();
+
   state.restTimerTotal = seconds;
   state.restTimerRemaining = seconds;
   state.restTimerRunning = false;
@@ -5063,19 +5116,140 @@ async function logBodyWeight() {
   renderBodyWeightChart();
 }
 
+// Compute and render the 4 motivational metric tiles (week delta, 30d trend,
+// total since start, days logged this month). Reuses `entries` already sorted ascending.
+function renderBodyWeightMetrics(entries, host) {
+  if (!host) return;
+  if (entries.length < 1) { host.innerHTML = ''; return; }
+
+  const goalLossDirection = true; // user goal: lose weight (CLAUDE.md)
+  const colorForDelta = (delta) => {
+    if (Math.abs(delta) < 0.05) return 'var(--text2)';
+    const losing = delta < 0;
+    return (losing === goalLossDirection) ? 'var(--accent)' : 'var(--red)';
+  };
+  const arrow = (delta) => {
+    if (Math.abs(delta) < 0.05) return '—';
+    return delta < 0 ? '↓' : '↑';
+  };
+
+  const now = new Date();
+  const dayMs = 86400000;
+  const dateOf = (e) => new Date(e.date + 'T12:00:00');
+
+  // Tile 1: this week vs last week — average of last 7d vs prior 7d
+  const last7 = entries.filter(e => (now - dateOf(e)) <= 7 * dayMs);
+  const prior7 = entries.filter(e => {
+    const age = now - dateOf(e);
+    return age > 7 * dayMs && age <= 14 * dayMs;
+  });
+  let weekTile = '';
+  if (last7.length && prior7.length) {
+    const avgNow = last7.reduce((s, e) => s + e.weight, 0) / last7.length;
+    const avgPrev = prior7.reduce((s, e) => s + e.weight, 0) / prior7.length;
+    const delta = avgNow - avgPrev;
+    weekTile = `<div class="bw-stat">
+      <div class="bw-stat-label">vs last week</div>
+      <div class="bw-stat-val" style="color:${colorForDelta(delta)}">${arrow(delta)} ${Math.abs(delta).toFixed(1)} kg</div>
+    </div>`;
+  } else {
+    weekTile = `<div class="bw-stat"><div class="bw-stat-label">vs last week</div><div class="bw-stat-val muted">—</div></div>`;
+  }
+
+  // Tile 2: 30-day trend — kg/week computed via linear slope of last 30d
+  const last30 = entries.filter(e => (now - dateOf(e)) <= 30 * dayMs);
+  let trendTile = '';
+  if (last30.length >= 4) {
+    const t0 = dateOf(last30[0]).getTime();
+    const xs = last30.map(e => (dateOf(e).getTime() - t0) / dayMs);
+    const ys = last30.map(e => e.weight);
+    const n = xs.length;
+    const meanX = xs.reduce((a, b) => a + b, 0) / n;
+    const meanY = ys.reduce((a, b) => a + b, 0) / n;
+    let num = 0, den = 0;
+    for (let i = 0; i < n; i++) { num += (xs[i] - meanX) * (ys[i] - meanY); den += (xs[i] - meanX) ** 2; }
+    const slopePerDay = den > 0 ? num / den : 0;
+    const perWeek = slopePerDay * 7;
+    trendTile = `<div class="bw-stat">
+      <div class="bw-stat-label">30d trend</div>
+      <div class="bw-stat-val" style="color:${colorForDelta(perWeek)}">${arrow(perWeek)} ${Math.abs(perWeek).toFixed(1)} kg/wk</div>
+    </div>`;
+  } else {
+    trendTile = `<div class="bw-stat"><div class="bw-stat-label">30d trend</div><div class="bw-stat-val muted">need 4+ logs</div></div>`;
+  }
+
+  // Tile 3: total since start (settings.startDate or first entry)
+  const startDateStr = state.settings && state.settings.startDate;
+  const startEntry = startDateStr
+    ? entries.find(e => e.date >= startDateStr) || entries[0]
+    : entries[0];
+  const totalDelta = entries[entries.length - 1].weight - startEntry.weight;
+  const weeksSince = Math.max(1, Math.round((dateOf(entries[entries.length - 1]) - dateOf(startEntry)) / (7 * dayMs)));
+  let totalTile = `<div class="bw-stat">
+    <div class="bw-stat-label">since start</div>
+    <div class="bw-stat-val" style="color:${colorForDelta(totalDelta)}">${totalDelta >= 0 ? '+' : '−'}${Math.abs(totalDelta).toFixed(1)} kg <span class="bw-stat-sub">· ${weeksSince}w</span></div>
+  </div>`;
+
+  // Tile 4: days logged this month (calendar month)
+  const ymPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const loggedThisMonth = entries.filter(e => e.date.startsWith(ymPrefix)).length;
+  const totalDaysSoFar = now.getDate();
+  const consistencyColor = loggedThisMonth >= totalDaysSoFar * 0.7 ? 'var(--accent)' : 'var(--text)';
+  const loggedTile = `<div class="bw-stat">
+    <div class="bw-stat-label">this month</div>
+    <div class="bw-stat-val" style="color:${consistencyColor}">${loggedThisMonth} / ${totalDaysSoFar} days</div>
+  </div>`;
+
+  host.innerHTML = weekTile + trendTile + totalTile + loggedTile;
+}
+
+// Render last 7 entries newest-first, with delta vs previous entry.
+function renderBodyWeightHistory(entries, host) {
+  if (!host) return;
+  if (entries.length === 0) { host.innerHTML = ''; return; }
+
+  const recent = entries.slice(-8); // grab 8 so we can compute delta of the 7th
+  const rows = [];
+  for (let i = recent.length - 1; i >= Math.max(0, recent.length - 7); i--) {
+    const e = recent[i];
+    const prev = i > 0 ? recent[i - 1] : null;
+    const delta = prev ? e.weight - prev.weight : null;
+    let deltaHTML = '<span class="bw-h-delta muted">—</span>';
+    if (delta !== null) {
+      const arrow = Math.abs(delta) < 0.05 ? '—' : (delta < 0 ? '↓' : '↑');
+      const color = Math.abs(delta) < 0.05 ? 'var(--text2)' : (delta < 0 ? 'var(--accent)' : 'var(--red)');
+      deltaHTML = `<span class="bw-h-delta" style="color:${color}">${arrow} ${Math.abs(delta).toFixed(1)}</span>`;
+    }
+    rows.push(`<div class="bw-h-row">
+      <span class="bw-h-date">${formatDate(e.date)}</span>
+      <span class="bw-h-weight">${e.weight} kg</span>
+      ${deltaHTML}
+    </div>`);
+  }
+  host.innerHTML = `<div class="section-label" style="margin-top:12px">Recent Logs</div>
+    <div class="card bw-history-card">${rows.join('')}</div>`;
+}
+
 async function renderBodyWeightChart() {
   const container = document.getElementById('bw-chart');
   const currentEl = document.getElementById('bw-current');
+  const metricsEl = document.getElementById('bw-metrics');
+  const historyEl = document.getElementById('bw-history');
   const entries = (await dbGetAll('bodyweight')).sort((a, b) => a.date.localeCompare(b.date));
 
   if (entries.length === 0) {
     currentEl.textContent = '--';
+    if (metricsEl) metricsEl.innerHTML = '';
+    if (historyEl) historyEl.innerHTML = '';
     showEmptyState(container, '⚖️', 'No weigh-ins yet', 'Log your weight above to start tracking trends.');
     return;
   }
 
   const latestWeight = entries[entries.length - 1].weight;
   currentEl.textContent = latestWeight + ' kg';
+
+  renderBodyWeightMetrics(entries, metricsEl);
+  renderBodyWeightHistory(entries, historyEl);
 
   // Rate of change: compare 7-day average now vs 7 days ago
   const rateEl = document.getElementById('bw-rate');
@@ -5735,13 +5909,20 @@ async function loadSettings() {
 }
 
 function applySettingsToUI() {
-  const { unit, proteinTarget, calorieTarget, startDate, userName } = state.settings;
+  const { unit, proteinTarget, calorieTarget, startDate, userName, audioFeedback } = state.settings;
   document.getElementById('unit-kg').classList.toggle('selected', unit === 'kg');
   document.getElementById('unit-lb').classList.toggle('selected', unit === 'lb');
   document.getElementById('setting-protein-target').value = proteinTarget;
   document.getElementById('setting-calorie-target').value = calorieTarget;
   document.getElementById('setting-start-date').value = startDate || today();
   document.getElementById('setting-name').value = userName || '';
+  const audioOnEl = document.getElementById('audio-on');
+  const audioOffEl = document.getElementById('audio-off');
+  if (audioOnEl && audioOffEl) {
+    const on = audioFeedback !== false;
+    audioOnEl.classList.toggle('selected', on);
+    audioOffEl.classList.toggle('selected', !on);
+  }
 }
 
 async function saveSettings() {
@@ -5751,7 +5932,7 @@ async function saveSettings() {
   const startDate = document.getElementById('setting-start-date').value || today();
   const userName = document.getElementById('setting-name').value.trim();
 
-  state.settings = { unit, proteinTarget, calorieTarget, startDate, userName };
+  state.settings = { ...state.settings, unit, proteinTarget, calorieTarget, startDate, userName };
   await dbPut('settings', { key: 'userSettings', data: state.settings });
   toast('Settings saved!');
 }
@@ -6070,6 +6251,7 @@ function bindEvents() {
   // Edit workout modal
   document.getElementById('ew-close').addEventListener('click', closeEditWorkout);
   document.getElementById('ew-save').addEventListener('click', saveEditWorkout);
+  document.getElementById('ew-copy-whoop').addEventListener('click', copyWhoopTranscript);
   document.getElementById('ew-delete').addEventListener('click', deleteEditWorkout);
 
   // Log past workout

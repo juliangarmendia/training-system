@@ -690,6 +690,55 @@ nav { display: flex; background: var(--surface); border-top: 1px solid var(--bor
 .bw-row .text-input, .plate-input-row .text-input { flex: 1; }
 .bw-row .btn-primary { width: auto; padding: 10px 20px; }
 
+/* ========== Body Weight metric tiles + history ========== */
+.bw-metrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 4px 0 12px;
+}
+.bw-metrics:empty { display: none; }
+.bw-stat {
+  background: var(--surface2, rgba(255,255,255,0.04));
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 10px;
+  min-height: 54px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.bw-stat-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text2);
+  margin-bottom: 2px;
+}
+.bw-stat-val {
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.bw-stat-val.muted { color: var(--text3); font-weight: 500; font-size: 13px; }
+.bw-stat-sub { font-size: 11px; color: var(--text2); font-weight: 500; }
+
+.bw-history:empty { display: none; }
+.bw-history-card { padding: 4px 0; }
+.bw-h-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  font-variant-numeric: tabular-nums;
+}
+.bw-h-row:last-child { border-bottom: none; }
+.bw-h-date { color: var(--text2); font-size: 13px; }
+.bw-h-weight { font-size: 14px; font-weight: 600; }
+.bw-h-delta { font-size: 13px; font-weight: 600; min-width: 56px; text-align: right; }
+.bw-h-delta.muted { color: var(--text3); font-weight: 500; }
+
 /* ========== Login form spacing ========== */
 .login-row { margin-bottom: 10px; }
 .login-error { color: var(--red); font-size: 12px; min-height: 18px; margin-bottom: 6px; }
