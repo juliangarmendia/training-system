@@ -1257,11 +1257,39 @@ function updateHeader(tab) {
 }
 
 // ==================== GYM MODULE ====================
-function renderWeekBanner() {
+async function renderWeekBanner() {
   const wk = getWeekNumber();
   const deload = isDeloadWeek(wk);
   const totalWeeks = 9;
   const pct = Math.min((wk / totalWeeks) * 100, 100);
+
+  // Compute this-week stats for richer context
+  const weekDates = getWeekDates().map(d => dateStr(d));
+  const [allWorkouts, allRuns] = await Promise.all([dbGetAll('workouts'), dbGetAll('runs')]);
+  const wkWorkouts = (allWorkouts || []).filter(w => weekDates.includes(w.date));
+  const wkRuns = (allRuns || []).filter(r => weekDates.includes(r.date));
+  let totalVolume = 0;
+  wkWorkouts.forEach(w => w.exercises.forEach(ex => { totalVolume += volumeForExercise(ex); }));
+  const totalKm = wkRuns.reduce((s, r) => s + (parseFloat(r.distance) || 0), 0);
+  const plannedSessions = Object.values(activeWeekTemplate || {}).filter(d => d && d.type === 'gym').length;
+
+  // Find next planned session (today onwards) for "Up next"
+  const todayDow = new Date().getDay();
+  let nextLabel = '—';
+  for (let offset = 0; offset < 7; offset++) {
+    const dow = (todayDow + offset) % 7;
+    const slot = activeWeekTemplate && activeWeekTemplate[dow];
+    if (slot && slot.type === 'gym' && slot.session) {
+      const s = activePlan.sessions[slot.session];
+      const name = s ? s.name : slot.session;
+      const dayName = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][dow];
+      const when = offset === 0 ? 'today' : offset === 1 ? 'tomorrow' : dayName;
+      // Skip if already done today
+      if (offset === 0 && wkWorkouts.find(w => w.date === today())) continue;
+      nextLabel = `${name} · ${when}`;
+      break;
+    }
+  }
 
   document.getElementById('week-banner').innerHTML = `
     <div class="wb-top">
@@ -1269,6 +1297,12 @@ function renderWeekBanner() {
       <span class="wb-phase ${deload ? 'wb-deload' : ''}">${deload ? 'Deload' : 'Cut Phase 1'}</span>
     </div>
     <div class="wb-bar"><div class="wb-bar-fill" style="width:${pct}%"></div></div>
+    <div class="wb-stats">
+      <div class="wb-stat"><span class="wb-stat-val">${wkWorkouts.length}/${plannedSessions || 4}</span><span class="wb-stat-lbl">sessions</span></div>
+      <div class="wb-stat"><span class="wb-stat-val">${Math.round(totalVolume / 1000)}k</span><span class="wb-stat-lbl">volume (${state.settings.unit || 'kg'})</span></div>
+      <div class="wb-stat"><span class="wb-stat-val">${totalKm.toFixed(1)}</span><span class="wb-stat-lbl">run km</span></div>
+    </div>
+    <div class="wb-next">Up next: <strong>${nextLabel}</strong></div>
   `;
 }
 
@@ -1291,7 +1325,7 @@ function getPlannedSession(jsDay, customSchedule, ds) {
 }
 
 async function renderWeekStrip() {
-  renderWeekBanner();
+  renderWeekBanner().catch(e => console.warn('renderWeekBanner failed', e));
   const container = document.getElementById('week-strip');
   const weekDates = getWeekDates();
   const todayStr = today();
@@ -1530,7 +1564,9 @@ function morphIn(container) {
 async function renderRecentWorkouts() {
   const container = document.getElementById('recent-workouts');
   showSkeleton(container, 3);
-  const workouts = (await dbGetAll('workouts')).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 8);
+  // Show the last 20 — was capped at 8, which hid roughly half the month
+  // worth of sessions and made the list look suspiciously thin.
+  const workouts = (await dbGetAll('workouts')).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 20);
 
   if (!workouts.length) {
     showEmptyState(container, '🏋️', 'No workouts yet', 'Tap a day in the schedule above to start your first session.');
@@ -3272,6 +3308,7 @@ async function renderStats() {
   await renderMuscleVolume();
   await renderSwimlaneTL();
   renderBodyCompEstimator();
+  await renderStepsHistoryChart();
   await renderProteinChart();
   renderMacroCalculator();
   await renderStrengthChart();
@@ -4976,15 +5013,12 @@ async function renderHomeView() {
   await Promise.all([
     showResumeBanner(),
     renderActivityRingsHome(),
-    renderStepsCard(),
     renderTodaysPlan(),
     renderMobilityTodayCard(),
     renderStreakBanner(),
     renderWeekStrip(),
     renderRecentActivity(),
   ]);
-  // Pull latest cloud steps in the background; refresh card when done.
-  syncStepsFromCloud().then(() => renderStepsCard()).catch(() => {});
 }
 
 // ==================== TODAY'S PLAN CARD ====================
@@ -5702,6 +5736,106 @@ async function renderStepsCard() {
     const v = prompt('Steps today (manual override):', String(cur));
     if (v !== null && v.trim() !== '') logStepsManual(v.trim());
   });
+}
+
+// Steps history chart + stats for Stats > Body. Pulls cloud first to make
+// sure last night's automation is included.
+async function renderStepsHistoryChart() {
+  const statsRow = document.getElementById('steps-stats-row');
+  const chartEl = document.getElementById('steps-chart');
+  const histEl = document.getElementById('steps-history');
+  if (!chartEl) return;
+  // Ensure latest cloud data is in IDB
+  await syncStepsFromCloud().catch(() => {});
+
+  const all = (await dbGetAll('steps')).sort((a, b) => a.date.localeCompare(b.date));
+  const target = (state.settings && state.settings.stepsTarget) || 8000;
+
+  if (all.length === 0) {
+    if (statsRow) statsRow.innerHTML = '<div class="muted" style="font-size:13px">No steps logged yet. The Shortcut runs every night at 11:50 PM and pushes that day\'s total.</div>';
+    if (chartEl) showEmptyState(chartEl, '👟', 'No steps yet', 'Steps appear here once your nightly Shortcut runs.');
+    if (histEl) histEl.innerHTML = '';
+    return;
+  }
+
+  // Stats: today, yesterday, 7-day avg, days hitting target
+  const todayKey = today();
+  const ydayKey = dateStr(new Date(Date.now() - 86400000));
+  const todayE = all.find(e => e.date === todayKey);
+  const ydayE = all.find(e => e.date === ydayKey);
+  const last7 = all.filter(e => e.date >= dateStr(new Date(Date.now() - 7 * 86400000)));
+  const avg7 = last7.length ? Math.round(last7.reduce((s, e) => s + (e.steps || 0), 0) / last7.length) : 0;
+  const last30 = all.filter(e => e.date >= dateStr(new Date(Date.now() - 30 * 86400000)));
+  const hits = last30.filter(e => (e.steps || 0) >= target).length;
+  const hitRate = last30.length ? Math.round((hits / last30.length) * 100) : 0;
+
+  if (statsRow) {
+    statsRow.innerHTML = `
+      <div class="ss-tile"><div class="ss-label">Today</div><div class="ss-val">${todayE ? todayE.steps.toLocaleString() : '—'}</div></div>
+      <div class="ss-tile"><div class="ss-label">Yesterday</div><div class="ss-val">${ydayE ? ydayE.steps.toLocaleString() : '—'}</div></div>
+      <div class="ss-tile"><div class="ss-label">7d avg</div><div class="ss-val">${avg7.toLocaleString()}</div></div>
+      <div class="ss-tile"><div class="ss-label">Target hit (30d)</div><div class="ss-val">${hits}/${last30.length} <span class="ss-sub">· ${hitRate}%</span></div></div>
+    `;
+  }
+
+  // Chart: last 30 days, fill missing days with 0 so the timeline is honest
+  const days = [];
+  for (let i = 29; i >= 0; i--) {
+    const d = dateStr(new Date(Date.now() - i * 86400000));
+    const e = all.find(x => x.date === d);
+    days.push({ date: d, steps: e ? (e.steps || 0) : 0 });
+  }
+  // Color bars: green if ≥ target, else accent dimmed
+  const labels = days.map(d => formatDate(d.date));
+  const values = days.map(d => d.steps);
+  chartEl.innerHTML = renderLineChart(labels, values, { color: 'var(--accent)', height: 160 });
+  // Overlay target horizontal line
+  const svgEl = chartEl.querySelector('svg');
+  if (svgEl && values.some(v => v > 0)) {
+    const width = 320, pad = { top: 20, right: 15, bottom: 30, left: 40 };
+    const chartW = width - pad.left - pad.right;
+    const chartH = 160 - pad.top - pad.bottom;
+    const dataMax = Math.max(...values, target * 1.1);
+    const dataMin = 0;
+    const range = dataMax - dataMin || 1;
+    const yTarget = pad.top + chartH - ((target - dataMin) / range) * chartH;
+    const targetLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    targetLine.setAttribute('x1', pad.left);
+    targetLine.setAttribute('x2', pad.left + chartW);
+    targetLine.setAttribute('y1', yTarget);
+    targetLine.setAttribute('y2', yTarget);
+    targetLine.setAttribute('stroke', 'var(--orange)');
+    targetLine.setAttribute('stroke-width', '1.5');
+    targetLine.setAttribute('stroke-dasharray', '4 3');
+    targetLine.setAttribute('opacity', '0.7');
+    svgEl.appendChild(targetLine);
+    const txt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    txt.setAttribute('x', pad.left + chartW - 4);
+    txt.setAttribute('y', yTarget - 4);
+    txt.setAttribute('text-anchor', 'end');
+    txt.setAttribute('font-size', '9');
+    txt.setAttribute('fill', 'var(--orange)');
+    txt.textContent = `target ${target.toLocaleString()}`;
+    svgEl.appendChild(txt);
+  }
+
+  // Recent history list — last 10 days with explicit values
+  if (histEl) {
+    const recent = days.slice(-10).reverse();
+    const rows = recent.map(d => {
+      const e = all.find(x => x.date === d.date);
+      const isOver = d.steps >= target;
+      const arrow = e ? (isOver ? '✓' : '·') : '—';
+      const color = e ? (isOver ? 'var(--accent)' : 'var(--text2)') : 'var(--text3)';
+      return `<div class="bw-h-row">
+        <span class="bw-h-date">${formatDate(d.date)}</span>
+        <span class="bw-h-weight">${e ? d.steps.toLocaleString() : '—'}</span>
+        <span class="bw-h-delta" style="color:${color}">${arrow}</span>
+      </div>`;
+    }).join('');
+    histEl.innerHTML = `<div class="section-label" style="margin-top:12px">Last 10 Days</div>
+      <div class="card bw-history-card">${rows}</div>`;
+  }
 }
 
 // ==================== BODY WEIGHT TRACKING ====================
