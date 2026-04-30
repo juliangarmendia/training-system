@@ -566,26 +566,34 @@
           </div>
           <div class="section-label" style="margin-top:24px">App</div>
           <div class="card">
-            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v10.13<br>Data stored locally + cloud sync.<br>Works offline.</p>
+            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v10.14<br>Data stored locally + cloud sync.<br>Works offline.</p>
             <button id="btn-force-update" class="btn-secondary btn-full" style="text-align:center">Force Update App</button>
           </div>
         </div>
       </section>
     </main>
 
-    <!-- Rest Timer Overlay -->
-    <div id="rest-timer-overlay" class="overlay hidden">
-      <div class="timer-display" id="timer-display">
-        <svg viewBox="0 0 200 200" class="timer-ring"><circle cx="100" cy="100" r="90" class="timer-ring-bg"/><circle cx="100" cy="100" r="90" class="timer-ring-fill" id="timer-ring-fill"/></svg>
-        <div class="timer-text" id="timer-text">0:00</div>
-        <div class="timer-label" id="timer-label">TAP TO START</div>
+    <!-- Rest Timer (sticky bar above the bottom nav, workout view stays visible) -->
+    <div id="rest-timer-bar" class="rest-timer-bar hidden" aria-live="polite">
+      <div class="rtb-ring-wrap" id="timer-display">
+        <svg viewBox="0 0 36 36" class="rtb-ring" aria-hidden="true">
+          <circle cx="18" cy="18" r="15" class="rtb-ring-bg"/>
+          <circle cx="18" cy="18" r="15" class="rtb-ring-fill" id="timer-ring-fill"/>
+        </svg>
       </div>
-      <div class="timer-controls">
-        <button id="timer-minus" class="timer-adj">-15s</button>
-        <button id="timer-skip" class="btn-primary">&#9632; Stop</button>
-        <button id="timer-plus" class="timer-adj">+15s</button>
+      <div class="rtb-text">
+        <span class="rtb-time" id="timer-text">0:00</span>
+        <span class="rtb-label" id="timer-label">REST</span>
+      </div>
+      <div class="rtb-controls">
+        <button id="timer-minus" class="rtb-btn">−15</button>
+        <button id="timer-skip" class="rtb-btn rtb-stop" aria-label="Stop">&#9632;</button>
+        <button id="timer-plus" class="rtb-btn">+15</button>
       </div>
     </div>
+
+    <!-- End-of-rest visual cue (replaces vibration on iOS where vibrate isn't supported) -->
+    <div id="timer-flash" class="timer-flash" aria-hidden="true"></div>
 
     <!-- Bottom Nav -->
     <nav id="nav">

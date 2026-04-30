@@ -1567,6 +1567,11 @@ async function renderRecentWorkouts() {
 
 // ==================== EDIT WORKOUT MODAL ====================
 let _editWorkoutId = null;
+// Cached data for the currently-open workout. Populated synchronously-ready
+// at modal open so copyWhoopTranscript() can write to clipboard without
+// any awaits — iOS Safari requires the clipboard call to stay inside the
+// same user-gesture task, and awaits between click and writeText break it.
+let _editWorkoutCache = null;
 
 async function openEditWorkout(id) {
   const w = await dbGet('workouts', id);
@@ -1587,12 +1592,13 @@ async function openEditWorkout(id) {
     titleEl.innerHTML = `${sessionName} <span style="font-size:11px;color:var(--accent);font-weight:600">· input: ${unit.toUpperCase()}</span>`;
   }
 
-  // Calorie estimate row
+  // Calorie estimate row + cache for sync clipboard copy later
+  const bw = await getBodyweightLatest();
+  const dur = durationToMinutes(w.duration);
+  const cal = estimateCalories({ type: 'gym', durationMin: dur, bodyweightKg: bw || 80, avgRpe: workoutAvgRpe(w), age: state.settings.age });
+  _editWorkoutCache = { workout: w, kcal: cal?.kcal };
   const calEl = document.getElementById('ew-calories');
   if (calEl) {
-    const bw = await getBodyweightLatest();
-    const dur = durationToMinutes(w.duration);
-    const cal = estimateCalories({ type: 'gym', durationMin: dur, bodyweightKg: bw || 80, avgRpe: workoutAvgRpe(w), age: state.settings.age });
     calEl.innerHTML = cal
       ? `<span class="ew-cal-icon">🔥</span><span>~${cal.kcal} kcal estimated</span><span class="ew-cal-method">${cal.method === 'met-rpe' ? 'MET × RPE' : cal.method}${bw ? '' : ' · using 80 kg fallback'}</span>`
       : '';
@@ -1735,6 +1741,7 @@ async function openEditWorkout(id) {
 function closeEditWorkout() {
   document.getElementById('edit-workout-modal').classList.add('hidden');
   _editWorkoutId = null;
+  _editWorkoutCache = null;
 }
 
 // Build a plain-text summary of the workout for pasting into WHOOP's
@@ -1775,19 +1782,44 @@ function buildWhoopTranscript(w, ctx = {}) {
   return lines.join('\n');
 }
 
-async function copyWhoopTranscript() {
-  if (!_editWorkoutId) return;
-  const w = await dbGet('workouts', _editWorkoutId);
-  if (!w) { toast('Workout not found'); return; }
-  const bw = await getBodyweightLatest();
-  const cal = estimateCalories({ type: 'gym', durationMin: durationToMinutes(w.duration), bodyweightKg: bw || 80, avgRpe: workoutAvgRpe(w), age: state.settings.age });
-  const text = buildWhoopTranscript(w, { kcal: cal?.kcal });
+// Sync click handler — no awaits before clipboard call so iOS preserves
+// the user-gesture context that allows writeText to succeed in PWA mode.
+function copyWhoopTranscript() {
+  const cache = _editWorkoutCache;
+  if (!cache || !cache.workout) { toast('Workout not loaded'); return; }
+  const text = buildWhoopTranscript(cache.workout, { kcal: cache.kcal });
+  copyTextToClipboard(text).then(ok => toast(ok ? 'Copied for WHOOP' : 'Copy failed'));
+}
+
+// Write `text` to the clipboard. Tries the modern API first; on failure
+// (or if unavailable) falls back to a hidden textarea + execCommand('copy'),
+// which is more reliable in iOS PWA standalone mode.
+function copyTextToClipboard(text) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    return navigator.clipboard.writeText(text)
+      .then(() => true)
+      .catch(e => {
+        console.warn('clipboard.writeText failed, trying textarea fallback', e);
+        return copyViaTextarea(text);
+      });
+  }
+  return Promise.resolve(copyViaTextarea(text));
+}
+
+function copyViaTextarea(text) {
   try {
-    await navigator.clipboard.writeText(text);
-    toast('Copied for WHOOP');
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;pointer-events:none;';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.setSelectionRange(0, ta.value.length);
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    return ok;
   } catch (e) {
-    console.warn('Clipboard write failed', e);
-    toast('Copy failed');
+    console.warn('textarea fallback failed', e);
+    return false;
   }
 }
 
@@ -2232,6 +2264,7 @@ async function startWorkout(sessionId) {
   if (state.blockTimerInterval) { clearInterval(state.blockTimerInterval); state.blockTimerInterval = null; }
   // Unlock audio with this gesture so the rest-timer cue is audible on iOS PWA.
   primeAudio();
+  prepareBeepAudio();
 
   const wk = getWeekNumber();
   const deload = isDeloadWeek(wk);
@@ -2401,7 +2434,8 @@ async function startWorkout(sessionId) {
       btn.classList.toggle('checked');
       const card = btn.closest('.exercise-card');
       const row = btn.closest('.set-row');
-      // Row flash feedback + haptic (Android only; iOS no-op)
+      // Row flash feedback. (No vibration: iOS Safari doesn't implement
+      // navigator.vibrate, so this would be Android-only dead code.)
       if (btn.classList.contains('checked')) {
         if (row) {
           row.classList.remove('flashed');
@@ -2409,14 +2443,11 @@ async function startWorkout(sessionId) {
           void row.offsetWidth;
           row.classList.add('flashed');
         }
-        if (navigator.vibrate) navigator.vibrate(12);
       }
       updateExerciseStatus(card);
       updateSessionProgress();
       updateNowNext();
       advanceBlockIfNeeded();
-      // RPE-based progression suggestion (only when checking, not unchecking)
-      if (btn.classList.contains('checked')) suggestProgressionIfReady(card);
       saveActiveWorkout();
       // Auto-start rest timer when checking a set (not unchecking)
       if (btn.classList.contains('checked')) {
@@ -4057,8 +4088,110 @@ function primeAudio() {
   } catch { /* audio not available */ }
 }
 
+// HTML5 audio path — more reliable on iOS PWA standalone than Web Audio.
+// We render the 3-beep pattern once via OfflineAudioContext into a WAV
+// Blob, then play it via an <audio> element. This must be unlocked from a
+// user gesture; prepareBeepAudio() is called in startWorkout / startMobilityRoutine.
+let _beepAudioEl = null;
+let _beepUnlocked = false;
+
+function audioBufferToWavBlob(buffer) {
+  const numCh = buffer.numberOfChannels;
+  const sampleRate = buffer.sampleRate;
+  const len = buffer.length * numCh * 2 + 44;
+  const ab = new ArrayBuffer(len);
+  const view = new DataView(ab);
+  const writeStr = (off, s) => { for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i)); };
+  writeStr(0, 'RIFF');
+  view.setUint32(4, len - 8, true);
+  writeStr(8, 'WAVE');
+  writeStr(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, numCh, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * numCh * 2, true);
+  view.setUint16(32, numCh * 2, true);
+  view.setUint16(34, 16, true);
+  writeStr(36, 'data');
+  view.setUint32(40, buffer.length * numCh * 2, true);
+  let off = 44;
+  for (let i = 0; i < buffer.length; i++) {
+    for (let ch = 0; ch < numCh; ch++) {
+      const s = Math.max(-1, Math.min(1, buffer.getChannelData(ch)[i]));
+      view.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+      off += 2;
+    }
+  }
+  return new Blob([ab], { type: 'audio/wav' });
+}
+
+async function prepareBeepAudio() {
+  if (_beepAudioEl && _beepUnlocked) return;
+  try {
+    const Ctor = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+    if (!Ctor) return;
+    const sr = 44100;
+    const dur = 0.85;
+    const offline = new Ctor(1, Math.ceil(sr * dur), sr);
+    const beep = (freq, start, length) => {
+      const osc = offline.createOscillator();
+      const gain = offline.createGain();
+      osc.frequency.value = freq;
+      // Quick attack/release envelope to avoid clicks
+      gain.gain.setValueAtTime(0, start);
+      gain.gain.linearRampToValueAtTime(0.5, start + 0.01);
+      gain.gain.setValueAtTime(0.5, start + length - 0.02);
+      gain.gain.linearRampToValueAtTime(0, start + length);
+      osc.connect(gain); gain.connect(offline.destination);
+      osc.start(start);
+      osc.stop(start + length);
+    };
+    beep(880, 0, 0.15);
+    beep(880, 0.25, 0.15);
+    beep(1320, 0.5, 0.30);
+    const buf = await offline.startRendering();
+    const blob = audioBufferToWavBlob(buf);
+    const url = URL.createObjectURL(blob);
+    if (!_beepAudioEl) {
+      _beepAudioEl = new Audio();
+      _beepAudioEl.preload = 'auto';
+    }
+    _beepAudioEl.src = url;
+    // Unlock by playing muted then pausing — must be from user gesture.
+    _beepAudioEl.muted = true;
+    const p = _beepAudioEl.play();
+    if (p && p.then) {
+      p.then(() => {
+        _beepAudioEl.pause();
+        _beepAudioEl.currentTime = 0;
+        _beepAudioEl.muted = false;
+        _beepUnlocked = true;
+      }).catch(() => { /* unlock failed; fallback path will still try */ });
+    } else {
+      _beepAudioEl.pause();
+      _beepAudioEl.muted = false;
+      _beepUnlocked = true;
+    }
+  } catch (e) {
+    console.warn('prepareBeepAudio failed', e);
+  }
+}
+
 function playTimerBeep() {
   if (state.settings && state.settings.audioFeedback === false) return;
+  // Try HTML5 audio first (more reliable on iOS PWA)
+  if (_beepAudioEl && _beepUnlocked) {
+    try {
+      _beepAudioEl.currentTime = 0;
+      const p = _beepAudioEl.play();
+      if (p && p.catch) p.catch(e => console.warn('HTML5 beep failed, falling back to oscillator', e));
+      return;
+    } catch (e) {
+      console.warn('HTML5 beep error, falling back to oscillator', e);
+    }
+  }
+  // Fallback: Web Audio oscillator
   try {
     primeAudio();
     const ctx = _audioCtx;
@@ -4078,6 +4211,17 @@ function playTimerBeep() {
   } catch (e) { console.warn('Timer beep failed', e); }
 }
 
+// Visual cue when the rest timer ends — replaces vibration which iOS
+// Safari doesn't implement. Whole-screen green flash for ~1 second.
+function flashTimerScreen() {
+  const el = document.getElementById('timer-flash');
+  if (!el) return;
+  el.classList.remove('flash');
+  void el.offsetWidth; // restart animation if it was already running
+  el.classList.add('flash');
+  setTimeout(() => el.classList.remove('flash'), 1100);
+}
+
 function startRestTimer(seconds, autoStart = false) {
   // Re-arm AudioContext on every fresh user gesture (set-completion tap).
   // iOS PWA suspends the context after backgrounding/lock; resuming here
@@ -4089,14 +4233,18 @@ function startRestTimer(seconds, autoStart = false) {
   state.restTimerRunning = false;
   state.restTimerEndAt = null; // wall-clock target (set when countdown begins)
 
-  const overlay = document.getElementById('rest-timer-overlay');
+  const bar = document.getElementById('rest-timer-bar');
   const textEl = document.getElementById('timer-text');
   const labelEl = document.getElementById('timer-label');
   const ringFill = document.getElementById('timer-ring-fill');
   const timerDisplay = document.getElementById('timer-display');
-  const circumference = 2 * Math.PI * 90;
+  // Sticky-bar ring: r=15 → circumference = 2π × 15 ≈ 94.25
+  const circumference = 2 * Math.PI * 15;
+  ringFill.setAttribute('stroke-dasharray', circumference.toFixed(2));
+  ringFill.style.strokeDashoffset = '0';
+  bar.classList.remove('urgent');
 
-  overlay.classList.remove('hidden');
+  bar.classList.remove('hidden');
   if (state.restTimerInterval) clearInterval(state.restTimerInterval);
 
   // Remove previous visibility handler if any
@@ -4117,6 +4265,8 @@ function startRestTimer(seconds, autoStart = false) {
     textEl.textContent = `${min}:${sec.toString().padStart(2, '0')}`;
     const progress = 1 - (state.restTimerRemaining / state.restTimerTotal);
     ringFill.style.strokeDashoffset = circumference * (1 - progress);
+    // Pulse / change color when ≤ 5s remaining so it's glanceable from peripheral vision
+    bar.classList.toggle('urgent', state.restTimerRemaining > 0 && state.restTimerRemaining <= 5);
   }
 
   function finishTimer() {
@@ -4127,8 +4277,11 @@ function startRestTimer(seconds, autoStart = false) {
     updateDisplay();
     labelEl.textContent = 'DONE';
     playTimerBeep();
-    if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 200]);
-    setTimeout(() => overlay.classList.add('hidden'), 1500);
+    flashTimerScreen();
+    setTimeout(() => {
+      bar.classList.add('hidden');
+      bar.classList.remove('urgent');
+    }, 1200);
   }
 
   function beginCountdown() {
@@ -4186,7 +4339,11 @@ function stopRestTimer() {
   }
   state.restTimerRunning = false;
   state.restTimerEndAt = null;
-  document.getElementById('rest-timer-overlay').classList.add('hidden');
+  const bar = document.getElementById('rest-timer-bar');
+  if (bar) {
+    bar.classList.add('hidden');
+    bar.classList.remove('urgent');
+  }
 }
 
 // ==================== RUNNING MODULE ====================
@@ -4521,6 +4678,7 @@ async function startMobilityRoutine(routineId) {
   if (painBefore === null) return; // cancelled
   // iOS PWA: prime audio on the user-gesture so the cue is audible later.
   primeAudio();
+  prepareBeepAudio();
   state.activeMobility = {
     routineId,
     routine,
@@ -4638,7 +4796,7 @@ function applyMobilityPhaseUI() {
     if (phase.name === 'switch') {
       overlay.classList.remove('hidden');
       playSwitchCue();
-      if (navigator.vibrate) navigator.vibrate([120, 80, 120]);
+      // (No vibration — iOS Safari doesn't implement navigator.vibrate.)
     } else {
       overlay.classList.add('hidden');
     }
@@ -4650,8 +4808,8 @@ function advanceMobilityPhase() {
   if (!am) return;
   am.phaseIdx++;
   if (am.phaseIdx >= am.phases.length) {
-    // End of exercise — short vibrate, advance to next exercise
-    if (navigator.vibrate) navigator.vibrate(80);
+    // End of exercise — advance to next. (No vibration — iOS Safari
+    // doesn't implement navigator.vibrate.)
     am.phaseIdx = 0;
     advanceMobilityExercise();
     return;
@@ -5391,99 +5549,10 @@ async function detectPRs(workout) {
   }
 }
 
-// ==================== RPE-BASED PROGRESSION SUGGESTION ====================
-// Triggered when the user finishes the last set of an exercise.
-//
-// Audit notes vs CLAUDE.md / training-rules.md:
-// - Old logic: only checked avg RPE ≤ 7 (→ +inc) or ≥ 9 (→ −inc). Ignored the
-//   rep range entirely, so it would suggest +load even when reps were below
-//   the top of the prescribed range, contradicting "add reps within range,
-//   then load, then add a set" (training-rules.md).
-// - Old logic also didn't distinguish compound vs accessory — same delta for
-//   bench (compound, RPE 7-9 target) and lateral raise (accessory, RPE 6-8).
-// - DB exercises: increment was kg-flat instead of "next available DB pair".
-//
-// New logic prefers reps over load when reps aren't yet at the top of range,
-// and uses smaller deltas for accessories. Returns the rationale so the user
-// can see *why*, not just the number.
-function parseRepRangeTop(repsStr) {
-  if (!repsStr) return null;
-  const cleaned = String(repsStr).replace(/\/.*$/, '').trim(); // strip "/side"
-  const m = cleaned.match(/(\d+)\s*-\s*(\d+)/);
-  if (m) return parseInt(m[2]);
-  const single = cleaned.match(/(\d+)/);
-  return single ? parseInt(single[1]) : null;
-}
-
-function suggestProgressionIfReady(card) {
-  if (!card) return;
-  const exId = card.dataset.exerciseId;
-  if (!exId) return;
-  state.suggestionsShown = state.suggestionsShown || new Set();
-  if (state.suggestionsShown.has(exId)) return;
-
-  const checks = card.querySelectorAll('.set-check');
-  const total = checks.length;
-  const checked = card.querySelectorAll('.set-check.checked').length;
-  if (total === 0 || checked < total) return;
-
-  // Gather done-set data
-  const rows = card.querySelectorAll('.set-row');
-  const rpes = [];
-  const reps = [];
-  rows.forEach(row => {
-    if (!row.querySelector('.set-check').classList.contains('checked')) return;
-    const rpeStr = row.querySelector('[data-field="rpe"]').value;
-    const repsStr = row.querySelector('[data-field="reps"]').value;
-    if (rpeStr) rpes.push(parseFloat(rpeStr));
-    const r = parseInt(repsStr);
-    if (r > 0) reps.push(r);
-  });
-  if (rpes.length < 2) return;
-
-  // Look up plan exercise to know rep range, compound flag, db flag
-  const session = activePlan?.sessions?.[state.activeSession];
-  const planEx = session?.exercises?.find(e => e.id === exId);
-  const isCompound = !!planEx?.compound;
-  const isDB = !!planEx?.db;
-  const repTop = parseRepRangeTop(planEx?.reps);
-
-  const avgRpe = rpes.reduce((a, b) => a + b, 0) / rpes.length;
-  const minReps = reps.length ? Math.min(...reps) : 0;
-  const exName = getExerciseName(exId);
-  const unit = state.settings.unit || 'kg';
-
-  // Compound: target 7-9 RPE. Accessory: target 6-8 RPE. Increments differ.
-  const loadInc = isDB ? (unit === 'lb' ? 5 : 2.5) : isCompound ? (unit === 'lb' ? 5 : 2.5) : (unit === 'lb' ? 2.5 : 1.25);
-
-  let msg = null;
-  let action = null;
-
-  if (avgRpe <= 7) {
-    if (repTop && minReps < repTop) {
-      // Below top of range → add reps first (training-rules.md priority order)
-      action = 'add_reps';
-      msg = `💡 ${exName}: avg RPE ${avgRpe.toFixed(1)} · ${minReps}/${repTop} reps — push for +1 rep next time before adding load`;
-    } else {
-      action = 'add_load';
-      msg = `💡 ${exName}: avg RPE ${avgRpe.toFixed(1)}${repTop ? ` · hit ${repTop} reps` : ''} — try +${loadInc} ${unit}${isDB ? '/DB' : ''} next time`;
-    }
-  } else if (avgRpe >= 9) {
-    action = 'reduce';
-    msg = `💡 ${exName}: avg RPE ${avgRpe.toFixed(1)} — too hard. Hold weight, drop 1-2 reps, or −${loadInc} ${unit}${isDB ? '/DB' : ''} next time`;
-  } else if (avgRpe >= 7.5 && avgRpe <= 8.5) {
-    // Sweet spot: do not nudge unless they're below range top, in which case
-    // rep progression is on the table even at moderate intensity
-    if (repTop && minReps < repTop) {
-      action = 'add_reps';
-      msg = `💡 ${exName}: avg RPE ${avgRpe.toFixed(1)} · ${minReps}/${repTop} reps — push +1 rep, hold weight`;
-    }
-  }
-  if (!msg) return;
-
-  state.suggestionsShown.add(exId);
-  setTimeout(() => toast(msg), 800);
-}
+// Note: Post-set RPE progression toasts were removed in v10.14 — they
+// disappeared too fast to read on the phone. Same logic now lives in
+// /weekly-review (`.claude/commands/weekly-review.md`) which writes the
+// guidance into the persistent Coach Review card on Stats > Today.
 
 // ==================== EXERCISE SWAP ====================
 function getAlternatives(muscle, currentId) {
@@ -6347,7 +6416,7 @@ function initExerciseDrag(container) {
       dragEl.style.left = rect.left + 'px';
       dragEl.style.width = rect.width + 'px';
       dragEl.style.zIndex = '999';
-      navigator.vibrate && navigator.vibrate(30);
+      // (No vibration — iOS Safari doesn't implement navigator.vibrate.)
     }, 400);
   }, { passive: true });
 
