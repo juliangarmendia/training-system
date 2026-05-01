@@ -9,10 +9,10 @@ const PLAN = {
       id: 'upperA', name: 'Upper A', subtitle: 'Horizontal Press', icon: '🏋️',
       warmup: [
         '5 min treadmill walk or light bike',
-        'Band pull-aparts × 15',
-        'Arm circles forward/back × 10 each',
-        'Cat-cow × 8',
-        'Thoracic rotations × 8/side',
+        'Band pull-aparts — 2 × 15 (scapular activation)',
+        'Arm circles forward/back — 1 × 10 each direction',
+        'Cat-cow — 1 × 8',
+        'Thoracic rotations — 2 × 8/side (T-spine prep)',
         'Bench press: bar × 10, 50% × 6, 70% × 4, 85% × 2',
       ],
       exercises: [
@@ -28,11 +28,11 @@ const PLAN = {
       id: 'lowerA', name: 'Lower A', subtitle: 'Squat Focus', icon: '🦵',
       warmup: [
         '5 min treadmill walk or light bike',
-        'Leg swings front/back × 10/side',
-        'Leg swings lateral × 10/side',
-        'Hip circles × 10/side',
-        'Bodyweight squats × 10',
-        'Glute bridges × 10',
+        'Leg swings front/back — 2 × 10/side',
+        'Leg swings lateral — 1 × 10/side',
+        'Hip circles — 1 × 10/side',
+        'Bodyweight squats — 1 × 10',
+        'Glute bridges — 2 × 10 (glute activation pre-squat)',
         'Squat: bar × 10, 50% × 6, 70% × 4, 85% × 2',
       ],
       exercises: [
@@ -48,10 +48,10 @@ const PLAN = {
       id: 'upperB', name: 'Upper B', subtitle: 'Pull / Press', icon: '💪',
       warmup: [
         '5 min treadmill walk or light bike',
-        'Band pull-aparts × 15',
-        'Arm circles forward/back × 10 each',
-        'Thoracic rotations × 8/side',
-        'Scapular pull-ups × 8',
+        'Band pull-aparts — 2 × 15 (scapular activation)',
+        'Arm circles forward/back — 1 × 10 each direction',
+        'Thoracic rotations — 2 × 8/side',
+        'Scapular pull-ups — 2 × 8 (lat activation pre-chinup)',
         'Chin-up: BW × 3-5 easy, or lat pulldown light × 10',
       ],
       exercises: [
@@ -67,11 +67,11 @@ const PLAN = {
       id: 'lowerB', name: 'Lower B', subtitle: 'Hinge Focus', icon: '🔥',
       warmup: [
         '5 min treadmill walk or light bike',
-        'Leg swings front/back × 10/side',
-        'Hip circles × 10/side',
-        'Cat-cow × 8',
-        'Glute bridges × 10',
-        'Good mornings (bodyweight) × 8',
+        'Leg swings front/back — 2 × 10/side',
+        'Hip circles — 1 × 10/side',
+        'Cat-cow — 1 × 8',
+        'Glute bridges — 2 × 10 (glute activation pre-hinge)',
+        'Good mornings (bodyweight) — 2 × 8 (hinge pattern prep)',
         'Deadlift: bar × 8, 50% × 5, 70% × 3, 85% × 1',
       ],
       exercises: [
