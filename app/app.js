@@ -3505,18 +3505,68 @@ async function loadAndRenderWeeklyCoach() {
   const dt = latest.generatedAt ? new Date(latest.generatedAt) : null;
   const dtStr = dt ? `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}` : '';
 
+  // v10.17 schema: coachVoice + nextWeekPlan. Falls back to legacy
+  // observed/planNext fields if the cron hasn't run with the new schema yet.
+  const lastWeekMd = (latest.coachVoice && latest.coachVoice.lastWeek) || latest.observed || '— no notes —';
+  const nextWeekMd = (latest.coachVoice && latest.coachVoice.nextWeek) || latest.planNext || '— no plan —';
+
   card.innerHTML = `
     <div class="wcc-header">
       <span class="wcc-week">${escapeHtml(latest.weekKey)}</span>
       <span class="wcc-source">${latest.source === 'manual' ? 'manual' : '/weekly-review'}${dtStr ? ' · ' + dtStr : ''}</span>
     </div>
     <div class="wcc-section">
-      <div class="wcc-section-title">What I observed</div>
-      <div class="wcc-section-body">${markdownToBasicHtml(latest.observed || '— no notes —')}</div>
+      <div class="wcc-section-title">Last Week — Coach's Read</div>
+      <div class="wcc-section-body">${markdownToBasicHtml(lastWeekMd)}</div>
     </div>
     <div class="wcc-section">
-      <div class="wcc-section-title">Plan next week</div>
-      <div class="wcc-section-body">${markdownToBasicHtml(latest.planNext || '— no plan —')}</div>
+      <div class="wcc-section-title">Next Week — The Plan</div>
+      <div class="wcc-section-body">${markdownToBasicHtml(nextWeekMd)}</div>
+    </div>
+    ${renderNextWeekPlan(latest.nextWeekPlan)}
+  `;
+}
+
+// Render the structured next-week plan (per session, per exercise targets).
+// Returns empty string if no nextWeekPlan in the latest review.
+function renderNextWeekPlan(nwp) {
+  if (!nwp || !nwp.sessions || nwp.sessions.length === 0) return '';
+  const phaseChip = nwp.phase ? `<span class="wcc-nwp-phase wcc-nwp-phase-${escapeHtml(nwp.phase)}">${escapeHtml(nwp.phase)}</span>` : '';
+  const sessionsHtml = nwp.sessions.map((s, i) => {
+    const exHtml = (s.exercises || []).map(ex => {
+      const noteHtml = ex.note ? `<div class="wcc-nwp-ex-note">${escapeHtml(ex.note)}</div>` : '';
+      const rpeBit = ex.rpe ? ` <span class="wcc-nwp-ex-rpe">@ RPE ${escapeHtml(String(ex.rpe))}</span>` : '';
+      return `<div class="wcc-nwp-ex">
+        <div class="wcc-nwp-ex-row">
+          <span class="wcc-nwp-ex-name">${escapeHtml(ex.name || ex.id || '')}</span>
+          <span class="wcc-nwp-ex-target">${escapeHtml(ex.target || '—')}${rpeBit}</span>
+        </div>
+        ${noteHtml}
+      </div>`;
+    }).join('');
+    const focusHtml = s.focus ? `<div class="wcc-nwp-session-focus">${escapeHtml(s.focus)}</div>` : '';
+    return `<details class="wcc-nwp-session"${i === 0 ? ' open' : ''}>
+      <summary class="wcc-nwp-session-summary">
+        <span class="wcc-nwp-session-label">${escapeHtml(s.label || s.id || '')}</span>
+      </summary>
+      ${focusHtml}
+      <div class="wcc-nwp-exercises">${exHtml}</div>
+    </details>`;
+  }).join('');
+
+  const mobLine = nwp.mobility ? `<div class="wcc-nwp-aux"><strong>Mobility:</strong> ${escapeHtml(nwp.mobility)}</div>` : '';
+  const runLine = nwp.running ? `<div class="wcc-nwp-aux"><strong>Running:</strong> ${escapeHtml(nwp.running)}</div>` : '';
+  const summaryLine = nwp.summary ? `<div class="wcc-nwp-summary">${escapeHtml(nwp.summary)}</div>` : '';
+  return `
+    <div class="wcc-nwp">
+      <div class="wcc-nwp-header">
+        <span class="wcc-nwp-title">${escapeHtml(nwp.weekLabel || `Week ${nwp.weekNumber || ''}`)}</span>
+        ${phaseChip}
+      </div>
+      ${summaryLine}
+      <div class="wcc-nwp-sessions">${sessionsHtml}</div>
+      ${mobLine}
+      ${runLine}
     </div>
   `;
 }

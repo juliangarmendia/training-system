@@ -1,187 +1,142 @@
 ---
-description: Review the past week (gym + run + mobility + body + nutrition), propose plan adjustments interactively, save the review file. Run on Sunday night.
+description: Review the past week (gym + run + mobility + body + nutrition + steps), propose plan adjustments interactively, save the review file. Run on Sunday night.
 ---
 
 # Weekly Review (interactive)
 
-You are about to run a weekly review of Julian's training. Follow this playbook in order. **Confirm with the user before each write.**
+You are about to run a weekly review of Julian's training. **Confirm with the user before each write.** Same playbook as `/weekly-review-auto` but pauses before applying changes.
 
-## Phase 1 — Pre-flight & data gathering
+## Phase 1 — Pre-flight & full-history gather
 
 ### 1.1 Verify Supabase MCP auth is alive
 Call `mcp__claude_ai_Supabase__list_projects`. If it fails (401, network), surface this exact message and STOP:
 > Supabase MCP auth has expired or is unavailable. To restore: open Claude Code settings → MCP → reconnect Supabase. Once reconnected, re-run `/weekly-review`.
 
-The project ID for training-system is `ycfodifvpvosukepcxie`. Use this for all subsequent Supabase calls.
+The project ID for training-system is `ycfodifvpvosukepcxie`. Use it for all subsequent Supabase calls.
 
-### 1.2 Determine the week range
-- "This week" = the most recently **completed** ISO week (Mon–Sun) **strictly before today**.
+### 1.2 Determine the week range and idempotency
+- "This week" = the most recently **completed** ISO week (Mon–Sun) **strictly before today** (UTC).
 - If today is Sunday, "this week" is Mon–today. If today is Monday, "this week" is the prior Mon–Sun.
-- Compute `weekStart` (YYYY-MM-DD), `weekEnd` (YYYY-MM-DD), and ISO week number `WNN`.
-- Also compute the prior 4 weeks for trend analysis.
+- Compute `weekStart`, `weekEnd`, ISO week number `WNN`.
 
-### 1.3 Query Supabase for the week's data
-Use `mcp__claude_ai_Supabase__execute_sql` with project_id `ycfodifvpvosukepcxie`. The shape of every row is `{user_id, record_id, data: jsonb, updated_at}`. The actual record lives inside `data`. You'll get all of Julian's records (he's the only user); no need to filter by user_id.
+**Idempotency check:** read `tracking/weekly-reviews/latest.json`. If it already has `weekKey === "2026-W{thisWeekNN}"` and `generatedAt` within the last 12 hours → ask the user "already ran today, regenerate anyway?" before proceeding.
 
-For each of these tables, query rows where `(data->>'date')::date BETWEEN '$weekStart' AND '$weekEnd'`:
-- `workouts`
-- `runs`
-- `mobility_sessions`
-- `bodyweight`
-- `nutrition`
+### 1.3 Read ALL historical files
 
-Also fetch the prior 4 weeks of `workouts` (for RPE trends) and `bodyweight` (for rate-of-change).
+Glob and read in full:
+- `tracking/weekly-reviews/*.md` — all of them (collect existing weekKeys)
+- `tracking/weekly-checkins.md`, `tracking/progress-log.md`
+- `plans/training-plan.md`, `plans/running-plan.md`, `plans/nutrition-notes.md`
+- `plans/changelog.md` (create with `# Plan Changelog\n\n` header if missing)
+- `docs/profile.md`, `docs/goals.md`
+- `CLAUDE.md`, `.claude/rules/training-rules.md`, `.claude/rules/data-handling.md`
 
-### 1.4 Read repo files
-- `plans/training-plan.md` (current plan)
-- `plans/changelog.md` (if exists)
-- `tracking/weekly-reviews/*.md` — read the last 4 reviews if they exist (use Glob)
-- `tracking/progress-log.md` (if exists)
-- `docs/profile.md` and `docs/goals.md`
-- `CLAUDE.md` and `.claude/rules/training-rules.md` for the coaching rules
+### 1.4 Backfill missing weeks
 
-## Phase 2 — Analysis
+Compute every ISO week between **program start** (from `plans/training-plan.md` `Created:` line) and the just-completed week. Diff against existing review files. For each **missing** week, in **chronological order (oldest first)**:
+- Run Phase 2 + Phase 3 + Phase 4 scoped to that week's date range.
+- Save the review file.
+- **Skip** writing `latest.json` (only the most recent week owns it).
+- Mark in the file: `*Backfilled on YYYY-MM-DD*`.
 
-Do not be lazy. Compute the actual numbers from the data.
+### 1.5 Query Supabase for the week being processed
 
-### 2.1 Adherence
-- Gym: planned sessions for the week (from training-plan.md or activeWeekTemplate) vs completed (count of workouts rows). Note any missed days.
-- Run: km logged this week vs target km/week (from running-plan.md or recent average).
-- Mobility: count of sessions, distinct days with sessions, target was 3-5 days/week.
+For the active week, query rows where `(data->>'date')::date BETWEEN '$weekStart' AND '$weekEnd'`:
+- `workouts`, `runs`, `mobility_sessions`, `bodyweight`, `nutrition`, `steps`
 
-### 2.2 Performance per key lift
-For each of `bench-press`, `back-squat`, `sumo-dl`, `ohp`, `barbell-row`, `chinups`:
-- Find the top set this week (highest weight × reps with done=true).
-- Find the same lift's top set in the most recent prior week that had it.
-- Format: `Lift: WT × R @ RPE X (last: WT × R @ RPE X) → progressing | stalled | regressing`.
-- Note any missed lift.
+Also fetch the prior **4 weeks** for trend context.
 
-### 2.3 Body weight
-- Latest bodyweight entry this week.
-- Δ vs the latest entry from the prior week.
-- 4-week trend (slope or simple delta).
-- Compare rate of change (% per week) against the target zone (-0.5 to -1.0% / week per goals.md).
+## Phase 2 — Multi-week analysis
 
-### 2.4 Mobility & pain
-- Count by routine (hip-reset / lumbar / thoracic).
-- Average painBefore and painAfter across all this week's sessions.
-- Δ pain (before − after).
-- 4-week trend of painAfter (improving / stable / worsening).
+Compute (and reference in the review):
 
-### 2.5 Nutrition
-- Days this week with logged nutrition.
-- Days that hit protein target (from settings.proteinTarget or 170g default).
-- Average protein.
+| Metric | Window |
+|---|---|
+| Adherence | This week + 4-week rolling average + cumulative since start |
+| Top set per key lift | This week + 4-week sparkline |
+| Avg RPE per key lift | Same windows |
+| Total weekly volume (kg) | Same windows |
+| Body weight | Latest entry + 4-week linear slope (kg/wk and %/wk) |
+| Pain (avg before/after) | This week + 4-week trend, per routine |
+| Mobility frequency | This week + 4-week average |
+| Run weekly km | This week + 4-week average |
+| Quality (avg) | This week + 4-week average |
+| Steps | Avg/day this week + days hitting target |
+| Behavioral patterns | Which sessions/exercises consistently get cut short — derive from done=false sets across weeks |
 
-### 2.6 Apply the coaching rules
-Per `.claude/rules/training-rules.md` and CLAUDE.md, the priority order for progression is **reps → load → add a set** (the last is paused during a deficit). Flag:
+### Apply coaching rules per `.claude/rules/training-rules.md`
 
 For each main compound (`bench-press`, `back-squat`, `sumo-dl`, `ohp`, `barbell-row`, `chinups`):
-- Avg RPE ≤ 7 AND minimum reps below the prescribed top of range → "**+1 rep next session**, hold weight" (do NOT propose load yet).
+- Avg RPE ≤ 7 AND minimum reps below the prescribed top of range → "**+1 rep next session**, hold weight".
 - Avg RPE ≤ 7 AND minimum reps at the top of range → "**+2.5 kg / +5 lb** next session".
-- Avg RPE 7.5–8.5 → "hold weight, push 1 rep within range if possible" (no load change).
+- Avg RPE 7.5–8.5 → "hold weight, push 1 rep within range if possible".
 - Avg RPE ≥ 9 → "**hold or reduce reps**; do not add load".
-- Avg RPE ≥ 9 across 2 consecutive sessions → "**flag deload** next week (-40% volume)".
+- Avg RPE ≥ 9 across 2 consecutive sessions → "**flag deload** (-40% volume) for next week".
 
-For accessories (target RPE 6–8, non-compound exercises):
-- Same rep/load logic but use smaller increments (+1.25 kg / +2.5 lb) and DB exercises move by next available DB pair.
+For accessories (target RPE 6–8): same rep/load logic but smaller increments (+1.25 kg / +2.5 lb), DB exercises advance by next available DB pair.
 
 Cross-cutting flags:
-- 2 consecutive sessions with quality ≤ 2 → suppress load increases; flag possible deload.
-- Body weight loss > 1% / week sustained → flag too-aggressive deficit.
-- Pain not trending down across 2+ weeks → re-evaluate mobility approach.
+- 2 consecutive sessions with quality ≤ 2 → flag deload.
+- BW loss > 1% / week sustained → flag too-aggressive deficit.
+- Pain not trending down across 2+ weeks → re-evaluate mobility.
 - Adherence < 70% → flag program sustainability.
-- Deficit is the default state (per `docs/goals.md`); never propose **adding sets** unless adherence and recovery both look strong.
+- Deficit is the default state. Never propose adding sets unless adherence and recovery look strong.
 
-Distinguish compound vs accessory using the `compound: true` flag on plan exercises. Volume calculations should already account for dumbbells (peso × reps × 2).
+## Phase 3 — Compose outputs (in memory first)
 
-## Phase 3 — Compose the review file (in memory first)
-
-Build the markdown for `tracking/weekly-reviews/2026-W{NN}.md` using this exact structure:
-
-```markdown
-# Week {NN} — {weekStart} to {weekEnd}
-
-## Adherence
-- Gym: X/Y planned sessions completed (Z%)
-- Run: X km / Y target
-- Mobility: X sessions across Y days
-
-## Performance
-- Bench Press: 82.5 × 6 @ RPE 8 (last week: 82.5 × 5 @ RPE 8.5) → progressing
-- [...per key lift...]
-
-## Body
-- Body weight: 84.2 kg (Δ vs last week: -0.4 kg, 4-week: -1.1 kg)
-- Rate: -0.5% / week (target zone)
-
-## Mobility & Pain
-- Sessions: 4 (hip-reset 3, lumbar 1)
-- Avg pain before/after: 2.5 → 1.8 (Δ -0.7)
-- 4-week pain trend: 2.8 → 2.3 → 2.0 → 1.8 (improving)
-
-## Nutrition
-- Days logged: 6/7
-- Days hit protein target: 5/7 (avg 168g)
-
-## What worked
-- [signal-driven, concrete observations from the data]
-
-## What didn't
-- [red flags, missed sessions, regressions]
-
-## Proposed adjustments for week {NN+1}
-- [specific, actionable, with rationale]
-
-## Open questions for Julian
-- [things that the data can't answer]
-
----
-*Generated by /weekly-review on {ISO timestamp}*
-```
+Same as `/weekly-review-auto` Phase 3.1 + 3.2. The .md review markdown structure and the `latest.json` schema (with `coachVoice.lastWeek`, `coachVoice.nextWeek`, `nextWeekPlan`, plus legacy `observed`/`planNext`) are identical. See that file for the exact shape.
 
 ## Phase 4 — Interactive confirmations
 
-Present to the user in chat (do NOT write files yet):
-1. The full review markdown.
-2. The list of proposed plan changes (load adjustments per exercise, deload flags, etc.).
+Present in chat (do NOT write yet):
+1. The full review markdown
+2. The Coach Review (`coachVoice.lastWeek` + `coachVoice.nextWeek`)
+3. The structured next-week plan (per session, per exercise targets)
+4. The list of plan changes (load adjustments, deload flags, etc.)
 
-Use AskUserQuestion to ask which changes to apply. Group as:
-- "Apply review file?" (yes/no — saves the file to `tracking/weekly-reviews/`)
+Use AskUserQuestion grouped as:
+- "Apply review files?" (yes/no — saves the .md and `latest.json`)
 - "Apply plan changes?" (yes / yes-with-edits / no)
 - "Update progress-log.md?" (yes/no)
 - "Update weekly-checkins.md?" (yes/no)
 
-## Phase 5 — Apply confirmed changes
+## Phase 5 — Apply confirmed writes
 
 For each "yes":
-- **Review file**: write to `tracking/weekly-reviews/2026-W{NN}.md`. Create the folder if it doesn't exist (use Bash `mkdir -p`).
-- **Bridge to PWA**: ALSO write `tracking/weekly-reviews/latest.json` with the structure below — the deployed PWA fetches it on Stats > Today and renders the "Coach Review" card. This must be written every time a review is generated; otherwise the in-app card stays stale.
-  ```json
-  {
-    "weekKey": "2026-W{NN}",
-    "generatedAt": <Date.now() ms>,
-    "source": "auto",
-    "observed": "- bullet markdown of 'What worked' + 'What didn't'\n- ...",
-    "planNext": "- bullet markdown of 'Proposed adjustments for week {NN+1}'\n- ..."
-  }
-  ```
-  The `observed` and `planNext` fields are markdown — keep them concise (3-6 bullets each) and prefer `**bold**` for the key change. The PWA renders a tiny markdown subset (bullets + bold + paragraphs).
-- **Plan changes**: BEFORE editing `plans/training-plan.md`, copy the current version to `plans/archive/training-plan-2026-W{NN}.md` (mkdir archive folder if needed). Then apply the edits to `plans/training-plan.md`. Append a 1-line entry to `plans/changelog.md` (create file if missing): `- W{NN} ({date}): [summary], reason: [signal]`.
-- **Progress log**: append the latest metrics row to `tracking/progress-log.md`.
-- **Weekly checkins**: append a brief 4-6 line summary to the TOP of `tracking/weekly-checkins.md` (newest first per CLAUDE.md).
+
+### 5.1 Per processed week (backfill + most-recent)
+
+1. **Review file**: `tracking/weekly-reviews/2026-W{NN}.md`. Create folder if missing.
+2. **Plan archive**: copy current `plans/training-plan.md` to `plans/archive/training-plan-2026-W{NN}.md`.
+3. **Plan update**: append `## Week {NN+1} Targets` section + update `Current week:` field + update internal Change Log.
+4. **Changelog**: append `- W{NN} ({date}): [summary], reason: [signal]` to `plans/changelog.md`.
+5. **Progress log**: append metrics row to tables in `tracking/progress-log.md`.
+6. **Weekly checkins**: prepend 4-6 line summary to the TOP of `tracking/weekly-checkins.md` (newest-first).
+
+### 5.2 Only for the most recent week
+7. **`tracking/weekly-reviews/latest.json`** — full JSON from Phase 3.2 (see auto playbook for schema).
+
+### 5.3 Commit + push (after user confirms)
+
+```bash
+git add tracking/ plans/
+git commit -m "weekly review W{NN} + program W{NN+1}"
+git push origin main
+```
 
 ## Phase 6 — Final summary
 
-Output a short summary to the user:
+Output:
+- Weeks processed (backfilled vs current)
 - Files created/modified
 - Key insights from the review (1-3 bullets)
-- The most important adjustment (1 sentence)
+- Most important adjustment (1 sentence)
 - "Run /weekly-review again next Sunday."
 
 ## Notes for execution
+
 - Always parse dates carefully (data->>'date' is YYYY-MM-DD local).
 - If a table has zero rows for the week, note "No X this week" instead of empty sections.
-- If `tracking/weekly-reviews/` doesn't exist or is empty, this is the FIRST review — say so explicitly and skip the 4-week trends with "Need 2+ reviews for trends".
+- If `tracking/weekly-reviews/` is empty, this is the FIRST review — backfill from program start.
 - Be direct and evidence-based per CLAUDE.md. No motivational filler.
-- If the data contradicts the current plan (e.g., user did a different session than planned), flag it but don't moralize.
+- If the data contradicts the current plan, flag it but don't moralize.
