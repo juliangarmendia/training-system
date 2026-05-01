@@ -341,6 +341,7 @@ function renderWhoopUI() {
       if (data) {
         if (typeof toast === 'function') toast(`Synced: ${data.recovery.length} recovery, ${data.sleep.length} sleep`);
         renderWhoopUI();
+        await renderWhoopRecoveryCard();
       } else {
         if (typeof toast === 'function') toast('Sync failed — check connection');
         btn.textContent = 'Sync Now';

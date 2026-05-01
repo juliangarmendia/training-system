@@ -83,7 +83,18 @@ Diagnose stall / progression / regression for each key lift.
 ### 2.6 Behavioral patterns (NEW)
 Across the prior 4 weeks (including this week), find which **specific exercises consistently get cut** (done=false at end of session). Examples: "Lateral Raise skipped 3 of 4 weeks", "Lower B accessories collapse — only 2 of 6 done in 2 of 4 weeks". This is a real signal — call it out.
 
-### 2.7 Apply the coaching rules per `.claude/rules/training-rules.md`
+### 2.7 Evaluate exercise rotation (NEW — every week)
+
+For each exercise in the current plan, decide **keep / swap / cycle**:
+
+- **Stalled** (3+ consecutive weeks no top-set progression and no rep gain) → consider **swap** to an alternative that hits the same pattern (use the Substitution Table in `plans/training-plan.md`). Example: if Bench has stalled 4 weeks running, consider rotating to Floor Press for a block.
+- **Joint stress / repetitive use** (4+ consecutive weeks of the same accessory) → consider **cycle** to a different angle (DB → cable, machine → free-weight). The training-plan already specifies Block A vs Block B accessory swaps at the W5/W6 boundary — apply that explicitly.
+- **Consistently skipped** (the user marks done=false for the same exercise 2+ weeks in a row) → consider **swap** to something they'll actually do (different equipment, different angle, lower setup cost).
+- **Progressing well** (top set + reps moving up, RPE in target zone) → **keep**. Do not change for variety's sake.
+
+Output the rotation decisions in the review markdown under a `## Exercise rotation` section. If no changes proposed, state "No rotations this week — keep the program as-is" and explain briefly why (e.g., "Compounds all progressing, accessories well within Block A scope").
+
+### 2.8 Apply the coaching rules per `.claude/rules/training-rules.md`
 
 For each main compound (`bench-press`, `back-squat`, `sumo-dl`, `ohp`, `barbell-row`, `chinups`):
 - Avg RPE ≤ 7 AND minimum reps below the prescribed top of range → "**+1 rep next session**, hold weight" (do NOT propose load yet).

@@ -64,6 +64,16 @@ Compute (and reference in the review):
 | Steps | Avg/day this week + days hitting target |
 | Behavioral patterns | Which sessions/exercises consistently get cut short — derive from done=false sets across weeks |
 
+### Evaluate exercise rotation (NEW — every week)
+
+For each exercise in the plan, decide **keep / swap / cycle**:
+- **Stalled** (3+ weeks no progression) → consider **swap** to a same-pattern alternative.
+- **Repetitive use** (4+ weeks same accessory) → consider **cycle** per the Block A/B swap table in `plans/training-plan.md`.
+- **Consistently skipped** (same exercise done=false 2+ weeks) → consider **swap** to something more sustainable.
+- **Progressing well** → **keep**. Don't change for variety's sake.
+
+Output decisions in the review under `## Exercise rotation`. If no changes, state "Keep the program — everything progressing".
+
 ### Apply coaching rules per `.claude/rules/training-rules.md`
 
 For each main compound (`bench-press`, `back-squat`, `sumo-dl`, `ohp`, `barbell-row`, `chinups`):

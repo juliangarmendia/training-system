@@ -3302,7 +3302,6 @@ async function renderStats() {
   await renderDeloadReminder();
   await renderWeeklySummary();
   await loadAndRenderWeeklyCoach();
-  await renderWeeklyReport();
   await renderWeekComparison();
   await renderStreakCalendar();
   await renderMuscleVolume();
@@ -3313,7 +3312,6 @@ async function renderStats() {
   renderMacroCalculator();
   await renderStrengthChart();
   await renderVolumeChart();
-  await renderTemplateUI();
 }
 
 async function renderStreaks() {
@@ -3322,18 +3320,41 @@ async function renderStreaks() {
   const runs = (await dbGetAll('runs')).sort((a, b) => b.date.localeCompare(a.date));
   const nutrition = (await dbGetAll('nutrition')).sort((a, b) => b.date.localeCompare(a.date));
 
-  // Gym streak: consecutive weeks with 3+ workouts
-  const gymWeeks = {};
+  // Gym streak: consecutive completed weeks with ≥4 training days (Mon-Sun
+  // ISO weeks, bucketed by actual workout date — NOT by the saved w.week
+  // field, which can be stale for retroactively-logged sessions).
+  function isoWeekKey(d) {
+    const dt = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    dt.setDate(dt.getDate() + 4 - (dt.getDay() || 7)); // ISO week Thursday
+    const yearStart = new Date(dt.getFullYear(), 0, 1);
+    const wn = Math.ceil((((dt - yearStart) / 86400000) + 1) / 7);
+    return `${dt.getFullYear()}-W${String(wn).padStart(2, '0')}`;
+  }
+  const weekDays = {}; // weekKey → Set of distinct date strings (workout days)
   workouts.forEach(w => {
-    const wk = w.week || 1;
-    gymWeeks[wk] = (gymWeeks[wk] || 0) + 1;
+    if (!w.date) return;
+    const d = new Date(w.date + 'T12:00:00');
+    const key = isoWeekKey(d);
+    if (!weekDays[key]) weekDays[key] = new Set();
+    weekDays[key].add(w.date);
   });
+  const currentKey = isoWeekKey(new Date());
+  // Walk back from this week. Skip current (in progress). Count consecutive
+  // completed weeks with ≥ 4 distinct training days.
   let gymStreak = 0;
-  const currentWk = getWeekNumber();
-  for (let wk = currentWk; wk >= 1; wk--) {
-    if ((gymWeeks[wk] || 0) >= 3) gymStreak++;
-    else if (wk < currentWk) break; // allow current week to be incomplete
-    else if (wk === currentWk) continue; // current week in progress
+  const sortedKeys = Object.keys(weekDays).sort().reverse();
+  let started = false;
+  for (const key of sortedKeys) {
+    if (key === currentKey) continue; // current week may not be done
+    const days = weekDays[key].size;
+    if (days >= 4) {
+      gymStreak++;
+      started = true;
+    } else if (started) {
+      break; // streak broken
+    } else {
+      break;
+    }
   }
 
   // Protein streak: consecutive days hitting target
@@ -3357,7 +3378,7 @@ async function renderStreaks() {
   container.innerHTML = `
     <div class="streak-card">
       <div class="streak-num">${gymStreak}</div>
-      <div class="streak-label">Gym Weeks</div>
+      <div class="streak-label">Weeks ≥ 4 days</div>
     </div>
     <div class="streak-card">
       <div class="streak-num">${proteinStreak}</div>
@@ -3365,7 +3386,7 @@ async function renderStreaks() {
     </div>
     <div class="streak-card">
       <div class="streak-num">${totalSessions}</div>
-      <div class="streak-label">Total Sessions</div>
+      <div class="streak-label">All-time sessions</div>
     </div>
   `;
 }
@@ -3905,15 +3926,13 @@ async function renderWeeklySummary() {
 
   const workouts = await dbGetAll('workouts');
   const runs = await dbGetAll('runs');
-  const wk = getWeekNumber();
 
-  const thisWeek = workouts.filter(w => w.week === wk);
-  const thisWeekRuns = runs.filter(r => {
-    const d = new Date(r.date);
-    const now = new Date();
-    const diffDays = Math.floor((now - d) / 86400000);
-    return diffDays <= 7;
-  });
+  // Filter by ISO-week date range (Mon-Sun) instead of the saved w.week
+  // field. Retroactive logs and program-week vs ISO-week mismatches were
+  // dropping 1-2 sessions from this counter.
+  const weekDates = getWeekDates().map(d => dateStr(d));
+  const thisWeek = workouts.filter(w => weekDates.includes(w.date));
+  const thisWeekRuns = runs.filter(r => weekDates.includes(r.date));
 
   // Total volume
   let totalVolume = 0;
@@ -5686,18 +5705,25 @@ function showSwapUI(card, ex, session) {
 const STEPS_INGEST_URL = 'https://ycfodifvpvosukepcxie.supabase.co/functions/v1/steps-ingest';
 
 async function syncStepsFromCloud() {
-  if (typeof getUser !== 'function' || !window.supabaseClient) return;
+  // supabase-sync.js declares supabaseClient and getUser as script-scoped
+  // globals (not window props). Use them directly. This sync was silently
+  // returning because `window.supabaseClient` was always undefined.
+  if (typeof getUser !== 'function') return;
+  if (typeof supabaseClient === 'undefined' || !supabaseClient) return;
   const user = await getUser();
   if (!user) return;
   try {
     const since = dateStr(new Date(Date.now() - 30 * 86400000));
     const url = `${SUPABASE_URL}/rest/v1/steps?user_id=eq.${user.id}&record_id=gte.${since}&select=record_id,data`;
-    const session = await window.supabaseClient.auth.getSession();
-    const token = session?.data?.session?.access_token || SUPABASE_ANON_KEY;
+    const sess = await supabaseClient.auth.getSession();
+    const token = sess?.data?.session?.access_token || SUPABASE_ANON_KEY;
     const res = await fetch(url, {
       headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
     });
-    if (!res.ok) return;
+    if (!res.ok) {
+      console.warn('[Steps] cloud fetch returned', res.status);
+      return;
+    }
     const rows = await res.json();
     for (const r of rows) {
       const d = r.data || {};
