@@ -2112,49 +2112,64 @@ async function renderActivityRings() {
   `;
 }
 
+// ISO week key for a Date — Mon-Sun buckets matching renderStreaks() logic.
+function _isoWeekKeyFor(d) {
+  const dt = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  dt.setDate(dt.getDate() + 4 - (dt.getDay() || 7)); // ISO week Thursday
+  const yearStart = new Date(dt.getFullYear(), 0, 1);
+  const wn = Math.ceil((((dt - yearStart) / 86400000) + 1) / 7);
+  return `${dt.getFullYear()}-W${String(wn).padStart(2, '0')}`;
+}
+
 async function renderStreakBanner() {
   const container = document.getElementById('streak-banner');
   if (!container) return;
   const workouts = await dbGetAll('workouts');
-  const runs = await dbGetAll('runs');
 
-  // Get all unique training dates
-  const trainingDates = new Set();
-  workouts.forEach(w => trainingDates.add(w.date));
-  runs.forEach(r => trainingDates.add(r.date));
+  if (!workouts || workouts.length === 0) { container.innerHTML = ''; return; }
 
-  if (trainingDates.size === 0) { container.innerHTML = ''; return; }
+  // Bucket workouts by ISO week → Set of distinct training dates
+  const weekDays = {};
+  workouts.forEach(w => {
+    if (!w.date) return;
+    const key = _isoWeekKeyFor(new Date(w.date + 'T12:00:00'));
+    if (!weekDays[key]) weekDays[key] = new Set();
+    weekDays[key].add(w.date);
+  });
 
-  // Calculate current streak (consecutive days with training, ending today or yesterday)
-  let streak = 0;
-  const d = new Date();
-  // Start from today and go backwards
-  for (let i = 0; i < 365; i++) {
-    const ds = dateStr(d);
-    if (trainingDates.has(ds)) {
-      streak++;
-    } else if (i === 0) {
-      // Today has no training yet — that's ok, check from yesterday
+  const currentKey = _isoWeekKeyFor(new Date());
+  // Sessions this week = distinct training days in current ISO week
+  const thisWeekDays = (weekDays[currentKey] && weekDays[currentKey].size) || 0;
+
+  // Weeks streak: consecutive completed weeks with ≥4 training days, walking
+  // backwards from the most recent completed week. Current week is in-progress
+  // and doesn't count toward the streak (matches Stats card logic).
+  let weeks = 0;
+  const sortedKeys = Object.keys(weekDays).sort().reverse();
+  let started = false;
+  for (const key of sortedKeys) {
+    if (key === currentKey) continue;
+    const days = weekDays[key].size;
+    if (days >= 4) {
+      weeks++;
+      started = true;
+    } else if (started) {
+      break;
     } else {
       break;
     }
-    d.setDate(d.getDate() - 1);
   }
 
-  // Also count total this week
-  const weekDates = getWeekDates();
-  const thisWeek = weekDates.filter(wd => trainingDates.has(dateStr(wd))).length;
+  if (weeks === 0 && thisWeekDays === 0) { container.innerHTML = ''; return; }
 
-  if (streak <= 1 && thisWeek <= 1) { container.innerHTML = ''; return; }
-
-  const fireLevel = streak >= 7 ? '🔥🔥🔥' : streak >= 4 ? '🔥🔥' : streak >= 2 ? '🔥' : '';
+  const fireLevel = weeks >= 4 ? '🔥🔥🔥' : weeks >= 2 ? '🔥🔥' : weeks >= 1 ? '🔥' : '💪';
 
   container.innerHTML = `
     <div class="streak-fire">
-      <div class="streak-fire-icon">${fireLevel || '💪'}</div>
+      <div class="streak-fire-icon">${fireLevel}</div>
       <div class="streak-fire-info">
-        <div class="streak-fire-count">${streak} day${streak !== 1 ? 's' : ''} streak</div>
-        <div class="streak-fire-label">${thisWeek} session${thisWeek !== 1 ? 's' : ''} this week</div>
+        <div class="streak-fire-count">${weeks} week${weeks !== 1 ? 's' : ''} streak</div>
+        <div class="streak-fire-label">${thisWeekDays} session${thisWeekDays !== 1 ? 's' : ''} this week</div>
       </div>
     </div>
   `;
@@ -3489,14 +3504,23 @@ async function renderFatigueScore() {
 // slash command. If newer than what's in IDB, upserts. Renders the latest
 // observed/planNext into Stats > Today > Coach Review.
 async function fetchLatestWeeklyReview() {
+  const url = './tracking/weekly-reviews/latest.json?ts=' + Date.now();
   try {
-    const url = './tracking/weekly-reviews/latest.json?ts=' + Date.now();
     const res = await fetch(url, { cache: 'no-store' });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.warn('[CoachReview] fetch latest.json returned', res.status);
+      return null;
+    }
     const data = await res.json();
-    if (!data || !data.weekKey) return null;
+    if (!data || !data.weekKey) {
+      console.warn('[CoachReview] latest.json missing weekKey');
+      return null;
+    }
     return data;
-  } catch { return null; }
+  } catch (e) {
+    console.warn('[CoachReview] fetch latest.json failed:', e);
+    return null;
+  }
 }
 
 async function loadAndRenderWeeklyCoach() {
@@ -3505,19 +3529,33 @@ async function loadAndRenderWeeklyCoach() {
 
   // Try fetching from deployed JSON manifest. Falls back silently to whatever's in IDB.
   const fetched = await fetchLatestWeeklyReview();
+  let fetchFailed = false;
   if (fetched) {
     const existing = await dbGet('weekly_reviews', fetched.weekKey);
     const isNewer = !existing || (fetched.generatedAt && fetched.generatedAt > (existing.generatedAt || 0));
     if (isNewer) {
       await dbPut('weekly_reviews', { ...fetched, source: fetched.source || 'auto' });
     }
+  } else {
+    fetchFailed = true;
   }
 
-  // Render most recent stored review (any week)
+  // Render most recent stored review (any week). If IDB is also empty, show a
+  // visible empty state instead of hiding the card — that way the user can tell
+  // the section exists and what to expect (vs. a silent missing card).
   const all = await dbGetAll('weekly_reviews');
   if (!all || all.length === 0) {
-    card.classList.add('hidden');
-    card.innerHTML = '';
+    card.classList.remove('hidden');
+    card.innerHTML = `
+      <div class="wcc-header">
+        <span class="wcc-week">Coach Review</span>
+        <span class="wcc-source">/weekly-review</span>
+      </div>
+      <div class="wcc-empty">
+        <p>No weekly review yet.</p>
+        <p class="muted">Reviews appear automatically every Sunday night after the cron runs. The first one will land after at least one full Mon-Sun training week.</p>
+      </div>
+    `;
     return;
   }
   const latest = all.sort((a, b) => (b.generatedAt || 0) - (a.generatedAt || 0))[0];
@@ -3531,11 +3569,14 @@ async function loadAndRenderWeeklyCoach() {
   const lastWeekMd = (latest.coachVoice && latest.coachVoice.lastWeek) || latest.observed || '— no notes —';
   const nextWeekMd = (latest.coachVoice && latest.coachVoice.nextWeek) || latest.planNext || '— no plan —';
 
+  const staleHint = fetchFailed ? `<div class="wcc-stale">Last sync failed — showing cached version</div>` : '';
+
   card.innerHTML = `
     <div class="wcc-header">
       <span class="wcc-week">${escapeHtml(latest.weekKey)}</span>
       <span class="wcc-source">${latest.source === 'manual' ? 'manual' : '/weekly-review'}${dtStr ? ' · ' + dtStr : ''}</span>
     </div>
+    ${staleHint}
     <div class="wcc-section">
       <div class="wcc-section-title">Last Week — Coach's Read</div>
       <div class="wcc-section-body">${markdownToBasicHtml(lastWeekMd)}</div>
@@ -7390,6 +7431,10 @@ async function init() {
   syncStepsFromCloud().then(() => {
     if (state.currentTab === 'home') renderStepsCard();
   }).catch(() => {});
+
+  // Hydrate weekly review IDB cache early so the Coach Review card has data
+  // ready when the user navigates to Stats — no spinner / no empty flash.
+  loadAndRenderWeeklyCoach().catch(() => {});
 
   // Populate the initial tab. HTML defaults to view-home being .active, so
   // without this the user sees an empty Home until they switch tabs.

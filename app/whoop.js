@@ -49,11 +49,16 @@ function whoopMarkReconnectNeeded(reason) {
   // Keep refresh_token around in case user retries, but the flag drives UI
 }
 
-// Errors that mean the refresh token itself is dead — no point retrying
+// Errors that mean the refresh token itself is dead — no point retrying.
+// Be conservative here: only mark reconnect needed when WHOOP explicitly says
+// the grant/token is invalid. Generic 400/403 (rate limit, malformed cursor,
+// brief proxy hiccup) are transient and should NOT throw away the session.
 function isFatalAuthError(status, errStr) {
-  if (status === 400 || status === 401 || status === 403) return true;
   const s = String(errStr || '').toLowerCase();
-  return s.includes('invalid_grant') || s.includes('invalid_token') || s.includes('unauthorized') || s.includes('expired');
+  if (s.includes('invalid_grant') || s.includes('invalid_token') || s.includes('unauthorized') || s.includes('expired')) return true;
+  // 401 from the refresh endpoint = refresh token rejected → fatal.
+  // 400/403 = treat as transient unless paired with one of the strings above.
+  return status === 401;
 }
 
 async function whoopRefreshToken() {

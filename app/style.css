@@ -1062,6 +1062,23 @@ nav { display: flex; background: var(--surface); border-top: 1px solid var(--bor
 }
 .wcc-section-body { font-size: 13px; line-height: 1.5; color: var(--text); }
 .wcc-section-body p { margin: 0 0 6px; }
+.wcc-empty {
+  padding: 16px 8px;
+  text-align: center;
+  color: var(--text2);
+  font-size: 13px;
+}
+.wcc-empty p { margin: 4px 0; }
+.wcc-empty .muted { color: var(--text3); font-size: 12px; line-height: 1.5; }
+.wcc-stale {
+  font-size: 11px;
+  color: var(--orange, #f59e0b);
+  background: rgba(245, 158, 11, 0.08);
+  padding: 6px 10px;
+  border-radius: 6px;
+  margin: 6px 0 4px;
+  text-align: center;
+}
 .wcc-section-body p:last-child { margin-bottom: 0; }
 .wcc-section-body ul { margin: 4px 0; padding-left: 20px; }
 .wcc-section-body li { margin-bottom: 3px; }
