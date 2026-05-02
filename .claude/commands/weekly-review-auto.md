@@ -303,30 +303,90 @@ LIMIT 1;
 
 If either is null/empty, skip this phase silently (user hasn't configured intervals.icu yet) and note it in Phase 5.
 
-**For each run in `nextWeekPlan.runningPlan`**, build the DSL description and POST to intervals.icu via Bash + curl. Use a deterministic `external_id` so re-runs UPDATE rather than DUPLICATE:
+**For each run in `nextWeekPlan.runningPlan`**, build the DSL description and POST to intervals.icu via Bash + curl.
+
+#### intervals.icu DSL syntax — CANONICAL REFERENCE (verified empirically + per their docs)
+
+Format each step as `- {duration} {target}`. **Order matters**: zone or range comes FIRST, modality (HR / Pace / LTHR) comes AFTER.
+
+| Target type | Syntax | Example |
+|---|---|---|
+| HR zone (1-5) | `Z{n} HR` | `- 5km Z2 HR` |
+| HR absolute range | `{low}-{high} HR` | `- 5km 125-140 HR` |
+| HR % of max | `{lo}-{hi}% HR` | `- 5km 70-75% HR` |
+| HR % of LTHR | `{lo}-{hi}% LTHR` | `- 5km 90-95% LTHR` |
+| Pace zone (1-5) | `Z{n} Pace` | `- 5km Z2 Pace` |
+| Pace absolute range | `{slower}-{faster}/km Pace` | `- 5km 5:30-5:00/km Pace` (slower first!) |
+| Pace % of threshold | `{lo}-{hi}% Pace` | `- 10m 88-92% Pace` |
+| No target (free run) | (just duration) | `- 5km` |
+
+**Wrong syntax that FAILS** (parses to wrong target type):
+- `HR Z2` → power_zone 2 (modality before zone is invalid)
+- `5km hr 125-140` → no target at all (lowercase hr ignored)
+- `Z2` alone → power_zone 2 (defaults to power)
+
+**Duration formats**: `5km`, `2km`, `1mi`, `5m`, `30s`, `1h`, `5m30s`.
+
+**Multi-step workouts** (warmup + main + cooldown):
+```
+Warmup
+- 5m Z1 HR
+- 5m Z2 HR
+
+Main
+- 20m 88-92% Pace
+
+Cooldown
+- 5m Z1 HR
+```
+
+**Repeats** (e.g. 4×800m):
+```
+Warmup
+- 3km Z1 HR
+
+Main Set 4x
+- 800m Z4 Pace
+- 400m Z1 Pace
+
+Cooldown
+- 2km Z1 HR
+```
+
+#### Defaults for the runningPlan types
+
+If `run.intervals` is set, use it as-is (assumed valid DSL). Otherwise default by `run.type`:
+- `"Z2"` or `"easy"` → `- {distance}km Z2 HR`
+- `"tempo"` → `- {distance}km Z3 HR`
+- `"threshold"` → `- {distance}km Z4 HR`
+- `"intervals"` / `"vo2"` → `- {distance}km Z5 HR`
+- If only `target_hr_max` is set → `- {distance}km {target_hr_max-15}-{target_hr_max} HR`
+
+#### POST request
 
 ```bash
-# DSL: free intervals string overrides Z2 template
-DSL="${run.intervals:-${run.distance_km}km easy HR < ${run.target_hr_max}}"
 EXT_ID="cron-${weekKey}-${run.id}"
-AUTH=$(echo -n "API_KEY:${API_KEY}" | base64)
+AUTH=$(echo -n "API_KEY:${API_KEY}" | base64 -w 0)
+
+# Write JSON body to a file to avoid shell quoting issues with multi-line DSL
+cat > /tmp/icu-event.json <<EOF
+{"external_id":"${EXT_ID}","name":"${run.label}","start_date_local":"${run.date}T07:00:00","category":"WORKOUT","type":"Run","description":"${DSL}"}
+EOF
 
 curl -sS -X POST "https://intervals.icu/api/v1/athlete/${ATHLETE_ID}/events" \
   -H "Authorization: Basic ${AUTH}" \
   -H "Content-Type: application/json" \
-  -d "{
-    \"external_id\": \"${EXT_ID}\",
-    \"name\": \"${run.label}\",
-    \"start_date_local\": \"${run.date}T06:00:00\",
-    \"category\": \"WORKOUT\",
-    \"type\": \"Run\",
-    \"description\": \"${DSL}\"
-  }"
+  --data-binary @/tmp/icu-event.json
 ```
+
+**Verify the result**: GET the created event and check that `workout_doc.steps[]` contains the expected target type:
+- HR target → `{"hr": {"units": "hr_zone", "value": N}, ...}` or `{"hr": {"units": "bpm", "value": [low, high]}, ...}`
+- Pace target → `{"pace": {...}, ...}`
+- If you see `{"power": {"units": "power_zone", ...}}` for a Run workout, the DSL was malformed (most likely zone/modality order was reversed).
 
 Track success/fail counts. Report in Phase 5 final summary: "Auto-pushed N of M runs to intervals.icu (→ COROS)".
 
-**Idempotency**: external_id is `cron-{weekKey}-{run.id}`. The PWA's manual button uses `pwa-{weekKey}-{run.id}` so the two paths don't collide. Re-running the cron updates existing events instead of duplicating.
+**Idempotency caveat**: empirically `external_id` does NOT dedup on POST — re-POSTing the same external_id creates a duplicate event. To update an existing event, use `PUT /events/{eventId}`. The cron tracks created event IDs in `tracking/intervals-icu-events.json` (one entry per weekKey) and uses PUT for re-runs of the same week.
 
 **Note**: the PWA also has a "Push to COROS" button users can click manually. The cron auto-push runs first (right after the commit lands); the manual button is a safety net if the auto-push fails or if the user edits the plan before pushing.
 

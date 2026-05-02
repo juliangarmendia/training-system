@@ -3851,17 +3851,49 @@ async function intervalsIcuSync() {
 }
 
 // ==================== PUSH RUNNING PLAN → intervals.icu → COROS ====================
+// intervals.icu DSL syntax (verified empirically + per their docs):
+//   - Each step starts with `- ` (hyphen + space)
+//   - Duration first: `5km`, `30m`, `5m30s`, `1h`
+//   - Target AFTER duration, with the **zone/range first** then the **modality**:
+//       HR zone:        `Z2 HR`        (zone N + literal "HR")
+//       HR absolute:    `125-140 HR`   (low-high range)
+//       HR % max:       `70-75% HR`
+//       HR % LTHR:      `90-95% LTHR`
+//       Pace zone:      `Z2 Pace`
+//       Pace absolute:  `7:15-7:00/km Pace` (slower first, faster second)
+//   - Order matters: `Z2 HR` works, `HR Z2` parses as power_zone (wrong).
+//   - Sections (warmup / main / cooldown) are optional headers above steps.
+//   - Repeats: `Main Set Nx` header above the repeated steps.
 function _generateIntervalsIcuDsl(run) {
-  // Free-form intervals string overrides the simple Z2 template.
+  // 1) Free-form intervals string overrides the simple template — assumed to
+  //    be already in valid intervals.icu DSL.
   if (run.intervals) return String(run.intervals);
-  const parts = [];
-  if (run.distance_km) parts.push(`${run.distance_km}km`);
-  if (run.type === 'Z2') parts.push('easy');
-  if (run.target_hr_max) parts.push(`HR < ${run.target_hr_max}`);
-  if (run.target_pace_min_per_km) parts.push(`pace ${run.target_pace_min_per_km}/km`);
-  const summary = parts.join(' ') || 'Easy run';
-  const note = run.note ? `\n${run.note}` : '';
-  return summary + note;
+
+  // 2) Build a structured single-step workout from the run's targets.
+  const lines = [];
+  const dur = run.distance_km ? `${run.distance_km}km` : (run.duration_min ? `${run.duration_min}m` : '5km');
+
+  // Decide target token in priority: explicit pace range > pace zone > HR zone > HR max
+  let target = '';
+  if (run.target_pace_min_per_km && run.target_pace_min_per_km_fast) {
+    // slower first, faster second per intervals.icu docs
+    target = `${run.target_pace_min_per_km}-${run.target_pace_min_per_km_fast}/km Pace`;
+  } else if (run.type === 'Z2' || run.type === 'easy') {
+    target = 'Z2 HR';
+  } else if (run.type === 'tempo') {
+    target = 'Z3 HR';
+  } else if (run.type === 'threshold') {
+    target = 'Z4 HR';
+  } else if (run.type === 'intervals' || run.type === 'vo2') {
+    target = 'Z5 HR';
+  } else if (run.target_hr_max) {
+    // Treat the max as the upper bound of a 15bpm window (Z2 = ~125-140).
+    const lo = Math.max(100, run.target_hr_max - 15);
+    target = `${lo}-${run.target_hr_max} HR`;
+  }
+
+  lines.push(`- ${dur}${target ? ' ' + target : ''}`);
+  return lines.join('\n');
 }
 
 async function pushRunningPlanToIntervalsIcu() {
