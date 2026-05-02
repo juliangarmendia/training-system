@@ -1,7 +1,73 @@
 {
   "weekKey": "2026-W17",
-  "generatedAt": 1777800000000,
-  "source": "auto",
-  "observed": "**Adherence:** 4/4 gym sessions ✓ · 2 runs (8.5 km, both Z2 ✓) · **0 mobility ✗** (target 3-5/wk).\n\n**Performance highlights:**\n- **Sumo DL: 225 × 6 × 4 sets all @ RPE 7** → clearly too easy, big room to add load.\n- Back Squat 215 × 8 @ RPE 7.9 — solid, in target zone.\n- Bench Press RPE creeping 8 → 8.5 across sets, dropping reps last 2 sets.\n- OHP 4th set missed all 3 occasions.\n\n**Body weight:** −0.4 kg/wk over 2 weeks → on-target loss zone.\n\n**Red flags:**\n- **Accessories collapsing.** Lower B (Apr 25) only completed 2/6 exercises. Upper B (Apr 24) only 3/6.\n- **Zero mobility** while loading heavy compounds + deficit = back-injury risk.\n- **No nutrition tracking** — flying blind on the deficit lever.",
-  "planNext": "**Load progressions:**\n- **Sumo DL: +10-15 lb** (240 × 6) — RPE 7 across all sets confirms easy.\n- **Back Squat: +5 lb** (220 × 8).\n- **Barbell Row: +5 lb** (top set 150 × 10).\n- **Bench Press: hold 205 lb** (consolidate before adding — RPE was creeping).\n- **OHP: complete all 4 sets at 115 first**, then +5.\n- **Chin-ups: hold +15 lb**, push for 4 × 6+ reps.\n\n**Process fixes:**\n- **Mobility: 3 sessions minimum this week.** Hip Reset 2× + Lumbar 1×. Pin to Wed/Sat or 5-min post-gym.\n- **Lower B:** start session with Hip Thrust BEFORE BSS so glute priority work gets done.\n- **Upper B:** small fast accessories (Cable Lateral, Incline Curl) BEFORE Landmine Row.\n- **Nutrition:** log protein + calories at least 4 of 7 days this week."
+  "generatedAt": 1777939200000,
+  "source": "auto-backfill",
+  "coachVoice": {
+    "lastWeek": "**4/4 gym this week — but the surface number hides the real story.**\n\nThe big signal is **Sumo DL: 225 lb × 6 across all 4 sets at RPE 7**. That's not heavy. Flat RPE 7 across 4 sets means the load is well below threshold — you've got at least 15-20 lb in the tank. You're leaving strength on the table on the one lift that drives posterior-chain volume.\n\n**The accessory completion is collapsing.** Lower B finished 2 of 6 exercises. Upper B finished 3 of 6. That's not a noise pattern — that's structural. Either the sessions are running too long, or the small accessories at the end of the session are the first thing cut when energy/time runs out. Both are fixable, but the fix is structural (reorder), not motivational.\n\n**Mobility = 0/4 weeks since program start.** This isn't a soft signal anymore — it's the variable that produced the back contracture in W16. Heavy compounds + deficit + zero mobility = injury debt. The W16 week was already the cost. Continuing to run zero is choosing to retest that risk.\n\n**Back Squat 215 × 8 × 4 @ RPE 7.9** was clean and Q5 — your best session of the week. Bench RPE crept (8.0 → 8.5 last 2 sets, dropped to 7-rep doubles). OHP got 3 sets at 115 lb — you've been chasing the 4th set for 3 weeks now.\n\n**Body weight: 86.7 kg today, down from 87.7 two weeks ago.** That's −0.5 kg/week ≈ −0.55%/week — exactly the target zone. The deficit is calibrated even without nutrition tracking. But \"calibrated by accident\" isn't a strategy that survives a stall.\n\n**Two runs at Z2 (HR 131-134, 4.2 km × 2)** — clean execution on the running side.",
+    "nextWeek": "**Week 18 is the last hard week before the deload (W19 / Block A week 5).** Three priorities:\n\n**1. Sumo DL gets +15 lb (240 × 6).** No more flat RPE 7 across 4 sets. We need a top set at RPE 8 to know we're loading correctly. If it's still 7 across the board at 240, we go to 250 the week after.\n\n**2. Mobility is mandatory at 3 sessions.** Wed Hip Reset, Sat Lumbar, Sun Hip Reset. Pin them. The W16 back contracture is the why — we're not running that experiment again.\n\n**3. Reorder the late-session accessories so the priorities go first.** Lower B starts with Hip Thrust before BSS so glute work is anchored. Upper B starts the lateral/curl block before Landmine Row.\n\nBench holds at 205 (RPE was creeping). Squat +5 to 220. Row +5 to 150. OHP — finish all 4 sets at 115 first, then we move it. Chins keep +15 lb, target 4 × 6+ reps.\n\n**Nutrition: 4 days minimum logged this week.** The deficit is working but we can't tell when it stops working without data.\n\nW19 will be the deload (volume −40-50%). One more push week to bank a clean stimulus, then we recover."
+  },
+  "nextWeekPlan": {
+    "weekNumber": 18,
+    "weekLabel": "Block A · Week 4 (final push before deload)",
+    "phase": "push",
+    "summary": "Sumo DL +15 lb. Squat +5. Row +5. Bench hold. Mobility 3× mandatory.",
+    "sessions": [
+      {
+        "id": "upperA",
+        "label": "Upper A — Mon",
+        "focus": "Bench hold, Row +5",
+        "exercises": [
+          {"id": "bench-press", "name": "Bench Press", "target": "205 lb × 5-8", "rpe": "7-8", "note": "Hold load — RPE was creeping in last 2 sets last week"},
+          {"id": "barbell-row", "name": "Barbell Row", "target": "150 lb × 6-10", "rpe": "7-8", "note": "+5 lb from last week"},
+          {"id": "incline-db-press", "name": "Incline DB Press", "target": "50 lb/DB × 8-12", "rpe": "7"},
+          {"id": "face-pull", "name": "Face Pull", "target": "47.5 lb × 12-15", "rpe": "7"},
+          {"id": "lateral-raise", "name": "DB Lateral Raise", "target": "15 lb/DB × 12-15", "rpe": "7", "note": "Don't skip this week — start before the row if needed"},
+          {"id": "tricep-pushdown", "name": "Tricep Pushdown", "target": "47.5 lb × 10-15", "rpe": "7"}
+        ]
+      },
+      {
+        "id": "lowerA",
+        "label": "Lower A — Tue",
+        "focus": "Squat +5",
+        "exercises": [
+          {"id": "back-squat", "name": "Back Squat", "target": "220 lb × 6-8", "rpe": "7-8", "note": "+5 lb from last week (215 × 8 × 4 was Q5 RPE 7.9)"},
+          {"id": "rdl", "name": "Romanian Deadlift", "target": "185 lb × 8-10", "rpe": "7"},
+          {"id": "leg-press", "name": "Leg Press", "target": "210 lb × 10-12", "rpe": "7"},
+          {"id": "leg-curl-a", "name": "Leg Curl", "target": "90 lb × 10-12", "rpe": "7"},
+          {"id": "calf-raise", "name": "Calf Raise", "target": "115 lb × 12-15", "rpe": "7"},
+          {"id": "ab-wheel", "name": "Ab Wheel Rollout", "target": "BW × 8-12", "rpe": "7", "note": "Don't skip — 5 min at end is enough"}
+        ]
+      },
+      {
+        "id": "upperB",
+        "label": "Upper B — Thu",
+        "focus": "Complete all 4 OHP sets",
+        "exercises": [
+          {"id": "chinups", "name": "Weighted Chin-ups", "target": "+15 lb × 4-6", "rpe": "7-8", "note": "Push for 4 × 6 reps this week"},
+          {"id": "ohp", "name": "Overhead Press", "target": "115 lb × 6-8", "rpe": "7-8", "note": "ALL 4 sets — 4th has been missed 3 weeks running"},
+          {"id": "cable-lateral", "name": "Cable Lateral Raise", "target": "5-7.5 lb × 12-15", "rpe": "7", "note": "Move BEFORE Landmine Row — don't leave for last"},
+          {"id": "incline-curl", "name": "Incline DB Curl", "target": "25 lb/DB × 10-12", "rpe": "7", "note": "Move BEFORE Landmine Row"},
+          {"id": "landmine-row", "name": "Landmine Row", "target": "115 lb × 10-12", "rpe": "7"},
+          {"id": "hanging-leg-raise", "name": "Hanging Leg Raise", "target": "BW × 10-12", "rpe": "7"}
+        ]
+      },
+      {
+        "id": "lowerB",
+        "label": "Lower B — Fri/Sat",
+        "focus": "Sumo DL +15 lb · Hip Thrust BEFORE BSS",
+        "exercises": [
+          {"id": "sumo-dl", "name": "Sumo Deadlift", "target": "240 lb × 5-6", "rpe": "8", "note": "+15 lb — last week was flat RPE 7 across all 4 sets, clearly under-loaded"},
+          {"id": "hip-thrust", "name": "Hip Thrust", "target": "185 lb × 8-10", "rpe": "7", "note": "MOVED EARLIER — start of session so it gets done"},
+          {"id": "bss", "name": "Bulgarian Split Squat", "target": "95 lb × 6-8/leg", "rpe": "7"},
+          {"id": "leg-extension", "name": "Leg Extension", "target": "100 lb × 10-12", "rpe": "7"},
+          {"id": "leg-curl-b", "name": "Lying Leg Curl", "target": "80 lb × 10-12", "rpe": "7"},
+          {"id": "pallof-press", "name": "Pallof Press", "target": "30 lb × 10-12/side", "rpe": "7"}
+        ]
+      }
+    ],
+    "mobility": "**3 sessions mandatory** — Wed Hip Reset, Sat Lumbar, Sun Hip Reset. The W16 back contracture is why this is non-negotiable.",
+    "running": "2 × Z2 — Wed easy 4-5 km, Sat Z2 4-5 km, HR < 140."
+  },
+  "observed": "**4/4 gym this week — but the surface number hides the real story.** The big signal is **Sumo DL 225 lb × 6 across all 4 sets at RPE 7** — that's not heavy enough; you've got 15-20 lb in the tank. **Accessory completion is collapsing**: Lower B finished 2/6 exercises, Upper B 3/6. That's structural, not motivational. **Mobility = 0/4 weeks since program start** — this is the variable that produced the W16 back contracture. Continuing zero is choosing to retest that risk. **Back Squat 215 × 8 × 4 @ RPE 7.9** was clean and Q5 — best session of the week. **Bench RPE crept (8.0 → 8.5 last 2 sets)**. OHP still chasing the 4th set for the 3rd week. **BW: 86.7 kg today, down from 87.7 two weeks ago = −0.5 kg/wk** — exactly target. **2 Z2 runs (HR 131-134)** — clean.",
+  "planNext": "**Week 18 = last hard week before deload.** Sumo DL +15 lb (240 × 6). Mobility mandatory 3× (Wed/Sat/Sun). Reorder Lower B (Hip Thrust before BSS) and Upper B (lateral/curl before Landmine Row). Bench hold at 205. Squat +5 (220). Row +5 (150). OHP — finish all 4 sets at 115 first, then move it. Chins +15 lb push for 4×6+. Nutrition: log 4 days minimum. W19 = deload (volume −40-50%)."
 }

@@ -5,7 +5,7 @@
 > Updated: 2026-04-13
 > Phase: Fat Loss / Strength Maintenance
 > Duration: 9 weeks — Block A (weeks 1-4) + Deload (week 5) + Block B (weeks 6-9)
-> Current week: 2 (Block A)
+> Current week: 4 (Block A — final push before deload W5)
 > Next review: Week 5 (deload + exercise rotation), Week 9 (full reassessment)
 
 ---
@@ -405,3 +405,43 @@ This data feeds into weekly check-ins and progress tracking.
 | 2026-04-06 | v1.0 created | Initial assessment |
 | 2026-04-06 | v2.0 rewrite | Full evidence-based review. Added research citations, detailed rationale, RPE phase targets, warm-up protocol, rest period guidelines, deload + diet break integration, weekly volume audit |
 | 2026-04-13 | v3.0 — Block periodization + Week 1 data | Added Block A/B exercise rotation (accessories swap at week 6, compounds stay). Registered Week 1 baselines from Supabase data (3/4 sessions). Added Week 2 targets. Flagged: app stores weights without unit indicator (kg vs lb mixed) |
+| 2026-05-01 | W15-W17 backfill + Week 18 targets | Inline backfill of weekly reviews W15/W16/W17. Sumo DL +15 lb (was flat RPE 7), Squat +5, Row +5, Bench hold, OHP focus on completing all 4 sets. Mobility 3× mandatory after W16 back contracture. Lower B / Upper B accessory reorder (priority work moves earlier in session). Block A week 5 = deload |
+
+---
+
+## Week 18 Targets (2026-04-27 to 2026-05-03) — Final push before deload
+
+**Theme:** Last hard week before W19 deload. Push Sumo DL load, anchor mobility habit, fix accessory completion via reorder.
+
+| Session | Exercise | Target | RPE | Notes |
+|---------|----------|--------|-----|-------|
+| Upper A (Mon) | Bench Press | 205 lb × 5-8 | 7-8 | Hold load — RPE crept last week |
+| Upper A | Barbell Row | 150 lb × 6-10 | 7-8 | +5 lb |
+| Upper A | Incline DB Press | 50 lb/DB × 8-12 | 7 | |
+| Upper A | Face Pull | 47.5 lb × 12-15 | 7 | |
+| Upper A | Lateral Raise | 15 lb/DB × 12-15 | 7 | Don't skip — start before row if needed |
+| Upper A | Tricep Pushdown | 47.5 lb × 10-15 | 7 | |
+| Lower A (Tue) | Back Squat | 220 lb × 6-8 | 7-8 | +5 lb (last week 215×8×4 was Q5) |
+| Lower A | RDL | 185 lb × 8-10 | 7 | |
+| Lower A | Leg Press | 210 lb × 10-12 | 7 | |
+| Lower A | Leg Curl | 90 lb × 10-12 | 7 | |
+| Lower A | Calf Raise | 115 lb × 12-15 | 7 | |
+| Lower A | Ab Wheel | BW × 8-12 | 7 | Don't skip — 5 min at end |
+| Upper B (Thu) | Weighted Chin-ups | +15 lb × 4-6 | 7-8 | Push for 4 × 6 reps |
+| Upper B | Overhead Press | 115 lb × 6-8 | 7-8 | **All 4 sets** — missed 4th set 3 weeks running |
+| Upper B | Cable Lateral | 5-7.5 lb × 12-15 | 7 | **MOVED EARLIER** before Landmine Row |
+| Upper B | Incline Curl | 25 lb/DB × 10-12 | 7 | **MOVED EARLIER** before Landmine Row |
+| Upper B | Landmine Row | 115 lb × 10-12 | 7 | |
+| Upper B | Hanging Leg Raise | BW × 10-12 | 7 | |
+| Lower B (Fri/Sat) | Sumo Deadlift | 240 lb × 5-6 | 8 | **+15 lb** — last week flat RPE 7 across all 4 sets |
+| Lower B | Hip Thrust | 185 lb × 8-10 | 7 | **MOVED EARLIER** — start of session |
+| Lower B | Bulgarian Split Squat | 95 lb × 6-8/leg | 7 | |
+| Lower B | Leg Extension | 100 lb × 10-12 | 7 | |
+| Lower B | Lying Leg Curl | 80 lb × 10-12 | 7 | |
+| Lower B | Pallof Press | 30 lb × 10-12/side | 7 | |
+
+**Mobility (mandatory 3 sessions):** Wed Hip Reset · Sat Lumbar · Sun Hip Reset.
+
+**Running:** 2 × Z2 — Wed easy 4-5 km · Sat Z2 4-5 km · HR < 140.
+
+**Nutrition:** log protein + calories at least 4 of 7 days.

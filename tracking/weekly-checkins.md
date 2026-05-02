@@ -13,6 +13,34 @@
 
 ---
 
+### Week 17 (Program Wk 3) — 2026-04-20 to 2026-04-26
+
+**Weight:** 86.5 → 86.7 kg over the week (down from 87.7 two weeks ago, −0.5 kg/wk trend on target).
+
+**Training:** 4/4 gym sessions. Sumo DL 225 × 6 × 4 ALL at RPE 7 — clearly under-loaded. Squat 215 × 8 × 4 @ 7.9 (Q5, best session). Bench RPE crept (8.0 → 8.5 last sets). OHP missed 4th set again.
+
+**Adherence:** Gym 4/4 ✓ · Run 2 (Z2 ✓) · Mobility **0** ✗ · Nutrition 2/7 days.
+
+**What didn't:** Late-session accessories collapsing (Upper B 3/6, Lower B 2/6 done). Mobility = 0 for the 4th week running.
+
+**Backfilled on 2026-05-01.**
+
+---
+
+### Week 16 (Program Wk 2) — 2026-04-13 to 2026-04-19
+
+**Weight:** 87.7 kg (Apr 14).
+
+**Training:** 1/4 sessions. Apr 14 Upper A abandoned mid-session — back contracture. Bench had pushed to 205 × 8 @ RPE 9 just before injury. Rest of week missed.
+
+**Adherence:** Gym 1/4 · Run 0 · Mobility 0 · Nutrition 2/7.
+
+**What didn't:** Back injury — direct consequence of zero mobility under heavy compounds. De facto deload week, unplanned.
+
+**Backfilled on 2026-05-01.**
+
+---
+
 ### Week 1 — 2026-04-07 to 2026-04-12
 
 **Weight:** 88.3 kg (April 12, single data point)
