@@ -118,6 +118,7 @@ Present in chat (do NOT write yet):
 Use AskUserQuestion grouped as:
 - "Apply review files?" (yes/no — saves the .md and `latest.json`)
 - "Apply plan changes?" (yes / yes-with-edits / no)
+- "Auto-push runningPlan to intervals.icu?" (yes/no — POST each run to intervals.icu using credentials from Supabase settings table; deterministic external_id `cron-{weekKey}-{run.id}` for idempotency. See `/weekly-review-auto` Phase 4.4 for details)
 - "Update progress-log.md?" (yes/no)
 - "Update weekly-checkins.md?" (yes/no)
 

@@ -287,6 +287,49 @@ git push origin main
 
 If multiple weeks were backfilled, batch them into one commit at the end (don't commit between iterations of Phase 4.1).
 
+### 4.4 Auto-push runningPlan to intervals.icu (NEW — only for the most recent processed week)
+
+If `nextWeekPlan.runningPlan` is non-empty, push each run to intervals.icu so it lands on Julian's COROS PACE 4 automatically (no need for him to click the "Push to COROS" button in the PWA).
+
+**Read credentials from Supabase** (the PWA writes them here under record_id='userSettings'):
+
+```sql
+SELECT data->>'intervalsIcuApiKey' AS api_key,
+       data->>'intervalsIcuAthleteId' AS athlete_id
+FROM settings
+WHERE record_id = 'userSettings'
+LIMIT 1;
+```
+
+If either is null/empty, skip this phase silently (user hasn't configured intervals.icu yet) and note it in Phase 5.
+
+**For each run in `nextWeekPlan.runningPlan`**, build the DSL description and POST to intervals.icu via Bash + curl. Use a deterministic `external_id` so re-runs UPDATE rather than DUPLICATE:
+
+```bash
+# DSL: free intervals string overrides Z2 template
+DSL="${run.intervals:-${run.distance_km}km easy HR < ${run.target_hr_max}}"
+EXT_ID="cron-${weekKey}-${run.id}"
+AUTH=$(echo -n "API_KEY:${API_KEY}" | base64)
+
+curl -sS -X POST "https://intervals.icu/api/v1/athlete/${ATHLETE_ID}/events" \
+  -H "Authorization: Basic ${AUTH}" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"external_id\": \"${EXT_ID}\",
+    \"name\": \"${run.label}\",
+    \"start_date_local\": \"${run.date}T06:00:00\",
+    \"category\": \"WORKOUT\",
+    \"type\": \"Run\",
+    \"description\": \"${DSL}\"
+  }"
+```
+
+Track success/fail counts. Report in Phase 5 final summary: "Auto-pushed N of M runs to intervals.icu (→ COROS)".
+
+**Idempotency**: external_id is `cron-{weekKey}-{run.id}`. The PWA's manual button uses `pwa-{weekKey}-{run.id}` so the two paths don't collide. Re-running the cron updates existing events instead of duplicating.
+
+**Note**: the PWA also has a "Push to COROS" button users can click manually. The cron auto-push runs first (right after the commit lands); the manual button is a safety net if the auto-push fails or if the user edits the plan before pushing.
+
 ## Phase 5 — Final summary
 
 Output to the user:

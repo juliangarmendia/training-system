@@ -3888,13 +3888,17 @@ async function pushRunningPlanToIntervalsIcu() {
   let failed = 0;
   for (const run of plan) {
     const dsl = _generateIntervalsIcuDsl(run);
-    const date = run.date || (latest.weekKey ? null : null);
+    const date = run.date || null;
     if (!date) { failed++; continue; }
+    // external_id makes the push idempotent — re-pushing the same plan
+    // updates the existing event instead of creating duplicates.
+    const externalId = `pwa-${latest.weekKey}-${run.id}`;
     try {
       const res = await fetch(`https://intervals.icu/api/v1/athlete/${encodeURIComponent(athleteId)}/events`, {
         method: 'POST',
         headers: { 'Authorization': auth, 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          external_id: externalId,
           name: run.label || 'Programmed run',
           start_date_local: `${date}T06:00:00`,
           category: 'WORKOUT',
