@@ -74,6 +74,17 @@ For each exercise in the plan, decide **keep / swap / cycle**:
 
 Output decisions in the review under `## Exercise rotation`. If no changes, state "Keep the program — everything progressing".
 
+### Running analysis & next-week program (NEW — every week)
+
+Pull last 4 weeks of runs from Supabase. Compute weekly km, Z2 compliance, avg pace at Z2, HR drift at fixed pace, adherence vs prior `runningPlan`. Apply running rules from `CLAUDE.md` + `.claude/rules/training-rules.md` (Z2 default, max 1 hard/wk, ≤10% volume increase, schedule away from leg-day, no volume increase first 2-3 weeks of program/deficit).
+
+Build the structured `runningPlan` for the upcoming week with concrete per-run targets. Schema:
+```json
+[{"id":"wed-z2", "date":"YYYY-MM-DD", "type":"Z2", "distance_km":4.5, "target_hr_max":140, "label":"Wed easy", "note":"..."}]
+```
+
+Add the structured plan to `nextWeekPlan.runningPlan[]` in `latest.json` (used by the PWA's "Push to COROS" button via intervals.icu). Keep the human-readable `running` free-text field too.
+
 ### Apply coaching rules per `.claude/rules/training-rules.md`
 
 For each main compound (`bench-press`, `back-squat`, `sumo-dl`, `ohp`, `barbell-row`, `chinups`):

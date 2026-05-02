@@ -94,7 +94,32 @@ For each exercise in the current plan, decide **keep / swap / cycle**:
 
 Output the rotation decisions in the review markdown under a `## Exercise rotation` section. If no changes proposed, state "No rotations this week — keep the program as-is" and explain briefly why (e.g., "Compounds all progressing, accessories well within Block A scope").
 
-### 2.8 Apply the coaching rules per `.claude/rules/training-rules.md`
+### 2.8 Running analysis & next-week program (NEW — every week)
+
+Pull the last 4 weeks of runs from Supabase (already queried in Phase 1.5). For each run, extract: `date`, `distance` (km), `duration` (min), `avgHR`, `avgPace`, `feel`, `source` (manual vs strava). Compute:
+
+- **Weekly km**: this week + prior 3 weeks. Trend (rising / flat / declining).
+- **Z2 compliance**: % of runs with `avgHR < 140` (per `plans/running-plan.md` zone 2 ceiling). 4-week trend.
+- **Avg pace at Z2**: pace of runs where `avgHR < 140`. If pace improving at same HR over 3+ weeks → aerobic fitness gain. If pace flat / declining → fatigue or no signal yet.
+- **HR drift at fixed pace**: if 2+ runs this week at similar pace (±10 sec/km), compare avgHR. Drift > 5 bpm at same pace → fatigue flag → reduce next week's volume by 20%.
+- **Adherence**: planned runs (from prior week's `nextWeekPlan.runningPlan` if exists) vs completed.
+- **Hard sessions count**: any run flagged as type !== "Z2" or with avgHR > 150. Apply rule: max 1 hard session/week.
+
+Apply the running rules from `.claude/rules/training-rules.md` running section + `CLAUDE.md` running principles:
+- ≤10% weekly volume increase
+- Z2 default; max 1 hard session/week
+- Schedule runs on non-leg-dominant gym days (Mon/Thu = upper days = OK for runs; Tue/Fri = lower days = avoid)
+- If running interferes with squat/DL recovery (look at next-day workout quality), reduce running first
+- Do not increase volume during the first 2-3 weeks of a new program or deficit
+
+**Build the structured `runningPlan` for next week** (used by Phase 3.2):
+- 2-3 runs/week default unless adherence below 70% (then 1-2)
+- Each run: `{id, date (YYYY-MM-DD), type: "Z2"|"tempo"|"intervals"|"long", distance_km, target_hr_max, target_pace_min_per_km?, intervals?, label, note?}`
+- For Z2: `target_hr_max: 140`, `intervals` field omitted, free-text `note` for context
+- For tempo/intervals: include `intervals` as a string in the format `"10m WU @ HR<130 → 4 × (5m @ HR 150-160 + 2m @ HR<130) → 5m CD"` (this gets parsed by the PWA into intervals.icu DSL on push)
+- Schedule dates: Wed and Sat by default (away from Tue/Fri leg days). Adjust if those conflict with the gym schedule.
+
+### 2.9 Apply the coaching rules per `.claude/rules/training-rules.md`
 
 For each main compound (`bench-press`, `back-squat`, `sumo-dl`, `ohp`, `barbell-row`, `chinups`):
 - Avg RPE ≤ 7 AND minimum reps below the prescribed top of range → "**+1 rep next session**, hold weight" (do NOT propose load yet).
@@ -206,7 +231,27 @@ Compose the in-app Coach Review as a real coach talking to Julian — direct, ev
       { "id": "lowerB", "label": "Lower B — Fri", "focus": "...", "exercises": [/* ... */] }
     ],
     "mobility": "3 sessions: Hip Reset Wed, Lumbar Sat, Hip Reset Sun",
-    "running": "2 × Z2 (Wed easy 4-5 km, Sat Z2 4-5 km, HR < 140)"
+    "running": "2 × Z2 (Wed easy 4-5 km, Sat Z2 4-5 km, HR < 140)",
+    "runningPlan": [
+      {
+        "id": "wed-z2",
+        "date": "2026-04-29",
+        "type": "Z2",
+        "distance_km": 4.5,
+        "target_hr_max": 140,
+        "label": "Wed easy",
+        "note": "Recovery day — keep HR strict <140"
+      },
+      {
+        "id": "sat-z2",
+        "date": "2026-05-02",
+        "type": "Z2",
+        "distance_km": 5.0,
+        "target_hr_max": 140,
+        "label": "Sat Z2",
+        "note": "+0.5 km vs last week — pace progression"
+      }
+    ]
   },
   "observed": "(copy of coachVoice.lastWeek — for backwards compat with v10.13-v10.16 PWA)",
   "planNext": "(copy of coachVoice.nextWeek — for backwards compat)"

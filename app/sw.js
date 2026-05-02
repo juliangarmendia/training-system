@@ -2,7 +2,7 @@
 // Service Worker — Training App v4.0
 // ============================================================
 
-const CACHE_NAME = 'training-v10.19';
+const CACHE_NAME = 'training-v10.20';
 const APP_SHELL = [
   './',
   './index.html',
@@ -10,6 +10,7 @@ const APP_SHELL = [
   './app.js',
   './supabase-sync.js',
   './whoop.js',
+  './strava.js',
   './manifest.json',
   './app-icon.png',
   './intro.mp4',

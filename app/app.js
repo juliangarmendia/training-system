@@ -3587,6 +3587,20 @@ async function loadAndRenderWeeklyCoach() {
     </div>
     ${renderNextWeekPlan(latest.nextWeekPlan)}
   `;
+
+  // Wire "Push to COROS" button if it was rendered (depends on intervals.icu key + runningPlan presence).
+  const pushBtn = document.getElementById('btn-push-coros');
+  if (pushBtn) {
+    pushBtn.addEventListener('click', async () => {
+      pushBtn.textContent = 'Pushing...';
+      pushBtn.disabled = true;
+      try { await pushRunningPlanToIntervalsIcu(); }
+      finally {
+        pushBtn.textContent = 'Push to COROS via intervals.icu';
+        pushBtn.disabled = false;
+      }
+    });
+  }
 }
 
 // Render the structured next-week plan (per session, per exercise targets).
@@ -3629,8 +3643,183 @@ function renderNextWeekPlan(nwp) {
       <div class="wcc-nwp-sessions">${sessionsHtml}</div>
       ${mobLine}
       ${runLine}
+      ${renderRunningPlanCard(nwp.runningPlan)}
     </div>
   `;
+}
+
+// Structured per-day running plan rendered below the gym sessions. Includes
+// "Push to COROS" button when intervals.icu is configured.
+function renderRunningPlanCard(runningPlan) {
+  if (!runningPlan || !Array.isArray(runningPlan) || runningPlan.length === 0) return '';
+  const hasApiKey = !!(state.settings && state.settings.intervalsIcuApiKey);
+  const runs = runningPlan.map(r => {
+    const noteHtml = r.note ? `<div class="wcc-rp-note">${escapeHtml(r.note)}</div>` : '';
+    const targetBits = [];
+    if (r.distance_km) targetBits.push(`${r.distance_km} km`);
+    if (r.target_hr_max) targetBits.push(`HR &lt; ${r.target_hr_max}`);
+    if (r.target_pace_min_per_km) targetBits.push(`pace ${escapeHtml(String(r.target_pace_min_per_km))}/km`);
+    const intervalsHtml = r.intervals ? `<div class="wcc-rp-intervals">${escapeHtml(r.intervals)}</div>` : '';
+    return `<div class="wcc-rp-run">
+      <div class="wcc-rp-run-row">
+        <span class="wcc-rp-label">${escapeHtml(r.label || r.id || '')}</span>
+        <span class="wcc-rp-target">${targetBits.join(' · ')}</span>
+      </div>
+      ${intervalsHtml}
+      ${noteHtml}
+    </div>`;
+  }).join('');
+  const pushBtn = hasApiKey
+    ? `<button id="btn-push-coros" class="btn-secondary btn-full" style="margin-top:10px">Push to COROS via intervals.icu</button>`
+    : `<p class="muted" style="font-size:11px;margin-top:8px">Configura intervals.icu en Settings para push directo al PACE 4.</p>`;
+  return `
+    <div class="wcc-rp">
+      <div class="wcc-rp-header">Running plan — programmed runs</div>
+      <div class="wcc-rp-runs">${runs}</div>
+      ${pushBtn}
+    </div>
+  `;
+}
+
+// ==================== STRAVA SETTINGS UI ====================
+function renderStravaUI() {
+  const container = document.getElementById('strava-section');
+  if (!container) return;
+  if (typeof window.stravaIsConnected !== 'function') {
+    container.innerHTML = '<p class="muted" style="font-size:13px;margin:0">Strava not loaded</p>';
+    return;
+  }
+  if (window.stravaNeedsReconnect && window.stravaNeedsReconnect()) {
+    container.innerHTML = `
+      <div class="form-row inline">
+        <label style="font-size:13px;color:var(--red)">Strava session expired</label>
+      </div>
+      <p class="muted" style="font-size:11px;margin:4px 0 8px">Reconnect to resume pulling runs from your COROS PACE 4 (via Strava).</p>
+      <button id="btn-strava-reconnect" class="btn-secondary btn-full" style="border-color:var(--red);color:var(--red)">Reconnect Strava</button>
+    `;
+    document.getElementById('btn-strava-reconnect').addEventListener('click', stravaConnect);
+    return;
+  }
+  if (window.stravaIsConnected()) {
+    const lastSync = parseInt(localStorage.getItem('strava_last_sync') || '0');
+    const lastSyncStr = lastSync ? new Date(lastSync).toLocaleString() : 'Never';
+    const name = localStorage.getItem('strava_athlete_name') || '';
+    container.innerHTML = `
+      <div class="form-row inline">
+        <label style="font-size:13px;color:var(--accent)">Strava Connected${name ? ' · ' + escapeHtml(name) : ''}</label>
+        <button id="btn-strava-disconnect" class="btn-secondary" style="width:auto;padding:8px 16px">Disconnect</button>
+      </div>
+      <p class="muted" style="font-size:11px;margin:6px 0 8px">Last sync: ${lastSyncStr}</p>
+      <button id="btn-strava-sync" class="btn-secondary btn-full">Sync Now</button>
+      <p class="muted" style="font-size:11px;margin-top:6px">Pulls Run activities (auto-synced from COROS) into your runs database.</p>
+    `;
+    document.getElementById('btn-strava-disconnect').addEventListener('click', () => {
+      stravaDisconnect();
+      renderStravaUI();
+      if (typeof toast === 'function') toast('Strava disconnected');
+    });
+    document.getElementById('btn-strava-sync').addEventListener('click', async () => {
+      const btn = document.getElementById('btn-strava-sync');
+      btn.textContent = 'Syncing...';
+      btn.disabled = true;
+      const result = await stravaSync();
+      if (result) {
+        if (typeof toast === 'function') toast(`Synced ${result.synced || 0} run${result.synced === 1 ? '' : 's'}`);
+        renderStravaUI();
+        renderRecentWorkouts();
+      } else {
+        if (typeof toast === 'function') toast('Strava sync failed — check connection');
+        btn.textContent = 'Sync Now';
+        btn.disabled = false;
+      }
+    });
+  } else {
+    container.innerHTML = `
+      <button id="btn-strava-connect" class="btn-secondary btn-full" style="border-color:#fc4c02;color:#fc4c02">Connect Strava</button>
+      <p class="muted" style="font-size:11px;margin-top:6px">Pulls runs from your COROS PACE 4 via Strava (already auto-syncing). One-time OAuth.</p>
+    `;
+    document.getElementById('btn-strava-connect').addEventListener('click', stravaConnect);
+  }
+}
+
+// ==================== INTERVALS.ICU SETTINGS UI ====================
+function renderIntervalsIcuUI() {
+  const apiInput = document.getElementById('setting-intervals-api-key');
+  const athInput = document.getElementById('setting-intervals-athlete');
+  const saveBtn = document.getElementById('btn-save-intervals');
+  if (!apiInput || !athInput || !saveBtn) return;
+  apiInput.value = (state.settings && state.settings.intervalsIcuApiKey) || '';
+  athInput.value = (state.settings && state.settings.intervalsIcuAthleteId) || '';
+  saveBtn.onclick = async () => {
+    state.settings = state.settings || {};
+    state.settings.intervalsIcuApiKey = apiInput.value.trim();
+    state.settings.intervalsIcuAthleteId = athInput.value.trim();
+    await saveSettings();
+    if (typeof toast === 'function') toast('intervals.icu config saved');
+    // Rerender the coach card so the "Push to COROS" button toggles based on key presence.
+    if (typeof loadAndRenderWeeklyCoach === 'function') loadAndRenderWeeklyCoach();
+  };
+}
+
+// ==================== PUSH RUNNING PLAN → intervals.icu → COROS ====================
+function _generateIntervalsIcuDsl(run) {
+  // Free-form intervals string overrides the simple Z2 template.
+  if (run.intervals) return String(run.intervals);
+  const parts = [];
+  if (run.distance_km) parts.push(`${run.distance_km}km`);
+  if (run.type === 'Z2') parts.push('easy');
+  if (run.target_hr_max) parts.push(`HR < ${run.target_hr_max}`);
+  if (run.target_pace_min_per_km) parts.push(`pace ${run.target_pace_min_per_km}/km`);
+  const summary = parts.join(' ') || 'Easy run';
+  const note = run.note ? `\n${run.note}` : '';
+  return summary + note;
+}
+
+async function pushRunningPlanToIntervalsIcu() {
+  const apiKey = state.settings && state.settings.intervalsIcuApiKey;
+  const athleteId = state.settings && state.settings.intervalsIcuAthleteId;
+  if (!apiKey || !athleteId) {
+    if (typeof toast === 'function') toast('Configura intervals.icu en Settings primero');
+    return;
+  }
+  const all = await dbGetAll('weekly_reviews');
+  if (!all || all.length === 0) {
+    if (typeof toast === 'function') toast('No weekly review yet');
+    return;
+  }
+  const latest = all.sort((a, b) => (b.generatedAt || 0) - (a.generatedAt || 0))[0];
+  const plan = latest.nextWeekPlan && latest.nextWeekPlan.runningPlan;
+  if (!plan || plan.length === 0) {
+    if (typeof toast === 'function') toast('No running plan in latest review');
+    return;
+  }
+
+  const auth = 'Basic ' + btoa(`API_KEY:${apiKey}`);
+  let pushed = 0;
+  let failed = 0;
+  for (const run of plan) {
+    const dsl = _generateIntervalsIcuDsl(run);
+    const date = run.date || (latest.weekKey ? null : null);
+    if (!date) { failed++; continue; }
+    try {
+      const res = await fetch(`https://intervals.icu/api/v1/athlete/${encodeURIComponent(athleteId)}/events`, {
+        method: 'POST',
+        headers: { 'Authorization': auth, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: run.label || 'Programmed run',
+          start_date_local: `${date}T06:00:00`,
+          category: 'WORKOUT',
+          type: 'Run',
+          description: dsl,
+        }),
+      });
+      if (res.ok) pushed++; else { failed++; console.warn('[intervals.icu] push failed', res.status, await res.text()); }
+    } catch (e) {
+      failed++;
+      console.warn('[intervals.icu] network error:', e);
+    }
+  }
+  if (typeof toast === 'function') toast(`Pushed ${pushed} run${pushed === 1 ? '' : 's'}${failed ? ` · ${failed} failed` : ''}`);
 }
 
 // Tiny markdown subset: bold (**...**), bullets ("- "), and line breaks.
@@ -7446,6 +7635,17 @@ async function init() {
 
   // WHOOP
   if (window.renderWhoopUI) renderWhoopUI();
+
+  // Strava (COROS PACE 4 bridge): UI + background sync.
+  renderStravaUI();
+  renderIntervalsIcuUI();
+  if (window.stravaSync) {
+    stravaSync().then(result => {
+      if (result && result.synced > 0 && state.currentTab === 'home') {
+        renderRecentWorkouts();
+      }
+    }).catch(() => {});
+  }
 
   // Notifications
   initNotifications();
