@@ -3759,6 +3759,95 @@ function renderIntervalsIcuUI() {
     // Rerender the coach card so the "Push to COROS" button toggles based on key presence.
     if (typeof loadAndRenderWeeklyCoach === 'function') loadAndRenderWeeklyCoach();
   };
+  const syncBtn = document.getElementById('btn-intervals-sync-now');
+  if (syncBtn) {
+    syncBtn.onclick = async () => {
+      syncBtn.textContent = 'Syncing...';
+      syncBtn.disabled = true;
+      try {
+        const result = await intervalsIcuSync();
+        if (result) {
+          if (typeof toast === 'function') toast(`Pulled ${result.pulled} run${result.pulled === 1 ? '' : 's'}`);
+          renderRecentWorkouts();
+        } else {
+          if (typeof toast === 'function') toast('Sync failed — check API key/athlete ID');
+        }
+      } finally {
+        syncBtn.textContent = 'Sync runs now';
+        syncBtn.disabled = false;
+      }
+    };
+  }
+}
+
+// ==================== PULL ACTIVITIES ← intervals.icu ← COROS ====================
+// Client-side sync: pulls Run activities from intervals.icu (which auto-syncs
+// from COROS PACE 4) and upserts them to the local runs store. smartPut also
+// enqueues for Supabase cloud sync. No Edge Function needed — Basic auth with
+// the user's personal API key.
+function _formatPaceFromSec(secondsPerKm) {
+  if (!isFinite(secondsPerKm) || secondsPerKm <= 0) return '';
+  const m = Math.floor(secondsPerKm / 60);
+  const s = Math.round(secondsPerKm % 60);
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+async function intervalsIcuSync() {
+  const apiKey = state.settings && state.settings.intervalsIcuApiKey;
+  const athleteId = state.settings && state.settings.intervalsIcuAthleteId;
+  if (!apiKey || !athleteId) return null;
+
+  // Sync window: 30 days back default, or since last sync minus 1 day for overlap
+  const lastSync = parseInt(localStorage.getItem('intervalsicu_last_sync') || '0');
+  const sinceMs = lastSync ? lastSync - 86400000 : Date.now() - 30 * 86400000;
+  const oldest = dateStr(new Date(sinceMs));
+  const newest = dateStr(new Date());
+  const auth = 'Basic ' + btoa(`API_KEY:${apiKey}`);
+  const url = `https://intervals.icu/api/v1/athlete/${encodeURIComponent(athleteId)}/activities?oldest=${oldest}&newest=${newest}`;
+
+  try {
+    const res = await fetch(url, { headers: { Authorization: auth } });
+    if (!res.ok) {
+      console.warn('[intervals.icu] activities fetch failed:', res.status);
+      return null;
+    }
+    const activities = await res.json();
+    const runs = (activities || []).filter(a => (a.type === 'Run' || a.sport === 'Run' || a.icu_intensity === 'easy_run' || a.type === 'TrailRun'));
+    let pulled = 0;
+    for (const a of runs) {
+      const stravaOrIcuId = a.id || a.external_id || `${a.start_date_local}_${a.distance}`;
+      const recordId = `icu_${stravaOrIcuId}`;
+      const startLocal = String(a.start_date_local || a.start_date || '');
+      const date = startLocal.split('T')[0];
+      if (!date) continue;
+      const distanceKm = Number(a.distance || 0) / 1000;
+      const movingSec = Number(a.moving_time || a.elapsed_time || 0);
+      const durationMin = Math.round(movingSec / 60);
+      const paceSecPerKm = distanceKm > 0 ? movingSec / distanceKm : 0;
+      const run = {
+        id: recordId,
+        date,
+        distance: Math.round(distanceKm * 100) / 100,
+        duration: durationMin,
+        avgHR: a.average_heartrate ? Math.round(Number(a.average_heartrate)) : null,
+        maxHR: a.max_heartrate ? Math.round(Number(a.max_heartrate)) : null,
+        avgPace: _formatPaceFromSec(paceSecPerKm),
+        feel: null,
+        notes: String(a.name || ''),
+        source: 'intervals.icu',
+        source_id: String(stravaOrIcuId),
+        _updated_at: Date.now(),
+      };
+      await smartPut('runs', run);
+      pulled++;
+    }
+    localStorage.setItem('intervalsicu_last_sync', String(Date.now()));
+    console.log(`[intervals.icu] pulled ${pulled} runs (window ${oldest} → ${newest})`);
+    return { pulled, total: activities.length };
+  } catch (e) {
+    console.warn('[intervals.icu] sync error:', e);
+    return null;
+  }
 }
 
 // ==================== PUSH RUNNING PLAN → intervals.icu → COROS ====================
@@ -7636,16 +7725,15 @@ async function init() {
   // WHOOP
   if (window.renderWhoopUI) renderWhoopUI();
 
-  // Strava (COROS PACE 4 bridge): UI + background sync.
+  // intervals.icu = primary COROS pull (also handles push). Auto-syncs runs
+  // in background. Strava UI stays available as a fallback but doesn't auto-sync.
   renderStravaUI();
   renderIntervalsIcuUI();
-  if (window.stravaSync) {
-    stravaSync().then(result => {
-      if (result && result.synced > 0 && state.currentTab === 'home') {
-        renderRecentWorkouts();
-      }
-    }).catch(() => {});
-  }
+  intervalsIcuSync().then(result => {
+    if (result && result.pulled > 0 && state.currentTab === 'home') {
+      renderRecentWorkouts();
+    }
+  }).catch(() => {});
 
   // Notifications
   initNotifications();

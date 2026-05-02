@@ -517,14 +517,16 @@
           <div class="card" id="strava-section">
             <p class="muted" style="font-size:13px;margin:0">Loading...</p>
           </div>
-          <div class="section-label" style="margin-top:24px">intervals.icu (push to COROS)</div>
+          <div class="section-label" style="margin-top:24px">intervals.icu (COROS pull + push)</div>
           <div class="card" id="intervals-icu-section">
             <div class="form-row"><label style="font-size:13px">Athlete ID</label><input type="text" id="setting-intervals-athlete" class="text-input" placeholder="i12345"></div>
             <div style="height:8px"></div>
             <div class="form-row"><label style="font-size:13px">API key</label><input type="password" id="setting-intervals-api-key" class="text-input" placeholder="paste API key"></div>
             <div style="height:8px"></div>
             <button id="btn-save-intervals" class="btn-secondary btn-full">Save</button>
-            <p class="muted" style="font-size:11px;margin-top:8px">Sign up free at <a href="https://intervals.icu" target="_blank" style="color:var(--accent)">intervals.icu</a> → Settings → API → generate Personal API Key. Then enable Settings → Coros sync.</p>
+            <div style="height:8px"></div>
+            <button id="btn-intervals-sync-now" class="btn-secondary btn-full">Sync runs now</button>
+            <p class="muted" style="font-size:11px;margin-top:8px">Sign up free at <a href="https://intervals.icu" target="_blank" style="color:var(--accent)">intervals.icu</a> → Settings → API → generate Personal API Key + Settings → Coros toggle ON. The PWA pulls runs from intervals.icu (COROS auto-syncs there) and pushes planned workouts back to your PACE 4.</p>
           </div>
           <div class="section-label" style="margin-top:24px">Appearance</div>
           <div class="card">
@@ -580,7 +582,7 @@
           </div>
           <div class="section-label" style="margin-top:24px">App</div>
           <div class="card">
-            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v10.20<br>Data stored locally + cloud sync.<br>Works offline.</p>
+            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v10.21<br>Data stored locally + cloud sync.<br>Works offline.</p>
             <button id="btn-force-update" class="btn-secondary btn-full" style="text-align:center">Force Update App</button>
           </div>
         </div>

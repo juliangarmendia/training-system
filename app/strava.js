@@ -8,7 +8,7 @@ const STRAVA_PROXY = 'https://ycfodifvpvosukepcxie.supabase.co/functions/v1/stra
 // IMPORTANT: replace STRAVA_CLIENT_ID with the public client_id of the Strava
 // app you registered at https://www.strava.com/settings/api. Authorization
 // Callback Domain must be `juliangarmendia.github.io`.
-const STRAVA_CLIENT_ID = 'TODO_PASTE_CLIENT_ID_HERE';
+const STRAVA_CLIENT_ID = '234456';
 const STRAVA_REDIRECT_URI = 'https://juliangarmendia.github.io/training-system/app/strava-callback.html';
 const STRAVA_AUTH_URL = 'https://www.strava.com/oauth/authorize';
 // Scopes: read activities only — no write/upload (we only pull runs).
