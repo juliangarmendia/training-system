@@ -6100,9 +6100,14 @@ function showSwapUI(card, ex, session) {
 }
 
 // ==================== DAILY STEPS ====================
-// Steps land in Supabase via the steps-ingest Edge Function (called by an
-// iOS Shortcut nightly Personal Automation). The app pulls last 30 days
-// on each render and caches in IDB. Manual entry is the fallback.
+// Primary source (v10.26+): intervals.icu wellness — Apple Health → intervals.icu
+// Companion → wellness.steps. Pulled by intervalsFetchWellness in whoop.js,
+// upserted to IDB 'steps' store. No iOS Automation needed.
+// Legacy paths (kept for fallback + manual entry):
+//   - syncStepsFromCloud(): pulls from Supabase steps table (populated by old
+//     iOS Shortcut → steps-ingest Edge Function). Still works for historical
+//     data backfill if intervals.icu doesn't have it.
+//   - logStepsManual(): manual entry override.
 const STEPS_INGEST_URL = 'https://ycfodifvpvosukepcxie.supabase.co/functions/v1/steps-ingest';
 
 async function syncStepsFromCloud() {
@@ -6229,8 +6234,8 @@ async function renderStepsHistoryChart() {
   const target = (state.settings && state.settings.stepsTarget) || 8000;
 
   if (all.length === 0) {
-    if (statsRow) statsRow.innerHTML = '<div class="muted" style="font-size:13px">No steps logged yet. The Shortcut runs every night at 11:50 PM and pushes that day\'s total.</div>';
-    if (chartEl) showEmptyState(chartEl, '👟', 'No steps yet', 'Steps appear here once your nightly Shortcut runs.');
+    if (statsRow) statsRow.innerHTML = '<div class="muted" style="font-size:13px">No steps logged yet. Steps sync automatically from Apple Health via intervals.icu Companion.</div>';
+    if (chartEl) showEmptyState(chartEl, '👟', 'No steps yet', 'Steps appear here once intervals.icu syncs from Apple Health.');
     if (histEl) histEl.innerHTML = '';
     return;
   }

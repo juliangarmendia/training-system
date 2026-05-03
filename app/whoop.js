@@ -1,5 +1,5 @@
 // ============================================================
-// WHOOP Integration Module — Training App v10.25
+// WHOOP Integration Module — Training App v10.26
 // Primary path: intervals.icu wellness (no OAuth, no token refresh).
 // Fallback path: direct WHOOP OAuth (kept for rollback; deleted Phase 3).
 // ============================================================
@@ -263,6 +263,10 @@ async function intervalsFetchWellness() {
 
   const recovery = [];
   const sleep = [];
+  let latestWeight = null;
+  let weightWrites = 0;
+  let stepsWrites = 0;
+
   for (const r of rows) {
     if (!r || !r.id) continue;
     if (r.readiness != null || r.hrv != null || r.restingHR != null) {
@@ -284,6 +288,43 @@ async function intervalsFetchWellness() {
         deepMs: 0,
       });
     }
+
+    // Body weight (from Apple Health via intervals.icu Companion). Upsert by
+    // date — intervals.icu wins over manual entry for the same date.
+    if (typeof r.weight === 'number' && r.weight > 20 && r.weight < 300) {
+      try {
+        if (typeof smartPut === 'function') {
+          await smartPut('bodyweight', {
+            date: r.id,
+            weight: Math.round(r.weight * 10) / 10,
+            timestamp: Date.now(),
+            source: 'intervals.icu',
+          });
+          weightWrites++;
+          latestWeight = Math.round(r.weight * 10) / 10;
+        }
+      } catch (e) { console.warn('[wellness] weight upsert failed for', r.id, e); }
+    }
+
+    // Daily steps (from Apple Health via intervals.icu Companion). Replaces
+    // the iOS Shortcut → steps-ingest path. Same store schema for compat.
+    if (typeof r.steps === 'number' && r.steps >= 0 && r.steps < 200000) {
+      try {
+        if (typeof dbPut === 'function') {
+          await dbPut('steps', {
+            date: r.id,
+            steps: Math.round(r.steps),
+            source: 'intervals.icu',
+            ts: Date.now(),
+          });
+          stepsWrites++;
+        }
+      } catch (e) { console.warn('[wellness] steps upsert failed for', r.id, e); }
+    }
+  }
+
+  if (weightWrites || stepsWrites) {
+    console.info(`[wellness] body sync: ${weightWrites} weight rows, ${stepsWrites} step rows`);
   }
 
   // Sort by date ascending so renderWhoopRecoveryCard's slice(-7) gets latest.
@@ -296,7 +337,7 @@ async function intervalsFetchWellness() {
     source: 'intervals.icu',
     recovery,
     sleep,
-    bodyWeight: null, // not surfaced — bodyweight IDB store is independent
+    bodyWeight: latestWeight,
   };
 }
 
