@@ -511,7 +511,7 @@ async function createNewPlanVersion(modifications) {
 
 // ==================== DATABASE ====================
 const DB_NAME = 'TrainingApp';
-const DB_VERSION = 8;
+const DB_VERSION = 9;
 let db = null;
 
 function openDB() {
@@ -536,6 +536,9 @@ function openDB() {
       if (!d.objectStoreNames.contains('weekly_reviews')) d.createObjectStore('weekly_reviews', { keyPath: 'weekKey' });
       // Daily steps — added v10.13 (DB v8)
       if (!d.objectStoreNames.contains('steps')) d.createObjectStore('steps', { keyPath: 'date' });
+      // Daily wellness (intervals.icu): readiness, hrv, restingHR, sleep, ctl/atl/rampRate,
+      // macros, weight, steps. Cron + body insights read from here. v10.27 (DB v9)
+      if (!d.objectStoreNames.contains('wellness')) d.createObjectStore('wellness', { keyPath: 'date' });
     };
     req.onsuccess = (e) => { db = e.target.result; resolve(db); };
     req.onerror = (e) => reject(e);

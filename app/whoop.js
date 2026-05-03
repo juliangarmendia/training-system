@@ -1,5 +1,5 @@
 // ============================================================
-// WHOOP Integration Module — Training App v10.26
+// WHOOP Integration Module — Training App v10.27
 // Primary path: intervals.icu wellness (no OAuth, no token refresh).
 // Fallback path: direct WHOOP OAuth (kept for rollback; deleted Phase 3).
 // ============================================================
@@ -248,12 +248,29 @@ async function intervalsFetchWellness() {
   }
 
   // Surface unknown keys once per session — guards against field-name drift.
+  // Updated v10.27 with the full set discovered in production.
   if (!_wellnessKeyLoggingDone && rows.length > 0) {
-    const known = new Set(['id', 'readiness', 'hrv', 'restingHR', 'sleepSecs', 'sleepScore', 'spO2',
-      'weight', 'respiration', 'updated', 'sportInfo', 'kcalConsumed', 'fatigue', 'soreness',
-      'stress', 'mood', 'motivation', 'injury', 'sick', 'menstrualPhase', 'menstrualPhasePredicted',
-      'avgSleepingHR', 'sleepQuality', 'baevskySI', 'bloodGlucose', 'lactate', 'bodyFat',
-      'abdomen', 'vo2max', 'comments']);
+    const known = new Set([
+      // Core wellness (mapped to recovery/sleep card)
+      'id', 'readiness', 'hrv', 'restingHR', 'sleepSecs', 'sleepScore', 'spO2',
+      'respiration', 'updated', 'sportInfo', 'avgSleepingHR', 'sleepQuality',
+      // Subjective wellness (not surfaced yet — could be added later)
+      'fatigue', 'soreness', 'stress', 'mood', 'motivation', 'injury', 'sick',
+      'menstrualPhase', 'menstrualPhasePredicted', 'comments',
+      // Body comp + activity
+      'weight', 'bodyFat', 'abdomen', 'steps',
+      // Lab values
+      'baevskySI', 'bloodGlucose', 'lactate', 'vo2max',
+      // Training load (huge for periodization)
+      'ctl', 'atl', 'rampRate', 'ctlLoad', 'atlLoad', 'hrvSDNN',
+      // Vitals
+      'systolic', 'diastolic',
+      // Hydration + nutrition
+      'hydration', 'hydrationVolume', 'kcalConsumed',
+      'carbohydrates', 'protein', 'fatTotal',
+      // Internal
+      'locked', 'tempWeight', 'tempRestingHR',
+    ]);
     const seen = new Set();
     rows.forEach(r => Object.keys(r || {}).forEach(k => seen.add(k)));
     const unknown = [...seen].filter(k => !known.has(k));
@@ -266,6 +283,7 @@ async function intervalsFetchWellness() {
   let latestWeight = null;
   let weightWrites = 0;
   let stepsWrites = 0;
+  let wellnessWrites = 0;
 
   for (const r of rows) {
     if (!r || !r.id) continue;
@@ -289,8 +307,8 @@ async function intervalsFetchWellness() {
       });
     }
 
-    // Body weight (from Apple Health via intervals.icu Companion). Upsert by
-    // date — intervals.icu wins over manual entry for the same date.
+    // Body weight — upsert to bodyweight store (legacy, used by calorie estimates).
+    // intervals.icu wins over manual entry for the same date.
     if (typeof r.weight === 'number' && r.weight > 20 && r.weight < 300) {
       try {
         if (typeof smartPut === 'function') {
@@ -306,12 +324,12 @@ async function intervalsFetchWellness() {
       } catch (e) { console.warn('[wellness] weight upsert failed for', r.id, e); }
     }
 
-    // Daily steps (from Apple Health via intervals.icu Companion). Replaces
-    // the iOS Shortcut → steps-ingest path. Same store schema for compat.
+    // Daily steps — upsert to steps store. smartPut so it goes to Supabase too
+    // (was dbPut before — IDB only). Replaces iOS Shortcut → steps-ingest path.
     if (typeof r.steps === 'number' && r.steps >= 0 && r.steps < 200000) {
       try {
-        if (typeof dbPut === 'function') {
-          await dbPut('steps', {
+        if (typeof smartPut === 'function') {
+          await smartPut('steps', {
             date: r.id,
             steps: Math.round(r.steps),
             source: 'intervals.icu',
@@ -321,10 +339,71 @@ async function intervalsFetchWellness() {
         }
       } catch (e) { console.warn('[wellness] steps upsert failed for', r.id, e); }
     }
+
+    // Full wellness row — upserted to dedicated wellness store. This is what the
+    // weekly cron reads from Supabase to make periodization decisions (CTL/ATL/
+    // rampRate trends, recovery + sleep + macros consolidated per day).
+    try {
+      if (typeof smartPut === 'function') {
+        const wellnessRow = {
+          date: r.id,
+          // Recovery + sleep (canonical names matching what the cron expects)
+          readiness: r.readiness != null ? Math.round(r.readiness) : null,
+          hrv: r.hrv != null ? Number(r.hrv) : null,
+          hrvSDNN: r.hrvSDNN != null ? Number(r.hrvSDNN) : null,
+          restingHR: r.restingHR != null ? Number(r.restingHR) : null,
+          avgSleepingHR: r.avgSleepingHR != null ? Number(r.avgSleepingHR) : null,
+          sleepSecs: r.sleepSecs != null ? Number(r.sleepSecs) : null,
+          sleepScore: r.sleepScore != null ? Math.round(r.sleepScore) : null,
+          spO2: r.spO2 != null ? Number(r.spO2) : null,
+          respiration: r.respiration != null ? Number(r.respiration) : null,
+          // Body comp
+          weight: r.weight != null ? Math.round(r.weight * 10) / 10 : null,
+          bodyFat: r.bodyFat != null ? Number(r.bodyFat) : null,
+          // Activity
+          steps: r.steps != null ? Math.round(r.steps) : null,
+          // Training load (Fitness/Fatigue/Form — periodization fuel)
+          ctl: r.ctl != null ? Number(r.ctl) : null,
+          atl: r.atl != null ? Number(r.atl) : null,
+          rampRate: r.rampRate != null ? Number(r.rampRate) : null,
+          ctlLoad: r.ctlLoad != null ? Number(r.ctlLoad) : null,
+          atlLoad: r.atlLoad != null ? Number(r.atlLoad) : null,
+          // Nutrition
+          kcalConsumed: r.kcalConsumed != null ? Number(r.kcalConsumed) : null,
+          carbs: r.carbohydrates != null ? Number(r.carbohydrates) : null,
+          protein: r.protein != null ? Number(r.protein) : null,
+          fat: r.fatTotal != null ? Number(r.fatTotal) : null,
+          // Subjective (if filled in intervals.icu)
+          fatigue: r.fatigue != null ? Number(r.fatigue) : null,
+          soreness: r.soreness != null ? Number(r.soreness) : null,
+          stress: r.stress != null ? Number(r.stress) : null,
+          mood: r.mood != null ? Number(r.mood) : null,
+          motivation: r.motivation != null ? Number(r.motivation) : null,
+          source: 'intervals.icu',
+          ts: Date.now(),
+        };
+        // Drop nulls to keep rows compact in Supabase jsonb
+        const compact = {};
+        for (const [k, v] of Object.entries(wellnessRow)) {
+          if (v !== null && v !== undefined) compact[k] = v;
+        }
+        // Always keep date + source + ts (smartPut needs date as the keyPath)
+        compact.date = r.id;
+        compact.source = 'intervals.icu';
+        compact.ts = Date.now();
+
+        // Only write if there's at least one signal beyond the metadata
+        const signalCount = Object.keys(compact).length - 3;
+        if (signalCount > 0) {
+          await smartPut('wellness', compact);
+          wellnessWrites++;
+        }
+      }
+    } catch (e) { console.warn('[wellness] wellness upsert failed for', r.id, e); }
   }
 
-  if (weightWrites || stepsWrites) {
-    console.info(`[wellness] body sync: ${weightWrites} weight rows, ${stepsWrites} step rows`);
+  if (weightWrites || stepsWrites || wellnessWrites) {
+    console.info(`[wellness] sync: ${wellnessWrites} wellness rows, ${weightWrites} weight, ${stepsWrites} steps`);
   }
 
   // Sort by date ascending so renderWhoopRecoveryCard's slice(-7) gets latest.
