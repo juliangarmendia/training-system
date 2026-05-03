@@ -1,5 +1,7 @@
 // ============================================================
-// WHOOP Integration Module — Training App v3.4
+// WHOOP Integration Module — Training App v10.25
+// Primary path: intervals.icu wellness (no OAuth, no token refresh).
+// Fallback path: direct WHOOP OAuth (kept for rollback; deleted Phase 3).
 // ============================================================
 
 const WHOOP_CLIENT_ID = '2bc89171-9bab-46ec-94d2-0bb8d015f9c3';
@@ -9,10 +11,20 @@ const WHOOP_REDIRECT_URI = 'https://juliangarmendia.github.io/training-system/wh
 const WHOOP_TOKEN_PROXY = 'https://ycfodifvpvosukepcxie.supabase.co/functions/v1/whoop-auth';
 const WHOOP_SCOPES = 'read:recovery read:sleep read:workout read:body_measurement read:profile';
 
-// ==================== AUTH ====================
-function whoopIsConnected() {
-  // Need either a live access token or a refresh token to be truly "connected"
+// ==================== CONNECTION STATE ====================
+function intervalsWellnessConfigured() {
+  return !!(typeof state !== 'undefined' && state.settings
+    && state.settings.intervalsIcuApiKey
+    && state.settings.intervalsIcuAthleteId);
+}
+
+function whoopOAuthConnected() {
   return !!(localStorage.getItem('whoop_access_token') || localStorage.getItem('whoop_refresh_token'));
+}
+
+function whoopIsConnected() {
+  // Connected if EITHER intervals.icu (primary) OR OAuth (fallback) is set up
+  return intervalsWellnessConfigured() || whoopOAuthConnected();
 }
 
 function whoopNeedsReconnect() {
@@ -199,19 +211,122 @@ async function whoopGetProfile() {
   return await whoopFetch(`/v2/user/profile/basic`);
 }
 
+// ==================== INTERVALS.ICU WELLNESS (primary path) ====================
+// Reads daily wellness rows that intervals.icu auto-syncs from WHOOP. Returns
+// the same shape as whoopSyncData() so renderWhoopRecoveryCard() doesn't care
+// about the source. Logs unknown keys once per session for safety against
+// silent field-name drift.
+let _wellnessKeyLoggingDone = false;
+
+async function intervalsFetchWellness() {
+  if (!intervalsWellnessConfigured()) return null;
+  const apiKey = state.settings.intervalsIcuApiKey;
+  const athleteId = state.settings.intervalsIcuAthleteId;
+
+  const today = new Date().toISOString().split('T')[0];
+  const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
+  const url = `https://intervals.icu/api/v1/athlete/${encodeURIComponent(athleteId)}/wellness`
+    + `?oldest=${weekAgo}&newest=${today}`;
+  const auth = 'Basic ' + btoa(`API_KEY:${apiKey}`);
+
+  let rows;
+  try {
+    const res = await fetch(url, { headers: { Authorization: auth } });
+    if (!res.ok) {
+      console.warn('[wellness] intervals.icu fetch failed:', res.status);
+      return null;
+    }
+    rows = await res.json();
+  } catch (e) {
+    console.warn('[wellness] network error:', e);
+    return null;
+  }
+
+  if (!Array.isArray(rows)) {
+    console.warn('[wellness] unexpected response shape:', rows);
+    return null;
+  }
+
+  // Surface unknown keys once per session — guards against field-name drift.
+  if (!_wellnessKeyLoggingDone && rows.length > 0) {
+    const known = new Set(['id', 'readiness', 'hrv', 'restingHR', 'sleepSecs', 'sleepScore', 'spO2',
+      'weight', 'respiration', 'updated', 'sportInfo', 'kcalConsumed', 'fatigue', 'soreness',
+      'stress', 'mood', 'motivation', 'injury', 'sick', 'menstrualPhase', 'menstrualPhasePredicted',
+      'avgSleepingHR', 'sleepQuality', 'baevskySI', 'bloodGlucose', 'lactate', 'bodyFat',
+      'abdomen', 'vo2max', 'comments']);
+    const seen = new Set();
+    rows.forEach(r => Object.keys(r || {}).forEach(k => seen.add(k)));
+    const unknown = [...seen].filter(k => !known.has(k));
+    if (unknown.length) console.info('[wellness] unknown keys (review):', unknown);
+    _wellnessKeyLoggingDone = true;
+  }
+
+  const recovery = [];
+  const sleep = [];
+  for (const r of rows) {
+    if (!r || !r.id) continue;
+    if (r.readiness != null || r.hrv != null || r.restingHR != null) {
+      recovery.push({
+        date: r.id,
+        score: r.readiness != null ? Math.round(r.readiness) : null,
+        hrv: r.hrv != null ? Number(r.hrv) : null,
+        restingHR: r.restingHR != null ? Number(r.restingHR) : null,
+        spo2: r.spO2 != null ? Number(r.spO2) : null,
+        skinTemp: null,
+      });
+    }
+    if (r.sleepSecs != null && r.sleepSecs > 0) {
+      sleep.push({
+        date: r.id,
+        durationHrs: Math.round(r.sleepSecs / 3600 * 10) / 10,
+        qualityPct: r.sleepScore != null ? Math.round(r.sleepScore) : null,
+        remMs: 0,
+        deepMs: 0,
+      });
+    }
+  }
+
+  // Sort by date ascending so renderWhoopRecoveryCard's slice(-7) gets latest.
+  recovery.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+  sleep.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+
+  return {
+    synced: true,
+    syncDate: new Date().toISOString().split('T')[0],
+    source: 'intervals.icu',
+    recovery,
+    sleep,
+    bodyWeight: null, // not surfaced — bodyweight IDB store is independent
+  };
+}
+
 // ==================== SYNC DATA ====================
 async function whoopSyncData() {
   if (!whoopIsConnected()) return null;
 
-  // Cache: don't re-fetch if synced in the last 30 minutes
+  // Cache: 10 min (upstream intervals.icu already caches; no need for 30 min)
   const cache = localStorage.getItem('whoop_cache');
   if (cache) {
     try {
       const cached = JSON.parse(cache);
-      if (cached.timestamp && Date.now() - cached.timestamp < 30 * 60 * 1000) {
+      if (cached.timestamp && Date.now() - cached.timestamp < 10 * 60 * 1000) {
         return cached.data;
       }
     } catch { /* ignore */ }
+  }
+
+  // Primary path: intervals.icu wellness (no OAuth, no disconnects)
+  if (intervalsWellnessConfigured()) {
+    const data = await intervalsFetchWellness();
+    if (data) {
+      localStorage.setItem('whoop_cache', JSON.stringify({ timestamp: Date.now(), data }));
+      localStorage.setItem('whoop_last_sync', data.syncDate);
+      return data;
+    }
+    // If intervals path fails AND OAuth is also not configured, give up
+    if (!whoopOAuthConnected()) return null;
+    // Otherwise fall through to OAuth fallback
+    console.warn('[wellness] intervals.icu path returned null, falling back to OAuth');
   }
 
   const today = new Date().toISOString().split('T')[0];
@@ -309,25 +424,57 @@ function renderWhoopUI() {
   const container = document.getElementById('whoop-section');
   if (!container) return;
 
+  const lastSync = localStorage.getItem('whoop_last_sync') || 'Never';
+
+  // PRIMARY PATH: intervals.icu wellness (no OAuth, no disconnects)
+  if (intervalsWellnessConfigured()) {
+    container.innerHTML = `
+      <div class="form-row inline">
+        <label style="font-size:13px;color:var(--accent)">WHOOP via intervals.icu ✓</label>
+      </div>
+      <p class="muted" style="font-size:11px;margin-top:4px;margin-bottom:8px">Wellness (recovery, HRV, RHR, sleep) syncs through intervals.icu — no OAuth needed. Manage WHOOP connection at <a href="https://intervals.icu/settings" target="_blank" rel="noopener">intervals.icu/settings</a> → Whoop.</p>
+      <div class="muted" style="font-size:11px;margin-bottom:8px">Last sync: ${lastSync}</div>
+      <button id="btn-whoop-sync" class="btn-secondary" style="width:100%;text-align:center">Sync Now</button>
+    `;
+    document.getElementById('btn-whoop-sync').addEventListener('click', async () => {
+      localStorage.removeItem('whoop_cache');
+      const btn = document.getElementById('btn-whoop-sync');
+      btn.textContent = 'Syncing...';
+      btn.disabled = true;
+      const data = await whoopSyncData();
+      if (data) {
+        if (typeof toast === 'function') toast(`Synced: ${data.recovery.length} recovery, ${data.sleep.length} sleep`);
+        renderWhoopUI();
+        await renderWhoopRecoveryCard();
+      } else {
+        if (typeof toast === 'function') toast('Sync failed — check intervals.icu API key + WHOOP connection there');
+        btn.textContent = 'Sync Now';
+        btn.disabled = false;
+      }
+    });
+    return;
+  }
+
+  // FALLBACK PATH: legacy OAuth (kept for rollback; deleted in Phase 3)
   if (whoopNeedsReconnect()) {
     container.innerHTML = `
       <div class="form-row inline">
-        <label style="font-size:13px;color:var(--red)">WHOOP session expired</label>
+        <label style="font-size:13px;color:var(--red)">WHOOP OAuth session expired</label>
       </div>
-      <p class="muted" style="font-size:11px;margin-top:4px;margin-bottom:8px">Your WHOOP login expired. Reconnect to resume syncing recovery, HRV, and sleep.</p>
-      <button id="btn-whoop-reconnect" class="btn-secondary" style="width:100%;text-align:center;border-color:var(--red);color:var(--red)">Reconnect WHOOP</button>
+      <p class="muted" style="font-size:11px;margin-top:4px;margin-bottom:8px">Better path: configure intervals.icu API key (Settings → intervals.icu) and connect WHOOP there — no more OAuth refreshes.</p>
+      <button id="btn-whoop-reconnect" class="btn-secondary" style="width:100%;text-align:center;border-color:var(--red);color:var(--red)">Reconnect WHOOP (legacy OAuth)</button>
     `;
     document.getElementById('btn-whoop-reconnect').addEventListener('click', whoopConnect);
     return;
   }
 
-  if (whoopIsConnected()) {
-    const lastSync = localStorage.getItem('whoop_last_sync') || 'Never';
+  if (whoopOAuthConnected()) {
     container.innerHTML = `
       <div class="form-row inline">
-        <label style="font-size:13px;color:var(--accent)">WHOOP Connected</label>
+        <label style="font-size:13px;color:var(--accent)">WHOOP Connected (legacy OAuth)</label>
         <button id="btn-whoop-disconnect" class="btn-secondary" style="width:auto;padding:8px 16px">Disconnect</button>
       </div>
+      <p class="muted" style="font-size:11px;margin-top:4px;margin-bottom:8px">Recommended: connect WHOOP via intervals.icu instead — no token refresh issues.</p>
       <div class="muted" style="font-size:11px;margin-top:6px">Last sync: ${lastSync}</div>
       <button id="btn-whoop-sync" class="btn-secondary" style="margin-top:8px;width:100%;text-align:center">Sync Now</button>
     `;
@@ -337,7 +484,6 @@ function renderWhoopUI() {
       if (typeof toast === 'function') toast('WHOOP disconnected');
     });
     document.getElementById('btn-whoop-sync').addEventListener('click', async () => {
-      // Clear cache to force fresh fetch
       localStorage.removeItem('whoop_cache');
       const btn = document.getElementById('btn-whoop-sync');
       btn.textContent = 'Syncing...';
@@ -353,15 +499,19 @@ function renderWhoopUI() {
         btn.disabled = false;
       }
     });
-  } else {
-    container.innerHTML = `
-      <button id="btn-whoop-connect" class="btn-secondary" style="width:100%;text-align:center;border-color:var(--teal);color:var(--teal)">
-        Connect WHOOP
-      </button>
-      <p class="muted" style="font-size:11px;margin-top:6px">Pull recovery, HRV, sleep, and strain data from your WHOOP band.</p>
-    `;
-    document.getElementById('btn-whoop-connect').addEventListener('click', whoopConnect);
+    return;
   }
+
+  // Not configured at all — promote intervals.icu path, keep OAuth as escape hatch
+  container.innerHTML = `
+    <p class="muted" style="font-size:12px;margin-top:0;margin-bottom:8px">Pull recovery, HRV, RHR, and sleep from WHOOP via intervals.icu (recommended — no OAuth refreshes):</p>
+    <ol class="muted" style="font-size:11px;margin:0 0 10px 16px;padding:0">
+      <li>Settings → intervals.icu → enter API key + athlete ID</li>
+      <li>Go to <a href="https://intervals.icu/settings" target="_blank" rel="noopener">intervals.icu/settings</a> → Whoop → Connect</li>
+    </ol>
+    <button id="btn-whoop-connect" class="btn-secondary" style="width:100%;text-align:center">Use legacy OAuth instead</button>
+  `;
+  document.getElementById('btn-whoop-connect').addEventListener('click', whoopConnect);
 }
 
 // ==================== WHOOP RECOVERY CARD ====================
@@ -414,16 +564,23 @@ async function renderWhoopRecoveryCard() {
     </tr>`;
   }).reverse().join('');
 
-  // Sleep breakdown
+  // Sleep breakdown — only shown when stage data is available (legacy OAuth path).
+  // intervals.icu wellness doesn't surface REM/deep stages, so the breakdown is hidden.
   let sleepHTML = '';
-  if (latestSleep) {
-    const deepH = latestSleep.deepMs ? (latestSleep.deepMs / 3600000).toFixed(1) : '0';
-    const remH = latestSleep.remMs ? (latestSleep.remMs / 3600000).toFixed(1) : '0';
+  if (latestSleep && (latestSleep.deepMs > 0 || latestSleep.remMs > 0)) {
+    const deepH = (latestSleep.deepMs / 3600000).toFixed(1);
+    const remH = (latestSleep.remMs / 3600000).toFixed(1);
     sleepHTML = `
       <div class="whoop-sleep-breakdown">
         <div class="whoop-sleep-stat"><span class="whoop-sleep-dot" style="background:#6366f1"></span> Deep ${deepH}h</div>
         <div class="whoop-sleep-stat"><span class="whoop-sleep-dot" style="background:#8b5cf6"></span> REM ${remH}h</div>
         <div class="whoop-sleep-stat"><span class="whoop-sleep-dot" style="background:var(--text3)"></span> Total ${latestSleep.durationHrs}h</div>
+      </div>`;
+  } else if (latestSleep && latestSleep.qualityPct != null) {
+    // intervals.icu path: show quality score instead of stage breakdown
+    sleepHTML = `
+      <div class="whoop-sleep-breakdown">
+        <div class="whoop-sleep-stat"><span class="whoop-sleep-dot" style="background:var(--text3)"></span> ${latestSleep.durationHrs}h slept · ${latestSleep.qualityPct}% quality</div>
       </div>`;
   }
 
