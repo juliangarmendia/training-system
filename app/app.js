@@ -599,8 +599,9 @@ const state = {
   restTimerInterval: null,
   restTimerRemaining: 0,
   restTimerTotal: 0,
-  settings: { unit: 'kg', proteinTarget: 170, calorieTarget: 2500, startDate: null, userName: '' },
+  settings: { unit: 'kg', proteinTarget: 170, calorieTarget: 2500, startDate: null, userName: '', goalWeight: null },
   sessionQuality: 3,
+  quickMode: false,
   selectedStrengthLift: 'bench-press',
 };
 
@@ -1229,27 +1230,26 @@ function updateHeader(tab) {
   title.classList.remove('ctx');
   const wk = getWeekNumber();
   const deload = isDeloadWeek(wk);
-  // Day number since program start (used as lightweight phase marker)
-  const startDate = state.settings.programStart ? new Date(state.settings.programStart) : null;
-  let dayNum = null;
-  if (startDate) {
-    dayNum = Math.max(1, Math.floor((Date.now() - startDate.getTime()) / 86400000) + 1);
-  }
+  // Day number since program start — appended to Week so user can distinguish
+  // training week from calendar week (which would never grow into 3-digit days).
+  const startDateStr = state.settings.startDate;
+  const startDate = startDateStr ? new Date(startDateStr + 'T00:00:00') : null;
+  const dayNum = startDate ? Math.max(1, Math.floor((Date.now() - startDate.getTime()) / 86400000) + 1) : null;
+  const dayChip = dayNum ? ` · Day ${dayNum}` : '';
   if (tab === 'gym') {
     // When actively in a workout, title was set by startWorkout — leave it.
     if (state.currentView === 'workout' && state.activeSession) return;
     title.textContent = 'Training';
-    sub.textContent = deload ? `Week ${wk} · Deload` : (dayNum ? `Day ${dayNum} · Cut` : `Week ${wk} · Cut`);
+    sub.textContent = `Week ${wk}${dayChip} · ${deload ? 'Deload' : 'Cut'}`;
   } else if (tab === 'run') {
     title.textContent = 'Running';
-    sub.textContent = `Week ${wk} · Zone 2`;
+    sub.textContent = `Week ${wk}${dayChip} · Zone 2`;
   } else if (tab === 'nutrition') {
     title.textContent = 'Nutrition';
     sub.textContent = `Target: ${state.settings.proteinTarget}g protein`;
   } else if (tab === 'stats') {
-    title.textContent = dayNum ? `Day ${dayNum}` : 'Stats';
-    title.classList.add('ctx');
-    sub.textContent = deload ? `Week ${wk} · Deload` : `Week ${wk} · Cut Phase`;
+    title.textContent = 'Stats';
+    sub.textContent = `Week ${wk}${dayChip} · ${deload ? 'Deload' : 'Cut Phase'}`;
   } else if (tab === 'settings') {
     title.textContent = 'Settings';
     sub.textContent = '';
@@ -1260,8 +1260,17 @@ function updateHeader(tab) {
 async function renderWeekBanner() {
   const wk = getWeekNumber();
   const deload = isDeloadWeek(wk);
-  const totalWeeks = 9;
-  const pct = Math.min((wk / totalWeeks) * 100, 100);
+  // Program runs in 9-week blocks (cut phase + deload). Past week 9 we cycle:
+  // block 1 = weeks 1–9, block 2 = weeks 10–18, etc. Progress bar shows
+  // position within the current block, not absolute week count.
+  const blockLen = 9;
+  const blockWeek = ((wk - 1) % blockLen) + 1;
+  const blockNum = Math.floor((wk - 1) / blockLen) + 1;
+  const pct = Math.min((blockWeek / blockLen) * 100, 100);
+  // Day count since program start — disambiguates training week from ISO week.
+  const startDateStr = state.settings.startDate;
+  const startDate = startDateStr ? new Date(startDateStr + 'T00:00:00') : null;
+  const dayNum = startDate ? Math.max(1, Math.floor((Date.now() - startDate.getTime()) / 86400000) + 1) : null;
 
   // Compute this-week stats for richer context
   const weekDates = getWeekDates().map(d => dateStr(d));
@@ -1291,10 +1300,12 @@ async function renderWeekBanner() {
     }
   }
 
+  const dayChip = dayNum ? ` · Day ${dayNum}` : '';
+  const blockLabel = blockNum > 1 ? ` · Block ${blockNum}` : '';
   document.getElementById('week-banner').innerHTML = `
     <div class="wb-top">
-      <span class="wb-title">Week ${wk} of ${totalWeeks}</span>
-      <span class="wb-phase ${deload ? 'wb-deload' : ''}">${deload ? 'Deload' : 'Cut Phase 1'}</span>
+      <span class="wb-title">Week ${wk}${dayChip}</span>
+      <span class="wb-phase ${deload ? 'wb-deload' : ''}">${deload ? 'Deload' : 'Cut'}${blockLabel}</span>
     </div>
     <div class="wb-bar"><div class="wb-bar-fill" style="width:${pct}%"></div></div>
     <div class="wb-stats">
@@ -2300,12 +2311,27 @@ function viewCompletedWorkout(workout) {
 }
 
 // ==================== WORKOUT ====================
+function syncQuickModeUI() {
+  const btn = document.getElementById('quick-mode-toggle');
+  const stateEl = document.getElementById('quick-pill-state');
+  const hint = document.getElementById('quick-pill-hint');
+  if (!btn || !stateEl) return;
+  const on = !!state.quickMode;
+  btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  stateEl.textContent = on ? 'ON' : 'OFF';
+  if (hint) hint.textContent = on
+    ? 'Compounds full · accessories trimmed · isolation 1 set'
+    : '~40 min · keep compounds, trim accessories';
+}
+
 async function startWorkout(sessionId) {
   const session = activePlan.sessions[sessionId];
   if (!session) return;
 
   state.activeSession = sessionId;
-  state.workoutStartTime = Date.now();
+  // Preserve workoutStartTime if user is just toggling Quick mode on the same
+  // session — otherwise reset to now. We treat "no startTime yet" as fresh start.
+  if (!state.workoutStartTime) state.workoutStartTime = Date.now();
   state.sessionQuality = 3;
   // Reset block timer state for the new session (warmup starts immediately)
   state.blockTimings = [];
@@ -2313,6 +2339,8 @@ async function startWorkout(sessionId) {
   state.activeBlockStartedAt = null;
   state.suggestionsShown = new Set();
   if (state.blockTimerInterval) { clearInterval(state.blockTimerInterval); state.blockTimerInterval = null; }
+  // Sync Quick toggle pill with current state.quickMode (handles re-renders).
+  syncQuickModeUI();
   // Unlock audio with this gesture so the rest-timer cue is audible on iOS PWA.
   primeAudio();
   prepareBeepAudio();
@@ -2656,7 +2684,19 @@ function generateCoachNote(ex, allWorkouts) {
 function buildExerciseCard(ex, exIdx, previous, restSettings, exerciseNotes, deload, session, allWorkouts) {
   const prevEx = previous ? previous.exercises.find(e => e.exerciseId === ex.id) : null;
   const customRest = (restSettings.data && restSettings.data[ex.id]) || ex.defaultRest;
-  const numSets = deload ? Math.ceil(ex.sets / 2) : ex.sets;
+  // Quick mode: keep compounds full (overload signal), trim accessories.
+  // Deload always wins over Quick because both compress the session, but deload
+  // governs intensity too. When both apply, deload formula is used.
+  let numSets;
+  if (deload) {
+    numSets = Math.ceil(ex.sets / 2);
+  } else if (state.quickMode) {
+    if (ex.compound) numSets = ex.sets;
+    else if (ex.superset || ex.muscle === 'Core') numSets = 1;
+    else numSets = Math.max(2, ex.sets - 1);
+  } else {
+    numSets = ex.sets;
+  }
   const rpeDisplay = deload && ex.rpe !== '-' ? 'RPE 5-6' : `RPE ${ex.rpe}`;
   const muscleColor = MUSCLE_COLORS[ex.muscle] || '#666';
 
@@ -2849,6 +2889,7 @@ function captureWorkoutState() {
     blockTimings: state.blockTimings || [],
     activeBlockId: state.activeBlockId || null,
     activeBlockStartedAt: state.activeBlockStartedAt || null,
+    quickMode: !!state.quickMode,
   };
 }
 
@@ -2869,6 +2910,9 @@ async function clearActiveWorkout() {
   state.activeBlockId = null;
   state.activeBlockStartedAt = null;
   state.blockTimings = [];
+  state.quickMode = false;
+  state.workoutStartTime = null;
+  syncQuickModeUI();
 }
 
 async function showResumeBanner() {
@@ -2969,6 +3013,7 @@ async function restoreActiveWorkout() {
   state.activeSession = saved.sessionId;
   state.workoutStartTime = saved.startTime;
   state.sessionQuality = saved.quality || 3;
+  state.quickMode = !!saved.quickMode;
 
   // Rebuild the workout UI (reuse startWorkout rendering)
   await startWorkout(saved.sessionId);
@@ -3101,6 +3146,7 @@ async function finishWorkout() {
     notes: '',
     unit: state.settings.unit || 'kg',
     blockTimings: (state.blockTimings || []).slice(),
+    quick: !!state.quickMode,
   };
 
   await smartPut('workouts', workout);
@@ -6396,12 +6442,102 @@ function renderBodyWeightHistory(entries, host) {
     <div class="card bw-history-card">${rows.join('')}</div>`;
 }
 
+// Compute ETA to goal, plateau warning, and missed-day nudge.
+// All three are rendered as small banners above the metric tiles so the user
+// gets actionable signal — when to weigh, where they're heading, and whether
+// the trend is genuinely stalled.
+function renderBodyWeightInsights(entries, nudgeEl, etaEl, plateauEl) {
+  const dayMs = 86400000;
+  const dateOf = (e) => new Date(e.date + 'T12:00:00');
+  const now = new Date();
+  const latest = entries[entries.length - 1];
+  const latestDate = dateOf(latest);
+  const daysSinceLatest = Math.floor((now - latestDate) / dayMs);
+
+  // Nudge: no log in 2+ days. Resets when user logs.
+  if (nudgeEl) {
+    if (daysSinceLatest >= 2) {
+      nudgeEl.classList.remove('hidden');
+      nudgeEl.textContent = `⚖️ ${daysSinceLatest} days since your last weigh-in. Log this morning's reading to keep the trend honest.`;
+    } else {
+      nudgeEl.classList.add('hidden');
+      nudgeEl.textContent = '';
+    }
+  }
+
+  // ETA: project weeks to goal using last-30d slope.
+  if (etaEl) {
+    const goal = state.settings.goalWeight;
+    etaEl.innerHTML = '';
+    if (goal && Number.isFinite(goal)) {
+      const last30 = entries.filter(e => (now - dateOf(e)) <= 30 * dayMs);
+      const remaining = latest.weight - goal;
+      if (Math.abs(remaining) < 0.3) {
+        etaEl.innerHTML = `🎯 Goal reached — current ${latest.weight} kg vs goal ${goal} kg. Time to recompose or set a new target.`;
+      } else if (last30.length >= 4) {
+        const t0 = dateOf(last30[0]).getTime();
+        const xs = last30.map(e => (dateOf(e).getTime() - t0) / dayMs);
+        const ys = last30.map(e => e.weight);
+        const n = xs.length;
+        const meanX = xs.reduce((a, b) => a + b, 0) / n;
+        const meanY = ys.reduce((a, b) => a + b, 0) / n;
+        let num = 0, den = 0;
+        for (let i = 0; i < n; i++) { num += (xs[i] - meanX) * (ys[i] - meanY); den += (xs[i] - meanX) ** 2; }
+        const slopePerWeek = den > 0 ? (num / den) * 7 : 0;
+        // Going the right direction? Goal is loss → slope should be negative.
+        const losing = slopePerWeek < -0.05;
+        const gaining = slopePerWeek > 0.05;
+        const shouldLose = remaining > 0;
+        if (shouldLose && losing) {
+          const weeksToGoal = Math.ceil(remaining / Math.abs(slopePerWeek));
+          etaEl.innerHTML = `🎯 At ${slopePerWeek.toFixed(2)} kg/wk, you reach <strong>${goal} kg</strong> in ~${weeksToGoal} week${weeksToGoal !== 1 ? 's' : ''} (${remaining.toFixed(1)} kg to go).`;
+        } else if (shouldLose && !losing) {
+          etaEl.innerHTML = `🎯 ${remaining.toFixed(1)} kg to <strong>${goal} kg</strong>. Trend is ${gaining ? 'going the wrong way' : 'flat'} — ETA unknown until loss resumes.`;
+        } else if (!shouldLose && gaining) {
+          const weeksToGoal = Math.ceil(Math.abs(remaining) / slopePerWeek);
+          etaEl.innerHTML = `🎯 At ${slopePerWeek.toFixed(2)} kg/wk, you reach <strong>${goal} kg</strong> in ~${weeksToGoal} week${weeksToGoal !== 1 ? 's' : ''}.`;
+        } else {
+          etaEl.innerHTML = `🎯 Goal: <strong>${goal} kg</strong> · ${Math.abs(remaining).toFixed(1)} kg to ${remaining > 0 ? 'lose' : 'gain'}.`;
+        }
+      } else {
+        etaEl.innerHTML = `🎯 Goal: <strong>${goal} kg</strong> · ${Math.abs(remaining).toFixed(1)} kg to ${remaining > 0 ? 'lose' : 'gain'} (need 4+ logs in last 30d for ETA).`;
+      }
+    }
+  }
+
+  // Plateau: 7-day avg now vs 7-day avg from 14d ago. If |delta| < 0.3 kg over
+  // a 14-day window with enough data, flag it. Only meaningful on a cut.
+  if (plateauEl) {
+    plateauEl.classList.add('hidden');
+    plateauEl.innerHTML = '';
+    const recentWindow = entries.filter(e => (now - dateOf(e)) <= 7 * dayMs);
+    const olderWindow = entries.filter(e => {
+      const age = now - dateOf(e);
+      return age >= 14 * dayMs && age <= 21 * dayMs;
+    });
+    if (recentWindow.length >= 3 && olderWindow.length >= 3) {
+      const avgNow = recentWindow.reduce((s, e) => s + e.weight, 0) / recentWindow.length;
+      const avgOld = olderWindow.reduce((s, e) => s + e.weight, 0) / olderWindow.length;
+      const delta = avgNow - avgOld;
+      const goal = state.settings.goalWeight;
+      const onCut = !goal || latest.weight > goal;
+      if (onCut && Math.abs(delta) < 0.3) {
+        plateauEl.classList.remove('hidden');
+        plateauEl.innerHTML = `⚠️ <strong>Plateau detected.</strong> 7-day avg has barely moved (${delta >= 0 ? '+' : ''}${delta.toFixed(1)} kg over 14d). If adherence is solid, drop ~150 kcal/day or add 1k steps before assuming the plan is wrong.`;
+      }
+    }
+  }
+}
+
 async function renderBodyWeightChart() {
   const container = document.getElementById('bw-chart');
   const currentEl = document.getElementById('bw-current');
   const metricsEl = document.getElementById('bw-metrics');
   const historyEl = document.getElementById('bw-history');
   const legendEl = document.getElementById('bw-chart-legend');
+  const nudgeEl = document.getElementById('bw-nudge');
+  const etaEl = document.getElementById('bw-eta');
+  const plateauEl = document.getElementById('bw-plateau');
   const entries = (await dbGetAll('bodyweight')).sort((a, b) => a.date.localeCompare(b.date));
 
   if (entries.length === 0) {
@@ -6409,6 +6545,9 @@ async function renderBodyWeightChart() {
     if (metricsEl) metricsEl.innerHTML = '';
     if (historyEl) historyEl.innerHTML = '';
     if (legendEl) legendEl.innerHTML = '';
+    if (nudgeEl) { nudgeEl.classList.remove('hidden'); nudgeEl.textContent = '⚖️ Log your first weigh-in to start tracking trends.'; }
+    if (etaEl) etaEl.textContent = '';
+    if (plateauEl) plateauEl.classList.add('hidden');
     showEmptyState(container, '⚖️', 'No weigh-ins yet', 'Log your weight above to start tracking trends.');
     return;
   }
@@ -6418,6 +6557,7 @@ async function renderBodyWeightChart() {
 
   renderBodyWeightMetrics(entries, metricsEl);
   renderBodyWeightHistory(entries, historyEl);
+  renderBodyWeightInsights(entries, nudgeEl, etaEl, plateauEl);
 
   // Rate of change: compare 7-day average now vs 7 days ago
   const rateEl = document.getElementById('bw-rate');
@@ -7087,13 +7227,15 @@ async function loadSettings() {
 }
 
 function applySettingsToUI() {
-  const { unit, proteinTarget, calorieTarget, startDate, userName, audioFeedback, stepsTarget, stepsSecret } = state.settings;
+  const { unit, proteinTarget, calorieTarget, startDate, userName, audioFeedback, stepsTarget, stepsSecret, goalWeight } = state.settings;
   document.getElementById('unit-kg').classList.toggle('selected', unit === 'kg');
   document.getElementById('unit-lb').classList.toggle('selected', unit === 'lb');
   document.getElementById('setting-protein-target').value = proteinTarget;
   document.getElementById('setting-calorie-target').value = calorieTarget;
   document.getElementById('setting-start-date').value = startDate || today();
   document.getElementById('setting-name').value = userName || '';
+  const goalWeightEl = document.getElementById('setting-goal-weight');
+  if (goalWeightEl) goalWeightEl.value = goalWeight || '';
   const audioOnEl = document.getElementById('audio-on');
   const audioOffEl = document.getElementById('audio-off');
   if (audioOnEl && audioOffEl) {
@@ -7117,8 +7259,11 @@ async function saveSettings() {
   const userName = document.getElementById('setting-name').value.trim();
   const stepsTargetEl = document.getElementById('setting-steps-target');
   const stepsTarget = stepsTargetEl ? (parseInt(stepsTargetEl.value) || 8000) : (state.settings.stepsTarget || 8000);
+  const goalWeightEl = document.getElementById('setting-goal-weight');
+  const goalWeightVal = goalWeightEl ? parseFloat(goalWeightEl.value) : NaN;
+  const goalWeight = (Number.isFinite(goalWeightVal) && goalWeightVal > 20 && goalWeightVal < 300) ? goalWeightVal : null;
 
-  state.settings = { ...state.settings, unit, proteinTarget, calorieTarget, startDate, userName, stepsTarget };
+  state.settings = { ...state.settings, unit, proteinTarget, calorieTarget, startDate, userName, stepsTarget, goalWeight };
   await dbPut('settings', { key: 'userSettings', data: state.settings });
   toast('Settings saved!');
   renderStepsCard();
@@ -7310,6 +7455,20 @@ function bindEvents() {
   // Warm-up toggle
   document.getElementById('warmup-toggle').addEventListener('click', () => {
     document.getElementById('warmup-section').classList.toggle('expanded');
+  });
+
+  // Quick mode toggle — only allowed before any set is checked, to avoid
+  // dropping in-progress data when the cards re-render with reduced sets.
+  document.getElementById('quick-mode-toggle').addEventListener('click', async () => {
+    if (!state.activeSession) return;
+    const anyDone = !!document.querySelector('#workout-exercises .set-check.checked');
+    if (anyDone) {
+      toast('Lock set after first checked rep — finish or restart the session to switch modes.');
+      return;
+    }
+    state.quickMode = !state.quickMode;
+    syncQuickModeUI();
+    await startWorkout(state.activeSession);
   });
 
   // Run logging

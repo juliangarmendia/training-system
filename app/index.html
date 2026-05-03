@@ -178,6 +178,14 @@
             <div class="nn-divider"></div>
             <div class="nn-col nn-next"><span class="nn-label">Next</span><span class="nn-value" id="nn-next-val">—</span></div>
           </div>
+          <div class="quick-mode-bar" id="quick-mode-bar">
+            <button id="quick-mode-toggle" class="quick-pill" aria-pressed="false">
+              <span class="quick-pill-icon">⚡</span>
+              <span class="quick-pill-label">Quick mode</span>
+              <span class="quick-pill-state" id="quick-pill-state">OFF</span>
+            </button>
+            <span class="quick-pill-hint" id="quick-pill-hint">~40 min · keep compounds, trim accessories</span>
+          </div>
           <div class="warmup-card" id="warmup-section">
             <div class="warmup-header" id="warmup-toggle">
               <span class="warmup-title">🔥 Warm-up</span>
@@ -350,16 +358,20 @@
           <!-- ===== BODY ===== -->
           <div class="section-label" data-group="body">Body Weight</div>
           <div class="card" data-group="body">
+            <div id="bw-nudge" class="bw-nudge hidden"></div>
             <div class="bw-current-row">
               <span class="bw-current-label">Current:</span>
               <span id="bw-current" class="bw-current-val">--</span>
             </div>
             <div id="bw-rate" class="bw-rate"></div>
+            <div id="bw-eta" class="bw-eta"></div>
+            <div id="bw-plateau" class="bw-plateau hidden"></div>
             <div class="bw-metrics" id="bw-metrics"></div>
             <div class="bw-row">
               <input type="number" id="bw-input" class="text-input" placeholder="e.g. 82.5" inputmode="decimal" step="0.1">
               <button id="btn-log-bw" class="btn-primary">Log</button>
             </div>
+            <p class="muted bw-tip" style="font-size:11px;margin:8px 0 0">Weigh daily, first thing in the morning · after the bathroom · before food/water. The 7-day average (orange line) is the real signal — daily values bounce 1–2 kg from food/water/sleep.</p>
           </div>
           <div class="chart-box" id="bw-chart" data-group="body"></div>
           <div class="bw-chart-legend" id="bw-chart-legend" data-group="body"></div>
@@ -555,6 +567,8 @@
             <div style="height:12px"></div>
             <div class="form-row"><label>Daily protein target (g)</label><input type="number" id="setting-protein-target" step="5" min="0" value="170" inputmode="numeric"></div>
             <div class="form-row"><label>Daily calorie target</label><input type="number" id="setting-calorie-target" step="50" min="0" value="2500" inputmode="numeric"></div>
+            <div class="form-row"><label>Goal weight (kg)</label><input type="number" id="setting-goal-weight" step="0.5" min="20" max="300" placeholder="e.g. 78" inputmode="decimal"></div>
+            <p class="muted" style="font-size:11px;margin-top:-6px">Used to project ETA and progress on the Body card.</p>
             <button id="btn-save-settings" class="btn-primary">Save Settings</button>
           </div>
           <div class="section-label" style="margin-top:24px">Notifications</div>
@@ -582,7 +596,7 @@
           </div>
           <div class="section-label" style="margin-top:24px">App</div>
           <div class="card">
-            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v10.23<br>Data stored locally + cloud sync.<br>Works offline.</p>
+            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v10.24<br>Data stored locally + cloud sync.<br>Works offline.</p>
             <button id="btn-force-update" class="btn-secondary btn-full" style="text-align:center">Force Update App</button>
           </div>
         </div>

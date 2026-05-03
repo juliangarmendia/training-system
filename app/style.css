@@ -869,6 +869,71 @@ nav { display: flex; background: var(--surface); border-top: 1px solid var(--bor
 .bw-current-label { font-size: var(--fs-sm); color: var(--text2); }
 .bw-current-val { font-size: var(--fs-lg); font-weight: 800; }
 .bw-rate { font-size: 12px; margin-bottom: 10px; }
+.bw-eta { font-size: 12px; color: var(--text2); margin-bottom: 8px; }
+.bw-eta:empty { display: none; }
+.bw-eta strong { color: var(--text); font-weight: 700; }
+.bw-nudge {
+  background: rgba(245, 158, 11, 0.10);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  color: var(--orange);
+  font-size: 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  margin-bottom: 10px;
+}
+.bw-plateau {
+  background: rgba(234, 179, 8, 0.10);
+  border: 1px solid rgba(234, 179, 8, 0.35);
+  color: var(--yellow);
+  font-size: 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  margin-bottom: 10px;
+  line-height: 1.4;
+}
+.bw-tip { line-height: 1.4; }
+
+/* ========== Quick mode toggle (workout view) ========== */
+.quick-mode-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 10px;
+  flex-wrap: wrap;
+}
+.quick-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface2, rgba(255,255,255,0.04));
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+.quick-pill[aria-pressed="true"] {
+  background: rgba(245, 158, 11, 0.15);
+  border-color: rgba(245, 158, 11, 0.55);
+  color: var(--orange);
+}
+.quick-pill-state {
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: rgba(255,255,255,0.08);
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+.quick-pill[aria-pressed="true"] .quick-pill-state {
+  background: rgba(245, 158, 11, 0.30);
+  color: var(--orange);
+}
+.quick-pill-hint { font-size: 11px; color: var(--text3); flex: 1; min-width: 140px; }
+.quick-pill:disabled { opacity: 0.55; cursor: not-allowed; }
 
 /* ========== Meal input row ========== */
 .meal-input-row { display: flex; gap: 8px; }
