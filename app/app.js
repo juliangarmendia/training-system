@@ -3791,7 +3791,137 @@ function renderStravaUI() {
   }
 }
 
-// ==================== INTERVALS.ICU SETTINGS UI ====================
+// ==================== UNIFIED SYNC CARD (v10.28) ====================
+// Replaces the four legacy cards (WHOOP / Strava / intervals.icu / Steps Shortcut).
+// One status surface for the user, one place to edit credentials.
+function _maskApiKey(k) {
+  if (!k || k.length < 8) return '••••';
+  return '••••••••' + k.slice(-6);
+}
+
+let _syncCardEditMode = false;
+
+async function renderSyncCard() {
+  const container = document.getElementById('sync-section');
+  if (!container) return;
+
+  const apiKey = (state.settings && state.settings.intervalsIcuApiKey) || '';
+  const athleteId = (state.settings && state.settings.intervalsIcuAthleteId) || '';
+  const configured = !!(apiKey && athleteId);
+  const lastWellness = localStorage.getItem('whoop_last_sync') || null;
+  const lastRuns = localStorage.getItem('intervalsicu_last_sync') || null;
+  const lastRunsDate = lastRuns ? new Date(parseInt(lastRuns)).toLocaleString() : 'Never';
+
+  if (!configured || _syncCardEditMode) {
+    // Setup / edit mode
+    container.innerHTML = `
+      <div class="form-row inline" style="margin-bottom:8px">
+        <label style="font-size:13px;color:var(--accent)">${configured ? 'Edit credentials' : 'Connect intervals.icu'}</label>
+      </div>
+      <p class="muted" style="font-size:11px;margin-top:0;margin-bottom:12px">
+        ${configured ? '' : 'One connection covers everything — wellness (recovery, HRV, RHR, sleep), runs (COROS), training load (CTL/ATL), body weight, steps, and macros. '}
+        Get your API key at <a href="https://intervals.icu/settings" target="_blank" style="color:var(--accent)">intervals.icu/settings</a> → API.
+      </p>
+      <div class="form-row"><label style="font-size:13px">Athlete ID</label><input type="text" id="sync-athlete" class="text-input" placeholder="i12345" value="${escapeHtml(athleteId)}"></div>
+      <div style="height:8px"></div>
+      <div class="form-row"><label style="font-size:13px">API key</label><input type="password" id="sync-apikey" class="text-input" placeholder="paste API key" value="${escapeHtml(apiKey)}"></div>
+      <div style="height:12px"></div>
+      <div style="display:flex;gap:8px">
+        <button id="sync-save" class="btn-primary" style="flex:1">Save</button>
+        ${configured ? `<button id="sync-cancel" class="btn-secondary" style="flex:1">Cancel</button>` : ''}
+      </div>
+    `;
+    document.getElementById('sync-save').onclick = async () => {
+      const newAthlete = (document.getElementById('sync-athlete').value || '').trim();
+      const newKey = (document.getElementById('sync-apikey').value || '').trim();
+      if (!newAthlete || !newKey) { toast('Both fields required'); return; }
+      state.settings = state.settings || {};
+      state.settings.intervalsIcuAthleteId = newAthlete;
+      state.settings.intervalsIcuApiKey = newKey;
+      await saveSettings();
+      _syncCardEditMode = false;
+      toast('Saved — syncing now…');
+      await renderSyncCard();
+      // Trigger an immediate full sync
+      await runFullSync({ silent: false });
+    };
+    if (configured) {
+      document.getElementById('sync-cancel').onclick = () => {
+        _syncCardEditMode = false;
+        renderSyncCard();
+      };
+    }
+    return;
+  }
+
+  // Connected status view
+  const wellnessRowCount = await dbGetAll('wellness').then(r => r.length).catch(() => 0);
+  const runRowCount = await dbGetAll('runs').then(r => r.length).catch(() => 0);
+
+  container.innerHTML = `
+    <div class="form-row inline" style="margin-bottom:6px">
+      <label style="font-size:13px;color:var(--accent)">intervals.icu ✓ Connected</label>
+      <button id="sync-edit" class="btn-secondary" style="width:auto;padding:6px 12px;font-size:11px">Edit</button>
+    </div>
+    <div class="muted" style="font-size:11px;margin-bottom:10px">
+      Athlete <code>${escapeHtml(athleteId)}</code> · Key ${escapeHtml(_maskApiKey(apiKey))}
+    </div>
+    <div class="muted" style="font-size:11px;margin-bottom:12px;line-height:1.6">
+      Syncing: <strong>wellness</strong> (recovery, HRV, RHR, sleep, SpO2) · <strong>training load</strong> (CTL/ATL/Form) · <strong>body</strong> (weight, steps) · <strong>nutrition</strong> (kcal + macros) · <strong>activities</strong> (COROS runs)<br>
+      Local cache: ${wellnessRowCount} wellness rows · ${runRowCount} runs<br>
+      Last runs sync: ${escapeHtml(lastRunsDate)}
+    </div>
+    <button id="sync-now" class="btn-primary btn-full">Sync now</button>
+  `;
+  document.getElementById('sync-edit').onclick = () => {
+    _syncCardEditMode = true;
+    renderSyncCard();
+  };
+  document.getElementById('sync-now').onclick = async () => {
+    const btn = document.getElementById('sync-now');
+    btn.textContent = 'Syncing…';
+    btn.disabled = true;
+    try {
+      await runFullSync({ silent: false });
+      await renderSyncCard();
+      // Refresh visible cards
+      if (typeof renderWhoopRecoveryCard === 'function') await renderWhoopRecoveryCard();
+      if (typeof renderRecentWorkouts === 'function') renderRecentWorkouts();
+    } finally {
+      const b = document.getElementById('sync-now');
+      if (b) { b.textContent = 'Sync now'; b.disabled = false; }
+    }
+  };
+}
+
+// One-shot sync of everything intervals.icu provides. Called from init() and
+// from the unified Sync card "Sync now" button.
+async function runFullSync({ silent = true } = {}) {
+  let runsResult = null;
+  let wellnessResult = null;
+  try {
+    runsResult = await intervalsIcuSync();
+  } catch (e) { console.warn('[sync] runs failed:', e); }
+  try {
+    // Force-bypass cache by clearing the wellness cache key
+    localStorage.removeItem('whoop_cache');
+    if (typeof whoopSyncData === 'function') {
+      wellnessResult = await whoopSyncData();
+    }
+  } catch (e) { console.warn('[sync] wellness failed:', e); }
+
+  if (!silent) {
+    const parts = [];
+    if (runsResult && runsResult.pulled != null) parts.push(`${runsResult.pulled} run${runsResult.pulled === 1 ? '' : 's'}`);
+    if (wellnessResult) parts.push(`${(wellnessResult.recovery || []).length} wellness`);
+    if (typeof toast === 'function') {
+      toast(parts.length ? `Synced: ${parts.join(', ')}` : 'Sync ran (no new data)');
+    }
+  }
+  return { runsResult, wellnessResult };
+}
+
+// ==================== INTERVALS.ICU SETTINGS UI (legacy) ====================
 function renderIntervalsIcuUI() {
   const apiInput = document.getElementById('setting-intervals-api-key');
   const athInput = document.getElementById('setting-intervals-athlete');
@@ -7925,18 +8055,28 @@ async function init() {
   // Check for in-progress workout
   await showResumeBanner();
 
-  // WHOOP
-  if (window.renderWhoopUI) renderWhoopUI();
+  // Unified Sync card (v10.28) — primary surface for intervals.icu connection
+  renderSyncCard();
 
-  // intervals.icu = primary COROS pull (also handles push). Auto-syncs runs
-  // in background. Strava UI stays available as a fallback but doesn't auto-sync.
+  // Legacy connection cards inside collapsible "Legacy connections" section
+  if (window.renderWhoopUI) renderWhoopUI();
   renderStravaUI();
   renderIntervalsIcuUI();
+
+  // Background sync on app open: runs (so Recent Runs is fresh) + wellness
+  // (so the recovery card is current). Both swallowed errors — never block UI.
   intervalsIcuSync().then(result => {
     if (result && result.pulled > 0 && state.currentTab === 'home') {
       renderRecentWorkouts();
     }
   }).catch(() => {});
+  if (typeof whoopSyncData === 'function') {
+    whoopSyncData().then(() => {
+      if (state.currentTab === 'home' && typeof renderWhoopRecoveryCard === 'function') {
+        renderWhoopRecoveryCard();
+      }
+    }).catch(() => {});
+  }
 
   // Notifications
   initNotifications();

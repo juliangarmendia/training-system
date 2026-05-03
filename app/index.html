@@ -488,57 +488,51 @@
           <div class="card" id="auth-section">
             <p class="muted" style="font-size:13px;margin:0">Loading...</p>
           </div>
+          <div class="section-label" style="margin-top:24px">Sync</div>
+          <div class="card" id="sync-section">
+            <p class="muted" style="font-size:13px;margin:0">Loading...</p>
+          </div>
+
           <div class="section-label" style="margin-top:24px">Daily Steps</div>
           <div class="card">
             <div class="form-row"><label>Daily target</label><input type="number" id="setting-steps-target" class="text-input" min="0" max="50000" step="500" placeholder="8000"></div>
-            <p class="muted" style="font-size:11px;margin-top:6px">During a deficit, NEAT (steps + daily activity) drives most of the actual fat loss. 8-10k is a good baseline.</p>
-            <details class="setup-details" style="margin-top:14px">
-              <summary>Connect via iOS Shortcut (one-time setup, ~5 min)</summary>
-              <ol class="setup-steps">
-                <li><strong>Generate a secret</strong> below, then set it as <code>STEPS_INGEST_SECRET</code> in your Supabase Function env (and also <code>STEPS_USER_ID</code> = your user UUID — see the panel under "Cloud sync").</li>
-                <li>iPhone → Shortcuts app → New Shortcut. Name it <strong>"Sync Steps"</strong>.</li>
-                <li>Add action <strong>Find Health Sample</strong>: Sample Type = Steps · Filter "Start Date is Today" · Sort by End Date.</li>
-                <li>Add action <strong>Get Numbers from Input</strong> → <strong>Calculate Statistics</strong> (Sum). This gives "Sum".</li>
-                <li>Add action <strong>Format Date</strong> → Current Date · Format = ISO 8601 · Date only.</li>
-                <li>Add action <strong>Get Contents of URL</strong>:
-                  <ul>
-                    <li>URL: the endpoint shown below</li>
-                    <li>Method: POST</li>
-                    <li>Headers: <code>Content-Type: application/json</code></li>
-                    <li>Request Body: JSON. Tap "Add new field" and add: <code>secret</code> (text, your secret), <code>date</code> (text, the formatted date variable), <code>steps</code> (number, the Sum variable), <code>source</code> (text, <code>shortcut</code>).</li>
-                  </ul>
-                </li>
-                <li>Save the Shortcut. Test it manually once → then check this app to see today's row.</li>
-                <li>iOS Settings → Shortcuts → Personal Automations → New → Time of Day → 11:50 PM, Daily → Run "Sync Steps". Disable "Ask Before Running".</li>
-              </ol>
+            <p class="muted" style="font-size:11px;margin-top:6px">Steps sync automatically from Apple Health via intervals.icu Companion. NEAT (steps + daily activity) drives most fat loss during a deficit — 8-10k is a good baseline.</p>
+          </div>
+
+          <details class="setup-details" style="margin-top:24px">
+            <summary class="section-label" style="cursor:pointer">Legacy connections (advanced)</summary>
+            <p class="muted" style="font-size:11px;margin:8px 0 12px">Pre-intervals.icu setup. Kept for fallback only — the unified Sync card above replaces all of these. Don't enable unless intervals.icu fails.</p>
+
+            <div class="section-label" style="margin-top:8px">WHOOP (legacy OAuth)</div>
+            <div class="card" id="whoop-section">
+              <p class="muted" style="font-size:13px;margin:0">Loading...</p>
+            </div>
+
+            <div class="section-label" style="margin-top:16px">Strava (legacy COROS bridge)</div>
+            <div class="card" id="strava-section">
+              <p class="muted" style="font-size:13px;margin:0">Loading...</p>
+            </div>
+
+            <div class="section-label" style="margin-top:16px">Daily Steps via iOS Shortcut (legacy)</div>
+            <div class="card">
+              <p class="muted" style="font-size:11px;margin-top:0">Steps now flow via intervals.icu Companion. This Shortcut path is kept for backfill only.</p>
               <div class="form-row"><label>Endpoint URL</label><input type="text" id="steps-endpoint-url" class="text-input" readonly></div>
-              <div class="form-row"><label>Secret (copy this)</label><input type="text" id="steps-secret" class="text-input" readonly placeholder="(no secret yet — click Generate)"></div>
+              <div class="form-row"><label>Secret</label><input type="password" id="steps-secret" class="text-input" readonly placeholder="(no secret yet)"></div>
               <div class="steps-btn-row">
                 <button id="btn-steps-generate" class="btn-secondary">Generate Secret</button>
                 <button id="btn-steps-copy-payload" class="btn-secondary">Copy Sample JSON</button>
                 <button id="btn-steps-test" class="btn-secondary">Test connection</button>
               </div>
               <pre id="steps-test-output" class="muted" style="font-size:11px;margin-top:10px;white-space:pre-wrap"></pre>
-            </details>
-          </div>
-          <div class="section-label" style="margin-top:24px">WHOOP</div>
-          <div class="card" id="whoop-section">
-            <p class="muted" style="font-size:13px;margin:0">Loading...</p>
-          </div>
-          <div class="section-label" style="margin-top:24px">Strava (COROS PACE 4)</div>
-          <div class="card" id="strava-section">
-            <p class="muted" style="font-size:13px;margin:0">Loading...</p>
-          </div>
-          <div class="section-label" style="margin-top:24px">intervals.icu (COROS pull + push)</div>
-          <div class="card" id="intervals-icu-section">
-            <div class="form-row"><label style="font-size:13px">Athlete ID</label><input type="text" id="setting-intervals-athlete" class="text-input" placeholder="i12345"></div>
-            <div style="height:8px"></div>
-            <div class="form-row"><label style="font-size:13px">API key</label><input type="password" id="setting-intervals-api-key" class="text-input" placeholder="paste API key"></div>
-            <div style="height:8px"></div>
-            <button id="btn-save-intervals" class="btn-secondary btn-full">Save</button>
-            <div style="height:8px"></div>
-            <button id="btn-intervals-sync-now" class="btn-secondary btn-full">Sync runs now</button>
-            <p class="muted" style="font-size:11px;margin-top:8px">Sign up free at <a href="https://intervals.icu" target="_blank" style="color:var(--accent)">intervals.icu</a> → Settings → API → generate Personal API Key + Settings → Coros toggle ON. The PWA pulls runs from intervals.icu (COROS auto-syncs there) and pushes planned workouts back to your PACE 4.</p>
+            </div>
+          </details>
+
+          <!-- Hidden inputs kept for legacy renderIntervalsIcuUI() compatibility (the unified Sync card writes through different handlers but reads the same state.settings keys) -->
+          <div id="intervals-icu-section" style="display:none">
+            <input type="text" id="setting-intervals-athlete">
+            <input type="password" id="setting-intervals-api-key">
+            <button id="btn-save-intervals"></button>
+            <button id="btn-intervals-sync-now"></button>
           </div>
           <div class="section-label" style="margin-top:24px">Appearance</div>
           <div class="card">
@@ -596,7 +590,7 @@
           </div>
           <div class="section-label" style="margin-top:24px">App</div>
           <div class="card">
-            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v10.27<br>Data stored locally + cloud sync.<br>Works offline.</p>
+            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v10.28<br>Data stored locally + cloud sync.<br>Works offline.</p>
             <button id="btn-force-update" class="btn-secondary btn-full" style="text-align:center">Force Update App</button>
           </div>
         </div>

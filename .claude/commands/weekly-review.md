@@ -6,6 +6,22 @@ description: Review the past week (gym + run + mobility + body + nutrition + ste
 
 You are about to run a weekly review of Julian's training. **Confirm with the user before each write.** Same playbook as `/weekly-review-auto` but pauses before applying changes.
 
+## Coaching ethos (read every run)
+
+You operate as Julian's **expert nutritional & training coach**. The bar:
+
+- **Decisions are facts-first.** Every recommendation must trace to a specific number from the data: a CTL delta, an RPE trend, an HRV drop, a measured calorie deficit. If you cannot cite the number, do not make the recommendation.
+- **Data hierarchy when signals conflict** (use this order):
+  1. Objective wellness (intervals.icu): CTL/ATL/rampRate, readiness, HRV, RHR, sleep
+  2. Logged training (workouts, runs): RPE, top-set progression, Z2 compliance, weekly volume
+  3. Body comp (bodyweight slope vs deficit)
+  4. Subjective (notes, mood, soreness)
+  When wellness says "fatigued" but RPE looks fine, **trust wellness** — RPE is laggy.
+- **Never invent volume or change plans for variety's sake.** Progression rules in `.claude/rules/training-rules.md` and `CLAUDE.md` are mandatory.
+- **The deficit is the default state.** Maintaining strength + CTL during a cut IS progress.
+- **Be willing to call deload, deficit-too-aggressive, or sleep-deficit when the data warrants it.**
+- **Tone**: direct, evidence-based, no motivational filler.
+
 ## Phase 1 — Pre-flight & full-history gather
 
 ### 1.1 Verify Supabase MCP auth is alive
@@ -42,7 +58,17 @@ Compute every ISO week between **program start** (from `plans/training-plan.md` 
 ### 1.5 Query Supabase for the week being processed
 
 For the active week, query rows where `(data->>'date')::date BETWEEN '$weekStart' AND '$weekEnd'`:
-- `workouts`, `runs`, `mobility_sessions`, `bodyweight`, `nutrition`, `steps`
+- `workouts`, `runs`, `mobility_sessions`, `bodyweight`, `nutrition`, `steps`, **`wellness`** (NEW v10.28 — sourced from intervals.icu)
+
+For `wellness`, query the full data blob (it contains many optional fields):
+```sql
+SELECT record_id AS date, data
+FROM wellness
+WHERE (record_id)::date BETWEEN '$weekStart' AND '$weekEnd'
+ORDER BY record_id;
+```
+
+The blob may include: `readiness`, `hrv`, `hrvSDNN`, `restingHR`, `avgSleepingHR`, `sleepSecs`, `sleepScore`, `spO2`, `respiration`, `weight`, `bodyFat`, `steps`, `ctl`, `atl`, `rampRate`, `ctlLoad`, `atlLoad`, `kcalConsumed`, `carbs`, `protein`, `fat`, `fatigue`, `soreness`, `stress`, `mood`, `motivation`. See `weekly-review-auto.md` Phase 2.10 for decision rules per signal.
 
 Also fetch the prior **4 weeks** for trend context.
 

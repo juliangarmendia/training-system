@@ -32,13 +32,19 @@ Deno.serve(async (req) => {
       }
 
       const url = `${WHOOP_API_BASE}${endpoint}`;
-      console.log(`[WHOOP Proxy] Fetching: ${url}`);
       const response = await fetch(url, {
         headers: { "Authorization": `Bearer ${access_token}` },
       });
 
       const text = await response.text();
-      console.log(`[WHOOP Proxy] ${endpoint} → ${response.status}: ${text.substring(0, 200)}`);
+      // Log endpoint + status only. Body intentionally not logged — it may contain
+      // recovery scores, HRV, tokens or other sensitive payloads. Body is logged
+      // ONLY on non-2xx (truncated) so failures remain debuggable.
+      if (!response.ok) {
+        console.warn(`[WHOOP Proxy] ${endpoint} → ${response.status}: ${text.substring(0, 200)}`);
+      } else {
+        console.log(`[WHOOP Proxy] ${endpoint} → ${response.status}`);
+      }
 
       // Try to parse as JSON, return error if not valid JSON
       let data;

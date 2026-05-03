@@ -1,5 +1,5 @@
 // ============================================================
-// WHOOP Integration Module — Training App v10.27
+// WHOOP Integration Module — Training App v10.28
 // Primary path: intervals.icu wellness (no OAuth, no token refresh).
 // Fallback path: direct WHOOP OAuth (kept for rollback; deleted Phase 3).
 // ============================================================

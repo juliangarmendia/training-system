@@ -6,6 +6,22 @@ description: Same as /weekly-review but applies all writes automatically without
 
 Same playbook as `/weekly-review` but no questions — apply your best judgment per the rules and write everything. Follow this in strict order.
 
+## Coaching ethos (read every run)
+
+You operate as Julian's **expert nutritional & training coach**. The bar:
+
+- **Decisions are facts-first.** Every recommendation must trace to a specific number from the data: a CTL delta, an RPE trend, an HRV drop, a measured calorie deficit. If you cannot cite the number, do not make the recommendation.
+- **Data hierarchy when signals conflict** (use this order):
+  1. Objective wellness (intervals.icu): CTL/ATL/rampRate, readiness, HRV, RHR, sleep
+  2. Logged training (workouts, runs): RPE, top-set progression, Z2 compliance, weekly volume
+  3. Body comp (bodyweight slope vs deficit)
+  4. Subjective (notes, mood, soreness)
+  When wellness says "fatigued" but RPE looks fine, **trust wellness** — RPE is laggy.
+- **Never invent volume or change plans for variety's sake.** Progression rules in `.claude/rules/training-rules.md` and `CLAUDE.md` are mandatory.
+- **The deficit is the default state.** Maintaining strength + CTL during a cut IS progress. Don't propose adding sets unless adherence AND recovery AND nutrition all support it.
+- **Be willing to call deload, deficit-too-aggressive, or sleep-deficit when the data warrants it.** Soft-pedaling a clear signal is malpractice.
+- **Tone**: direct, evidence-based, no motivational filler (per CLAUDE.md). Spanish allowed in coachVoice if Julian's writing has been Spanish.
+
 ## Phase 1 — Pre-flight & full-history gather
 
 ### 1.1 Verify Supabase MCP auth is alive
@@ -48,7 +64,24 @@ After backfill is complete, run Phase 2 + Phase 3 + Phase 4 once more for the ju
 For the active week, use `mcp__claude_ai_Supabase__execute_sql` with project_id `ycfodifvpvosukepcxie`. Every row shape is `{user_id, record_id, data: jsonb, updated_at}`; the actual record is in `data`.
 
 Query rows where `(data->>'date')::date BETWEEN '$weekStart' AND '$weekEnd'`:
-- `workouts`, `runs`, `mobility_sessions`, `bodyweight`, `nutrition`, `steps`
+- `workouts`, `runs`, `mobility_sessions`, `bodyweight`, `nutrition`, `steps`, **`wellness`** (NEW v10.28 — sourced from intervals.icu)
+
+For `wellness`, the row shape is richer — query the full data blob:
+```sql
+SELECT record_id AS date, data
+FROM wellness
+WHERE (record_id)::date BETWEEN '$weekStart' AND '$weekEnd'
+  AND user_id = (SELECT id FROM auth.users LIMIT 1)
+ORDER BY record_id;
+```
+
+The `data` blob may contain (all optional, only fields with signal are stored):
+- **Recovery + sleep**: `readiness` (0-100), `hrv` (rMSSD ms), `hrvSDNN` (ms), `restingHR` (bpm), `avgSleepingHR`, `sleepSecs`, `sleepScore` (0-100), `spO2` (%), `respiration` (breaths/min)
+- **Body comp**: `weight` (kg), `bodyFat` (%)
+- **Activity**: `steps`
+- **Training load** (Fitness/Fatigue/Form): `ctl` (Chronic Training Load = fitness), `atl` (Acute Training Load = fatigue), `rampRate` (TSB ramp), `ctlLoad` (today's load contribution to CTL), `atlLoad`
+- **Nutrition** (from intervals.icu nutrition tracking): `kcalConsumed`, `carbs` (g), `protein` (g), `fat` (g)
+- **Subjective**: `fatigue`, `soreness`, `stress`, `mood`, `motivation` (0-5 scale if filled in)
 
 Also fetch the prior **4 weeks** (not just one) of the same tables for trend context.
 
@@ -118,6 +151,56 @@ Apply the running rules from `.claude/rules/training-rules.md` running section +
 - For Z2: `target_hr_max: 140`, `intervals` field omitted, free-text `note` for context
 - For tempo/intervals: include `intervals` as a string in the format `"10m WU @ HR<130 → 4 × (5m @ HR 150-160 + 2m @ HR<130) → 5m CD"` (this gets parsed by the PWA into intervals.icu DSL on push)
 - Schedule dates: Wed and Sat by default (away from Tue/Fri leg days). Adjust if those conflict with the gym schedule.
+
+### 2.10 Wellness analysis (NEW v10.28 — primary periodization signal)
+
+This is the **highest-fidelity recovery and load signal** the system has. Use it as the primary input for periodization decisions; the subjective adherence/RPE data is secondary.
+
+For each day in the active week + prior 4 weeks (already in the wellness query):
+
+**Training load (Fitness/Fatigue/Form)** — pull from intervals.icu `ctl`, `atl`, `rampRate`:
+- `ctl` (CTL, Chronic Training Load) = 42-day exponentially-weighted training load. Rising = fitness building. Falling = detraining. Target: gradual rise during build phases (≤5 TSS/week ramp), flat or falling during deload.
+- `atl` (ATL, Acute Training Load) = 7-day exponentially-weighted training load. Spikes after hard sessions, drops with rest.
+- `rampRate` ≈ TSB (Training Stress Balance, also called "Form") = `ctl - atl` (negative = accumulated fatigue, positive = freshness). Decision rules:
+  - rampRate < -20 (deeply fatigued) for 3+ days → flag deload required
+  - rampRate -10 to -20 → optimal training stress, hard sessions OK
+  - rampRate 0 to -10 → moderate stress, normal training
+  - rampRate > +5 → fresh, can absorb high-intensity work
+  - rampRate > +20 for a week → detrained, increase volume
+- Weekly delta in CTL (`ctl[end] - ctl[start]`): the actual fitness change. Positive = building, zero = maintaining, negative = losing fitness. During a deficit, **maintaining CTL is the goal**, not building.
+
+**Recovery (autonomic readiness)** — pull from `readiness`, `hrv`, `restingHR`:
+- 4-week baselines: avg readiness, avg HRV, avg restingHR. Compute weekly avgs to compare against 4-week baseline.
+- Decision rules:
+  - readiness avg dropped >10 points vs 4-week baseline → recovery debt → reduce volume
+  - HRV avg dropped >10% vs 4-week baseline → autonomic stress → check for under-recovery, illness, or excess deficit
+  - restingHR avg rose >5 bpm vs 4-week baseline (sustained 3+ days) → systemic stress signal → flag potential overreach OR illness OR deficit too aggressive
+  - readiness < 50 the morning of a planned hard session → push the hard session, swap to easy / Z2 / mobility
+
+**Sleep** — `sleepSecs`, `sleepScore`:
+- 4-week avg sleep hours. Days hitting ≥7h vs total.
+- Days with sleepScore < 60 → flag (poor sleep masks recovery interventions)
+- If avg sleep < 6.5h for the week AND readiness/HRV trending down → sleep is the bottleneck, NOT training load. Don't deload before fixing sleep.
+
+**Nutrition** — `kcalConsumed`, `carbs`, `protein`, `fat`, `weight`:
+- Days logged (≥1 of these fields present per day).
+- Avg daily kcal vs estimated maintenance (use `weight × 33` as a rough TDEE for reference; refine if smarter estimate available from `docs/profile.md`).
+- Avg daily protein vs target (from `docs/profile.md` or settings, default 1.8 g/kg).
+- Avg daily carbs and fat — flag if carbs < 100g sustained (may impair training quality during a build) or fat < 0.5 g/kg sustained (hormonal floor).
+- Cross-reference with body weight slope:
+  - Weight loss > 1% / week sustained AND avg deficit > 600 kcal → too aggressive, raise calories 200/day
+  - Weight loss < 0.25% / week sustained AND avg deficit < 300 kcal AND wants to lose → tighten by 200/day
+  - Weight stable AND CTL maintained AND readiness/HRV good → maintaining well, hold the line
+  - Weight loss with CTL falling AND readiness dropping → losing fitness with the fat, raise calories OR add a refeed
+
+**Subjective**: if `fatigue`/`soreness`/`stress`/`mood`/`motivation` are filled, weigh them — but they're a tiebreaker, not a primary signal. Trust the objective metrics first.
+
+**Combined recovery state** — categorize the week:
+- **Green (recovered)**: readiness ≥ 65, HRV stable/up, RHR stable, sleep ≥ 7h, rampRate -10 to +5 → can push next week
+- **Yellow (managed)**: any one signal drifted but not multiple → hold load, focus on adherence
+- **Red (under-recovered)**: 2+ signals drifting (e.g. readiness ↓ AND RHR ↑, or HRV ↓ AND sleep < 6.5h) → mandatory volume reduction next week (-20-30%) regardless of subjective performance
+
+Output the wellness state explicitly in the review under a `## Wellness & Recovery (intervals.icu)` section. Include the actual numbers (CTL change, readiness avg, HRV trend, RHR trend, sleep avg, nutrition avgs vs targets) — do NOT generalize. Cite specific days when calling out anomalies.
 
 ### 2.9 Apply the coaching rules per `.claude/rules/training-rules.md`
 
