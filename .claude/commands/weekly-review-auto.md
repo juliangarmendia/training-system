@@ -397,25 +397,48 @@ If either is null/empty, skip this phase silently (user hasn't configured interv
 
 **For each run in `nextWeekPlan.runningPlan`**, build the DSL description and POST to intervals.icu via Bash + curl.
 
-#### intervals.icu DSL syntax — CANONICAL REFERENCE (verified empirically + per their docs)
+#### intervals.icu DSL syntax — CANONICAL REFERENCE (verified empirically 2026-05-04)
 
-Format each step as `- {duration} {target}`. **Order matters**: zone or range comes FIRST, modality (HR / Pace / LTHR) comes AFTER.
+Format each step as `- {duration} {target}`. **Order matters**: zone or range comes FIRST, modality (HR / LTHR / Pace) comes AFTER.
 
-| Target type | Syntax | Example |
+| Target type | Syntax | Example | Verified |
+|---|---|---|---|
+| HR zone (1-5) | `Z{n} HR` | `- 5km Z2 HR` | ✅ |
+| HR % of max | `{lo}-{hi}% HR` | `- 5km 70-75% HR` | ✅ |
+| HR % of LTHR | `{lo}-{hi}% LTHR` | `- 5km 90-95% LTHR` | ✅ |
+| Pace zone (1-5) | `Z{n} Pace` | `- 5km Z2 Pace` | ✅ |
+| Pace absolute range | `{slower}-{faster}/km Pace` | `- 5km 5:30-5:00/km Pace` (slower first!) | ✅ |
+| Pace % of threshold | `{lo}-{hi}% Pace` | `- 10m 88-92% Pace` | ✅ (presumed) |
+| No target (free run) | (just duration) | `- 5km` | ✅ |
+
+**Syntax that FAILS — silently drops the target** (verified 2026-05-04 with actual API tests):
+- ❌ `{low}-{high} HR` (absolute bpm range) — tested `130-143 HR`, `HR 130-143`, `130bpm-143bpm` — **none of these parse**. intervals.icu does NOT support absolute bpm ranges in workout DSL.
+- ❌ `HR Z2` (modality before zone is invalid)
+- ❌ `5km hr 125-140` (lowercase `hr` is ignored)
+- ❌ `Z2` alone (no modality → defaults to power_zone, not HR)
+
+#### How to translate "HR < X bpm" prescriptions
+
+Since absolute bpm doesn't parse, convert to **% of Max HR** using the athlete's Max HR (currently 184 for Julian). The cron computes and substitutes:
+
+| Prescription intent | DSL to write |
+|---|---|
+| "HR strict < 135" (deload-easy) | `- 3km 60-73% HR` (73% × 184 ≈ 134) |
+| "HR < 143" (Z2 ceiling) | Just use `- 5km Z2 HR` (cleaner) |
+| "HR 144-157" (tempo / Z3) | Just use `- 5km Z3 HR` |
+| Standard easy aerobic | `Z2 HR` (uses athlete's calibrated zones) |
+
+**Default rule**: prefer `Z{n} HR` when the prescription falls cleanly within one zone. Use `% HR` only for granular targets that don't align with zone boundaries.
+
+**Athlete zones reference (Julian, current)** — keep this in sync with intervals.icu Sport Settings:
+
+| Zone | bpm | % HR (Max=184) |
 |---|---|---|
-| HR zone (1-5) | `Z{n} HR` | `- 5km Z2 HR` |
-| HR absolute range | `{low}-{high} HR` | `- 5km 125-140 HR` |
-| HR % of max | `{lo}-{hi}% HR` | `- 5km 70-75% HR` |
-| HR % of LTHR | `{lo}-{hi}% LTHR` | `- 5km 90-95% LTHR` |
-| Pace zone (1-5) | `Z{n} Pace` | `- 5km Z2 Pace` |
-| Pace absolute range | `{slower}-{faster}/km Pace` | `- 5km 5:30-5:00/km Pace` (slower first!) |
-| Pace % of threshold | `{lo}-{hi}% Pace` | `- 10m 88-92% Pace` |
-| No target (free run) | (just duration) | `- 5km` |
-
-**Wrong syntax that FAILS** (parses to wrong target type):
-- `HR Z2` → power_zone 2 (modality before zone is invalid)
-- `5km hr 125-140` → no target at all (lowercase hr ignored)
-- `Z2` alone → power_zone 2 (defaults to power)
+| Z1 Recovery | 0-130 | 0-71% |
+| Z2 Aerobic | 131-143 | 72-78% |
+| Z3 Tempo | 144-157 | 79-85% |
+| Z4 SubThreshold | 158-170 | 86-92% |
+| Z5+ Anaerobic | 171-184 | 93-100% |
 
 **Duration formats**: `5km`, `2km`, `1mi`, `5m`, `30s`, `1h`, `5m30s`.
 
@@ -447,12 +470,17 @@ Cooldown
 
 #### Defaults for the runningPlan types
 
-If `run.intervals` is set, use it as-is (assumed valid DSL). Otherwise default by `run.type`:
+If `run.intervals` is set, use it as-is (assumed valid DSL — verified by trial event POST + GET to confirm `workout_doc.steps[]` parsed correctly). Otherwise default by `run.type`:
 - `"Z2"` or `"easy"` → `- {distance}km Z2 HR`
 - `"tempo"` → `- {distance}km Z3 HR`
 - `"threshold"` → `- {distance}km Z4 HR`
 - `"intervals"` / `"vo2"` → `- {distance}km Z5 HR`
-- If only `target_hr_max` is set → `- {distance}km {target_hr_max-15}-{target_hr_max} HR`
+- If only `target_hr_max` is set → convert to **% Max HR** (Julian's Max HR = 184):
+  - `pctHi = round(target_hr_max / 184 * 100)`
+  - `pctLo = max(50, pctHi - 8)` — gives ~15 bpm window
+  - DSL: `- {distance}km {pctLo}-{pctHi}% HR`
+  - **DO NOT use `{low}-{high} HR` with absolute bpm — that format does not parse in intervals.icu (verified empirically 2026-05-04 — silently drops the target).**
+- For deload "HR strict < X" intent: prefer `Z1 HR` if X ≤ 130, else `60-{round(X/184*100)}% HR`.
 
 #### POST request
 
