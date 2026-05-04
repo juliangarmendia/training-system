@@ -65,16 +65,34 @@
       }
     ],
     "mobility": "3 sessions MANDATORY: Wed Hip Reset (7 min) · Sat Lumbar Decompression (10 min) · Sun Hip Reset (7 min). Pin them on calendar.",
-    "running": "1 run only — Sat 2026-05-09 Z2 3 km, HR < 135 strict. Deload running too. The 5/01 run last week pushed HR 146 (above 143 ceiling) — keep this one easy.",
+    "running": "3 runs (user override of plan v4.0 deload prescription) — all Z1 strict (102-130 bpm = recovery zone, NOT Z2/aerobic build). Tue PM after Lower A (lift first) · Thu AM · Sat AM. 3km each = 9km total = -38% vs W18. Coach disagrees with adding running volume in deload week given HRV ↓14%, RHR +5, readiness avg 56 — but user's call. Z1 mitigates the risk by keeping intensity at active-recovery level.",
     "runningPlan": [
       {
-        "id": "sat-z2-deload",
-        "date": "2026-05-09",
-        "type": "Z2",
+        "id": "tue-z1",
+        "date": "2026-05-05",
+        "type": "Z1",
         "distance_km": 3.0,
-        "target_hr_max": 135,
-        "label": "Sat Z2 deload",
-        "note": "Single run this week (deload). HR strict <135. If body says no, swap for a walk."
+        "target_hr_max": 130,
+        "label": "Tue Z1 deload",
+        "note": "Z1 strict (102-130 bpm). Run AFTER Lower A — lift first rule. Recovery, not aerobic build."
+      },
+      {
+        "id": "thu-z1",
+        "date": "2026-05-07",
+        "type": "Z1",
+        "distance_km": 3.0,
+        "target_hr_max": 130,
+        "label": "Thu Z1 deload",
+        "note": "Z1 strict. Upper B day, no leg conflict."
+      },
+      {
+        "id": "sat-z1",
+        "date": "2026-05-09",
+        "type": "Z1",
+        "distance_km": 3.0,
+        "target_hr_max": 130,
+        "label": "Sat Z1 deload",
+        "note": "Z1 strict. Standalone day. Total weekly: 9km."
       }
     ],
     "nutrition": "DIET BREAK: ~2,900 kcal (vs 2,500 baseline). Protein 170g hold · Carbs ~385g (+100 vs baseline) · Fat 75g hold. Hidratación pre-sesión 500 mL within 2h. Manual weigh-in 4-7×/wk (AM, fasted, post-bathroom).",

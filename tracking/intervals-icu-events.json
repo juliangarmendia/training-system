@@ -2,12 +2,38 @@
   "events": [
     {
       "weekKey": "2026-W19",
-      "external_id": "cron-2026-W19-sat-z2-deload",
+      "external_id": "cron-2026-W19-tue-z1",
       "intervals_event_id": 108031922,
-      "date": "2026-05-09",
-      "label": "Sat Z2 deload",
+      "date": "2026-05-05",
+      "label": "Tue Z1 deload",
       "pushed_at": "2026-05-04T05:24:46Z",
-      "dsl": "Warmup: 5m Z1 HR · Main: 3km Z2 HR · Cooldown: 5m Z1 HR"
+      "updated_at": "2026-05-04T modified",
+      "dsl": "Warmup: 3m Z1 HR · Main: 3km Z1 HR · Cooldown: 2m Z1 HR",
+      "note": "Originally Sat Z2 — user override to Tue Z1 (3-runs/week request)"
+    },
+    {
+      "weekKey": "2026-W19",
+      "external_id": "cron-2026-W19-thu-z1",
+      "intervals_event_id": 108188400,
+      "date": "2026-05-07",
+      "label": "Thu Z1 deload",
+      "dsl": "Warmup: 3m Z1 HR · Main: 3km Z1 HR · Cooldown: 2m Z1 HR"
+    },
+    {
+      "weekKey": "2026-W19",
+      "external_id": "cron-2026-W19-sat-z1",
+      "intervals_event_id": 108188407,
+      "date": "2026-05-09",
+      "label": "Sat Z1 deload",
+      "dsl": "Warmup: 3m Z1 HR · Main: 3km Z1 HR · Cooldown: 2m Z1 HR"
+    }
+  ],
+  "deviations": [
+    {
+      "weekKey": "2026-W19",
+      "date": "2026-05-04",
+      "type": "user-override",
+      "summary": "User requested 3 runs (Tue/Thu/Sat) instead of plan v4.0's 1 run (Sat). Coach pushed back citing wellness data (HRV ↓14%, RHR +5, readiness avg 56) but user chose to proceed. Compromise: all 3 runs lowered to Z1 (102-130) instead of Z2 (131-143), shorter distance (3km each = 9km total vs 14.5km W18 = -38% volume). Z1 = active recovery, not aerobic build."
     }
   ]
 }

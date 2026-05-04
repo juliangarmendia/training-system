@@ -479,7 +479,13 @@ This data feeds into weekly check-ins and progress tracking.
 
 **Mobility (mandatoria, sigue igual):** Wed Hip Reset (7 min) · Sat Lumbar Decompression (10 min) · Sun Hip Reset (7 min). Detalle de ejercicios en la app.
 
-**Running:** 1 sola corrida W19 — Sat Z2 3 km HR <135 (deload running también).
+**Running (W19 — modified per user override 2026-05-04):** 3 corridas Z1 strict (102-130 bpm) en vez de 1 run Z2.
+- Tue 5/05 PM (después del Lower A, regla "lift first"): 3km Z1 HR
+- Thu 5/07: 3km Z1 HR
+- Sat 5/09: 3km Z1 HR
+- Total: 9km (-38% vs W18). Z1 = active recovery, NOT aerobic build. Deload preserved en intensidad aunque frecuencia aumente.
+
+> **Coach note:** plan v4.0 prescribió 1 run para deload completo. Usuario pidió 3 runs el 5/04 — wellness data (HRV ↓14%, RHR +5, readiness 56) decía no. Compromiso: bajar TODAS las runs a Z1 (recovery), no Z2. Si la W19 termina con readiness/HRV peor, esto es la causa probable y la próxima deload vuelve a 1 run estricto.
 
 **Nutrición W19 (diet break):** mantener proteína ≥170 g, subir carbs ~+100 g (a ~385 g) → ~2,900 kcal. Mantener fat 75 g.
 
