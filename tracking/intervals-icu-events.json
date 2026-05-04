@@ -2,30 +2,30 @@
   "events": [
     {
       "weekKey": "2026-W19",
-      "external_id": "cron-2026-W19-tue-z1",
+      "external_id": "cron-2026-W19-tue-z2",
       "intervals_event_id": 108031922,
       "date": "2026-05-05",
-      "label": "Tue Z1 deload",
+      "label": "Tue Z2 deload",
       "pushed_at": "2026-05-04T05:24:46Z",
       "updated_at": "2026-05-04T modified",
-      "dsl": "Warmup: 3m Z1 HR · Main: 3km Z1 HR · Cooldown: 2m Z1 HR",
+      "dsl": "Warmup: 3m Z1 HR · Main: 3km Z2 HR · Cooldown: 2m Z1 HR",
       "note": "Originally Sat Z2 — user override to Tue Z1 (3-runs/week request)"
     },
     {
       "weekKey": "2026-W19",
-      "external_id": "cron-2026-W19-thu-z1",
+      "external_id": "cron-2026-W19-thu-z2",
       "intervals_event_id": 108188400,
       "date": "2026-05-07",
-      "label": "Thu Z1 deload",
-      "dsl": "Warmup: 3m Z1 HR · Main: 3km Z1 HR · Cooldown: 2m Z1 HR"
+      "label": "Thu Z2 deload",
+      "dsl": "Warmup: 3m Z1 HR · Main: 3km Z2 HR · Cooldown: 2m Z1 HR"
     },
     {
       "weekKey": "2026-W19",
-      "external_id": "cron-2026-W19-sat-z1",
+      "external_id": "cron-2026-W19-sat-z2",
       "intervals_event_id": 108188407,
       "date": "2026-05-09",
-      "label": "Sat Z1 deload",
-      "dsl": "Warmup: 3m Z1 HR · Main: 3km Z1 HR · Cooldown: 2m Z1 HR"
+      "label": "Sat Z2 deload",
+      "dsl": "Warmup: 3m Z1 HR · Main: 3km Z2 HR · Cooldown: 2m Z1 HR"
     }
   ],
   "deviations": [
@@ -33,7 +33,7 @@
       "weekKey": "2026-W19",
       "date": "2026-05-04",
       "type": "user-override",
-      "summary": "User requested 3 runs (Tue/Thu/Sat) instead of plan v4.0's 1 run (Sat). Coach pushed back citing wellness data (HRV ↓14%, RHR +5, readiness avg 56) but user chose to proceed. Compromise: all 3 runs lowered to Z1 (102-130) instead of Z2 (131-143), shorter distance (3km each = 9km total vs 14.5km W18 = -38% volume). Z1 = active recovery, not aerobic build."
+      "summary": "User requested 3 runs (Tue/Thu/Sat) instead of plan v4.0's 1 run (Sat). Coach pushed back twice — first on volume (deload should reduce running too), then on intensity when user cited 'Z2 burns most fat'. Z2 has peak fat OXIDATION rate (g/min) but total fat LOSS depends on 24h caloric balance, not exercise fuel mix. User proceeded with 3 runs Z2. Final: 3km × 3 = 9km Z2 (-38% vs W18 14.5km Z2-Z3). Constraint: HR strict 131-143, no creep into Z3 like 5/01 (146 bpm). Outcomes evaluated next /weekly-review — if HRV/readiness/RHR worse Mon 5/12 vs Mon 5/05, this is the cause."
     }
   ]
 }

@@ -479,13 +479,13 @@ This data feeds into weekly check-ins and progress tracking.
 
 **Mobility (mandatoria, sigue igual):** Wed Hip Reset (7 min) · Sat Lumbar Decompression (10 min) · Sun Hip Reset (7 min). Detalle de ejercicios en la app.
 
-**Running (W19 — modified per user override 2026-05-04):** 3 corridas Z1 strict (102-130 bpm) en vez de 1 run Z2.
-- Tue 5/05 PM (después del Lower A, regla "lift first"): 3km Z1 HR
-- Thu 5/07: 3km Z1 HR
-- Sat 5/09: 3km Z1 HR
-- Total: 9km (-38% vs W18). Z1 = active recovery, NOT aerobic build. Deload preserved en intensidad aunque frecuencia aumente.
+**Running (W19 — modified per user override × 2, 2026-05-04):** 3 corridas Z2 (131-143 bpm) en vez de 1 run.
+- Tue 5/05 PM (después del Lower A, regla "lift first"): 3km Z2 HR
+- Thu 5/07: 3km Z2 HR
+- Sat 5/09: 3km Z2 HR
+- Total: 9km (-38% vs W18 14.5km). HR strict 131-143, NO Z3 creep como 5/01 (HR 146).
 
-> **Coach note:** plan v4.0 prescribió 1 run para deload completo. Usuario pidió 3 runs el 5/04 — wellness data (HRV ↓14%, RHR +5, readiness 56) decía no. Compromiso: bajar TODAS las runs a Z1 (recovery), no Z2. Si la W19 termina con readiness/HRV peor, esto es la causa probable y la próxima deload vuelve a 1 run estricto.
+> **Coach note:** plan v4.0 prescribió 1 run para deload completo. Override #1 (5/04): usuario pidió 3 runs — coach pushed back con wellness data (HRV ↓14%, RHR +5, readiness 56). Override #2 (5/04): coach propuso Z1 strict (recovery zone) como compromiso, usuario eligió Z2 citando "Z2 burns most fat". Coach corrigió el mito: Z2 tiene peak fat OXIDATION rate (g/min) pero total fat LOSS depende del déficit calórico de 24h, no del fuel mix durante el ejercicio. Z3 quema 30% más kcal totales y produce igual o más fat loss en 24h. La razón real para preferir Z2 es base aeróbica (mitochondrial density), no fat burning. Usuario eligió igual Z2. Si la W19 termina con readiness/HRV peor que el Mon 5/05, esto es la causa probable y la próxima deload vuelve a 1 run Z2 estricto.
 
 **Nutrición W19 (diet break):** mantener proteína ≥170 g, subir carbs ~+100 g (a ~385 g) → ~2,900 kcal. Mantener fat 75 g.
 

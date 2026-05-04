@@ -65,34 +65,34 @@
       }
     ],
     "mobility": "3 sessions MANDATORY: Wed Hip Reset (7 min) · Sat Lumbar Decompression (10 min) · Sun Hip Reset (7 min). Pin them on calendar.",
-    "running": "3 runs (user override of plan v4.0 deload prescription) — all Z1 strict (102-130 bpm = recovery zone, NOT Z2/aerobic build). Tue PM after Lower A (lift first) · Thu AM · Sat AM. 3km each = 9km total = -38% vs W18. Coach disagrees with adding running volume in deload week given HRV ↓14%, RHR +5, readiness avg 56 — but user's call. Z1 mitigates the risk by keeping intensity at active-recovery level.",
+    "running": "3 runs Z2 (user override × 2: first added volume in deload, then chose Z2 over Z1 citing 'Z2 burns most fat'). Coach explained the myth — Z2 has peak fat OXIDATION rate but total fat LOSS depends on 24h caloric balance, not exercise fuel mix. User proceeded. Tue PM after Lower A (lift first) · Thu AM · Sat AM. 3km each = 9km total = -38% vs W18 14.5km. HR strict 131-143, NO creep into Z3.",
     "runningPlan": [
       {
-        "id": "tue-z1",
+        "id": "tue-z2",
         "date": "2026-05-05",
-        "type": "Z1",
+        "type": "Z2",
         "distance_km": 3.0,
-        "target_hr_max": 130,
-        "label": "Tue Z1 deload",
-        "note": "Z1 strict (102-130 bpm). Run AFTER Lower A — lift first rule. Recovery, not aerobic build."
+        "target_hr_max": 143,
+        "label": "Tue Z2 deload",
+        "note": "Z2 strict (131-143 bpm, NO Z3 creep). Run AFTER Lower A — lift first rule."
       },
       {
-        "id": "thu-z1",
+        "id": "thu-z2",
         "date": "2026-05-07",
-        "type": "Z1",
+        "type": "Z2",
         "distance_km": 3.0,
-        "target_hr_max": 130,
-        "label": "Thu Z1 deload",
-        "note": "Z1 strict. Upper B day, no leg conflict."
+        "target_hr_max": 143,
+        "label": "Thu Z2 deload",
+        "note": "Z2 strict. Upper B day, no leg conflict."
       },
       {
-        "id": "sat-z1",
+        "id": "sat-z2",
         "date": "2026-05-09",
-        "type": "Z1",
+        "type": "Z2",
         "distance_km": 3.0,
-        "target_hr_max": 130,
-        "label": "Sat Z1 deload",
-        "note": "Z1 strict. Standalone day. Total weekly: 9km."
+        "target_hr_max": 143,
+        "label": "Sat Z2 deload",
+        "note": "Z2 strict. Standalone day. Total weekly: 9km."
       }
     ],
     "nutrition": "DIET BREAK: ~2,900 kcal (vs 2,500 baseline). Protein 170g hold · Carbs ~385g (+100 vs baseline) · Fat 75g hold. Hidratación pre-sesión 500 mL within 2h. Manual weigh-in 4-7×/wk (AM, fasted, post-bathroom).",
