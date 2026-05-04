@@ -1,0 +1,13 @@
+{
+  "events": [
+    {
+      "weekKey": "2026-W19",
+      "external_id": "cron-2026-W19-sat-z2-deload",
+      "intervals_event_id": 108031922,
+      "date": "2026-05-09",
+      "label": "Sat Z2 deload",
+      "pushed_at": "2026-05-04T05:24:46Z",
+      "dsl": "Warmup: 5m Z1 HR · Main: 3km Z2 HR · Cooldown: 5m Z1 HR"
+    }
+  ]
+}
