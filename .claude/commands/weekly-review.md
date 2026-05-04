@@ -68,7 +68,17 @@ WHERE (record_id)::date BETWEEN '$weekStart' AND '$weekEnd'
 ORDER BY record_id;
 ```
 
-The blob may include: `readiness`, `hrv`, `hrvSDNN`, `restingHR`, `avgSleepingHR`, `sleepSecs`, `sleepScore`, `spO2`, `respiration`, `weight`, `bodyFat`, `steps`, `ctl`, `atl`, `rampRate`, `ctlLoad`, `atlLoad`, `kcalConsumed`, `carbs`, `protein`, `fat`, `fatigue`, `soreness`, `stress`, `mood`, `motivation`. See `weekly-review-auto.md` Phase 2.10 for decision rules per signal.
+The blob may include:
+- **Recovery + sleep**: `readiness`, `hrv`, `hrvSDNN`, `restingHR`, `restingHRMeasured` (raw vs smoothed), `avgSleepingHR`, `sleepSecs`, `sleepScore`, `spO2`, `respiration`
+- **Body comp**: `weight` (smoothed/forward-filled), `weightMeasured` (raw measurement that day — **prefer this for trend analysis**), `bodyFat`, `abdomen`
+- **Activity**: `steps`
+- **Training load** (Fitness/Fatigue/Form): `ctl`, `atl`, `rampRate`, `ctlLoad`, `atlLoad`
+- **Vitals** (rare, only if user logs): `systolic`, `diastolic`, `bloodGlucose`, `lactate`, `vo2max`
+- **Hydration**: `hydration`, `hydrationVolume`
+- **Nutrition** (typically null — Julian uses PWA nutrition store, not intervals.icu): `kcalConsumed`, `carbs`, `protein`, `fat`
+- **Subjective** (only if filled): `fatigue`, `soreness`, `stress`, `mood`, `motivation`, `comments`
+
+See `weekly-review-auto.md` Phase 2.10 for decision rules per signal.
 
 Also fetch the prior **4 weeks** for trend context.
 

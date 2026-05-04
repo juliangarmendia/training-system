@@ -182,16 +182,25 @@ For each day in the active week + prior 4 weeks (already in the wellness query):
 - Days with sleepScore < 60 → flag (poor sleep masks recovery interventions)
 - If avg sleep < 6.5h for the week AND readiness/HRV trending down → sleep is the bottleneck, NOT training load. Don't deload before fixing sleep.
 
-**Nutrition** — `kcalConsumed`, `carbs`, `protein`, `fat`, `weight`:
-- Days logged (≥1 of these fields present per day).
-- Avg daily kcal vs estimated maintenance (use `weight × 33` as a rough TDEE for reference; refine if smarter estimate available from `docs/profile.md`).
-- Avg daily protein vs target (from `docs/profile.md` or settings, default 1.8 g/kg).
-- Avg daily carbs and fat — flag if carbs < 100g sustained (may impair training quality during a build) or fat < 0.5 g/kg sustained (hormonal floor).
-- Cross-reference with body weight slope:
+**Body weight (CRITICAL — read carefully)**:
+- The wellness row stores **two** weight fields:
+  - `weightMeasured` (= intervals.icu's `tempWeight`) → raw measurement from that day. **Use this for trend analysis.** Null when Julian didn't weigh in.
+  - `weight` (= intervals.icu's `weight`) → smoothed/forward-filled "current" value. intervals.icu carries the last known value forward, so consecutive days may be identical because of forward-fill, not real stability. **Do NOT use this for slope calculation.**
+- Compute weekly slope only from `weightMeasured` values. If <3 measurements in the week, fall back to comparing latest vs prior-week's latest. State sample size explicitly ("4 measurements this week" not just a slope).
+- Cross-reference Supabase `bodyweight` table: rows with `data->>'measured' = 'true'` are real measurements; `false` = forward-fill insertion (still in store as a fallback for calorie estimates but should not drive trend conclusions).
+- Manual entries (`data->>'source' is null`) are real, count them.
+
+**Nutrition** — `kcalConsumed`, `carbs`, `protein`, `fat` (from intervals.icu) AND PWA `nutrition` table:
+- intervals.icu nutrition fields are **typically null** — Julian doesn't log macros in intervals.icu. The authoritative source is the PWA `nutrition` table (already queried in Phase 1.5).
+- From `nutrition` rows: avg daily kcal, avg daily protein, days hitting protein target, days logged.
+- Avg daily protein vs target (from `docs/profile.md` or settings, default 1.8 g/kg of bodyweight).
+- Days logged < 50% of the week → flag as data gap (cannot make nutrition decisions without adherence).
+- Cross-reference with body weight slope (computed from `weightMeasured` only):
   - Weight loss > 1% / week sustained AND avg deficit > 600 kcal → too aggressive, raise calories 200/day
-  - Weight loss < 0.25% / week sustained AND avg deficit < 300 kcal AND wants to lose → tighten by 200/day
+  - Weight loss < 0.25% / week sustained AND avg deficit < 300 kcal AND goal is loss → tighten by 200/day
   - Weight stable AND CTL maintained AND readiness/HRV good → maintaining well, hold the line
   - Weight loss with CTL falling AND readiness dropping → losing fitness with the fat, raise calories OR add a refeed
+  - **If nutrition adherence < 50%** → do not propose nutrition adjustments; flag adherence as the bottleneck and propose tightening logging.
 
 **Subjective**: if `fatigue`/`soreness`/`stress`/`mood`/`motivation` are filled, weigh them — but they're a tiebreaker, not a primary signal. Trust the objective metrics first.
 

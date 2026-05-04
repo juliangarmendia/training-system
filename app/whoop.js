@@ -1,5 +1,5 @@
 // ============================================================
-// WHOOP Integration Module — Training App v10.28
+// WHOOP Integration Module — Training App v10.29
 // Primary path: intervals.icu wellness (no OAuth, no token refresh).
 // Fallback path: direct WHOOP OAuth (kept for rollback; deleted Phase 3).
 // ============================================================
@@ -307,19 +307,67 @@ async function intervalsFetchWellness() {
       });
     }
 
-    // Body weight — upsert to bodyweight store (legacy, used by calorie estimates).
-    // intervals.icu wins over manual entry for the same date.
-    if (typeof r.weight === 'number' && r.weight > 20 && r.weight < 300) {
+    // Body weight — only persist days with a REAL measurement (tempWeight is the
+    // raw value entered that day; weight is the smoothed/forward-filled current
+    // value that intervals.icu projects forward when you don't weigh in. Using
+    // weight directly produces fake "stable" sequences like 3 identical days
+    // in a row that are actually 1 measurement repeated). Falling back to
+    // weight only if it differs materially from the previous day's stored value
+    // (heuristic: if intervals.icu reports a NEW value, it's a real change).
+    const measuredW = (typeof r.tempWeight === 'number' && r.tempWeight > 20 && r.tempWeight < 300)
+      ? Math.round(r.tempWeight * 10) / 10
+      : null;
+    const projectedW = (typeof r.weight === 'number' && r.weight > 20 && r.weight < 300)
+      ? Math.round(r.weight * 10) / 10
+      : null;
+    if (measuredW !== null) {
+      // Real measurement → always persist
       try {
         if (typeof smartPut === 'function') {
           await smartPut('bodyweight', {
             date: r.id,
-            weight: Math.round(r.weight * 10) / 10,
+            weight: measuredW,
             timestamp: Date.now(),
             source: 'intervals.icu',
+            measured: true,
           });
           weightWrites++;
-          latestWeight = Math.round(r.weight * 10) / 10;
+          latestWeight = measuredW;
+        }
+      } catch (e) { console.warn('[wellness] weight upsert failed for', r.id, e); }
+    } else if (projectedW !== null) {
+      // No raw measurement that day → only persist if it differs from the most
+      // recent stored value (i.e., intervals reports a step change, likely a
+      // real measurement that arrived without tempWeight populated).
+      try {
+        if (typeof dbGet === 'function') {
+          const existing = await dbGet('bodyweight', r.id);
+          const prevDate = (() => {
+            const d = new Date(r.id + 'T12:00:00');
+            d.setUTCDate(d.getUTCDate() - 1);
+            return d.toISOString().split('T')[0];
+          })();
+          const prev = await dbGet('bodyweight', prevDate);
+          const prevWeight = prev && typeof prev.weight === 'number' ? prev.weight : null;
+          const isNewSignal = prevWeight === null || Math.abs(projectedW - prevWeight) >= 0.05;
+          // Skip if the value matches the previous day's value AND we don't already
+          // have a measured entry for this date (don't overwrite manual logs).
+          if (isNewSignal && !(existing && existing.measured)) {
+            await smartPut('bodyweight', {
+              date: r.id,
+              weight: projectedW,
+              timestamp: Date.now(),
+              source: 'intervals.icu',
+              measured: false,
+            });
+            weightWrites++;
+            latestWeight = projectedW;
+          } else if (existing == null) {
+            // Even forward-fills are useful as the "last known weight" for
+            // calorie estimates on days with no other data — but only if the
+            // store has nothing for this date yet.
+            latestWeight = projectedW;
+          }
         }
       } catch (e) { console.warn('[wellness] weight upsert failed for', r.id, e); }
     }
@@ -343,23 +391,31 @@ async function intervalsFetchWellness() {
     // Full wellness row — upserted to dedicated wellness store. This is what the
     // weekly cron reads from Supabase to make periodization decisions (CTL/ATL/
     // rampRate trends, recovery + sleep + macros consolidated per day).
+    //
+    // Naming convention for measurement vs projection:
+    //   weight / restingHR     → intervals.icu's smoothed/forward-filled value
+    //   weightMeasured / restingHRMeasured → raw measurement that day (null if not measured)
+    // Cron should prefer the *Measured fields when computing trends.
     try {
       if (typeof smartPut === 'function') {
         const wellnessRow = {
           date: r.id,
-          // Recovery + sleep (canonical names matching what the cron expects)
+          // Recovery + sleep
           readiness: r.readiness != null ? Math.round(r.readiness) : null,
           hrv: r.hrv != null ? Number(r.hrv) : null,
           hrvSDNN: r.hrvSDNN != null ? Number(r.hrvSDNN) : null,
           restingHR: r.restingHR != null ? Number(r.restingHR) : null,
+          restingHRMeasured: r.tempRestingHR != null ? Number(r.tempRestingHR) : null,
           avgSleepingHR: r.avgSleepingHR != null ? Number(r.avgSleepingHR) : null,
           sleepSecs: r.sleepSecs != null ? Number(r.sleepSecs) : null,
           sleepScore: r.sleepScore != null ? Math.round(r.sleepScore) : null,
           spO2: r.spO2 != null ? Number(r.spO2) : null,
           respiration: r.respiration != null ? Number(r.respiration) : null,
           // Body comp
-          weight: r.weight != null ? Math.round(r.weight * 10) / 10 : null,
+          weight: projectedW,
+          weightMeasured: measuredW,
           bodyFat: r.bodyFat != null ? Number(r.bodyFat) : null,
+          abdomen: r.abdomen != null ? Number(r.abdomen) : null,
           // Activity
           steps: r.steps != null ? Math.round(r.steps) : null,
           // Training load (Fitness/Fatigue/Form — periodization fuel)
@@ -368,17 +424,28 @@ async function intervalsFetchWellness() {
           rampRate: r.rampRate != null ? Number(r.rampRate) : null,
           ctlLoad: r.ctlLoad != null ? Number(r.ctlLoad) : null,
           atlLoad: r.atlLoad != null ? Number(r.atlLoad) : null,
-          // Nutrition
+          // Vitals (only present if user logs them in intervals.icu)
+          systolic: r.systolic != null ? Number(r.systolic) : null,
+          diastolic: r.diastolic != null ? Number(r.diastolic) : null,
+          bloodGlucose: r.bloodGlucose != null ? Number(r.bloodGlucose) : null,
+          lactate: r.lactate != null ? Number(r.lactate) : null,
+          vo2max: r.vo2max != null ? Number(r.vo2max) : null,
+          // Hydration
+          hydration: r.hydration != null ? Number(r.hydration) : null,
+          hydrationVolume: r.hydrationVolume != null ? Number(r.hydrationVolume) : null,
+          // Nutrition (typically null — Julian doesn't log macros in intervals.icu;
+          // the PWA's nutrition store is the source of truth for that)
           kcalConsumed: r.kcalConsumed != null ? Number(r.kcalConsumed) : null,
           carbs: r.carbohydrates != null ? Number(r.carbohydrates) : null,
           protein: r.protein != null ? Number(r.protein) : null,
           fat: r.fatTotal != null ? Number(r.fatTotal) : null,
-          // Subjective (if filled in intervals.icu)
+          // Subjective (only if filled in intervals.icu — Julian doesn't currently)
           fatigue: r.fatigue != null ? Number(r.fatigue) : null,
           soreness: r.soreness != null ? Number(r.soreness) : null,
           stress: r.stress != null ? Number(r.stress) : null,
           mood: r.mood != null ? Number(r.mood) : null,
           motivation: r.motivation != null ? Number(r.motivation) : null,
+          comments: typeof r.comments === 'string' && r.comments.trim() ? r.comments.trim() : null,
           source: 'intervals.icu',
           ts: Date.now(),
         };
