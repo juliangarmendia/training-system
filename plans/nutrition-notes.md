@@ -1,7 +1,7 @@
 # Nutrition Plan — Cut Phase 1
 
-> Version: 2.0
-> Last updated: 2026-04-06
+> Version: 3.0
+> Last updated: 2026-05-02 (W19 ACSM refinements: hydration pre-session, carb periodization, LEA monitoring)
 
 ---
 
@@ -65,7 +65,8 @@ Principles-based, not rigid meal plans. You decide what to eat. The system gives
 | **Fat** | ≥65 g/day | 65-85 g | Minimum for hormonal health |
 | **Carbs** | Remainder (~230-280 g) | Flexible | Fill after protein and fat targets are met |
 | **Fiber** | ≥25 g/day | 25-35 g | Satiety + gut health |
-| **Water** | ≥2.5 L/day | 2.5-3.5 L | More on training/running days |
+| **Water (total día)** | ≥2.5 L/day | 2.5-3.5 L | More on training/running days |
+| **Agua pre-sesión** | **500 mL dentro de las 2 h previas** | 440-880 mL (5-10 mL/kg) | **Sí — Thomas 2016 (ACSM/AND/DC). Aplica a gym y running** |
 | **Meals** | 3-4/day | — | Space protein across meals |
 
 ### How the Macros Break Down
@@ -195,6 +196,32 @@ This is a *template*, not a prescription. Eat what you like. Hit protein.
 
 ---
 
+## Carb Periodization por tipo de día (W19+ refinement)
+
+**Por qué:** Thomas 2016 Tabla 2 marca "moderate program (~1 h/d)" en **5-7 g/kg/d** (= 440-620 g para vos). El target actual de ~285 g/d (~3.2 g/kg) está debajo de la banda ACSM. Es decisión deliberada por el déficit, pero significa que en días Lower (squat o deadlift pesado) podés estar glycolytically limitado.
+
+**Solución:** redistribuir carbs entre días sin cambiar calorías totales.
+
+| Tipo de día | Sesión | CHO target | Fat target | Calorías | Notas |
+|-------------|--------|-----------|-----------|----------|-------|
+| **Lower (Mar/Vie)** | Squat o Deadlift pesado | **350 g (~4 g/kg)** | 65 g | ~2,500 | Subir CHO ~+65 g, bajar fat ~10 g. Mejor performance en glycolytic work |
+| **Upper (Lun/Jue)** | Bench/Row o OHP/Chin | **285 g (baseline)** | 75 g | ~2,500 | Mantener |
+| **Long-run day (Sat)** | Z2 ≥ 5 km | **310 g** | 70 g | ~2,500 | Subir CHO modesto si la corrida es ≥40 min |
+| **Rest day (Mié/Dom)** | Sin gym, sin run | **250 g (~2.8 g/kg)** | 85 g | ~2,500 | Bajar CHO, subir fat (saciedad + hormonal headroom) |
+
+**Promedio semanal:** ~290 g CHO/d (igual al baseline). Lo que cambia es la distribución, no el total.
+
+**Cómo implementar sin tracking obsesivo:**
+- Días Lower: agregar 1 fruta extra + 1 porción extra de papa/arroz/avena vs. baseline
+- Días Rest: quitar 1 porción de carb, agregar 1 cucharada de palta o aceite de oliva, o 1 puñado de almendras
+- Días Upper: comer "normal" (baseline)
+
+**Pre-sesión Lower (1-3 h antes):** Thomas 2016 recomienda 1-4 g/kg de CHO en las 1-4 h pre-evento. Para vos: 100-150 g CHO + 30 g proteína 2-3 h antes (ej. avena con whey + banana).
+
+**Post-sesión Lower (en las 2 h):** comida con CHO + proteína (ej. arroz + pollo, papa + huevos). No es ventana mágica pero ayuda a glycogen replenishment para la sesión siguiente.
+
+---
+
 ## Diet Breaks and Refeeds
 
 ### Evidence: MATADOR Study (Byrne et al., 2018)
@@ -305,11 +332,26 @@ These aren't "bad" — just easy to overeat in a deficit. Portion awareness matt
 | **Protein** (g) | Estimate from meals | Primary tracking variable |
 | **Hit target?** (yes/no) | Did you get ≥170 g? | Binary accountability |
 | **Meals** | How many protein-containing meals | Aiming for 3-4 |
-| **Water** | Adequate? (yes/no) | Simple check |
+| **Water total** | Adequate? (yes/no) | Simple check |
+| **Pre-session 500 mL** *(W19+)* | yes/no | Hydration rule per Thomas 2016 |
 | **Alcohol** | Drinks (count) | Awareness |
 | **Hunger** (1-5) | 1=stuffed, 3=normal, 5=starving | Tracks deficit sustainability |
 | **Energy** (1-5) | 1=exhausted, 3=normal, 5=great | Tracks recovery + deficit impact |
 | **Calories** (optional) | Estimate if tracking | Becomes important after week 4 if needed |
+
+## What to Log Weekly (LEA Monitoring — W19+)
+
+ACSM/Burke 2021 RED-S markers. Energy availability marginal en días de entreno (~27 kcal/kg FFM/d, threshold 30) → vigilar:
+
+| Field | Frequency | What to track |
+|-------|-----------|---------------|
+| **Sleep quality (avg)** | Weekly avg (1-5) | 1=insomnio, 3=normal, 5=excelente |
+| **Libido** | Weekly avg (1-5) | 1=ausente, 3=normal, 5=alto |
+| **Illness episodes** | Count this week | Resfríos, dolor garganta, malestar GI ≥1 día |
+| **Morning HR (opcional)** | Daily avg | Si sube ≥5 bpm sostenido por 1 semana = recovery flag |
+| **Mood (avg)** | Weekly avg (1-5) | Persistente <3 = bandera psicológica |
+
+**Trigger de acción:** si **dos de** [sleep, libido, illness, mood] empeoran ≥2 puntos por 2 semanas seguidas → **diet break adelantado** (1 semana a maintenance) y bajar volumen lifting 30%.
 
 ---
 
@@ -353,3 +395,4 @@ These aren't "bad" — just easy to overeat in a deficit. Portion awareness matt
 |------|--------|--------|
 | 2026-04-06 | v1.0 created | Initial assessment |
 | 2026-04-06 | v2.0 rewrite | Full evidence-based review. Added research citations for every target, macro breakdown, meal timing evidence, MATADOR diet break protocol, calibration protocol, alcohol quantification, supplement tiers with 2024 evidence, hunger management strategies, metabolic adaptation section, tracking phases |
+| 2026-05-02 | v3.0 — ACSM 2026 refinements | Cross-check vs. Thomas 2016, Jakicic 2024, Burke 2021. Cambios: (1) Hidratación pre-sesión 500 mL dentro de las 2 h (Thomas 2016: 5-10 mL/kg). (2) Carb periodization por tipo de día — Lower 350 g, Upper 285 g, Long-run 310 g, Rest 250 g (Thomas 2016 Tabla 2 banda moderate = 5-7 g/kg/d; baseline ~3.2 g/kg estaba debajo). (3) LEA monitoring semanal añadido (libido, sleep, illness, mood) — EA en días de entreno calcula ~27 kcal/kg FFM/d, marginalmente bajo del threshold ACSM 30. Trigger de diet break adelantado si 2 markers empeoran ≥2 puntos por 2 semanas |
