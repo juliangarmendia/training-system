@@ -3275,7 +3275,7 @@ function closeExerciseModal() {
 
 // ==================== SVG CHART RENDERING ====================
 function renderLineChart(labels, values, opts = {}) {
-  const { min, max, color = 'var(--accent)', height = 150, showDots = true } = opts;
+  const { min, max, color = 'var(--accent)', height = 150, showDots = true, tooltip = false, unit = '' } = opts;
   const width = 320;
   const pad = { top: 20, right: 15, bottom: 30, left: 40 };
   const chartW = width - pad.left - pad.right;
@@ -3325,8 +3325,30 @@ function renderLineChart(labels, values, opts = {}) {
   const gradientId = 'grad-' + Math.random().toString(36).slice(2, 7);
   const areaD = pathD + ` L${points[points.length - 1].x.toFixed(1)},${pad.top + chartH} L${points[0].x.toFixed(1)},${pad.top + chartH} Z`;
 
+  // Tooltip layer (opt-in). Embeds points + labels for bindChartTooltip to consume.
+  let tooltipAttrs = '';
+  let tooltipLayer = '';
+  if (tooltip) {
+    const tooltipPoints = points.map((p, i) => ({
+      x: +p.x.toFixed(1),
+      y: +p.y.toFixed(1),
+      label: labels[i],
+      value: p.v
+    }));
+    tooltipAttrs = ` data-tooltip="1" data-unit="${unit}" data-points='${JSON.stringify(tooltipPoints).replace(/'/g, '&#39;')}'`;
+    tooltipLayer = `
+      <g class="chart-tooltip" style="display:none" pointer-events="none">
+        <line class="ct-cross" x1="0" y1="${pad.top}" x2="0" y2="${pad.top + chartH}" stroke="var(--text3)" stroke-width="1" stroke-dasharray="3 2" opacity="0.5"/>
+        <circle class="ct-dot" cx="0" cy="0" r="5" fill="${color}" stroke="var(--bg)" stroke-width="2"/>
+        <rect class="ct-box" x="0" y="0" width="100" height="22" rx="4" fill="var(--bg)" stroke="var(--border)" stroke-width="1"/>
+        <text class="ct-text" x="0" y="0" fill="var(--text)" font-size="11" font-weight="600" text-anchor="middle"></text>
+      </g>
+      <rect class="chart-hitbox" x="${pad.left}" y="${pad.top}" width="${chartW}" height="${chartH}" fill="transparent" pointer-events="all"/>
+    `;
+  }
+
   return `
-    <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet">
+    <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet"${tooltipAttrs}>
       <defs>
         <linearGradient id="${gradientId}" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stop-color="${color}" stop-opacity="0.25"/>
@@ -3338,8 +3360,69 @@ function renderLineChart(labels, values, opts = {}) {
       <path d="${areaD}" fill="url(#${gradientId})"/>
       <path d="${pathD}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
       ${dotsHTML}
+      ${tooltipLayer}
     </svg>
   `;
+}
+
+// Bind interactive tooltip to a chart SVG that was rendered with { tooltip: true }.
+// Reads data-points/data-unit from the SVG and wires pointer events on the hitbox.
+function bindChartTooltip(svgEl) {
+  if (!svgEl || svgEl.dataset.tooltip !== '1') return;
+  let points;
+  try { points = JSON.parse(svgEl.dataset.points); } catch (e) { return; }
+  if (!points || !points.length) return;
+  const unit = svgEl.dataset.unit || '';
+  const tipG = svgEl.querySelector('.chart-tooltip');
+  const hitbox = svgEl.querySelector('.chart-hitbox');
+  if (!tipG || !hitbox) return;
+  const cross = tipG.querySelector('.ct-cross');
+  const dot = tipG.querySelector('.ct-dot');
+  const box = tipG.querySelector('.ct-box');
+  const text = tipG.querySelector('.ct-text');
+
+  const viewBox = svgEl.viewBox.baseVal;
+  const vbW = viewBox.width || 320;
+  const vbH = viewBox.height || 150;
+
+  const showAt = (clientX) => {
+    const rect = svgEl.getBoundingClientRect();
+    const svgX = ((clientX - rect.left) / rect.width) * vbW;
+    let nearest = points[0], minDist = Infinity;
+    for (const p of points) {
+      const d = Math.abs(p.x - svgX);
+      if (d < minDist) { minDist = d; nearest = p; }
+    }
+    const labelText = `${nearest.label} — ${nearest.value} ${unit}`.trim();
+    text.textContent = labelText;
+    // Measure text to size the box
+    const textW = text.getComputedTextLength ? text.getComputedTextLength() : labelText.length * 6;
+    const boxW = Math.max(70, textW + 16);
+    const boxH = 20;
+    // Position box above the point, clamped to viewBox
+    let bx = nearest.x - boxW / 2;
+    if (bx < 2) bx = 2;
+    if (bx + boxW > vbW - 2) bx = vbW - 2 - boxW;
+    let by = nearest.y - boxH - 10;
+    if (by < 2) by = nearest.y + 10; // flip below if no room above
+    box.setAttribute('x', bx);
+    box.setAttribute('y', by);
+    box.setAttribute('width', boxW);
+    box.setAttribute('height', boxH);
+    text.setAttribute('x', bx + boxW / 2);
+    text.setAttribute('y', by + 14);
+    cross.setAttribute('x1', nearest.x);
+    cross.setAttribute('x2', nearest.x);
+    dot.setAttribute('cx', nearest.x);
+    dot.setAttribute('cy', nearest.y);
+    tipG.style.display = '';
+  };
+  const hide = () => { tipG.style.display = 'none'; };
+
+  hitbox.addEventListener('pointermove', (e) => { showAt(e.clientX); });
+  hitbox.addEventListener('pointerdown', (e) => { showAt(e.clientX); });
+  hitbox.addEventListener('pointerleave', hide);
+  hitbox.addEventListener('pointercancel', hide);
 }
 
 // ==================== STATS MODULE ====================
@@ -6478,69 +6561,24 @@ function renderBodyWeightMetrics(entries, host) {
     const losing = delta < 0;
     return (losing === goalLossDirection) ? 'var(--accent)' : 'var(--red)';
   };
-  const arrow = (delta) => {
-    if (Math.abs(delta) < 0.05) return '—';
-    return delta < 0 ? '↓' : '↑';
-  };
 
   const now = new Date();
   const dayMs = 86400000;
   const dateOf = (e) => new Date(e.date + 'T12:00:00');
 
-  // Tile 1: this week vs last week — average of last 7d vs prior 7d
-  const last7 = entries.filter(e => (now - dateOf(e)) <= 7 * dayMs);
-  const prior7 = entries.filter(e => {
-    const age = now - dateOf(e);
-    return age > 7 * dayMs && age <= 14 * dayMs;
-  });
-  let weekTile = '';
-  if (last7.length && prior7.length) {
-    const avgNow = last7.reduce((s, e) => s + e.weight, 0) / last7.length;
-    const avgPrev = prior7.reduce((s, e) => s + e.weight, 0) / prior7.length;
-    const delta = avgNow - avgPrev;
-    weekTile = `<div class="bw-stat">
-      <div class="bw-stat-label">vs last week</div>
-      <div class="bw-stat-val" style="color:${colorForDelta(delta)}">${arrow(delta)} ${Math.abs(delta).toFixed(1)} kg</div>
-    </div>`;
-  } else {
-    weekTile = `<div class="bw-stat"><div class="bw-stat-label">vs last week</div><div class="bw-stat-val muted">—</div></div>`;
-  }
-
-  // Tile 2: 30-day trend — kg/week computed via linear slope of last 30d
-  const last30 = entries.filter(e => (now - dateOf(e)) <= 30 * dayMs);
-  let trendTile = '';
-  if (last30.length >= 4) {
-    const t0 = dateOf(last30[0]).getTime();
-    const xs = last30.map(e => (dateOf(e).getTime() - t0) / dayMs);
-    const ys = last30.map(e => e.weight);
-    const n = xs.length;
-    const meanX = xs.reduce((a, b) => a + b, 0) / n;
-    const meanY = ys.reduce((a, b) => a + b, 0) / n;
-    let num = 0, den = 0;
-    for (let i = 0; i < n; i++) { num += (xs[i] - meanX) * (ys[i] - meanY); den += (xs[i] - meanX) ** 2; }
-    const slopePerDay = den > 0 ? num / den : 0;
-    const perWeek = slopePerDay * 7;
-    trendTile = `<div class="bw-stat">
-      <div class="bw-stat-label">30d trend</div>
-      <div class="bw-stat-val" style="color:${colorForDelta(perWeek)}">${arrow(perWeek)} ${Math.abs(perWeek).toFixed(1)} kg/wk</div>
-    </div>`;
-  } else {
-    trendTile = `<div class="bw-stat"><div class="bw-stat-label">30d trend</div><div class="bw-stat-val muted">need 4+ logs</div></div>`;
-  }
-
-  // Tile 3: total since start (settings.startDate or first entry)
+  // Tile: total since start (settings.startDate or first entry)
   const startDateStr = state.settings && state.settings.startDate;
   const startEntry = startDateStr
     ? entries.find(e => e.date >= startDateStr) || entries[0]
     : entries[0];
   const totalDelta = entries[entries.length - 1].weight - startEntry.weight;
   const weeksSince = Math.max(1, Math.round((dateOf(entries[entries.length - 1]) - dateOf(startEntry)) / (7 * dayMs)));
-  let totalTile = `<div class="bw-stat">
+  const totalTile = `<div class="bw-stat">
     <div class="bw-stat-label">since start</div>
     <div class="bw-stat-val" style="color:${colorForDelta(totalDelta)}">${totalDelta >= 0 ? '+' : '−'}${Math.abs(totalDelta).toFixed(1)} kg <span class="bw-stat-sub">· ${weeksSince}w</span></div>
   </div>`;
 
-  // Tile 4: days logged this month (calendar month)
+  // Tile: days logged this month (calendar month)
   const ymPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   const loggedThisMonth = entries.filter(e => e.date.startsWith(ymPrefix)).length;
   const totalDaysSoFar = now.getDate();
@@ -6550,7 +6588,7 @@ function renderBodyWeightMetrics(entries, host) {
     <div class="bw-stat-val" style="color:${consistencyColor}">${loggedThisMonth} / ${totalDaysSoFar} days</div>
   </div>`;
 
-  host.innerHTML = weekTile + trendTile + totalTile + loggedTile;
+  host.innerHTML = totalTile + loggedTile;
 }
 
 // Render last 7 entries newest-first, with delta vs previous entry.
@@ -6626,19 +6664,20 @@ function renderBodyWeightInsights(entries, nudgeEl, etaEl, plateauEl) {
         const losing = slopePerWeek < -0.05;
         const gaining = slopePerWeek > 0.05;
         const shouldLose = remaining > 0;
+        const trendLabel = '<span class="bw-line-label">Tendencia 30d (regresión):</span>';
         if (shouldLose && losing) {
           const weeksToGoal = Math.ceil(remaining / Math.abs(slopePerWeek));
-          etaEl.innerHTML = `🎯 At ${slopePerWeek.toFixed(2)} kg/wk, you reach <strong>${goal} kg</strong> in ~${weeksToGoal} week${weeksToGoal !== 1 ? 's' : ''} (${remaining.toFixed(1)} kg to go).`;
+          etaEl.innerHTML = `🎯 ${trendLabel} <strong>${slopePerWeek.toFixed(2)} kg/wk</strong> → goal <strong>${goal} kg</strong> en ~${weeksToGoal} sem (${remaining.toFixed(1)} kg restantes).`;
         } else if (shouldLose && !losing) {
-          etaEl.innerHTML = `🎯 ${remaining.toFixed(1)} kg to <strong>${goal} kg</strong>. Trend is ${gaining ? 'going the wrong way' : 'flat'} — ETA unknown until loss resumes.`;
+          etaEl.innerHTML = `🎯 ${trendLabel} <strong>${slopePerWeek >= 0 ? '+' : ''}${slopePerWeek.toFixed(2)} kg/wk</strong> · ${remaining.toFixed(1)} kg a <strong>${goal} kg</strong>. Trend ${gaining ? 'va en dirección opuesta' : 'plana'} — ETA en pausa hasta que reanude la baja.`;
         } else if (!shouldLose && gaining) {
           const weeksToGoal = Math.ceil(Math.abs(remaining) / slopePerWeek);
-          etaEl.innerHTML = `🎯 At ${slopePerWeek.toFixed(2)} kg/wk, you reach <strong>${goal} kg</strong> in ~${weeksToGoal} week${weeksToGoal !== 1 ? 's' : ''}.`;
+          etaEl.innerHTML = `🎯 ${trendLabel} <strong>+${slopePerWeek.toFixed(2)} kg/wk</strong> → goal <strong>${goal} kg</strong> en ~${weeksToGoal} sem.`;
         } else {
-          etaEl.innerHTML = `🎯 Goal: <strong>${goal} kg</strong> · ${Math.abs(remaining).toFixed(1)} kg to ${remaining > 0 ? 'lose' : 'gain'}.`;
+          etaEl.innerHTML = `🎯 ${trendLabel} <strong>${slopePerWeek >= 0 ? '+' : ''}${slopePerWeek.toFixed(2)} kg/wk</strong> · goal <strong>${goal} kg</strong> (${Math.abs(remaining).toFixed(1)} kg a ${remaining > 0 ? 'bajar' : 'subir'}).`;
         }
       } else {
-        etaEl.innerHTML = `🎯 Goal: <strong>${goal} kg</strong> · ${Math.abs(remaining).toFixed(1)} kg to ${remaining > 0 ? 'lose' : 'gain'} (need 4+ logs in last 30d for ETA).`;
+        etaEl.innerHTML = `🎯 <span class="bw-line-label">Tendencia 30d:</span> need 4+ logs · goal <strong>${goal} kg</strong> (${Math.abs(remaining).toFixed(1)} kg a ${remaining > 0 ? 'bajar' : 'subir'}).`;
       }
     }
   }
@@ -6719,9 +6758,9 @@ async function renderBodyWeightChart() {
       else if (pctChange < -1.0) { color = 'var(--orange)'; label = 'too fast'; }
       else if (pctChange < 0) { color = 'var(--yellow)'; label = 'slow'; }
       else { color = 'var(--red)'; label = 'gaining'; }
-      rateEl.innerHTML = `<span style="color:${color}">${sign}${weeklyChange.toFixed(1)} kg/wk (${sign}${pctChange.toFixed(1)}%) — ${label}</span> <span style="color:var(--text3)">target: -0.5 to -1%</span>`;
+      rateEl.innerHTML = `<span class="bw-line-label">Últimos 7d vs 7d previos:</span> <span style="color:${color}">${sign}${weeklyChange.toFixed(1)} kg/wk (${sign}${pctChange.toFixed(1)}%) — ${label}</span> <span style="color:var(--text3)">target: -0.5 a -1%/sem</span>`;
     } else {
-      rateEl.textContent = 'Need 2+ weeks of data for rate';
+      rateEl.innerHTML = '<span class="bw-line-label">Últimos 7d vs 7d previos:</span> <span class="muted">need 2+ weeks of data</span>';
     }
   } else {
     rateEl.textContent = '';
@@ -6744,8 +6783,9 @@ async function renderBodyWeightChart() {
   container.innerHTML = renderLineChart(
     recent.map(e => formatDate(e.date)),
     recent.map(e => e.weight),
-    { color: 'var(--blue)', height: 150 }
+    { color: 'var(--blue)', height: 150, tooltip: true, unit: 'kg' }
   );
+  bindChartTooltip(container.querySelector('svg'));
 
   // Overlay moving average if enough data
   const hasMA = recent.length >= 7;
