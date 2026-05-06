@@ -3275,7 +3275,7 @@ function closeExerciseModal() {
 
 // ==================== SVG CHART RENDERING ====================
 function renderLineChart(labels, values, opts = {}) {
-  const { min, max, color = 'var(--accent)', height = 150, showDots = true, tooltip = false, unit = '' } = opts;
+  const { min, max, color = 'var(--accent)', height = 150, showDots = true, tooltip = false, unit = '', extraSeries = [] } = opts;
   const width = 320;
   const pad = { top: 20, right: 15, bottom: 30, left: 40 };
   const chartW = width - pad.left - pad.right;
@@ -3325,23 +3325,50 @@ function renderLineChart(labels, values, opts = {}) {
   const gradientId = 'grad-' + Math.random().toString(36).slice(2, 7);
   const areaD = pathD + ` L${points[points.length - 1].x.toFixed(1)},${pad.top + chartH} L${points[0].x.toFixed(1)},${pad.top + chartH} Z`;
 
+  // Extra series (e.g., moving average overlay) drawn in same coord space.
+  let extraPathsHTML = '';
+  if (extraSeries && extraSeries.length) {
+    for (const s of extraSeries) {
+      if (!s.values || !s.values.length) continue;
+      const sPts = s.values.map((v, i) => {
+        const x = pad.left + (i / Math.max(s.values.length - 1, 1)) * chartW;
+        const y = pad.top + chartH - ((v - dataMin) / range) * chartH;
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+      });
+      const dashAttr = s.dashed ? ' stroke-dasharray="4 3"' : '';
+      const op = s.opacity != null ? s.opacity : 0.8;
+      extraPathsHTML += `<path d="M${sPts.join(' L')}" fill="none" stroke="${s.color || 'var(--text2)'}" stroke-width="2" opacity="${op}"${dashAttr}/>`;
+    }
+  }
+
   // Tooltip layer (opt-in). Embeds points + labels for bindChartTooltip to consume.
   let tooltipAttrs = '';
   let tooltipLayer = '';
   if (tooltip) {
-    const tooltipPoints = points.map((p, i) => ({
-      x: +p.x.toFixed(1),
-      y: +p.y.toFixed(1),
-      label: labels[i],
-      value: p.v
-    }));
+    const tooltipPoints = points.map((p, i) => {
+      const tp = {
+        x: +p.x.toFixed(1),
+        y: +p.y.toFixed(1),
+        label: labels[i],
+        value: p.v
+      };
+      if (extraSeries && extraSeries.length) {
+        tp.extras = extraSeries
+          .filter(s => s.values && s.values[i] != null)
+          .map(s => ({ label: s.label || '', value: s.values[i], color: s.color }));
+      }
+      return tp;
+    });
     tooltipAttrs = ` data-tooltip="1" data-unit="${unit}" data-points='${JSON.stringify(tooltipPoints).replace(/'/g, '&#39;')}'`;
     tooltipLayer = `
       <g class="chart-tooltip" style="display:none" pointer-events="none">
         <line class="ct-cross" x1="0" y1="${pad.top}" x2="0" y2="${pad.top + chartH}" stroke="var(--text3)" stroke-width="1" stroke-dasharray="3 2" opacity="0.5"/>
         <circle class="ct-dot" cx="0" cy="0" r="5" fill="${color}" stroke="var(--bg)" stroke-width="2"/>
         <rect class="ct-box" x="0" y="0" width="100" height="22" rx="4" fill="var(--bg)" stroke="var(--border)" stroke-width="1"/>
-        <text class="ct-text" x="0" y="0" fill="var(--text)" font-size="11" font-weight="600" text-anchor="middle"></text>
+        <text class="ct-text" x="0" y="0" font-size="11" text-anchor="middle">
+          <tspan class="ct-line ct-line-1" font-weight="600" fill="var(--text)"></tspan>
+          <tspan class="ct-line ct-line-2" x="0" dy="14" font-weight="500"></tspan>
+        </text>
       </g>
       <rect class="chart-hitbox" x="${pad.left}" y="${pad.top}" width="${chartW}" height="${chartH}" fill="transparent" pointer-events="all"/>
     `;
@@ -3360,6 +3387,7 @@ function renderLineChart(labels, values, opts = {}) {
       <path d="${areaD}" fill="url(#${gradientId})"/>
       <path d="${pathD}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
       ${dotsHTML}
+      ${extraPathsHTML}
       ${tooltipLayer}
     </svg>
   `;
@@ -3380,10 +3408,18 @@ function bindChartTooltip(svgEl) {
   const dot = tipG.querySelector('.ct-dot');
   const box = tipG.querySelector('.ct-box');
   const text = tipG.querySelector('.ct-text');
+  const line1 = tipG.querySelector('.ct-line-1');
+  const line2 = tipG.querySelector('.ct-line-2');
 
   const viewBox = svgEl.viewBox.baseVal;
   const vbW = viewBox.width || 320;
-  const vbH = viewBox.height || 150;
+
+  const measure = (el, fallback) => {
+    if (el && el.getComputedTextLength) {
+      try { return el.getComputedTextLength(); } catch (e) {}
+    }
+    return fallback;
+  };
 
   const showAt = (clientX) => {
     const rect = svgEl.getBoundingClientRect();
@@ -3393,24 +3429,40 @@ function bindChartTooltip(svgEl) {
       const d = Math.abs(p.x - svgX);
       if (d < minDist) { minDist = d; nearest = p; }
     }
-    const labelText = `${nearest.label} — ${nearest.value} ${unit}`.trim();
-    text.textContent = labelText;
-    // Measure text to size the box
-    const textW = text.getComputedTextLength ? text.getComputedTextLength() : labelText.length * 6;
+    const lineA = `${nearest.label} — ${nearest.value} ${unit}`.trim();
+    let lineB = '';
+    let lineBColor = 'var(--text2)';
+    if (nearest.extras && nearest.extras.length) {
+      const ex = nearest.extras[0]; // primary extra (e.g., 7d avg)
+      lineB = `${ex.label}: ${ex.value} ${unit}`.trim();
+      if (ex.color) lineBColor = ex.color;
+    }
+    line1.textContent = lineA;
+    line2.textContent = lineB;
+    line2.setAttribute('fill', lineBColor);
+    const hasLine2 = lineB.length > 0;
+
+    const w1 = measure(line1, lineA.length * 6);
+    const w2 = hasLine2 ? measure(line2, lineB.length * 6) : 0;
+    const textW = Math.max(w1, w2);
     const boxW = Math.max(70, textW + 16);
-    const boxH = 20;
-    // Position box above the point, clamped to viewBox
+    const boxH = hasLine2 ? 36 : 20;
+
     let bx = nearest.x - boxW / 2;
     if (bx < 2) bx = 2;
     if (bx + boxW > vbW - 2) bx = vbW - 2 - boxW;
     let by = nearest.y - boxH - 10;
     if (by < 2) by = nearest.y + 10; // flip below if no room above
+
     box.setAttribute('x', bx);
     box.setAttribute('y', by);
     box.setAttribute('width', boxW);
     box.setAttribute('height', boxH);
-    text.setAttribute('x', bx + boxW / 2);
-    text.setAttribute('y', by + 14);
+    const cx = bx + boxW / 2;
+    text.setAttribute('x', cx);
+    text.setAttribute('y', by + 13);
+    if (line2) line2.setAttribute('x', cx);
+    line2.style.display = hasLine2 ? '' : 'none';
     cross.setAttribute('x1', nearest.x);
     cross.setAttribute('x2', nearest.x);
     dot.setAttribute('cx', nearest.x);
@@ -6779,41 +6831,26 @@ async function renderBodyWeightChart() {
     const window = recent.slice(Math.max(0, i - 6), i + 1);
     return Math.round(window.reduce((s, e) => s + e.weight, 0) / window.length * 10) / 10;
   });
+  const hasMA = recent.length >= 7;
 
   container.innerHTML = renderLineChart(
     recent.map(e => formatDate(e.date)),
     recent.map(e => e.weight),
-    { color: 'var(--blue)', height: 150, tooltip: true, unit: 'kg' }
+    {
+      color: 'var(--blue)',
+      height: 150,
+      tooltip: true,
+      unit: 'kg',
+      extraSeries: hasMA ? [{
+        label: '7d avg',
+        values: avgValues,
+        color: 'var(--orange)',
+        dashed: true,
+        opacity: 0.8
+      }] : []
+    }
   );
   bindChartTooltip(container.querySelector('svg'));
-
-  // Overlay moving average if enough data
-  const hasMA = recent.length >= 7;
-  if (hasMA) {
-    const svgEl = container.querySelector('svg');
-    if (svgEl) {
-      const width = 320, pad = { top: 20, right: 15, bottom: 30, left: 40 };
-      const chartW = width - pad.left - pad.right;
-      const chartH = 150 - pad.top - pad.bottom;
-      const vals = recent.map(e => e.weight);
-      const dataMin = Math.min(...vals) * 0.99;
-      const dataMax = Math.max(...vals) * 1.01;
-      const range = dataMax - dataMin || 1;
-      const pts = avgValues.map((v, i) => {
-        const x = pad.left + (i / Math.max(avgValues.length - 1, 1)) * chartW;
-        const y = pad.top + chartH - ((v - dataMin) / range) * chartH;
-        return `${x.toFixed(1)},${y.toFixed(1)}`;
-      });
-      const avgPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      avgPath.setAttribute('d', `M${pts.join(' L')}`);
-      avgPath.setAttribute('fill', 'none');
-      avgPath.setAttribute('stroke', 'var(--orange)');
-      avgPath.setAttribute('stroke-width', '2');
-      avgPath.setAttribute('stroke-dasharray', '4 3');
-      avgPath.setAttribute('opacity', '0.7');
-      svgEl.appendChild(avgPath);
-    }
-  }
 
   // Legend below chart so the user knows what each line is
   if (legendEl) {
