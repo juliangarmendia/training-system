@@ -1,51 +1,69 @@
 /* ========== Reset & Base ========== */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-:root, [data-theme="dark"] {
-  /* Apple Health dark palette: true black bg, surfaces ~10% lighter, borders nearly invisible */
-  --bg: #000000; --bg2: #0a0a0a;
-  --surface: #1c1c1e; --surface2: #2c2c2e; --surface3: #3a3a3c;
-  --border: #2c2c2e; --border2: #3a3a3c;
-  --text: #ffffff; --text2: #98989f; --text3: #6c6c70;
-  --accent: #4ade80; --accent2: #22c55e;
-  --accent-dim: rgba(74,222,128,0.15); --accent-glow: rgba(74,222,128,0.25);
-  /* Apple Health category palette */
-  --blue: #5ac8fa; --orange: #ff9f0a; --red: #ff453a; --yellow: #ffd60a;
-  --purple: #bf5af2; --pink: #ff375f; --teal: #64d2ff; --indigo: #5e5ce6;
+/* Whoop-inspired OLED-dark editorial palette — ported from the Lovable visual identity.
+   Dark-only: [data-theme="light"] is aliased to the dark palette so any legacy light
+   references fall back to the new identity instead of rendering an unstyled theme. */
+:root, [data-theme="dark"], [data-theme="light"] {
+  --bg: #08090b; --bg2: #050506;
+  --surface: #16171a; --surface2: #202126; --surface3: #2a2b31;
+  --border: rgba(255,255,255,0.07); --border2: rgba(255,255,255,0.13);
+  --text: #f5f5f5; --text2: #84868c; --text3: #616369;
+  /* recovery green = brand / primary accent */
+  --accent: #68e371; --accent2: #4bc957;
+  --accent-dim: rgba(104,227,113,0.15); --accent-glow: rgba(104,227,113,0.30);
+  /* Whoop data palette: strain blue, energy yellow, sleep violet, plus warm orange/red */
+  --blue: #00a3ff; --orange: #fba100; --red: #ee343b; --yellow: #fdd506;
+  --purple: #8b8dff; --pink: #f33d7d; --teal: #22cde5; --indigo: #5761d8;
   --radius: 16px; --radius-sm: 10px; --radius-xs: 8px; --radius-lg: 20px;
   --nav-h: 80px; --header-h: 56px;
   --safe-top: env(safe-area-inset-top, 0px); --safe-bottom: env(safe-area-inset-bottom, 0px);
-  /* Typography scale (Apple Health-like: tighter hierarchy with bigger jumps) */
+  /* Type families (Lovable): Inter body, Inter Tight display, JetBrains Mono numerics */
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-display: "Inter Tight", "Inter", -apple-system, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, 'SF Mono', Menlo, monospace;
+  /* Typography scale */
   --fs-xs: 11px; --fs-sm: 13px; --fs-md: 15px; --fs-lg: 17px; --fs-xl: 22px; --fs-display: 34px; --fs-hero: 44px;
-  /* Tinted accents per category (used for icon chips) */
-  --tint-orange: rgba(255,159,10,0.18);
-  --tint-blue: rgba(90,200,250,0.18);
-  --tint-green: rgba(74,222,128,0.18);
-  --tint-purple: rgba(191,90,242,0.18);
-  --tint-red: rgba(255,69,58,0.18);
-  --tint-teal: rgba(100,210,255,0.18);
-  --tint-yellow: rgba(255,214,10,0.18);
-  --tint-indigo: rgba(94,92,230,0.18);
-}
-
-[data-theme="light"] {
-  --bg: #f2f2f7; --bg2: #e5e5ea;
-  --surface: #ffffff; --surface2: #f2f2f7; --surface3: #e5e5ea;
-  --border: #d1d1d6; --border2: #c7c7cc;
-  --text: #1c1c1e; --text2: #636366; --text3: #aeaeb2;
-  --accent: #22c55e; --accent2: #16a34a;
-  --accent-dim: rgba(34,197,94,0.12); --accent-glow: rgba(34,197,94,0.2);
+  /* Tinted accents per category (icon chips) — Whoop hues */
+  --tint-orange: rgba(251,161,0,0.16);
+  --tint-blue: rgba(0,163,255,0.16);
+  --tint-green: rgba(104,227,113,0.16);
+  --tint-purple: rgba(139,141,255,0.16);
+  --tint-red: rgba(238,52,59,0.16);
+  --tint-teal: rgba(34,205,229,0.16);
+  --tint-yellow: rgba(253,213,6,0.16);
+  --tint-indigo: rgba(87,97,216,0.16);
 }
 
 html { height: 100%; }
 body {
   height: 100%; height: 100dvh;
-  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
-  background: var(--bg); color: var(--text);
+  font-family: var(--font-sans);
+  font-feature-settings: "ss01", "cv11";
+  color: var(--text);
+  background-color: var(--bg);
+  /* Layered premium gradient (Lovable): warm recovery halo top-left, cool strain glow
+     bottom-right, deep OLED base. Fixed so it stays put while content scrolls. */
+  background-image:
+    radial-gradient(60% 45% at 12% 0%, rgba(70,200,120,0.12) 0%, transparent 70%),
+    radial-gradient(55% 40% at 100% 100%, rgba(40,120,235,0.11) 0%, transparent 70%),
+    radial-gradient(120% 80% at 50% -10%, rgba(40,42,62,0.40) 0%, transparent 55%),
+    linear-gradient(180deg, #101118 0%, #0a0a0f 55%, #07070b 100%);
+  background-attachment: fixed;
   -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
   overflow: hidden; touch-action: manipulation;
   letter-spacing: -0.01em;
 }
+
+/* Fine film grain — barely perceptible, kills gradient banding, adds tactile depth (Lovable) */
+body::before {
+  content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+  opacity: 0.035; mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.6 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+}
+
+/* Text selection uses the brand recovery green */
+::selection { background: var(--accent); color: #000; }
 
 /* Apple Health hero number style — used for primary metrics */
 .metric-hero {
@@ -68,17 +86,45 @@ body {
 .metric-trend.down { color: var(--red); background: var(--tint-red); }
 .metric-trend.flat { color: var(--text3); background: var(--surface2); }
 
-#app { display: flex; flex-direction: column; height: 100%; height: 100dvh; max-width: 480px; margin: 0 auto; }
+#app { display: flex; flex-direction: column; height: 100%; height: 100dvh; max-width: 480px; margin: 0 auto; position: relative; z-index: 1; }
+
+/* ========== Typography (Lovable: Inter Tight display + JetBrains Mono numerics) ========== */
+header h1, .modal-header h3, .section-label, .section-head-title, .wb-title,
+.rpb-title, .fatigue-title, .swap-title, .pin-prompt, #welcome-greeting,
+.whoop-recovery-label { font-family: var(--font-display); letter-spacing: -0.5px; }
+
+/* Numeric / data displays in monospace with tabular figures — the Whoop signature */
+.metric-hero, .metric-display, .wb-stat-val, .streak-num, .ring-value, .rtb-time,
+.workout-timer, .whoop-ring-score, .whoop-ring-pct, .fatigue-score, .hi-stat,
+.ss-val, .bc-val, .ws-val, .wm-val-sm, .sp-ring-text, .wc-row .wc-val,
+.set-input, .rest-config input, .warmup-weight, .hm-total {
+  font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+}
+
+/* Small uppercase category labels read as editorial mono micro-labels */
+.ws-label, .ws-day, .streak-label, .wb-stat-lbl, .ss-label, .bc-label,
+.wm-label-sm, .rtb-label, .whoop-logo-text, .whoop-trend-label, .superset-label,
+.warmup-auto-title { font-family: var(--font-mono); }
 
 /* ========== Login / Auth Overlay ========== */
-.pin-overlay { position: fixed; inset: 0; background: var(--bg); z-index: 9999; display: flex; align-items: center; justify-content: center; transition: opacity 0.3s; }
+/* Self-contained cinematic gradient backdrop (mirrors body) so login fully masks the app */
+.pin-overlay {
+  position: fixed; inset: 0; z-index: 9999;
+  display: flex; align-items: center; justify-content: center; transition: opacity 0.3s;
+  background-color: var(--bg);
+  background-image:
+    radial-gradient(60% 45% at 12% 0%, rgba(70,200,120,0.14) 0%, transparent 70%),
+    radial-gradient(55% 40% at 100% 100%, rgba(40,120,235,0.13) 0%, transparent 70%),
+    radial-gradient(120% 80% at 50% -10%, rgba(40,42,62,0.40) 0%, transparent 55%),
+    linear-gradient(180deg, #101118 0%, #0a0a0f 55%, #07070b 100%);
+}
 .pin-overlay.hidden { opacity: 0; pointer-events: none; }
 .pin-box { text-align: center; padding: 32px; width: 100%; max-width: 340px; }
 .pin-icon { font-size: 48px; margin-bottom: 16px; }
 .pin-prompt { font-size: 18px; font-weight: 600; margin-bottom: 24px; }
 
 /* ========== Modal ========== */
-.modal { position: fixed; inset: 0; background: var(--bg); z-index: 900; overflow-y: auto; -webkit-overflow-scrolling: touch; transition: opacity 0.2s; }
+.modal { position: fixed; inset: 0; background: rgba(8,9,12,0.92); -webkit-backdrop-filter: blur(24px) saturate(120%); backdrop-filter: blur(24px) saturate(120%); z-index: 900; overflow-y: auto; -webkit-overflow-scrolling: touch; transition: opacity 0.2s; }
 .modal.hidden { opacity: 0; pointer-events: none; }
 .modal-content { max-width: 480px; margin: 0 auto; padding: calc(var(--safe-top) + 20px) 16px calc(var(--safe-bottom) + 20px); }
 .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
@@ -93,7 +139,7 @@ body {
 .modal-history-row .mhr-rpe { color: var(--text3); width: 50px; text-align: right; }
 
 /* ========== Header ========== */
-header { display: flex; align-items: center; justify-content: space-between; padding: calc(var(--safe-top) + 12px) 20px 10px; min-height: var(--header-h); background: var(--bg); z-index: 100; flex-shrink: 0; }
+header { display: flex; align-items: center; justify-content: space-between; padding: calc(var(--safe-top) + 12px) 20px 10px; min-height: var(--header-h); background: transparent; position: relative; z-index: 100; flex-shrink: 0; }
 .header-content { display: flex; flex-direction: column; }
 header h1 { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
 .subtitle { font-size: 12px; color: var(--accent); margin-top: 2px; font-weight: 500; }
@@ -102,11 +148,11 @@ header h1 { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
 
 /* ========== Section Color Temperature ========== */
 #view-home { --section-accent: var(--accent); --section-glow: var(--accent-glow); }
-#view-gym, #view-workout { --section-accent: var(--orange); --section-glow: rgba(251,146,60,0.12); }
-#view-run { --section-accent: var(--blue); --section-glow: rgba(96,165,250,0.12); }
-#view-nutrition { --section-accent: var(--accent); --section-glow: rgba(74,222,128,0.12); }
-#view-stats { --section-accent: var(--purple); --section-glow: rgba(167,139,250,0.12); }
-#view-settings { --section-accent: var(--teal); --section-glow: rgba(52,211,153,0.12); }
+#view-gym, #view-workout { --section-accent: var(--orange); --section-glow: rgba(251,161,0,0.12); }
+#view-run { --section-accent: var(--blue); --section-glow: rgba(0,163,255,0.12); }
+#view-nutrition { --section-accent: var(--accent); --section-glow: rgba(104,227,113,0.12); }
+#view-stats { --section-accent: var(--purple); --section-glow: rgba(139,141,255,0.12); }
+#view-settings { --section-accent: var(--teal); --section-glow: rgba(34,205,229,0.12); }
 #login-screen, #welcome-screen { --section-accent: var(--accent); --section-glow: var(--accent-glow); }
 
 /* ========== Main / Views ========== */
@@ -119,7 +165,7 @@ main { flex: 1; overflow: hidden; position: relative; }
 /* padding-bottom: 2px intentionally ignores safe-area-inset-bottom. Tuned live
    with the debug overlay in v8.2; keeping the home-indicator reserve made the
    icons sit too high. Verified safe on iPhone PWA. */
-nav { display: flex; background: var(--surface); border-top: 1px solid var(--border); padding-bottom: 2px; flex-shrink: 0; z-index: 100; margin-top: auto; }
+nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: blur(20px) saturate(140%); backdrop-filter: blur(20px) saturate(140%); border-top: 1px solid var(--border); padding-bottom: 2px; flex-shrink: 0; position: relative; z-index: 100; margin-top: auto; }
 .nav-btn { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 10px 0 8px; background: none; border: none; color: var(--text3); font-size: 10px; font-weight: 600; cursor: pointer; position: relative; transition: color 0.15s; }
 .nav-btn.active { color: var(--accent); }
 .nav-btn.active::before { content: ''; position: absolute; top: 0; left: 25%; width: 50%; height: 2px; background: var(--accent); border-radius: 0 0 2px 2px; }
@@ -128,7 +174,8 @@ nav { display: flex; background: var(--surface); border-top: 1px solid var(--bor
 
 /* ========== Cards ========== */
 /* Apple Health style cards — borderless, generous padding, soft elevation */
-.card { background: var(--surface); border-radius: var(--radius); padding: 18px; border: none; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
+/* Cards: solid elevated surface + subtle ring (Lovable), sitting over the gradient/grain */
+.card { background: var(--surface); border-radius: var(--radius); padding: 18px; border: 1px solid var(--border); box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
 .form-card { display: flex; flex-direction: column; gap: 16px; }
 .nutrition-card { display: flex; flex-direction: column; gap: 14px; }
 
@@ -142,14 +189,14 @@ nav { display: flex; background: var(--surface); border-top: 1px solid var(--bor
 /* Section labels — sentence-case, bigger, friendlier (Apple Health "Highlights" vibe) */
 .section-label { font-size: var(--fs-lg); font-weight: 700; color: var(--text); letter-spacing: -0.3px; margin-bottom: 12px; padding: 4px 4px 0; transition: font-size 0.15s, padding 0.15s; text-transform: none; }
 /* Only root-level labels (direct children of .view-scroll) are sticky */
-.view-scroll > .section-label { position: sticky; top: 0; z-index: 20; background: var(--bg); }
+.view-scroll > .section-label { position: sticky; top: 0; z-index: 20; background: rgba(8,9,12,0.72); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
 .view-scroll > .section-label ~ .section-label { margin-top: 28px; }
 .view-scroll > .section-label.stuck { font-size: 14px; padding: 6px 8px; background: rgba(0,0,0,0.85); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); border-radius: 0; box-shadow: 0 1px 0 var(--border); margin-left: -16px; margin-right: -16px; }
 .divider { height: 1px; background: var(--border); margin: 4px 0; }
 
 /* Apple Health-style section header with icon chip + optional Show All */
 .section-head { display: flex; align-items: center; gap: 10px; padding: 4px 4px 0; margin-bottom: 12px; position: relative; }
-.view-scroll > .section-head { position: sticky; top: 0; z-index: 20; background: var(--bg); }
+.view-scroll > .section-head { position: sticky; top: 0; z-index: 20; background: rgba(8,9,12,0.72); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
 .view-scroll > .section-head ~ .section-head,
 .view-scroll > .section-head ~ .section-label,
 .view-scroll > .section-label ~ .section-head { margin-top: 28px; }
@@ -472,7 +519,9 @@ nav { display: flex; background: var(--surface); border-top: 1px solid var(--bor
   position: fixed;
   left: 8px; right: 8px;
   bottom: calc(var(--nav-h) + var(--safe-bottom) + 8px);
-  background: var(--surface);
+  background: rgba(22,23,26,0.82);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  backdrop-filter: blur(20px) saturate(140%);
   border: 1px solid var(--accent);
   border-radius: 14px;
   padding: 10px 14px;
@@ -777,7 +826,7 @@ nav { display: flex; background: var(--surface); border-top: 1px solid var(--bor
 
 /* Streak fire */
 /* Resume workout banner */
-.resume-banner { display: flex; align-items: center; gap: 12px; background: linear-gradient(135deg, rgba(74,222,128,0.15), rgba(251,146,60,0.1)); border: 1px solid var(--accent); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 12px; cursor: pointer; animation: pulseGlow 2s ease-in-out infinite; }
+.resume-banner { display: flex; align-items: center; gap: 12px; background: linear-gradient(135deg, rgba(104,227,113,0.15), rgba(251,161,0,0.1)); border: 1px solid var(--accent); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 12px; cursor: pointer; animation: pulseGlow 2s ease-in-out infinite; }
 .resume-banner-icon { font-size: 24px; }
 .resume-banner-info { flex: 1; }
 .resume-banner-title { font-size: 15px; font-weight: 800; color: var(--accent); }
@@ -1441,19 +1490,14 @@ nav { display: flex; background: var(--surface); border-top: 1px solid var(--bor
    v7.6 — Workout screen polish + light theme fixes
    ================================================== */
 
-/* On-accent text color flips per theme so .stats-tab.active reads correctly */
-:root, [data-theme="dark"] { --on-accent: #0a0a0a; }
-[data-theme="light"] { --on-accent: #ffffff; }
+/* On-accent text reads as dark on the bright recovery-green accent */
+:root { --on-accent: #0a0a0a; }
 .stats-tab.active { color: var(--on-accent); }
 
-/* Shadow tokens that flip per theme (keeps login-video-card readable in light) */
-:root, [data-theme="dark"] {
+/* Card shadow tokens (dark-only) */
+:root {
   --shadow-card: 0 2px 8px rgba(0,0,0,0.10);
   --shadow-card-lg: 0 12px 40px rgba(0,0,0,0.45);
-}
-[data-theme="light"] {
-  --shadow-card: 0 2px 12px rgba(0,0,0,0.06);
-  --shadow-card-lg: 0 12px 32px rgba(0,0,0,0.10);
 }
 .login-video-card { box-shadow: var(--shadow-card-lg), 0 0 0 1px var(--accent-dim); }
 
@@ -1665,7 +1709,7 @@ nav { display: flex; background: var(--surface); border-top: 1px solid var(--bor
 .trash-item .ti-sub { font-size: 11px; color: var(--text3); }
 
 /* ========== Mobility (v10.5) ========== */
-#view-mobility, #view-mobility-active { --section-accent: var(--teal); --section-glow: rgba(100,210,255,0.12); }
+#view-mobility, #view-mobility-active { --section-accent: var(--teal); --section-glow: rgba(34,205,229,0.12); }
 
 /* "Today's Plan" card stack — Apple Health style mini-rows */
 .todays-plan-stack { margin-bottom: 16px; }
@@ -1787,7 +1831,7 @@ nav { display: flex; background: var(--surface); border-top: 1px solid var(--bor
 .ar-ring-1-fill { stroke: var(--orange); }
 .ar-ring-2-bg { stroke: rgba(90,200,250,0.18); }
 .ar-ring-2-fill { stroke: var(--blue); }
-.ar-ring-3-bg { stroke: rgba(74,222,128,0.18); }
+.ar-ring-3-bg { stroke: rgba(104,227,113,0.18); }
 .ar-ring-3-fill { stroke: var(--accent); }
 .ar-legend { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
 .ar-legend-row { display: flex; align-items: center; gap: 10px; }

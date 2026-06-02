@@ -1177,19 +1177,17 @@ async function showWelcomeScreen() {
 }
 
 // ==================== THEME ====================
-function setTheme(theme) {
-  document.documentElement.setAttribute('data-theme', theme);
-  localStorage.setItem('training_theme', theme);
-  document.getElementById('theme-dark').classList.toggle('selected', theme === 'dark');
-  document.getElementById('theme-light').classList.toggle('selected', theme === 'light');
-  // Update theme-color meta
+// Dark-only since the Whoop-inspired visual identity (no light mode). Kept as no-ops
+// so any legacy callers don't break; the document stays pinned to the dark palette.
+function setTheme() {
+  document.documentElement.setAttribute('data-theme', 'dark');
+  localStorage.setItem('training_theme', 'dark');
   const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.content = theme === 'dark' ? '#0a0a0a' : '#f2f2f7';
+  if (meta) meta.content = '#08090b';
 }
 
 function loadTheme() {
-  const saved = localStorage.getItem('training_theme') || 'dark';
-  setTheme(saved);
+  setTheme();
 }
 
 // ==================== NAVIGATION ====================
@@ -2110,11 +2108,11 @@ async function renderActivityRings() {
   container.innerHTML = `
     <div class="activity-rings-card">
       <svg width="120" height="120" viewBox="0 0 120 120" style="transform:rotate(-90deg)">
-        <circle cx="${cx}" cy="${cy}" r="48" fill="none" stroke="rgba(251,146,60,0.15)" stroke-width="9"/>
+        <circle cx="${cx}" cy="${cy}" r="48" fill="none" stroke="rgba(251,161,0,0.15)" stroke-width="9"/>
         ${ringArc(cx, cy, 48, sessionPct, 'var(--orange)', 9)}
-        <circle cx="${cx}" cy="${cy}" r="36" fill="none" stroke="rgba(74,222,128,0.15)" stroke-width="9"/>
+        <circle cx="${cx}" cy="${cy}" r="36" fill="none" stroke="rgba(104,227,113,0.15)" stroke-width="9"/>
         ${ringArc(cx, cy, 36, proteinPct, 'var(--accent)', 9)}
-        <circle cx="${cx}" cy="${cy}" r="24" fill="none" stroke="rgba(96,165,250,0.15)" stroke-width="9"/>
+        <circle cx="${cx}" cy="${cy}" r="24" fill="none" stroke="rgba(0,163,255,0.15)" stroke-width="9"/>
         ${ringArc(cx, cy, 24, runPct, 'var(--blue)', 9)}
       </svg>
       <div class="activity-rings-legend">
@@ -7760,9 +7758,7 @@ function bindEvents() {
     document.getElementById('unit-kg').classList.remove('selected');
   });
 
-  // Theme toggles
-  document.getElementById('theme-dark').addEventListener('click', () => setTheme('dark'));
-  document.getElementById('theme-light').addEventListener('click', () => setTheme('light'));
+  // Theme: dark-only (no toggle UI)
 
   // Star selectors
   ['run-feel', 'nut-hunger', 'nut-energy'].forEach(setupStarGroup);
