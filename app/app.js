@@ -5860,7 +5860,7 @@ const ICON_FLAME = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" s
 const ICON_MOON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></svg>`;
 
 // ==================== HOME STAT TRIO (Lovable dashboard cards) ====================
-// Streak · weekly sets · weekly volume, from real logged data.
+// Strain (weekly RPE load) · Streak (weeks) · Volume (weekly kg) — from real logged data.
 async function renderHomeStatTrio() {
   const container = document.getElementById('home-stat-trio');
   if (!container) return;
@@ -5869,26 +5869,39 @@ async function renderHomeStatTrio() {
   const workouts = await dbGetAll('workouts');
   const weekWorkouts = workouts.filter(w => w.date >= weekStart && w.date <= weekEnd);
 
-  let sets = 0, volume = 0;
-  const trainingDays = new Set();
+  let volume = 0, strain = 0;
   weekWorkouts.forEach(w => {
-    if (w.date) trainingDays.add(w.date);
     (w.exercises || []).forEach(ex => {
       (ex.sets || []).forEach(s => {
         if (s.done) {
-          sets += 1;
           const wt = parseFloat(s.weight) || 0, reps = parseInt(s.reps) || 0;
           volume += wt * reps;
+          strain += parseFloat(s.rpe) || 7; // session-RPE style training-load proxy
         }
       });
     });
   });
+
+  // Weeks streak: consecutive prior ISO weeks with >=4 training days
+  const weekDays = {};
+  workouts.forEach(w => {
+    if (!w.date) return;
+    const k = _isoWeekKeyFor(new Date(w.date + 'T12:00:00'));
+    (weekDays[k] = weekDays[k] || new Set()).add(w.date);
+  });
+  const curKey = _isoWeekKeyFor(new Date());
+  let streak = 0;
+  for (const k of Object.keys(weekDays).sort().reverse()) {
+    if (k === curKey) continue;
+    if (weekDays[k].size >= 4) streak++; else break;
+  }
+
   const volTxt = volume >= 1000 ? `${(volume / 1000).toFixed(volume >= 10000 ? 0 : 1)}k` : String(Math.round(volume));
 
   const cards = [
-    { label: 'Sessions', value: String(trainingDays.size), sub: 'THIS WK', tone: 'var(--accent)' },
-    { label: 'Sets', value: String(sets), sub: 'THIS WK', tone: 'var(--orange)' },
-    { label: 'Volume', value: volTxt, sub: 'KG', tone: 'var(--blue)' },
+    { label: 'Strain', value: String(Math.round(strain)), sub: 'THIS WK', tone: 'var(--blue)' },
+    { label: 'Streak', value: String(streak), sub: streak === 1 ? 'WEEK' : 'WEEKS', tone: 'var(--yellow)' },
+    { label: 'Volume', value: volTxt, sub: 'KG', tone: 'var(--accent)' },
   ];
   container.innerHTML = `
     <div class="stat-trio">
@@ -5979,13 +5992,33 @@ async function renderWeekCalendar() {
     const el = container.querySelector(`[data-wc="${c.i}"]`);
     if (!el) return;
     el.addEventListener('click', () => {
-      if (c.gym) viewCompletedWorkout(c.gym);
-      else if (c.planned) showSessionPicker(c.planned, c.ds);
-      else switchTab('gym');
+      if (c.gym) viewCompletedWorkout(c.gym);       // already trained → view it
+      else pickDayActivity(c.ds, c.jsDay);          // otherwise choose what to do
     });
   });
   const hist = container.querySelector('#historial-btn');
   if (hist) hist.addEventListener('click', () => switchTab('gym'));
+}
+
+// Day tap → pick modality (gym / running / mobility); gym chains to the muscle-group picker
+async function pickDayActivity(ds, jsDay) {
+  const dayLabel = new Date(ds + 'T12:00:00').toLocaleDateString('en', { weekday: 'long', month: 'short', day: 'numeric' });
+  const choice = await showActionSheet(dayLabel, [
+    { value: 'gym', label: 'Gym — strength', icon: '🏋️' },
+    { value: 'run', label: 'Running', icon: '🏃' },
+    { value: 'mobility', label: 'Mobility', icon: '🧘' },
+  ]);
+  if (!choice) return;
+  if (choice === 'gym') {
+    const customSchedule = await getWeekSchedule();
+    const planned = getPlannedSession(jsDay, customSchedule, ds);
+    showSessionPicker(planned || Object.keys(activePlan.sessions)[0], ds); // lists muscle-group sessions
+  } else if (choice === 'run') {
+    switchTab('run');
+  } else if (choice === 'mobility') {
+    switchTab('gym');
+    if (typeof openMobilityView === 'function') openMobilityView();
+  }
 }
 
 // ==================== THIS WEEK QUEUE (upcoming sessions, Lovable image rows) ====================
