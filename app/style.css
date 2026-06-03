@@ -6,7 +6,7 @@
    references fall back to the new identity instead of rendering an unstyled theme. */
 :root, [data-theme="dark"], [data-theme="light"] {
   --bg: #08090b; --bg2: #050506;
-  --surface: #16171a; --surface2: #202126; --surface3: #2a2b31;
+  --surface: #16171a; --surface2: #202126; --surface3: #2a2b31; --card: #16171a;
   --border: rgba(255,255,255,0.07); --border2: rgba(255,255,255,0.13);
   --text: #f5f5f5; --text2: #84868c; --text3: #616369;
   /* recovery green = brand / primary accent */
@@ -1889,4 +1889,82 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
 .plate-sheet-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
 .plate-sheet-title { font-size: 13px; font-weight: 700; color: var(--text); text-transform: uppercase; letter-spacing: 0.5px; }
 .plate-sheet-close { background: none; border: none; color: var(--text2); font-size: 24px; line-height: 1; cursor: pointer; padding: 0 4px; }
+
+/* ==================================================
+   HOME — Lovable Whoop-editorial layout (v11.1)
+   ================================================== */
+
+/* ---- Recovery hero ---- */
+.recovery-hero {
+  position: relative; overflow: hidden; margin-bottom: 16px;
+  border-radius: 26px; padding: 22px;
+  background: linear-gradient(135deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02) 50%, transparent);
+  border: 1px solid rgba(255,255,255,0.08);
+  -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
+  box-shadow: 0 20px 60px -30px rgba(0,0,0,0.8);
+}
+.rh-glow { position: absolute; top: -90px; right: -60px; width: 220px; height: 220px; border-radius: 50%; background: var(--accent); opacity: 0.18; filter: blur(60px); pointer-events: none; }
+.rh-head { display: flex; align-items: center; justify-content: space-between; position: relative; z-index: 1; }
+.rh-eyebrow { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.25em; color: var(--text2); }
+.rh-chip { font-family: var(--font-mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.2em; padding: 4px 10px; border-radius: 999px; }
+.rh-main { display: flex; align-items: center; gap: 22px; margin-top: 18px; position: relative; z-index: 1; }
+.rh-ring { position: relative; width: 100px; height: 100px; flex-shrink: 0; }
+.rh-ring-svg { width: 100%; height: 100%; }
+.rh-ring-label { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.2em; color: var(--text2); }
+.rh-readout { flex: 1; min-width: 0; }
+.rh-score { font-family: var(--font-display); font-size: 64px; font-weight: 900; line-height: 1; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; }
+.rh-pct { font-size: 28px; vertical-align: top; }
+.rh-msg { margin-top: 8px; font-size: 13px; line-height: 1.35; color: var(--text2); max-width: 22ch; }
+.rh-vitals { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 20px; position: relative; z-index: 1; }
+.rh-vital { border-radius: 16px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); padding: 12px; }
+.rh-vital-k { font-family: var(--font-mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.2em; }
+.rh-vital-v { display: block; margin-top: 6px; font-family: var(--font-display); font-size: 20px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+.rh-vital-u { font-size: 11px; font-weight: 500; color: var(--text2); margin-left: 3px; }
+.recovery-hero-empty { cursor: pointer; }
+.rh-empty-body { margin-top: 14px; }
+.rh-empty-title { font-family: var(--font-display); font-size: 17px; font-weight: 700; }
+.rh-empty-sub { font-size: 12px; color: var(--text2); margin-top: 4px; }
+
+/* ---- Today's session hero (full-bleed cover) ---- */
+.session-hero { position: relative; overflow: hidden; border-radius: 26px; margin-bottom: 16px; aspect-ratio: 4 / 5; cursor: pointer; border: 1px solid rgba(255,255,255,0.06); }
+.sh-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transition: transform 0.7s ease; }
+.session-hero:active .sh-img { transform: scale(1.04); }
+.sh-scrim { position: absolute; inset: 0; background: linear-gradient(to top, var(--bg) 2%, rgba(8,9,11,0.55) 42%, transparent 72%); }
+.sh-top { position: absolute; top: 16px; left: 16px; right: 16px; display: flex; align-items: center; justify-content: space-between; gap: 8px; z-index: 2; }
+.sh-chip { font-family: var(--font-mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.2em; padding: 6px 12px; border-radius: 999px; background: rgba(8,9,11,0.6); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); color: var(--text); }
+.sh-chip-today { color: var(--yellow); }
+.sh-chip-done { color: var(--accent); }
+.sh-bottom { position: absolute; left: 0; right: 0; bottom: 0; padding: 20px; z-index: 2; }
+.sh-eyebrow { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.25em; color: var(--accent); }
+.sh-title { font-family: var(--font-display); font-size: 34px; font-weight: 900; text-transform: uppercase; line-height: 0.95; letter-spacing: -0.03em; margin-top: 8px; }
+.sh-cta { margin-top: 18px; width: 100%; height: 50px; border: none; border-radius: 999px; background: var(--text); color: var(--bg); font-family: var(--font-display); font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.14em; display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; transition: transform 0.15s; }
+.sh-cta:active { transform: scale(0.98); }
+.sh-cta-ghost { background: rgba(255,255,255,0.12); color: var(--text); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+.sh-cta-arrow { font-size: 18px; line-height: 1; }
+.session-hero-rest { aspect-ratio: auto; display: flex; align-items: center; gap: 14px; padding: 20px; background: var(--surface); }
+.sh-rest-emoji { font-size: 32px; }
+.sh-rest-text strong { font-family: var(--font-display); font-size: 16px; }
+.sh-rest-sub { font-size: 12px; color: var(--text2); margin-top: 2px; }
+
+/* ---- Stat trio ---- */
+.stat-trio { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 16px; }
+.stat-card { border-radius: 18px; padding: 14px; background: linear-gradient(to bottom, rgba(255,255,255,0.05), rgba(255,255,255,0.01)); border: 1px solid rgba(255,255,255,0.07); box-shadow: 0 10px 30px -20px rgba(0,0,0,0.6); }
+.stat-card-label { font-family: var(--font-mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.2em; color: var(--text2); }
+.stat-card-val { font-family: var(--font-display); font-size: 26px; font-weight: 900; line-height: 1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; margin-top: 10px; }
+.stat-card-sub { font-family: var(--font-mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.2em; color: var(--text3); margin-top: 4px; }
+
+/* ---- Week strip: rounded glass cells, today = white (Lovable) ---- */
+#week-strip .ws-row { gap: 6px; }
+#week-strip .ws-cell { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 16px; }
+#week-strip .ws-cell.today { background: var(--text); border-color: var(--text); box-shadow: 0 8px 24px -12px rgba(255,255,255,0.3); }
+#week-strip .ws-cell.today .ws-day, #week-strip .ws-cell.today .ws-session, #week-strip .ws-cell.today .ws-sub { color: var(--bg); }
+#week-strip .ws-cell.done { background: var(--accent-dim); border-color: rgba(104,227,113,0.25); }
+#week-strip .ws-run-cell.today .ws-day { color: var(--bg); }
+
+/* ---- Recent activity → queue rows (individual glass cards) ---- */
+#recent-activity.recent-list { display: flex; flex-direction: column; gap: 10px; border-radius: 0; overflow: visible; box-shadow: none; }
+#recent-activity .history-item, #recent-activity .history-item:first-child, #recent-activity .history-item:last-child, #recent-activity .history-item:only-child {
+  border-radius: 18px; background: linear-gradient(to right, rgba(255,255,255,0.05), rgba(255,255,255,0.01)); border: 1px solid rgba(255,255,255,0.07);
+}
+#recent-activity .history-item:active { background: rgba(255,255,255,0.08); }
 

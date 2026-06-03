@@ -2,7 +2,7 @@
 // Service Worker — Training App v4.0
 // ============================================================
 
-const CACHE_NAME = 'training-v11.0';
+const CACHE_NAME = 'training-v11.1';
 const APP_SHELL = [
   './',
   './index.html',
@@ -14,6 +14,10 @@ const APP_SHELL = [
   './manifest.json',
   './app-icon.png',
   './intro.mp4',
+  './img/hero-pull.jpg',
+  './img/session-legs.jpg',
+  './img/session-push.jpg',
+  './img/session-rest.jpg',
 ];
 
 // Install: precache app shell, skip waiting immediately

@@ -703,9 +703,9 @@ function renderWhoopUI() {
 
 // ==================== WHOOP RECOVERY CARD ====================
 function getRecoveryColor(score) {
-  if (score >= 67) return { color: '#4ade80', label: 'Green' };
-  if (score >= 34) return { color: '#facc15', label: 'Yellow' };
-  return { color: '#f87171', label: 'Red' };
+  if (score >= 67) return { color: '#68e371', label: 'Green' };
+  if (score >= 34) return { color: '#fdd506', label: 'Yellow' };
+  return { color: '#ee343b', label: 'Red' };
 }
 
 async function renderWhoopRecoveryCard() {

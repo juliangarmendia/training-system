@@ -5748,13 +5748,124 @@ async function askPainRating(prompt) {
 async function renderHomeView() {
   await Promise.all([
     showResumeBanner(),
-    renderActivityRingsHome(),
+    renderRecoveryHero(),
     renderTodaysPlan(),
+    renderHomeStatTrio(),
     renderMobilityTodayCard(),
     renderStreakBanner(),
     renderWeekStrip(),
     renderRecentActivity(),
   ]);
+}
+
+// ==================== RECOVERY HERO (Lovable Whoop-style) ====================
+// Big glass card: animated recovery ring + huge score + status chip + 3 vitals.
+// Uses real WHOOP/intervals.icu wellness via whoopSyncData(). Degrades gracefully
+// when not connected (shows today's readiness placeholder instead of fake numbers).
+async function renderRecoveryHero() {
+  const container = document.getElementById('recovery-hero');
+  if (!container) return;
+
+  let data = null;
+  try { if (window.whoopIsConnected && whoopIsConnected()) data = await whoopSyncData(); } catch (e) {}
+  const rec = data && data.recovery && data.recovery.length ? data.recovery[data.recovery.length - 1] : null;
+
+  if (!rec) {
+    // No wellness data — show a quiet placeholder that invites connecting, no invented numbers.
+    container.innerHTML = `
+      <section class="recovery-hero recovery-hero-empty">
+        <div class="rh-head"><span class="rh-eyebrow">Recovery</span></div>
+        <div class="rh-empty-body">
+          <div class="rh-empty-title">Connect WHOOP / intervals.icu</div>
+          <div class="rh-empty-sub">Recovery, HRV, RHR and sleep show up here once synced.</div>
+        </div>
+      </section>`;
+    container.querySelector('.recovery-hero').addEventListener('click', () => switchTab('settings'));
+    return;
+  }
+
+  const score = rec.score;
+  const { color, label } = getRecoveryColor(score);
+  const chip = score >= 67 ? 'Primed' : score >= 34 ? 'Adequate' : 'Low';
+  const sleep = data.sleep && data.sleep.length ? data.sleep[data.sleep.length - 1] : null;
+  const sleepTxt = sleep ? `${sleep.durationHrs}h` : '--';
+  const msg = score >= 67 ? 'Your body is ready for high strain today.'
+            : score >= 34 ? 'Moderate readiness — train smart, watch fatigue.'
+            : 'Low recovery. Prioritise rest or go very light.';
+
+  // Ring geometry (r=38 in a 100x100 box, stroke 6)
+  const r = 38, c = 2 * Math.PI * r, offset = c - (score / 100) * c;
+
+  container.innerHTML = `
+    <section class="recovery-hero" data-rh>
+      <div class="rh-glow" aria-hidden="true"></div>
+      <div class="rh-head">
+        <span class="rh-eyebrow">Recovery</span>
+        <span class="rh-chip" style="color:${color};background:${color}1a">${chip}</span>
+      </div>
+      <div class="rh-main">
+        <div class="rh-ring">
+          <svg viewBox="0 0 100 100" class="rh-ring-svg">
+            <circle cx="50" cy="50" r="${r}" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="6"/>
+            <circle cx="50" cy="50" r="${r}" fill="none" stroke="${color}" stroke-width="6"
+              stroke-linecap="round" stroke-dasharray="${c}" stroke-dashoffset="${offset}"
+              transform="rotate(-90 50 50)" style="transition:stroke-dashoffset 1s ease"/>
+          </svg>
+          <span class="rh-ring-label">REC</span>
+        </div>
+        <div class="rh-readout">
+          <div class="rh-score" style="color:${color}">${score}<span class="rh-pct">%</span></div>
+          <div class="rh-msg">${msg}</div>
+        </div>
+      </div>
+      <div class="rh-vitals">
+        <div class="rh-vital"><span class="rh-vital-k" style="color:var(--accent)">HRV</span><span class="rh-vital-v">${rec.hrv ? Math.round(rec.hrv) : '--'}<span class="rh-vital-u">ms</span></span></div>
+        <div class="rh-vital"><span class="rh-vital-k" style="color:var(--blue)">RHR</span><span class="rh-vital-v">${rec.restingHR || '--'}<span class="rh-vital-u">bpm</span></span></div>
+        <div class="rh-vital"><span class="rh-vital-k" style="color:var(--purple)">Sleep</span><span class="rh-vital-v">${sleepTxt}</span></div>
+      </div>
+    </section>`;
+}
+
+// ==================== HOME STAT TRIO (Lovable dashboard cards) ====================
+// Streak · weekly sets · weekly volume, from real logged data.
+async function renderHomeStatTrio() {
+  const container = document.getElementById('home-stat-trio');
+  if (!container) return;
+  const weekDates = getWeekDates().map(dateStr);
+  const weekStart = weekDates[0], weekEnd = weekDates[6];
+  const workouts = await dbGetAll('workouts');
+  const weekWorkouts = workouts.filter(w => w.date >= weekStart && w.date <= weekEnd);
+
+  let sets = 0, volume = 0;
+  const trainingDays = new Set();
+  weekWorkouts.forEach(w => {
+    if (w.date) trainingDays.add(w.date);
+    (w.exercises || []).forEach(ex => {
+      (ex.sets || []).forEach(s => {
+        if (s.done) {
+          sets += 1;
+          const wt = parseFloat(s.weight) || 0, reps = parseInt(s.reps) || 0;
+          volume += wt * reps;
+        }
+      });
+    });
+  });
+  const volTxt = volume >= 1000 ? `${(volume / 1000).toFixed(volume >= 10000 ? 0 : 1)}k` : String(Math.round(volume));
+
+  const cards = [
+    { label: 'Sessions', value: String(trainingDays.size), sub: 'THIS WK', tone: 'var(--accent)' },
+    { label: 'Sets', value: String(sets), sub: 'THIS WK', tone: 'var(--orange)' },
+    { label: 'Volume', value: volTxt, sub: 'KG', tone: 'var(--blue)' },
+  ];
+  container.innerHTML = `
+    <div class="stat-trio">
+      ${cards.map(c => `
+        <div class="stat-card">
+          <div class="stat-card-label">${c.label}</div>
+          <div class="stat-card-val" style="color:${c.tone}">${c.value}</div>
+          <div class="stat-card-sub">${c.sub}</div>
+        </div>`).join('')}
+    </div>`;
 }
 
 // ==================== TODAY'S PLAN CARD ====================
@@ -5770,53 +5881,69 @@ async function renderTodaysPlan() {
   const allWorkouts = await dbGetAll('workouts');
   const doneWorkout = allWorkouts.find(w => w.date === ds);
 
-  const iconBarbell = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="2" y1="12" x2="22" y2="12"/><rect x="3" y="8.5" width="2" height="7" rx="0.6"/><rect x="6" y="6.5" width="2.5" height="11" rx="0.6"/><rect x="15.5" y="6.5" width="2.5" height="11" rx="0.6"/><rect x="19" y="8.5" width="2" height="7" rx="0.6"/></svg>`;
-
-  const rows = [];
-  if (plannedSession) {
-    const s = activePlan.sessions[plannedSession];
-    const name = s ? s.name : plannedSession;
-    const subtitle = doneWorkout ? `Done · ${doneWorkout.duration || ''}` : `${s?.subtitle || 'Strength session'} · ~50 min`;
-    rows.push({
-      icon: iconBarbell, tint: 'var(--tint-orange)', color: 'var(--orange)',
-      title: name, subtitle,
-      done: !!doneWorkout,
-      onTap: doneWorkout ? () => openEditWorkout(doneWorkout.id) : () => showSessionPicker(plannedSession),
-    });
-  }
-  // Run is logged after-the-fact (form-only, no in-progress concept).
-  // Showing a "Zone 2 Run" pending row in Today's Plan reads as an active
-  // session that needs dismissing — confusing. Once logged, the run shows
-  // up in Recent Activity below; no need to surface it here too.
-
-  if (rows.length === 0) {
+  // Rest day — no planned session
+  if (!plannedSession) {
     container.innerHTML = `
-      <div class="todays-plan-card todays-plan-rest">
-        <div class="todays-plan-rest-icon">😌</div>
-        <div class="todays-plan-rest-text"><strong>Rest day</strong><div class="todays-plan-rest-sub">No training planned. Recovery counts.</div></div>
-      </div>
-    `;
+      <section class="session-hero session-hero-rest">
+        <div class="sh-rest-emoji">😌</div>
+        <div class="sh-rest-text"><strong>Rest day</strong><div class="sh-rest-sub">No training planned. Recovery counts.</div></div>
+      </section>`;
     return;
   }
 
+  const s = activePlan.sessions[plannedSession];
+  const name = s ? s.name : plannedSession;
+  const focus = s && s.subtitle ? s.subtitle : 'Strength';
+  const exCount = s && Array.isArray(s.exercises) ? s.exercises.length : null;
+  const planSets = (s && Array.isArray(s.exercises))
+    ? s.exercises.reduce((sum, ex) => sum + (typeof ex.sets === 'number' ? ex.sets : (Array.isArray(ex.sets) ? ex.sets.length : 3)), 0)
+    : null;
+
+  // Eyebrow line: actual when done, planned estimate otherwise
+  let eyebrow;
+  if (doneWorkout) {
+    const doneSets = (doneWorkout.exercises || []).reduce((n, ex) => n + (ex.sets || []).filter(x => x.done).length, 0);
+    eyebrow = `Completed · ${doneSets} sets${doneWorkout.duration ? ' · ' + doneWorkout.duration : ''}`;
+  } else {
+    const parts = [];
+    if (exCount) parts.push(`${exCount} exercises`);
+    if (planSets) parts.push(`${planSets} sets`);
+    parts.push('~50 min');
+    eyebrow = parts.join(' · ');
+  }
+
+  // Map session → cover image by name/focus keywords
+  const key = `${name} ${focus}`.toLowerCase();
+  let img = 'img/hero-pull.jpg';
+  if (/leg|lower|squat|quad|hamstring/.test(key)) img = 'img/session-legs.jpg';
+  else if (/push|chest|press|shoulder/.test(key)) img = 'img/session-push.jpg';
+  else if (/mobility|recovery|rest|stretch/.test(key)) img = 'img/session-rest.jpg';
+
+  const rightChip = doneWorkout
+    ? `<span class="sh-chip sh-chip-done">✓ Done</span>`
+    : `<span class="sh-chip sh-chip-today">● Today</span>`;
+  const cta = doneWorkout
+    ? `<span class="sh-cta-label">View session</span>`
+    : `<span class="sh-cta-label">Start workout</span><span class="sh-cta-arrow">›</span>`;
+
   container.innerHTML = `
-    <div class="card-stack todays-plan-stack">
-      ${rows.map((r, i) => `
-        <div class="card todays-plan-row${r.done ? ' is-done' : ''}" data-tp-row="${i}">
-          <div class="todays-plan-icon" style="background:${r.tint};color:${r.color}">${r.icon}</div>
-          <div class="todays-plan-body">
-            <div class="todays-plan-title">${r.title}</div>
-            <div class="todays-plan-sub">${r.subtitle}</div>
-          </div>
-          <div class="todays-plan-cta">${r.done ? '<span class="todays-plan-check">✓</span>' : '<span class="hi-chev">›</span>'}</div>
-        </div>
-      `).join('')}
-    </div>
-  `;
-  rows.forEach((r, i) => {
-    const el = container.querySelector(`[data-tp-row="${i}"]`);
-    if (el) el.addEventListener('click', r.onTap);
-  });
+    <section class="session-hero" data-sh>
+      <img class="sh-img" src="${img}" alt="" loading="lazy">
+      <div class="sh-scrim"></div>
+      <div class="sh-top">
+        <span class="sh-chip">${focus}</span>
+        ${rightChip}
+      </div>
+      <div class="sh-bottom">
+        <div class="sh-eyebrow">${eyebrow}</div>
+        <h3 class="sh-title">${name}</h3>
+        <button class="sh-cta${doneWorkout ? ' sh-cta-ghost' : ''}">${cta}</button>
+      </div>
+    </section>`;
+
+  container.querySelector('[data-sh]').addEventListener('click', doneWorkout
+    ? () => openEditWorkout(doneWorkout.id)
+    : () => showSessionPicker(plannedSession));
 }
 
 // ==================== RECENT ACTIVITY (mixed feed) ====================
