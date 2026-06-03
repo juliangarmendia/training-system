@@ -13,3 +13,7 @@ desktop.ini
 
 # Raw data (personal, don't publish)
 data/raw/
+
+# Lovable design-reference folder: keep source + config, drop build/env cruft
+lovable/.workspace/
+lovable/.tanstack/

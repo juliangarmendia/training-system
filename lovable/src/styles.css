@@ -1,0 +1,131 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
+
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Inter Tight", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-ring-offset-background: var(--background);
+  --color-brand: var(--brand);
+  --color-surface: var(--surface);
+  --color-recovery: var(--recovery);
+  --color-strain: var(--strain);
+  --color-sleep: var(--sleep);
+  --color-energy: var(--energy);
+}
+
+/* Force dark editorial-technical theme — no toggle. */
+:root {
+  --radius: 0.75rem;
+
+  --background: oklch(0.135 0.005 270);   /* near-OLED black */
+  --foreground: oklch(0.97 0 0);
+  --surface: oklch(0.135 0.005 270);
+  --card: oklch(0.185 0.006 270);
+  --card-foreground: oklch(0.97 0 0);
+  --popover: oklch(0.185 0.006 270);
+  --popover-foreground: oklch(0.97 0 0);
+
+  /* Whoop-inspired data palette */
+  --recovery: oklch(0.82 0.19 145);       /* green */
+  --strain:   oklch(0.68 0.20 240);       /* electric blue */
+  --sleep:    oklch(0.70 0.18 280);       /* violet */
+  --energy:   oklch(0.88 0.18 95);        /* yellow */
+
+  --brand: oklch(0.82 0.19 145);
+  --primary: oklch(0.97 0 0);
+  --primary-foreground: oklch(0.135 0.005 270);
+
+  --secondary: oklch(0.22 0.005 270);
+  --secondary-foreground: oklch(0.97 0 0);
+  --muted: oklch(0.20 0.005 270);
+  --muted-foreground: oklch(0.62 0.01 270);
+  --accent: oklch(0.22 0.005 270);
+  --accent-foreground: oklch(0.97 0 0);
+  --destructive: oklch(0.62 0.22 25);
+  --destructive-foreground: oklch(0.98 0 0);
+
+  --border: oklch(1 0 0 / 7%);
+  --input: oklch(1 0 0 / 10%);
+  --ring: oklch(0.82 0.19 145 / 50%);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  html,
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-feature-settings: "ss01", "cv11";
+  }
+
+  body {
+    /* Layered premium gradient: warm green halo top-left, cool strain glow bottom-right, deep OLED base */
+    background-color: var(--color-background);
+    background-image:
+      radial-gradient(60% 45% at 12% 0%, oklch(0.30 0.08 145 / 0.22) 0%, transparent 70%),
+      radial-gradient(55% 40% at 100% 100%, oklch(0.30 0.10 240 / 0.18) 0%, transparent 70%),
+      radial-gradient(120% 80% at 50% -10%, oklch(0.22 0.01 270) 0%, transparent 55%),
+      linear-gradient(180deg, oklch(0.16 0.008 270) 0%, oklch(0.11 0.005 270) 55%, oklch(0.09 0.004 270) 100%);
+    background-attachment: fixed;
+  }
+
+  /* Fine film grain — barely perceptible, kills banding, adds tactile depth */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.035;
+    mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.6 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  }
+
+  main, nav, header, section {
+    position: relative;
+    z-index: 1;
+  }
+
+  ::selection {
+    background: var(--brand);
+    color: var(--surface);
+  }
+}
