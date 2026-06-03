@@ -2031,3 +2031,58 @@ body[data-tab="home"] .home-scroll-v2 { padding-top: calc(var(--safe-top) + 10px
 .queue-chev { color: var(--text2); font-size: 18px; flex-shrink: 0; }
 .queue-empty { padding: 20px; border-radius: 18px; background: var(--surface); color: var(--text3); font-size: 13px; text-align: center; }
 
+/* ==================================================
+   LOGIN — Lovable cinematic (v11.3)
+   ================================================== */
+.login-v2 { align-items: stretch; justify-content: flex-start; }
+.login-bg { position: absolute; inset: 0; overflow: hidden; }
+.login-bg img { width: 100%; height: 100%; object-fit: cover; opacity: 0.32; }
+.login-bg-scrim { position: absolute; inset: 0; background: linear-gradient(to bottom, rgba(8,9,11,0.4) 0%, rgba(8,9,11,0.72) 45%, var(--bg) 100%); }
+.login-inner { position: relative; z-index: 1; display: flex; flex-direction: column; width: 100%; max-width: 440px; margin: 0 auto; min-height: 100dvh; padding: calc(var(--safe-top) + 26px) 26px calc(var(--safe-bottom) + 26px); }
+.login-top { display: flex; align-items: center; justify-content: space-between; }
+.login-brand { display: flex; align-items: center; gap: 10px; }
+.login-logo { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; background: var(--text); color: var(--bg); font-family: var(--font-display); font-size: 13px; font-weight: 900; }
+.login-brand-name { font-family: var(--font-display); font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.18em; }
+.login-ver { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.2em; color: var(--text2); }
+.login-hero { margin-top: auto; padding-top: 32px; }
+.login-eyebrow { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.3em; color: var(--accent); }
+.login-title { margin-top: 16px; font-family: var(--font-display); font-size: clamp(48px, 15vw, 64px); font-weight: 900; text-transform: uppercase; line-height: 0.88; letter-spacing: -0.035em; }
+.login-desc { margin-top: 22px; max-width: 28ch; font-size: 15px; line-height: 1.5; color: var(--text2); }
+.login-form { margin-top: 36px; display: flex; flex-direction: column; gap: 14px; }
+.login-field { display: flex; flex-direction: column; border-radius: 16px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); padding: 12px 18px; transition: border-color 0.2s, box-shadow 0.2s; }
+.login-field:focus-within { border-color: rgba(104,227,113,0.6); box-shadow: 0 0 0 3px rgba(104,227,113,0.12); }
+.login-field label { display: block; font-family: var(--font-mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.25em; color: var(--text2); }
+.login-field input { margin-top: 5px; width: 100%; height: 26px; background: transparent; border: none; outline: none; color: var(--text); font-size: 16px; font-family: var(--font-sans); -webkit-appearance: none; }
+.login-field input::placeholder { color: rgba(255,255,255,0.28); }
+.login-error { color: var(--red); font-size: 13px; font-weight: 500; min-height: 0; padding: 0 4px; }
+.login-error:empty { display: none; }
+.login-cta { margin-top: 6px; height: 54px; width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; border: none; border-radius: 999px; background: var(--text); color: var(--bg); font-family: var(--font-display); font-size: 15px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.14em; cursor: pointer; transition: background 0.2s, transform 0.15s; }
+.login-cta:active { transform: scale(0.985); }
+.login-cta:hover { background: var(--accent); }
+.login-cta-arrow { font-size: 18px; }
+.login-foot { margin-top: 26px; display: flex; align-items: center; justify-content: space-between; font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.2em; color: var(--text2); }
+.login-create { background: none; border: none; color: var(--text2); font: inherit; letter-spacing: inherit; text-transform: inherit; cursor: pointer; }
+.login-create:active { color: var(--text); }
+.login-enc { display: flex; align-items: center; gap: 8px; }
+.login-enc-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+
+/* ==================================================
+   WORKOUT — Lovable live-session top bar + finish (v11.3)
+   ================================================== */
+.wo-topbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.wo-exit { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: var(--text); font-size: 20px; line-height: 1; cursor: pointer; }
+.wo-exit:active { background: rgba(255,255,255,0.12); }
+.wo-live { display: flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 999px; background: rgba(0,163,255,0.15); border: 1px solid rgba(0,163,255,0.3); color: var(--blue); font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.25em; }
+.wo-live-dot { position: relative; width: 6px; height: 6px; }
+.wo-live-dot::before { content: ''; position: absolute; inset: 0; border-radius: 50%; background: var(--blue); }
+.wo-live-dot::after { content: ''; position: absolute; inset: 0; border-radius: 50%; background: var(--blue); animation: woPing 1.3s ease-out infinite; }
+@keyframes woPing { 0% { transform: scale(1); opacity: 0.6; } 100% { transform: scale(2.6); opacity: 0; } }
+/* Timer: muted mono (overrides the accent-pill style within the live top bar) */
+.wo-topbar .workout-timer { background: none; border: none; box-shadow: none; padding: 0; color: var(--text2); font-family: var(--font-mono); font-size: 13px; font-weight: 500; letter-spacing: 0.05em; }
+.wo-unit { margin: 0 auto 16px; width: -moz-fit-content; width: fit-content; }
+
+/* Finish workout → Lovable white pill */
+#btn-finish-workout { background: var(--text); color: var(--bg); border-radius: 999px; height: 54px; font-family: var(--font-display); font-weight: 700; text-transform: uppercase; letter-spacing: 0.16em; font-size: 14px; transition: background 0.2s, transform 0.15s; }
+#btn-finish-workout:active { transform: scale(0.985); }
+#btn-finish-workout:hover { background: var(--accent); }
+

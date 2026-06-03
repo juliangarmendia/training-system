@@ -17,20 +17,47 @@
 </head>
 <body data-tab="home">
   <!-- Login Screen -->
-  <div id="login-screen" class="pin-overlay">
-    <div class="pin-box" style="max-width:340px">
-      <div class="login-video-card">
-        <video class="login-video" src="intro.mp4" autoplay loop muted playsinline preload="metadata" poster="app-icon.png"></video>
-      </div>
-      <div class="pin-prompt">Training System</div>
-      <div id="login-form" style="text-align:left">
-        <div class="form-row login-row" id="login-name-row" style="display:none"><label>Your name</label><input type="text" id="login-name" class="text-input" placeholder="Julian" autocomplete="given-name"></div>
-        <div class="form-row login-row"><label>Email</label><input type="email" id="login-email" class="text-input" placeholder="you@email.com" autocomplete="email"></div>
-        <div class="form-row login-row"><label>Password</label><input type="password" id="login-password" class="text-input" placeholder="Min 6 characters" autocomplete="current-password"></div>
+  <div id="login-screen" class="pin-overlay login-v2">
+    <div class="login-bg" aria-hidden="true">
+      <img src="img/hero-pull.jpg" alt="">
+      <div class="login-bg-scrim"></div>
+    </div>
+    <div class="login-inner">
+      <header class="login-top">
+        <div class="login-brand">
+          <span class="login-logo">T</span>
+          <span class="login-brand-name">Training System</span>
+        </div>
+        <span class="login-ver">v11</span>
+      </header>
+
+      <section class="login-hero">
+        <p class="login-eyebrow">Welcome back</p>
+        <h1 class="login-title">Train<br>with<br>precision.</h1>
+        <p class="login-desc">Personalized strength programming, recovery and strain — engineered into a single signal.</p>
+      </section>
+
+      <div id="login-form" class="login-form">
+        <div class="login-field login-row" id="login-name-row" style="display:none">
+          <label for="login-name">Your name</label>
+          <input type="text" id="login-name" placeholder="Julian" autocomplete="given-name">
+        </div>
+        <div class="login-field login-row">
+          <label for="login-email">Email</label>
+          <input type="email" id="login-email" placeholder="you@athlete.com" autocomplete="email">
+        </div>
+        <div class="login-field login-row">
+          <label for="login-password">Password</label>
+          <input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password">
+        </div>
         <div id="login-error" class="login-error"></div>
-        <button id="btn-login" class="btn-primary" style="margin-bottom:8px">Sign In</button>
-        <button id="btn-register" class="btn-secondary btn-full" style="text-align:center">Create Account</button>
+        <button type="button" id="btn-login" class="login-cta"><span>Continue</span><span class="login-cta-arrow">→</span></button>
       </div>
+
+      <footer class="login-foot">
+        <button type="button" id="btn-register" class="login-create">Create account</button>
+        <span class="login-enc"><span class="login-enc-dot"></span>Encrypted</span>
+      </footer>
     </div>
   </div>
 
@@ -153,13 +180,14 @@
       <!-- Active Workout -->
       <section id="view-workout" class="view">
         <div class="view-scroll">
-          <div class="workout-header">
-            <button id="btn-back-gym" class="back-btn">&larr; Back</button>
-            <div class="unit-toggle" id="unit-toggle">
-              <button class="unit-opt" data-unit="kg">KG</button>
-              <button class="unit-opt" data-unit="lb">LB</button>
-            </div>
+          <div class="workout-header wo-topbar">
+            <button id="btn-back-gym" class="wo-exit" aria-label="Exit">&times;</button>
+            <div class="wo-live"><span class="wo-live-dot"></span>Live</div>
             <div class="workout-timer" id="workout-timer">00:00</div>
+          </div>
+          <div class="unit-toggle wo-unit" id="unit-toggle">
+            <button class="unit-opt" data-unit="kg">KG</button>
+            <button class="unit-opt" data-unit="lb">LB</button>
           </div>
           <div class="session-progress" id="session-progress">
             <div class="sp-ring-row">
@@ -583,7 +611,7 @@
           </div>
           <div class="section-label" style="margin-top:24px">App</div>
           <div class="card">
-            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v11.3<br>Data stored locally + cloud sync.<br>Works offline.</p>
+            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v11.4<br>Data stored locally + cloud sync.<br>Works offline.</p>
             <button id="btn-force-update" class="btn-secondary btn-full" style="text-align:center">Force Update App</button>
           </div>
         </div>
