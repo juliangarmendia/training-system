@@ -1193,6 +1193,7 @@ function loadTheme() {
 // ==================== NAVIGATION ====================
 function switchTab(tab) {
   state.currentTab = tab;
+  document.body.dataset.tab = tab; // CSS hooks (e.g. hide global header on home for the Lovable top bar)
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
 
   if (tab === 'home') {
@@ -5746,16 +5747,43 @@ async function askPainRating(prompt) {
 //   • Inner (green):    Protein logged today / target
 // ==================== HOME VIEW ORCHESTRATOR (v10.7) ====================
 async function renderHomeView() {
+  document.body.dataset.tab = 'home';
+  renderHomeTopbar();
   await Promise.all([
     showResumeBanner(),
     renderRecoveryHero(),
+    renderWeekCalendar(),
     renderTodaysPlan(),
     renderHomeStatTrio(),
-    renderMobilityTodayCard(),
-    renderStreakBanner(),
-    renderWeekStrip(),
-    renderRecentActivity(),
+    renderHomeQueue(),
   ]);
+}
+
+// ==================== HOME TOP BAR (Lovable) ====================
+// "Today" eyebrow + weekday/date on the left; bell, settings, avatar on the right.
+function renderHomeTopbar() {
+  const el = document.getElementById('home-topbar');
+  if (!el) return;
+  const d = new Date();
+  const weekday = d.toLocaleDateString('en-US', { weekday: 'long' });
+  const datestr = d.toLocaleDateString('en-US', { day: 'numeric', month: 'long' });
+  const name = (state.settings && state.settings.name) || 'Julian Garmendia';
+  const initials = (name.trim().split(/\s+/).map(w => w[0]).slice(0, 2).join('') || 'JG').toUpperCase();
+  const bell = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>`;
+  const gear = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`;
+  el.innerHTML = `
+    <div class="ht-left">
+      <div class="ht-eyebrow">Today</div>
+      <div class="ht-date">${weekday} <span class="ht-date-sub">${datestr}</span></div>
+    </div>
+    <div class="ht-actions">
+      <button class="ht-icon" id="ht-bell" aria-label="Notifications">${bell}</button>
+      <button class="ht-icon" id="ht-settings" aria-label="Settings">${gear}</button>
+      <button class="ht-avatar" id="ht-profile" aria-label="Profile">${initials}</button>
+    </div>`;
+  el.querySelector('#ht-bell').addEventListener('click', () => switchTab('settings'));
+  el.querySelector('#ht-settings').addEventListener('click', () => switchTab('settings'));
+  el.querySelector('#ht-profile').addEventListener('click', () => switchTab('settings'));
 }
 
 // ==================== RECOVERY HERO (Lovable Whoop-style) ====================
@@ -5819,12 +5847,17 @@ async function renderRecoveryHero() {
         </div>
       </div>
       <div class="rh-vitals">
-        <div class="rh-vital"><span class="rh-vital-k" style="color:var(--accent)">HRV</span><span class="rh-vital-v">${rec.hrv ? Math.round(rec.hrv) : '--'}<span class="rh-vital-u">ms</span></span></div>
-        <div class="rh-vital"><span class="rh-vital-k" style="color:var(--blue)">RHR</span><span class="rh-vital-v">${rec.restingHR || '--'}<span class="rh-vital-u">bpm</span></span></div>
-        <div class="rh-vital"><span class="rh-vital-k" style="color:var(--purple)">Sleep</span><span class="rh-vital-v">${sleepTxt}</span></div>
+        <div class="rh-vital"><div class="rh-vital-head" style="color:var(--accent)">${ICON_ACTIVITY}<span class="rh-vital-k">HRV</span></div><span class="rh-vital-v">${rec.hrv ? Math.round(rec.hrv) : '--'}<span class="rh-vital-u">ms</span></span></div>
+        <div class="rh-vital"><div class="rh-vital-head" style="color:var(--blue)">${ICON_FLAME}<span class="rh-vital-k">RHR</span></div><span class="rh-vital-v">${rec.restingHR || '--'}<span class="rh-vital-u">bpm</span></span></div>
+        <div class="rh-vital"><div class="rh-vital-head" style="color:var(--purple)">${ICON_MOON}<span class="rh-vital-k">Sleep</span></div><span class="rh-vital-v">${sleepTxt}</span></div>
       </div>
     </section>`;
 }
+
+// Lucide-style inline icons for the recovery vitals
+const ICON_ACTIVITY = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>`;
+const ICON_FLAME = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>`;
+const ICON_MOON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></svg>`;
 
 // ==================== HOME STAT TRIO (Lovable dashboard cards) ====================
 // Streak · weekly sets · weekly volume, from real logged data.
@@ -5866,6 +5899,143 @@ async function renderHomeStatTrio() {
           <div class="stat-card-sub">${c.sub}</div>
         </div>`).join('')}
     </div>`;
+}
+
+// Type → tone + cover image (Lovable: lift=strain, run=recovery, mobility=sleep)
+function _homeTypeTone(type) {
+  if (type === 'run') return { color: 'var(--accent)', name: 'run' };
+  if (type === 'mobility') return { color: 'var(--purple)', name: 'mobility' };
+  return { color: 'var(--blue)', name: 'lift' };
+}
+function _homeCover(name, focus) {
+  const key = `${name || ''} ${focus || ''}`.toLowerCase();
+  if (/leg|lower|squat|quad|hamstring/.test(key)) return 'img/session-legs.jpg';
+  if (/push|chest|press|shoulder/.test(key)) return 'img/session-push.jpg';
+  if (/mobility|recovery|rest|stretch|run|zone/.test(key)) return 'img/session-rest.jpg';
+  return 'img/hero-pull.jpg';
+}
+
+// ==================== WEEK CALENDAR (Lovable single 7-day strip + Historial) ====================
+async function renderWeekCalendar() {
+  const container = document.getElementById('week-calendar');
+  if (!container) return;
+  const weekDates = getWeekDates();
+  const todayStr = today();
+  const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const [workouts, runs, mobs] = await Promise.all([dbGetAll('workouts'), dbGetAll('runs'), dbGetAll('mobility_sessions')]);
+  const customSchedule = await getWeekSchedule();
+
+  let doneCount = 0;
+  const cells = weekDates.map((date, i) => {
+    const ds = dateStr(date);
+    const jsDay = date.getDay();
+    const isToday = ds === todayStr;
+    const isPast = ds < todayStr;
+    const gym = workouts.find(w => w.date === ds);
+    const run = runs.find(r => r.date === ds);
+    const mob = mobs.find(m => m.date === ds);
+    const done = !!(gym || run || mob);
+    if (done) doneCount++;
+    const planned = isPast ? null : getPlannedSession(jsDay, customSchedule, ds);
+    let type = gym ? 'lift' : run ? 'run' : mob ? 'mobility' : (planned ? 'lift' : null);
+    const tone = _homeTypeTone(type).color;
+
+    let status; // done | today | upcoming | rest
+    if (done) status = 'done';
+    else if (isToday) status = 'today';
+    else if (!isPast && type) status = 'upcoming';
+    else status = 'rest';
+
+    let dot;
+    if (status === 'done') dot = `<span class="wc-check" style="background:${tone}">✓</span>`;
+    else if (status === 'rest') dot = `<span class="wc-rest"></span>`;
+    else dot = `<span class="wc-bar" style="background:${isToday ? 'var(--bg)' : tone}"></span>`;
+
+    return { i, ds, jsDay, isToday, dateNum: date.getDate(), label: dayNames[i], status, dot, gym, planned };
+  });
+
+  container.innerHTML = `
+    <div class="home-sec-row">
+      <h2 class="home-h2">This week</h2>
+      <span class="home-link-mono">${doneCount}/7 <span class="home-link-dim">done</span></span>
+    </div>
+    <div class="week-cal">
+      ${cells.map(c => `
+        <button class="wc-cell${c.isToday ? ' is-today' : ''}${c.status === 'rest' ? ' is-rest' : ''}" data-wc="${c.i}">
+          <span class="wc-day">${c.label}</span>
+          <span class="wc-date">${c.dateNum}</span>
+          <span class="wc-status">${c.dot}</span>
+        </button>`).join('')}
+    </div>
+    <button class="historial-btn" id="historial-btn">
+      <span class="historial-left">
+        <span class="historial-icon">${ICON_ACTIVITY}</span>
+        <span class="historial-title">Historial</span>
+      </span>
+      <span class="historial-right"><span class="home-link-mono">All workouts</span><span class="historial-chev">›</span></span>
+    </button>`;
+
+  cells.forEach(c => {
+    const el = container.querySelector(`[data-wc="${c.i}"]`);
+    if (!el) return;
+    el.addEventListener('click', () => {
+      if (c.gym) viewCompletedWorkout(c.gym);
+      else if (c.planned) showSessionPicker(c.planned, c.ds);
+      else switchTab('gym');
+    });
+  });
+  const hist = container.querySelector('#historial-btn');
+  if (hist) hist.addEventListener('click', () => switchTab('gym'));
+}
+
+// ==================== THIS WEEK QUEUE (upcoming sessions, Lovable image rows) ====================
+async function renderHomeQueue() {
+  const container = document.getElementById('home-queue');
+  const aheadEl = document.getElementById('queue-ahead');
+  if (!container) return;
+  const weekDates = getWeekDates();
+  const todayStr = today();
+  const customSchedule = await getWeekSchedule();
+  const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+  const rows = [];
+  weekDates.forEach((date, i) => {
+    const ds = dateStr(date);
+    if (ds <= todayStr) return; // upcoming only
+    const planned = getPlannedSession(date.getDay(), customSchedule, ds);
+    if (!planned) return;
+    const s = activePlan.sessions[planned];
+    const name = s ? s.name : planned;
+    const focus = (s && s.subtitle) ? s.subtitle : 'Strength';
+    rows.push({ ds, label: dayNames[i], name, focus, key: planned,
+      img: _homeCover(name, focus), tone: 'var(--blue)' });
+  });
+
+  if (aheadEl) aheadEl.textContent = rows.length ? `${rows.length} ahead` : '';
+
+  if (rows.length === 0) {
+    container.innerHTML = `<div class="queue-empty">Nothing else planned this week. Recovery counts.</div>`;
+    return;
+  }
+
+  container.innerHTML = `
+    <ul class="home-queue">
+      ${rows.slice(0, 5).map((r, i) => `
+        <li><button class="queue-row" data-q="${i}">
+          <span class="queue-thumb"><img src="${r.img}" alt="" loading="lazy"></span>
+          <span class="queue-body">
+            <span class="queue-meta"><span class="queue-dot" style="background:${r.tone}"></span>${r.label}</span>
+            <span class="queue-title">${r.name}</span>
+            <span class="queue-sub">${r.focus}</span>
+          </span>
+          <span class="queue-chev">›</span>
+        </button></li>`).join('')}
+    </ul>`;
+
+  rows.slice(0, 5).forEach((r, i) => {
+    const el = container.querySelector(`[data-q="${i}"]`);
+    if (el) el.addEventListener('click', () => showSessionPicker(r.key, r.ds));
+  });
 }
 
 // ==================== TODAY'S PLAN CARD ====================
@@ -5936,14 +6106,17 @@ async function renderTodaysPlan() {
       </div>
       <div class="sh-bottom">
         <div class="sh-eyebrow">${eyebrow}</div>
-        <h3 class="sh-title">${name}</h3>
+        <h3 class="sh-title">${name}<br><span class="sh-title-sub">${focus}</span></h3>
         <button class="sh-cta${doneWorkout ? ' sh-cta-ghost' : ''}">${cta}</button>
       </div>
     </section>`;
 
-  container.querySelector('[data-sh]').addEventListener('click', doneWorkout
+  const open = doneWorkout
     ? () => openEditWorkout(doneWorkout.id)
-    : () => showSessionPicker(plannedSession));
+    : () => showSessionPicker(plannedSession);
+  container.querySelector('[data-sh]').addEventListener('click', open);
+  const detail = document.getElementById('todays-detail');
+  if (detail) detail.onclick = open;
 }
 
 // ==================== RECENT ACTIVITY (mixed feed) ====================

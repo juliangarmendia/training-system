@@ -15,7 +15,7 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700;800;900&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
   <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body data-tab="home">
   <!-- Login Screen -->
   <div id="login-screen" class="pin-overlay">
     <div class="pin-box" style="max-width:340px">
@@ -115,28 +115,23 @@
     <main id="main">
       <!-- Home (today summary, cross-domain) -->
       <section id="view-home" class="view active">
-        <div class="view-scroll" id="home-scroll">
+        <div class="view-scroll home-scroll-v2" id="home-scroll">
           <div id="resume-workout-banner" class="hidden"></div>
           <div id="resume-mobility-banner" class="hidden"></div>
+          <div id="home-topbar"></div>
           <div id="recovery-hero"></div>
+          <div id="week-calendar"></div>
+          <div class="home-sec-row" style="margin-top:24px">
+            <h2 class="home-h2">Today's session</h2>
+            <span class="home-link-mono" id="todays-detail">Detail</span>
+          </div>
           <div id="todays-plan-card"></div>
           <div id="home-stat-trio"></div>
-          <div id="mobility-today-card"></div>
-          <div id="streak-banner"></div>
-          <div class="section-head" style="margin-top:24px">
-            <div class="section-head-icon" style="background:var(--tint-orange);color:var(--orange)">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M8 6v12M16 6v12M3 9v6M21 9v6M8 12h8"/></svg>
-            </div>
-            <span class="section-head-title">This Week</span>
+          <div class="home-sec-row" style="margin-top:28px">
+            <h2 class="home-h2">This week</h2>
+            <span class="home-link-mono" id="queue-ahead"></span>
           </div>
-          <div class="week-strip" id="week-strip"></div>
-          <div class="section-head" style="margin-top:24px">
-            <div class="section-head-icon" style="background:var(--tint-purple);color:var(--purple)">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>
-            </div>
-            <span class="section-head-title">Recent Activity</span>
-          </div>
-          <div id="recent-activity" class="recent-list"></div>
+          <div id="home-queue"></div>
         </div>
       </section>
 
@@ -588,7 +583,7 @@
           </div>
           <div class="section-label" style="margin-top:24px">App</div>
           <div class="card">
-            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v11.1<br>Data stored locally + cloud sync.<br>Works offline.</p>
+            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v11.2<br>Data stored locally + cloud sync.<br>Works offline.</p>
             <button id="btn-force-update" class="btn-secondary btn-full" style="text-align:center">Force Update App</button>
           </div>
         </div>
