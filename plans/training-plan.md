@@ -23,18 +23,20 @@
 5. **Pésate diario desde mañana** (4-7×/sem) para reconstruir la tendencia limpia — la última cifra fiable es del 4 may.
 6. **Sumo DL y Squat: rampa conservadora.** Aunque la espalda esté bien, son los lifts con más riesgo lumbar tras layoff. Primer working set decide: si sale ≥RPE 8, te quedas ahí esa semana.
 
-### Cargas por semana (compounds)
+### Cargas por semana (compounds) — TODO EN KG
 
-W18 working weights de referencia: Bench 205 · Squat 215 · Sumo 245 · OHP 115 · Row 150 · Chin BW+20 (lb).
+> **Cambio:** a partir de ahora todo en **kg** (te mudaste a España, gimnasio David Lloyd Serrano con discos en kg). La app ya está forzada a kg. W18 de referencia en kg: Bench 92.5 · Squat 97.5 · Sumo 110 · OHP 52.5 · Row 67.5 · Chin BW+10.
 
-| Lift | W26 (~85%, RPE 7, 3 sets) | W27 (~93%, RPE 7-8, 3-4 sets) | W28 (= W18, RPE 7-8, full) |
+| Lift | W26 (~85%, RPE 7, 3 sets) | W27 (~93%, RPE 7-8, 3 sets) | W28 (= W18, RPE 7-8, full) |
 |------|---------------------------|-------------------------------|-----------------------------|
-| Bench Press | 175 lb × 6-8 | 195 lb × 6-8 | 205 lb × 6-8 |
-| Back Squat | 185 lb × 6-8 | 205 lb × 6-8 | 215 lb × 8 |
-| Sumo Deadlift | 205 lb × 5 | 225 lb × 5 | 245 lb × 4-6 (RPE-gated) |
-| OHP | 95 lb × 6-8 | 105 lb × 6-8 | 115 lb × 8 |
-| Barbell Row | 130 lb × 8-10 | 140 lb × 8-10 | 150 lb × 10 |
-| Chin-ups | BW × 6-8 | BW × 8 (add +10 si 4×8) | BW+20 × 6 |
+| Bench Press | 80 kg | 87.5 kg | 92.5 kg |
+| Back Squat | 82.5 kg | 90 kg | 97.5 kg |
+| Sumo Deadlift | 95 kg | 102.5 kg | 110 kg (RPE-gated) |
+| OHP | 45 kg | 47.5 kg | 52.5 kg |
+| Barbell Row | 57.5 kg | 62.5 kg | 67.5 kg |
+| Chin-ups | solo BW | BW (+5 si 4×8) | BW +10 kg |
+
+Estas cargas están **embebidas en la app** en las notas de cada ejercicio, y el plan **auto-avanza por fecha** (W26→W27→W28→plan normal) sin que tengas que tocar nada.
 
 ### Volumen y running por semana
 

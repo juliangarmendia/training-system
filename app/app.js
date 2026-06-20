@@ -509,6 +509,111 @@ async function createNewPlanVersion(modifications) {
   return newPlan;
 }
 
+// ==================== RE-ENTRY RAMP (W26-W28) ====================
+// After a ~6-week layoff (W19-W25, life/schedule, no injury, back symptom-free),
+// loads return to the W18 baseline over 3 weeks instead of restarting cold.
+// Muscle memory brings the numbers back fast; the real risk is severe DOMS + a
+// lumbar history (contractures W2, W16), so W26 cuts volume and caps RPE.
+// All targets are in KG (gym moved to Spain — David Lloyd Serrano).
+//
+// This runs on every load and auto-advances by date: it installs the right week's
+// plan version, and once the window closes (after 2026-07-12) restores the base
+// full-volume plan. The plan model has no per-set load field, so kg targets are
+// surfaced through each exercise's `notes`.
+//
+// load = kg for compounds (chinups: 0 = bodyweight only, N = +N kg added).
+// compoundSets/compoundRpe/accSets/accRpe = null → keep the base PLAN value.
+const REENTRY_WEEKS = [
+  { week: 26, label: 'Re-Entry W26', start: '2026-06-20', end: '2026-06-28',
+    compoundSets: 3, compoundRpe: '7', accSets: 2, accRpe: '6-7', oneRun: true,
+    loads: { 'bench-press': 80, 'barbell-row': 57.5, 'back-squat': 82.5, 'sumo-dl': 95, 'ohp': 45, 'chinups': 0 } },
+  { week: 27, label: 'Re-Entry W27', start: '2026-06-29', end: '2026-07-05',
+    compoundSets: 3, compoundRpe: '7-8', accSets: 3, accRpe: '7', oneRun: false,
+    loads: { 'bench-press': 87.5, 'barbell-row': 62.5, 'back-squat': 90, 'sumo-dl': 102.5, 'ohp': 47.5, 'chinups': 0 } },
+  { week: 28, label: 'Re-Entry W28', start: '2026-07-06', end: '2026-07-12',
+    compoundSets: null, compoundRpe: null, accSets: null, accRpe: null, oneRun: false,
+    loads: { 'bench-press': 92.5, 'barbell-row': 67.5, 'back-squat': 97.5, 'sumo-dl': 110, 'ohp': 52.5, 'chinups': 10 } },
+];
+
+// Week template with a single Z2 run (W26 caps running volume).
+const REENTRY_ONE_RUN_TEMPLATE = {
+  1: { type: 'gym', session: 'upperA' },
+  2: { type: 'gym', session: 'lowerA' },
+  3: { type: 'run', label: 'Zone 2 Run (easy, 3 km)' },
+  4: { type: 'gym', session: 'upperB' },
+  5: { type: 'gym', session: 'lowerB' },
+  6: { type: 'rest', label: 'Rest' },
+  0: { type: 'rest', label: 'Rest' },
+};
+
+function buildReentrySessions(cfg) {
+  const tag = cfg.label.replace('Re-Entry ', '');
+  const sessions = JSON.parse(JSON.stringify(PLAN.sessions));
+  for (const s of Object.values(sessions)) {
+    for (const ex of s.exercises) {
+      const isCore = ex.rpe === '-';
+      if (ex.id in cfg.loads) {
+        // Main compound: set volume/intensity caps + explicit kg target
+        if (cfg.compoundSets) ex.sets = cfg.compoundSets;
+        if (cfg.compoundRpe) ex.rpe = cfg.compoundRpe;
+        const kg = cfg.loads[ex.id];
+        const loadTxt = ex.id === 'chinups'
+          ? (kg > 0 ? `BW +${kg} kg` : 'solo BW (sin lastre)')
+          : `~${kg} kg`;
+        let note = `Reentrada ${tag} · objetivo ${loadTxt}. ${ex.notes || ''}`.trim();
+        if (ex.id === 'sumo-dl') note += ' Primer set decide: si sale ≥RPE 8, no subir. Historial lumbar.';
+        if (ex.id === 'back-squat') note += ' Rampa lumbar conservadora.';
+        ex.notes = note;
+      } else {
+        // Accessory: trim volume, light-moderate
+        if (cfg.accSets) ex.sets = Math.min(ex.sets, cfg.accSets);
+        if (cfg.accRpe && !isCore) ex.rpe = cfg.accRpe;
+        const setsTxt = cfg.accSets ? `${cfg.accSets} series · ` : '';
+        ex.notes = `Reentrada ${tag} · ${setsTxt}empezar liviano (~85%). ${ex.notes || ''}`.trim();
+      }
+    }
+  }
+  return sessions;
+}
+
+// Install / advance / retire the re-entry plan based on today's date. Idempotent:
+// it only writes a new plan version when the active plan's label needs to change,
+// and it never clobbers a manually-created custom plan.
+async function applyReentryPlan() {
+  const today = dateStr(new Date());
+  const lbl = (activePlan && activePlan.label) || '';
+  const managed = lbl === 'Upper/Lower 4-Day Split' || lbl === 'Fallback' || /^Re-Entry/.test(lbl);
+  if (!managed) return; // respect a custom plan the user set themselves
+
+  const cfg = REENTRY_WEEKS.find(w => today >= w.start && today <= w.end);
+  if (cfg) {
+    if (lbl === cfg.label) return; // already current
+    await createNewPlanVersion({
+      label: cfg.label,
+      weekNumber: cfg.week,
+      sessions: buildReentrySessions(cfg),
+      weekTemplate: JSON.parse(JSON.stringify(cfg.oneRun ? REENTRY_ONE_RUN_TEMPLATE : WEEK_TEMPLATE)),
+    });
+    if (state.settings.unit !== 'kg') {
+      state.settings.unit = 'kg';
+      await dbPut('settings', { key: 'userSettings', data: state.settings });
+    }
+    console.log(`[Re-entry] Applied ${cfg.label} (kg)`);
+    return;
+  }
+
+  // Window closed (after 2026-07-12): restore the base full-volume plan once.
+  if (today > REENTRY_WEEKS[REENTRY_WEEKS.length - 1].end && /^Re-Entry/.test(lbl)) {
+    await createNewPlanVersion({
+      label: 'Upper/Lower 4-Day Split',
+      weekNumber: 29,
+      sessions: JSON.parse(JSON.stringify(PLAN.sessions)),
+      weekTemplate: JSON.parse(JSON.stringify(WEEK_TEMPLATE)),
+    });
+    console.log('[Re-entry] Window over → restored base plan');
+  }
+}
+
 // ==================== DATABASE ====================
 const DB_NAME = 'TrainingApp';
 const DB_VERSION = 9;
@@ -8414,6 +8519,7 @@ async function init() {
   await ensurePlanSeeded();
   await ensureExerciseLibrarySeeded();
   await loadActivePlan();
+  await applyReentryPlan();   // install/advance the W26-W28 re-entry ramp by date (kg)
   await loadExerciseLibrary();
 
   bindEvents();
