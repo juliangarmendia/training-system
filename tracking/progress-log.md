@@ -53,6 +53,13 @@
 | Wk 3 | 0 | — | Still zero. Highest-priority fix for W18 |
 | Wk 18 | 2 (both Mon 4/27 — Hip Reset + Lumbar) | 1→1 | Streak broken. Up from 0 but still under target (3). Pain already at floor. |
 
+## Layoff (W19-W25, 2026-05-04 to 2026-06-21)
+
+- **~6-week training gap.** W18 (ending May 3) was the last trained week. W19 deload onward not executed. Reason: life/schedule + travel — **not injury, not burnout**. Back symptom-free throughout, weight self-reported roughly stable/slightly up (no scale data — last reliable point 86.7 kg on May 4).
+- No gym, no running, no mobility logged in the window.
+- Re-entry begins W26 (Mon 2026-06-22) on a 3-week ramp. See training-plan.md v5.0 "Re-Entry Block".
+- **Action items on return:** (1) daily weigh-ins to rebuild the trend; (2) mobility 3×/wk from day 1; (3) RPE capped at 7 in W26; (4) the W23 reassessment that never happened rolls into W29.
+
 ## Trend notes (updated 2026-05-04 W18)
 
 - **Body weight trending correctly** (−0.59%/wk over 4 weeks). On target zone.

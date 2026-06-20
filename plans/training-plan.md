@@ -1,12 +1,52 @@
 # Training Plan — Cut Phase 1
 
-> Version: 4.0
+> Version: 5.0
 > Created: 2026-04-06
-> Updated: 2026-05-02 (W19 ACSM refinements)
-> Phase: Fat Loss / Strength Maintenance
-> Duration: Open-ended cut — calendar weeks ISO. W15-W18 = Block A second cycle, W19 = deload + diet break, W20+ = Block B refined.
-> Current ISO week: 19 (DELOAD week — Mon 2026-05-04 to Sun 2026-05-10). W18 completed 4/4 with 3 progressions (Row, Squat, OHP) + Sumo DL +20 landed. Wellness data confirmed over-reaching → deload validated by data, not just calendar.
-> Next review: W23 (formal reassessment 4 semanas dentro de Block B)
+> Updated: 2026-06-20 (Re-entry block after ~6-week layoff)
+> Phase: RE-ENTRY → Fat Loss / Strength Maintenance
+> Duration: Open-ended cut — calendar weeks ISO. W18 = last trained week (strong). W19 deload + W20-W25 = unplanned layoff (life/schedule, ~6 weeks, zero training, no injury). W26-W28 = 3-week re-entry ramp. W29+ = resume normal cut.
+> Current ISO week: 25 (Mon 2026-06-15 to Sun 2026-06-21). Re-entry starts Mon 2026-06-22 (W26). Back is symptom-free, weight roughly stable (~86-88 kg, needs fresh weigh-in).
+> Next review: W29 (after the 3-week re-entry ramp — confirm loads back to W18 baseline, then reset deficit + progression)
+
+---
+
+## ⚡ RE-ENTRY BLOCK — W26-W28 (2026-06-22 to 2026-07-12)
+
+**Situación:** ~6 semanas sin entrenar (W19-W25, motivo agenda/viaje, sin lesión). Espalda asintomática, peso estable. Último entreno real = W18 (fuerte). Esto **no es empezar de cero** — hay memoria muscular, los números de W18 vuelven en ~3 semanas. El riesgo no es la fuerza perdida, son las **agujetas severas + tu historial lumbar (contracturas W2 y W16)**. Por eso bajamos carga ~15% y recortamos series las primeras 2 semanas. Reintroducir cargas de W18 de golpe es el error clásico que termina en lesión.
+
+### Reglas del bloque
+
+1. **RPE TAPADO a 7 (3 RIR) en W26.** Si una serie sale más dura, bajas peso. Sin excepciones.
+2. **Movilidad obligatoria desde el día 1**, 3×/sem (Wed Hip Reset · Sat Lumbar · Sun Hip Reset). Fue lo que faltó antes de las dos contracturas.
+3. **Running tapado:** W26 = 1 run Z2 fácil (3 km) máx. W27 = 2 runs. No subir volumen antes de W28. Gym > running en reentrada.
+4. **Nutrición:** W26 comer ~mantenimiento (~2,900 kcal) — el cuerpo está re-adaptándose, no apiles déficit + agujetas + estrés de reinicio. Proteína ≥170 g siempre. Déficit moderado (~2,500) vuelve en W27.
+5. **Pésate diario desde mañana** (4-7×/sem) para reconstruir la tendencia limpia — la última cifra fiable es del 4 may.
+6. **Sumo DL y Squat: rampa conservadora.** Aunque la espalda esté bien, son los lifts con más riesgo lumbar tras layoff. Primer working set decide: si sale ≥RPE 8, te quedas ahí esa semana.
+
+### Cargas por semana (compounds)
+
+W18 working weights de referencia: Bench 205 · Squat 215 · Sumo 245 · OHP 115 · Row 150 · Chin BW+20 (lb).
+
+| Lift | W26 (~85%, RPE 7, 3 sets) | W27 (~93%, RPE 7-8, 3-4 sets) | W28 (= W18, RPE 7-8, full) |
+|------|---------------------------|-------------------------------|-----------------------------|
+| Bench Press | 175 lb × 6-8 | 195 lb × 6-8 | 205 lb × 6-8 |
+| Back Squat | 185 lb × 6-8 | 205 lb × 6-8 | 215 lb × 8 |
+| Sumo Deadlift | 205 lb × 5 | 225 lb × 5 | 245 lb × 4-6 (RPE-gated) |
+| OHP | 95 lb × 6-8 | 105 lb × 6-8 | 115 lb × 8 |
+| Barbell Row | 130 lb × 8-10 | 140 lb × 8-10 | 150 lb × 10 |
+| Chin-ups | BW × 6-8 | BW × 8 (add +10 si 4×8) | BW+20 × 6 |
+
+### Volumen y running por semana
+
+| | Series compound | Series accesorio | Running | Calorías |
+|---|---|---|---|---|
+| **W26** | 3 | 2 | 1× Z2 3 km | ~2,900 (mantenimiento) |
+| **W27** | 3-4 | 3 | 2× Z2 4 km | ~2,500 (déficit) |
+| **W28** | 4 | 3 | 2-3× Z2 | ~2,500 (déficit) |
+
+**Accesorios W26-W27:** mantén la estructura del plan (Upper A/B, Lower A/B abajo) pero recorta a las series indicadas y empieza accesorios livianos. Tempo excéntrico 3s en los 4 marcados sigue vigente, pero peso conservador. Espera agujetas fuertes tras W26 — es esperado y deliberado; no lo combatas añadiendo volumen.
+
+**Qué pasa en W29:** si W28 cerró con las cargas de W18 a RPE ≤8 y sin molestia lumbar, se reanuda el cut normal con doble progresión y la reevaluación formal que quedó pendiente (peso, fotos, working weights). Si no, se repite W28 una semana más.
 
 ---
 
@@ -419,6 +459,7 @@ This data feeds into weekly check-ins and progress tracking.
 | 2026-04-06 | v2.0 rewrite | Full evidence-based review. Added research citations, detailed rationale, RPE phase targets, warm-up protocol, rest period guidelines, deload + diet break integration, weekly volume audit |
 | 2026-04-13 | v3.0 — Block periodization + Week 1 data | Added Block A/B exercise rotation (accessories swap at week 6, compounds stay). Registered Week 1 baselines from Supabase data (3/4 sessions). Added Week 2 targets. Flagged: app stores weights without unit indicator (kg vs lb mixed) |
 | 2026-05-01 | W15-W17 backfill + Week 18 targets | Inline backfill of weekly reviews W15/W16/W17. Sumo DL +15 lb (was flat RPE 7), Squat +5, Row +5, Bench hold, OHP focus on completing all 4 sets. Mobility 3× mandatory after W16 back contracture. Lower B / Upper B accessory reorder (priority work moves earlier in session). Block A week 5 = deload |
+| 2026-06-20 | v5.0 — Re-entry block after ~6-week layoff | Last trained week was W18 (Apr 27-May 3, strong). W19 deload + W20-W25 were an unplanned layoff (~6 weeks, life/schedule, zero training, no injury, back symptom-free, weight stable). Added a 3-week re-entry ramp (W26-W28) at the top: loads ~85%→93%→100% of W18, RPE capped at 7 in W26, volume cut to 3+2 sets W26 then restored, running capped (1→2→2-3 Z2 runs), eat at maintenance W26 then resume deficit W27. Mobility 3×/wk mandatory from day 1 (the gap before both prior contractures was zero mobility). Daily weigh-ins to rebuild the trend. W29 = resume normal cut + the W23 reassessment that never happened. Not starting from zero — muscle memory returns W18 numbers in ~3 weeks; the real risk is DOMS + lumbar history, hence the conservative ramp. |
 | 2026-05-02 | v4.0 — ACSM 2026 refinements (W19 + Block B) | Cross-check de plan vs. 6 ACSM PDFs (Currier 2026 RT, Garber 2011, Thomas 2016, Jakicic 2024, Burke 2021, Castellani 2006). Cambios: (1) Cable Fly añadido a Upper A → chest 7→10 sets/sem (Currier 2026 dose-response). (2) Eccentric overload 3s formal en 4 accesorios fijos: Incline DB Press, RDL, Incline Curl, Leg Curl. (3) Warm-up con reps explícitas — bug encontrado por usuario: tabla solo nombraba ejercicios sin sets/reps. Tiempo total real ~12 min, no "3-5 min". (4) Sumo DL guidance post-contractura W16: +5 lb max por semana, RPE-gated. W18 había target +15 lb a 240 lb — corregido. (5) W19 = deload + diet break + práctica liviana de Cable Fly y patterns con tempo lento. (6) Header alineado con semanas ISO (no "program weeks") para evitar desincronización con changelog. Cambios complementarios en `nutrition-notes.md`: hidratación pre-sesión 500 mL, carb periodization por día, LEA monitoring (libido/sleep/illness) en weekly review |
 
 ---

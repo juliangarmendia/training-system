@@ -1,13 +1,13 @@
 # User Profile
 
-> Last updated: 2026-04-06
+> Last updated: 2026-06-20
 
 ## Basic info
 
 - **Age:** 33 (born 1993-03-10)
 - **Sex:** Male
 - **Height:** 182 cm
-- **Current weight:** 88.6 kg (2026-04-02)
+- **Current weight:** ~86-88 kg (estimate — last reliable weigh-in 86.7 kg on 2026-05-04; ~6-week training layoff since, weight self-reported stable/slightly up; needs fresh measurement)
 - **Estimated body fat %:** ~21% (bioimpedance — directional, not precise)
 - **BMI:** 26.7
 - **Estimated lean mass:** ~69.8 kg
@@ -17,7 +17,7 @@
 
 - **Years training consistently:** At least ~9+ months documented with a trainer. Training has been on-and-off — consistency in showing up but not in frequency
 - **Primary style:** Gym (compound lifts + CrossFit-influenced conditioning). Some running
-- **Current status:** Restarting. Has been training but inconsistently
+- **Current status:** Re-entry after a ~6-week layoff (W19-W25, May-Jun 2026, life/schedule, no injury, back symptom-free). Last trained week W18 was strong. On a 3-week re-entry ramp (W26-W28) before resuming the normal cut
 - **Current frequency:** Variable — consistency is the main challenge
 - **Current running volume:** ~5 km sessions, zone 2
 - **Injuries or limitations:** None
