@@ -18,10 +18,11 @@ const PLAN = {
       exercises: [
         { id: 'bench-press', name: 'Barbell Bench Press', muscle: 'Chest', sets: 4, reps: '5-8', rpe: '7-8', defaultRest: 150, notes: 'Main press. Full ROM, control the eccentric.', compound: true },
         { id: 'barbell-row', name: 'Barbell Row', muscle: 'Back', sets: 4, reps: '6-10', rpe: '7-8', defaultRest: 150, notes: 'Overhand grip. Strict form, no heaving.', compound: true },
-        { id: 'incline-db-press', name: 'Incline DB Press', muscle: 'Chest', sets: 3, reps: '8-12', rpe: '7', defaultRest: 90, notes: '30-45° angle.', superset: 'A', db: true },
-        { id: 'face-pull', name: 'Cable Face Pull', muscle: 'Rear Delt', sets: 3, reps: '12-15', rpe: '7', defaultRest: 60, notes: 'Shoulder health. Non-negotiable.', superset: 'A' },
+        { id: 'incline-db-press', name: 'Incline DB Press', muscle: 'Chest', sets: 3, reps: '8-12', rpe: '7', defaultRest: 90, notes: '30-45° angle. 3s eccentric.', superset: 'A', db: true },
+        { id: 'pec-deck', name: 'Pec Deck', muscle: 'Chest', sets: 3, reps: '10-12', rpe: '7', defaultRest: 90, notes: 'Constant tension, deep stretch. Squeeze 1s.', superset: 'A' },
+        { id: 'face-pull', name: 'Cable Face Pull', muscle: 'Rear Delt', sets: 3, reps: '12-15', rpe: '7', defaultRest: 60, notes: 'Shoulder health. Non-negotiable.', superset: 'B' },
         { id: 'lateral-raise', name: 'DB Lateral Raise', muscle: 'Shoulders', sets: 3, reps: '12-15', rpe: '7', defaultRest: 60, notes: 'Light, controlled, full ROM.', superset: 'B', db: true },
-        { id: 'tricep-pushdown', name: 'Tricep Pushdown', muscle: 'Triceps', sets: 2, reps: '10-15', rpe: '7', defaultRest: 60, notes: 'Optional — skip if short on time.', superset: 'B' },
+        { id: 'tricep-pushdown', name: 'Tricep Pushdown', muscle: 'Triceps', sets: 2, reps: '10-15', rpe: '7', defaultRest: 60, notes: 'Optional — skip if short on time.' },
       ]
     },
     lowerA: {
@@ -38,10 +39,10 @@ const PLAN = {
       exercises: [
         { id: 'back-squat', name: 'Barbell Back Squat', muscle: 'Quads', sets: 4, reps: '5-8', rpe: '7-8', defaultRest: 180, notes: 'Priority #1. Use rack safeties.', compound: true },
         { id: 'rdl', name: 'Barbell RDL', muscle: 'Hamstrings', sets: 3, reps: '8-10', rpe: '7', defaultRest: 150, notes: '3 sec eccentric. Stop at mid-shin.' },
-        { id: 'leg-press', name: 'Leg Press', muscle: 'Quads', sets: 3, reps: '10-12', rpe: '7-8', defaultRest: 120, notes: 'Quad volume without spinal load.' },
-        { id: 'leg-curl-a', name: 'Leg Curl', muscle: 'Hamstrings', sets: 3, reps: '10-12', rpe: '7', defaultRest: 90, notes: 'Focus on contraction quality.', superset: 'A' },
+        { id: 'hack-squat', name: 'Hack Squat', muscle: 'Quads', sets: 3, reps: '10-12', rpe: '7-8', defaultRest: 120, notes: 'Quad volume, no spinal load. Controlled depth.' },
+        { id: 'seated-leg-curl', name: 'Seated Leg Curl', muscle: 'Hamstrings', sets: 3, reps: '10-12', rpe: '7', defaultRest: 90, notes: '3s eccentric, squeeze 1s.', superset: 'A' },
         { id: 'calf-raise', name: 'Standing Calf Raise', muscle: 'Calves', sets: 3, reps: '12-15', rpe: '7', defaultRest: 60, notes: 'Full ROM, pause at stretch.', superset: 'A' },
-        { id: 'ab-wheel', name: 'Ab Wheel Rollout', muscle: 'Core', sets: 3, reps: '8-12', rpe: '-', defaultRest: 60, notes: 'Scale with knees on floor if needed.' },
+        { id: 'cable-crunch', name: 'Cable Crunch', muscle: 'Core', sets: 3, reps: '10-15', rpe: '-', defaultRest: 60, notes: 'Controlled flexion, no hip movement.' },
       ]
     },
     upperB: {
@@ -55,11 +56,11 @@ const PLAN = {
         'Chin-up: BW × 3-5 easy, or lat pulldown light × 10',
       ],
       exercises: [
-        { id: 'chinups', name: 'Chin-ups', muscle: 'Back', sets: 4, reps: '5-8', rpe: '7-8', defaultRest: 150, notes: 'Add weight when you get 4×8. Use lat pulldown if <5 reps.', bw: true, compound: true },
+        { id: 'chinups', name: 'Chin-ups', muscle: 'Back', sets: 4, reps: '5-8', rpe: '7-8', defaultRest: 150, notes: 'Add weight at 4×8. Assisted pull-up machine if <5 reps.', bw: true, compound: true },
         { id: 'ohp', name: 'Overhead Press', muscle: 'Shoulders', sets: 4, reps: '5-8', rpe: '7-8', defaultRest: 150, notes: 'Standing. Strict form, no leg drive.', compound: true },
-        { id: 'landmine-row', name: 'Landmine Row', muscle: 'Back', sets: 3, reps: '8-12/side', rpe: '7', defaultRest: 90, notes: 'Unilateral. Use landmine attachment.' },
-        { id: 'incline-curl', name: 'Incline DB Curl', muscle: 'Biceps', sets: 3, reps: '10-12', rpe: '7', defaultRest: 60, notes: 'Stretch at bottom.', superset: 'A', db: true },
-        { id: 'cable-lateral', name: 'Cable Lateral Raise', muscle: 'Shoulders', sets: 3, reps: '12-15', rpe: '7', defaultRest: 60, notes: 'Constant tension throughout ROM.', superset: 'A' },
+        { id: 'chest-supported-row', name: 'Chest-Supported Row', muscle: 'Back', sets: 3, reps: '10-12', rpe: '7', defaultRest: 90, notes: 'Strict, no lower-back fatigue. Squeeze at the top.' },
+        { id: 'incline-curl', name: 'Incline DB Curl', muscle: 'Biceps', sets: 3, reps: '10-12', rpe: '7', defaultRest: 60, notes: 'Stretch at bottom. 3s eccentric.', superset: 'A', db: true },
+        { id: 'lateral-raise-machine', name: 'Lateral Raise Machine', muscle: 'Shoulders', sets: 3, reps: '12-15', rpe: '7', defaultRest: 60, notes: 'Constant tension. Controlled, full ROM.', superset: 'A' },
         { id: 'hanging-leg-raise', name: 'Hanging Leg Raise', muscle: 'Core', sets: 3, reps: '8-12', rpe: '-', defaultRest: 60, notes: 'Scale to knee raises if needed.', bw: true },
       ]
     },
@@ -75,12 +76,12 @@ const PLAN = {
         'Deadlift: bar × 8, 50% × 5, 70% × 3, 85% × 1',
       ],
       exercises: [
-        { id: 'sumo-dl', name: 'Sumo Deadlift', muscle: 'Posterior', sets: 4, reps: '3-6', rpe: '7-8', defaultRest: 210, notes: 'Reset each rep from floor. No touch-and-go.', compound: true },
+        { id: 'sumo-dl', name: 'Sumo Deadlift', muscle: 'Posterior', sets: 4, reps: '3-6', rpe: '7-8', defaultRest: 210, notes: 'Reset each rep from floor. First working set gates load (lumbar history).', compound: true },
+        { id: 'glute-drive', name: 'Glute Drive (machine)', muscle: 'Glutes', sets: 3, reps: '8-12', rpe: '7', defaultRest: 120, notes: 'Hip-thrust machine. Full lockout, squeeze 1s.' },
         { id: 'bss', name: 'Bulgarian Split Squat', muscle: 'Quads', sets: 3, reps: '8-10/side', rpe: '7-8', defaultRest: 90, notes: 'DB in each hand, rear foot on bench.', db: true },
-        { id: 'leg-extension', name: 'Leg Extension', muscle: 'Quads', sets: 3, reps: '10-15', rpe: '7-8', defaultRest: 90, notes: 'Controlled 2-3 sec eccentric.', superset: 'A' },
-        { id: 'leg-curl-b', name: 'Leg Curl', muscle: 'Hamstrings', sets: 3, reps: '10-12', rpe: '7', defaultRest: 90, notes: 'Second hit of the week.', superset: 'A' },
-        { id: 'hip-thrust', name: 'Barbell Hip Thrust', muscle: 'Glutes', sets: 3, reps: '8-12', rpe: '7', defaultRest: 120, notes: 'Heavy is fine but stay at RPE 7.' },
-        { id: 'pallof-press', name: 'Cable Pallof Press', muscle: 'Core', sets: 3, reps: '10-15', rpe: '-', defaultRest: 60, notes: 'Anti-rotation. Alternate with cable crunch weekly.' },
+        { id: 'leg-extension', name: 'Leg Extension', muscle: 'Quads', sets: 3, reps: '10-15', rpe: '7-8', defaultRest: 90, notes: 'Controlled 2-3 sec eccentric, squeeze top.', superset: 'A' },
+        { id: 'leg-curl-b', name: 'Lying Leg Curl', muscle: 'Hamstrings', sets: 3, reps: '10-12', rpe: '7', defaultRest: 90, notes: '3s eccentric, squeeze 1s. Second hamstring hit.', superset: 'A' },
+        { id: 'pallof-press', name: 'Cable Pallof Press', muscle: 'Core', sets: 3, reps: '10-15', rpe: '-', defaultRest: 60, notes: 'Anti-rotation. Slow and controlled.' },
       ]
     }
   }
@@ -172,15 +173,34 @@ function durationToMinutes(durStr) {
   return m + (s || 0) / 60;
 }
 
+// Convert a stored weight from the unit it was logged in to another unit.
+// Stored values are NEVER mutated — this is display/compute-time only. Workouts
+// carry their own `w.unit` ('lb' for pre-Spain sessions, 'kg' since the move),
+// so historical lb numbers must be converted before being shown or compared in
+// the current display unit.
+function convertWeight(value, fromUnit, toUnit) {
+  if (!value || !fromUnit || fromUnit === toUnit) return value;
+  if (fromUnit === 'lb' && toUnit === 'kg') return +(value * 0.453592).toFixed(2);
+  if (fromUnit === 'kg' && toUnit === 'lb') return +(value * 2.20462).toFixed(2);
+  return value;
+}
+// A stored set weight → current display unit. workoutUnit defaults to the
+// display unit (so weights already in the display unit pass through unchanged).
+function dispW(weight, workoutUnit) {
+  return convertWeight(weight, workoutUnit || state.settings.unit, state.settings.unit);
+}
+
 // Volume helper: dumbbell exercises count both hands (peso × reps × 2). Uses
 // the snapshot meta on saved exercises (set in finishWorkout); for legacy
-// workouts without it, falls back to the plan definition by id.
-function volumeForExercise(ex) {
+// workouts without it, falls back to the plan definition by id. `unit` is the
+// owning workout's unit — weights are converted to the display unit so volume
+// across mixed lb/kg sessions sums consistently.
+function volumeForExercise(ex, unit) {
   const planEx = activePlan && activePlan.sessions
     ? Object.values(activePlan.sessions).flatMap(s => s.exercises).find(e => e.id === ex.exerciseId)
     : null;
   const factor = (ex.db || planEx?.db) ? 2 : 1;
-  return ex.sets.filter(s => s.done).reduce((sum, s) => sum + (s.weight || 0) * (s.reps || 0) * factor, 0);
+  return ex.sets.filter(s => s.done).reduce((sum, s) => sum + dispW(s.weight || 0, unit) * (s.reps || 0) * factor, 0);
 }
 
 // ==================== MOBILITY LIBRARY (v10.5) ====================
@@ -264,16 +284,22 @@ const EXERCISE_ALTERNATIVES = {
     { id: 'incline-db-press', name: 'Incline DB Press' },
     { id: 'db-bench', name: 'DB Bench Press' },
     { id: 'machine-chest-press', name: 'Machine Chest Press' },
+    { id: 'hammer-chest-press', name: 'Hammer Strength Chest Press' },
+    { id: 'pec-deck', name: 'Pec Deck' },
     { id: 'cable-fly', name: 'Cable Fly' },
+    { id: 'cable-crossover', name: 'Cable Crossover' },
     { id: 'pushup', name: 'Push-ups' },
     { id: 'dips', name: 'Dips (Chest)' },
   ],
   'Back': [
     { id: 'barbell-row', name: 'Barbell Row' },
+    { id: 'pendlay-row', name: 'Pendlay Row' },
     { id: 'chinups', name: 'Chin-ups' },
     { id: 'lat-pulldown', name: 'Lat Pulldown' },
+    { id: 'chest-supported-row', name: 'Chest-Supported Row' },
+    { id: 'high-row', name: 'High Row (machine)' },
     { id: 'landmine-row', name: 'Landmine Row' },
-    { id: 'cable-row', name: 'Cable Row' },
+    { id: 'cable-row', name: 'Cable Row (Low Row)' },
     { id: 'db-row', name: 'DB Row' },
     { id: 't-bar-row', name: 'T-Bar Row' },
     { id: 'pullups', name: 'Pull-ups' },
@@ -282,6 +308,7 @@ const EXERCISE_ALTERNATIVES = {
     { id: 'ohp', name: 'Overhead Press' },
     { id: 'lateral-raise', name: 'DB Lateral Raise' },
     { id: 'cable-lateral', name: 'Cable Lateral Raise' },
+    { id: 'lateral-raise-machine', name: 'Lateral Raise Machine' },
     { id: 'db-shoulder-press', name: 'DB Shoulder Press' },
     { id: 'machine-shoulder-press', name: 'Machine Shoulder Press' },
     { id: 'arnold-press', name: 'Arnold Press' },
@@ -303,7 +330,10 @@ const EXERCISE_ALTERNATIVES = {
   ],
   'Hamstrings': [
     { id: 'rdl', name: 'Barbell RDL' },
-    { id: 'leg-curl-a', name: 'Leg Curl' },
+    { id: 'stiff-leg-deadlift', name: 'Stiff-Leg Deadlift' },
+    { id: 'leg-curl-a', name: 'Lying Leg Curl' },
+    { id: 'seated-leg-curl', name: 'Seated Leg Curl' },
+    { id: 'ghr', name: 'Glute-Ham Raise (GHD)' },
     { id: 'db-rdl', name: 'DB RDL' },
     { id: 'good-morning', name: 'Good Morning' },
     { id: 'nordic-curl', name: 'Nordic Curl' },
@@ -316,6 +346,7 @@ const EXERCISE_ALTERNATIVES = {
   ],
   'Glutes': [
     { id: 'hip-thrust', name: 'Barbell Hip Thrust' },
+    { id: 'glute-drive', name: 'Glute Drive (machine)' },
     { id: 'cable-kickback', name: 'Cable Kickback' },
     { id: 'glute-bridge', name: 'Glute Bridge' },
   ],
@@ -375,32 +406,39 @@ const MOVEMENT_PATTERNS = {
   'db-bench': 'horizontal-press', 'machine-chest-press': 'horizontal-press',
   'cable-fly': 'horizontal-press', 'pushup': 'horizontal-press',
   'dips': 'horizontal-press', 'close-grip-bench': 'horizontal-press',
-  'floor-press': 'horizontal-press',
+  'floor-press': 'horizontal-press', 'pec-deck': 'horizontal-press',
+  'cable-crossover': 'horizontal-press', 'hammer-chest-press': 'horizontal-press',
   // Vertical press
   'ohp': 'vertical-press', 'db-shoulder-press': 'vertical-press',
   'machine-shoulder-press': 'vertical-press', 'arnold-press': 'vertical-press',
   // Horizontal pull
   'barbell-row': 'horizontal-pull', 'landmine-row': 'horizontal-pull',
   'cable-row': 'horizontal-pull', 'db-row': 'horizontal-pull',
-  't-bar-row': 'horizontal-pull',
+  't-bar-row': 'horizontal-pull', 'pendlay-row': 'horizontal-pull',
+  'chest-supported-row': 'horizontal-pull', 'high-row': 'horizontal-pull',
   // Vertical pull
   'chinups': 'vertical-pull', 'pullups': 'vertical-pull',
   'lat-pulldown': 'vertical-pull',
   // Squat pattern
   'back-squat': 'squat', 'front-squat': 'squat', 'leg-press': 'squat',
   'goblet-squat': 'squat', 'hack-squat': 'squat', 'bss': 'single-leg',
+  'walking-lunge': 'single-leg',
   // Hinge
   'sumo-dl': 'hinge', 'conv-dl': 'hinge', 'trap-bar-dl': 'hinge',
   'rdl': 'hinge', 'db-rdl': 'hinge', 'good-morning': 'hinge',
+  'stiff-leg-deadlift': 'hinge',
   // Isolation legs
   'leg-extension': 'isolation-quad', 'leg-curl-a': 'isolation-ham',
   'leg-curl-b': 'isolation-ham', 'nordic-curl': 'isolation-ham',
+  'seated-leg-curl': 'isolation-ham', 'ghr': 'isolation-ham',
   'calf-raise': 'isolation-calf', 'seated-calf-raise': 'isolation-calf',
   'leg-press-calf': 'isolation-calf',
   // Glute
   'hip-thrust': 'glute', 'cable-kickback': 'glute', 'glute-bridge': 'glute',
+  'glute-drive': 'glute',
   // Isolation shoulder
   'lateral-raise': 'isolation-shoulder', 'cable-lateral': 'isolation-shoulder',
+  'lateral-raise-machine': 'isolation-shoulder',
   'face-pull': 'isolation-rear-delt', 'rear-delt-fly': 'isolation-rear-delt',
   'band-pull-apart': 'isolation-rear-delt', 'reverse-pec-deck': 'isolation-rear-delt',
   // Isolation arms
@@ -1385,7 +1423,7 @@ async function renderWeekBanner() {
   const wkWorkouts = (allWorkouts || []).filter(w => weekDates.includes(w.date));
   const wkRuns = (allRuns || []).filter(r => weekDates.includes(r.date));
   let totalVolume = 0;
-  wkWorkouts.forEach(w => w.exercises.forEach(ex => { totalVolume += volumeForExercise(ex); }));
+  wkWorkouts.forEach(w => w.exercises.forEach(ex => { totalVolume += volumeForExercise(ex, w.unit); }));
   const totalKm = wkRuns.reduce((s, r) => s + (parseFloat(r.distance) || 0), 0);
   const plannedSessions = Object.values(activeWeekTemplate || {}).filter(d => d && d.type === 'gym').length;
 
@@ -1821,16 +1859,17 @@ async function openEditWorkout(id) {
     const prevEx = previous ? previous.exercises.find(e => e.exerciseId === ex.exerciseId) : null;
     const prevDoneSets = prevEx ? prevEx.sets.filter(s => s.done && (s.weight > 0 || (planEx && planEx.bw))) : [];
     const prevSummary = prevDoneSets.length > 0
-      ? prevDoneSets.map(s => `${planEx && planEx.bw ? '+' : ''}${s.weight}×${s.reps}`).join('  ')
+      ? prevDoneSets.map(s => `${planEx && planEx.bw ? '+' : ''}${convertWeight(s.weight, previous && previous.unit, unit)}×${s.reps}`).join('  ')
       : '';
     const prevHeaderHTML = prevSummary ? `<div class="prev-header">Last: ${prevSummary}</div>` : '';
 
-    // Est 1RM from all history
+    // Est 1RM from all history — convert each session's weight from its own unit
+    // to the display unit before estimating, so lb and kg sessions compare cleanly.
     let best1RM = 0;
     allSessionWorkouts.concat([w]).forEach(wk => {
       const wex = wk.exercises.find(e => e.exerciseId === ex.exerciseId);
       if (wex) wex.sets.filter(s => s.done && s.weight > 0 && s.reps > 0).forEach(s => {
-        const e1rm = estimate1RM(s.weight, s.reps);
+        const e1rm = estimate1RM(convertWeight(s.weight, wk.unit, appUnit), s.reps);
         if (e1rm > best1RM) best1RM = e1rm;
       });
     });
@@ -1839,7 +1878,7 @@ async function openEditWorkout(id) {
     const rows = ex.sets.map((s, i) => {
       const ghostSet = prevEx && prevEx.sets[i];
       const ghostHTML = ghostSet && ghostSet.done
-        ? `<div class="ghost-set ew-ghost"><span>${planEx && planEx.bw ? '+' : ''}${ghostSet.weight}</span><span>${ghostSet.reps}</span><span>${ghostSet.rpe || ''}</span></div>`
+        ? `<div class="ghost-set ew-ghost"><span>${planEx && planEx.bw ? '+' : ''}${convertWeight(ghostSet.weight, previous && previous.unit, unit)}</span><span>${ghostSet.reps}</span><span>${ghostSet.rpe || ''}</span></div>`
         : '';
       return `
         ${ghostHTML}
@@ -2475,7 +2514,9 @@ async function startWorkout(sessionId) {
     let compoundIdx = 0;
     for (const ex of session.exercises) {
       const prevEx = previous.exercises.find(e => e.exerciseId === ex.id);
-      const topWeight = prevEx ? Math.max(...prevEx.sets.filter(s => s.done && s.weight > 0).map(s => s.weight), 0) : 0;
+      // Convert the previous top set from its workout's unit to the display unit
+      // so ramp %/plates are correct even when the last session was logged in lb.
+      const topWeight = prevEx ? convertWeight(Math.max(...prevEx.sets.filter(s => s.done && s.weight > 0).map(s => s.weight), 0), previous.unit, state.settings.unit) : 0;
       if (topWeight <= bar) continue;
       // Only compounds (sets >= 3 and has RPE >= 7) get warm-up ramps
       const isCompound = ex.sets >= 3 && ex.rpe !== '-' && parseFloat(ex.rpe) >= 7;
@@ -2738,9 +2779,10 @@ function generateCoachNote(ex, allWorkouts) {
   // is stale (and pre-Spain it was logged in lb, so the hint numbers are wrong).
   if (ex.notes && ex.notes.startsWith('Reentrada ')) return ex.notes;
 
-  // Get last 2 sessions for this exercise (most recent first)
+  // Get last 2 sessions for this exercise (most recent first). Keep each
+  // session's unit so weights can be converted to the display unit below.
   const history = allWorkouts
-    .map(w => ({ date: w.date, ex: w.exercises.find(e => e.exerciseId === ex.id) }))
+    .map(w => ({ date: w.date, unit: w.unit, ex: w.exercises.find(e => e.exerciseId === ex.id) }))
     .filter(h => h.ex && h.ex.sets.some(s => s.done && s.weight > 0))
     .slice(0, 2);
 
@@ -2756,7 +2798,7 @@ function generateCoachNote(ex, allWorkouts) {
   const maxReps = repRange[1] || repRange[0] || 0;
   const targetRpe = parseFloat(ex.rpe) || 0;
 
-  const topWeight = Math.max(...doneSets.map(s => s.weight));
+  const topWeight = convertWeight(Math.max(...doneSets.map(s => s.weight)), history[0].unit, state.settings.unit);
   const avgReps = Math.round(doneSets.reduce((sum, s) => sum + s.reps, 0) / doneSets.length);
   const avgRpe = doneSets.filter(s => s.rpe).length > 0
     ? doneSets.filter(s => s.rpe).reduce((sum, s) => sum + s.rpe, 0) / doneSets.filter(s => s.rpe).length
@@ -2781,7 +2823,7 @@ function generateCoachNote(ex, allWorkouts) {
   if (history.length >= 2) {
     const prev = history[1].ex;
     const prevDone = prev.sets.filter(s => s.done && s.weight > 0);
-    const prevTop = Math.max(...prevDone.map(s => s.weight));
+    const prevTop = convertWeight(Math.max(...prevDone.map(s => s.weight)), history[1].unit, state.settings.unit);
     const prevAvgReps = Math.round(prevDone.reduce((sum, s) => sum + s.reps, 0) / prevDone.length);
     if (topWeight === prevTop && avgReps === prevAvgReps) {
       return `→ Same weight and reps as last time. Push for +1 rep per set to progress.`;
@@ -2822,7 +2864,7 @@ function buildExerciseCard(ex, exIdx, previous, restSettings, exerciseNotes, del
     const wex = w.exercises.find(e => e.exerciseId === ex.id);
     if (wex) {
       wex.sets.filter(s => s.done && s.weight > 0 && s.reps > 0).forEach(s => {
-        const e1rm = estimate1RM(s.weight, s.reps);
+        const e1rm = estimate1RM(convertWeight(s.weight, w.unit, state.settings.unit), s.reps);
         if (e1rm > best1RM) best1RM = e1rm;
       });
     }
@@ -2836,12 +2878,14 @@ function buildExerciseCard(ex, exIdx, previous, restSettings, exerciseNotes, del
   let setsHTML = '';
   for (let i = 0; i < numSets; i++) {
     const prevSet = prevEx && prevEx.sets[i];
-    const ghostHTML = prevSet && prevSet.done ? `<div class="ghost-set"><span>${ex.bw ? '+' : ''}${prevSet.weight}</span><span>${prevSet.reps}</span><span>${prevSet.rpe || ''}</span></div>` : '';
+    // Previous set weight converted from its workout's unit to the display unit.
+    const prevWeightDisp = prevSet ? convertWeight(prevSet.weight, previous && previous.unit, state.settings.unit) : null;
+    const ghostHTML = prevSet && prevSet.done ? `<div class="ghost-set"><span>${ex.bw ? '+' : ''}${prevWeightDisp}</span><span>${prevSet.reps}</span><span>${prevSet.rpe || ''}</span></div>` : '';
     setsHTML += `
       ${ghostHTML}
       <div class="set-row" data-set="${i}">
         <div class="set-num">${i + 1}</div>
-        <input type="number" class="set-input" data-field="weight" placeholder="${prevSet ? prevSet.weight : (ex.bw ? '0' : '-')}" inputmode="decimal" step="0.5">
+        <input type="number" class="set-input" data-field="weight" placeholder="${prevSet ? prevWeightDisp : (ex.bw ? '0' : '-')}" inputmode="decimal" step="0.5">
         <input type="number" class="set-input" data-field="reps" placeholder="${prevSet ? prevSet.reps : '-'}" inputmode="numeric" step="1">
         <select class="set-input" data-field="rpe" style="padding:8px 2px;font-size:12px">
           <option value="">RPE</option>
@@ -2854,7 +2898,7 @@ function buildExerciseCard(ex, exIdx, previous, restSettings, exerciseNotes, del
 
   const prevDoneSets = prevEx ? prevEx.sets.filter(s => s.done && (s.weight > 0 || ex.bw)) : [];
   const prevSummary = prevDoneSets.length > 0
-    ? prevDoneSets.map(s => `${ex.bw ? '+' + s.weight : s.weight}×${s.reps}`).join('  ')
+    ? prevDoneSets.map(s => { const wd = convertWeight(s.weight, previous && previous.unit, state.settings.unit); return `${ex.bw ? '+' + wd : wd}×${s.reps}`; }).join('  ')
     : '';
   const prevHeaderHTML = prevSummary
     ? `<div class="prev-header">Last: ${prevSummary}</div>`
@@ -3301,11 +3345,13 @@ async function openExerciseHistory(exId) {
       if (doneSets.length > 0) {
         const bestSet = doneSets.reduce((best, s) => estimate1RM(s.weight, s.reps) > estimate1RM(best.weight, best.reps) ? s : best);
         const avgRpe = doneSets.filter(s => s.rpe).reduce((sum, s, _, arr) => sum + s.rpe / arr.length, 0);
+        // Convert to the display unit so lb and kg sessions chart on one scale.
         history.push({
           date: w.date,
           sets: doneSets,
-          best1RM: estimate1RM(bestSet.weight, bestSet.reps),
-          bestWeight: bestSet.weight,
+          unit: w.unit,
+          best1RM: estimate1RM(convertWeight(bestSet.weight, w.unit, state.settings.unit), bestSet.reps),
+          bestWeight: convertWeight(bestSet.weight, w.unit, state.settings.unit),
           bestReps: bestSet.reps,
           avgRpe: avgRpe || null,
         });
@@ -3355,7 +3401,7 @@ async function openExerciseHistory(exId) {
     histList.innerHTML = recentHistory.map(h => `
       <div class="modal-history-row">
         <span class="mhr-date">${formatDate(h.date)}</span>
-        <span class="mhr-data">${h.sets.map(s => `${s.weight}×${s.reps}`).join(', ')}</span>
+        <span class="mhr-data">${h.sets.map(s => `${convertWeight(s.weight, h.unit, state.settings.unit)}×${s.reps}`).join(', ')}</span>
         <span class="mhr-rpe">${h.avgRpe ? `RPE ${h.avgRpe.toFixed(1)}` : ''}</span>
       </div>
     `).join('');
@@ -4410,7 +4456,7 @@ async function renderWeeklyReport() {
   // Total volume this week (DB exercises count both hands via volumeForExercise)
   let totalVolume = 0;
   weekWorkouts.forEach(w => {
-    w.exercises.forEach(ex => { totalVolume += volumeForExercise(ex); });
+    w.exercises.forEach(ex => { totalVolume += volumeForExercise(ex, w.unit); });
   });
 
   // Avg protein
@@ -4468,7 +4514,7 @@ async function drawStrengthChart(liftId, container) {
       const doneSets = ex.sets.filter(s => s.done && s.weight > 0 && s.reps > 0);
       if (doneSets.length > 0) {
         const best = doneSets.reduce((b, s) => estimate1RM(s.weight, s.reps) > estimate1RM(b.weight, b.reps) ? s : b);
-        data.push({ date: w.date, e1rm: estimate1RM(best.weight, best.reps) });
+        data.push({ date: w.date, e1rm: estimate1RM(convertWeight(best.weight, w.unit, state.settings.unit), best.reps) });
       }
     }
   });
@@ -4499,7 +4545,7 @@ async function renderVolumeChart() {
   workouts.forEach(w => {
     const wk = w.week || 1;
     if (!weekVolumes[wk]) weekVolumes[wk] = 0;
-    w.exercises.forEach(ex => { weekVolumes[wk] += volumeForExercise(ex); });
+    w.exercises.forEach(ex => { weekVolumes[wk] += volumeForExercise(ex, w.unit); });
   });
 
   const weeks = Object.keys(weekVolumes).sort((a, b) => a - b);
@@ -4540,7 +4586,7 @@ async function renderWeekComparison() {
     const nt = nutrition.filter(n => dates.includes(n.date));
 
     let volume = 0;
-    wk.forEach(w => w.exercises.forEach(ex => { volume += volumeForExercise(ex); }));
+    wk.forEach(w => w.exercises.forEach(ex => { volume += volumeForExercise(ex, w.unit); }));
 
     const avgProtein = nt.length > 0 ? Math.round(nt.reduce((s, n) => s + (n.protein || 0), 0) / nt.length) : 0;
     const avgQuality = wk.length > 0 ? +(wk.reduce((s, w) => s + (w.quality || 3), 0) / wk.length).toFixed(1) : 0;
@@ -4721,7 +4767,7 @@ async function renderWeeklySummary() {
   thisWeek.forEach(w => {
     w.exercises.forEach(ex => {
       const muscle = getExerciseMuscle(ex.exerciseId);
-      totalVolume += volumeForExercise(ex);
+      totalVolume += volumeForExercise(ex, w.unit);
       ex.sets.filter(s => s.done).forEach(() => {
         totalSets++;
         if (muscle) muscleSets[muscle] = (muscleSets[muscle] || 0) + 1;
@@ -6734,20 +6780,21 @@ async function detectPRs(workout) {
     if (doneSets.length === 0) continue;
 
     // Find best previous 1RM for this exercise
+    // Compare 1RMs in kg across all sessions, regardless of each one's logged unit.
     let prevBest1RM = 0;
     allWorkouts.forEach(w => {
       const wex = w.exercises.find(e => e.exerciseId === ex.exerciseId);
       if (wex) {
         wex.sets.filter(s => s.done && s.weight > 0 && s.reps > 0).forEach(s => {
-          const e1rm = estimate1RM(s.weight, s.reps);
+          const e1rm = estimate1RM(convertWeight(s.weight, w.unit, 'kg'), s.reps);
           if (e1rm > prevBest1RM) prevBest1RM = e1rm;
         });
       }
     });
 
-    // Check if any set in this workout beats the previous best
+    // Check if any set in this workout beats the previous best (compare in kg).
     const todayBest = doneSets.reduce((best, s) => {
-      const e1rm = estimate1RM(s.weight, s.reps);
+      const e1rm = estimate1RM(convertWeight(s.weight, workout.unit, 'kg'), s.reps);
       return e1rm > best.e1rm ? { e1rm, weight: s.weight, reps: s.reps } : best;
     }, { e1rm: 0, weight: 0, reps: 0 });
 
@@ -7501,12 +7548,12 @@ async function exportCSV() {
 
   // Workouts sheet
   csv += '=== WORKOUTS ===\n';
-  csv += 'Date,Session,Exercise,Set,Weight,Reps,RPE,Done,Quality,Duration\n';
+  csv += 'Date,Session,Exercise,Set,Weight,Unit,Reps,RPE,Done,Quality,Duration\n';
   workouts.forEach(w => {
     const session = activePlan.sessions[w.session];
     w.exercises.forEach(ex => {
       ex.sets.forEach((s, i) => {
-        csv += `${w.date},${session ? session.name : w.session},${getExerciseName(ex.exerciseId)},${i + 1},${s.weight},${s.reps},${s.rpe || ''},${s.done},${w.quality || ''},${w.duration || ''}\n`;
+        csv += `${w.date},${session ? session.name : w.session},${getExerciseName(ex.exerciseId)},${i + 1},${s.weight},${w.unit || 'kg'},${s.reps},${s.rpe || ''},${s.done},${w.quality || ''},${w.duration || ''}\n`;
       });
     });
   });

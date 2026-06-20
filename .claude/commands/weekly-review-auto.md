@@ -95,6 +95,9 @@ Compute and reference these in the review. Don't be lazy — actually compute th
 - Mobility: count + distinct days. 4-week trend (improving / flat / declining).
 
 ### 2.2 Performance per key lift (`bench-press`, `back-squat`, `sumo-dl`, `ohp`, `barbell-row`, `chinups`)
+
+> **UNIT NORMALIZATION (CRITICAL):** every `workouts` row carries `data.unit` (`'lb'` or `'kg'`). Pre-Spain sessions (through ~2026-05) are in **lb**; from 2026-06-20 onward they are in **kg**. Before ANY cross-session comparison (top-set trend, 1RM, weekly volume, stall/progression diagnosis), **convert every set weight to kg**: `kg = lb_value × 0.453592` when `data.unit === 'lb'`; leave as-is when `'kg'`. Never compare a raw lb number against a kg number. Report all loads in **kg**.
+
 For each lift in this week + each of the prior 4 weeks:
 - Top working set (highest weight × reps with done=true)
 - Avg RPE across done sets

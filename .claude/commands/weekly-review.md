@@ -84,6 +84,8 @@ Also fetch the prior **4 weeks** for trend context.
 
 ## Phase 2 — Multi-week analysis
 
+> **UNIT NORMALIZATION (CRITICAL):** each `workouts` row has `data.unit` (`'lb'` pre-Spain through ~2026-05, `'kg'` from 2026-06-20). Convert every set weight to kg (`lb × 0.453592`) before any cross-session comparison or volume sum. Report all loads in kg. Never compare a raw lb value against a kg value.
+
 Compute (and reference in the review):
 
 | Metric | Window |

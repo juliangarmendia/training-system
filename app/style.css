@@ -162,10 +162,12 @@ main { flex: 1; overflow: hidden; position: relative; }
 .view-scroll { height: 100%; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 8px 16px 16px; border-top: 2px solid var(--section-accent, transparent); }
 
 /* ========== Navigation ========== */
-/* padding-bottom: 2px intentionally ignores safe-area-inset-bottom. Tuned live
-   with the debug overlay in v8.2; keeping the home-indicator reserve made the
-   icons sit too high. Verified safe on iPhone PWA. */
-nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: blur(20px) saturate(140%); backdrop-filter: blur(20px) saturate(140%); border-top: 1px solid var(--border); padding-bottom: 2px; flex-shrink: 0; position: relative; z-index: 100; margin-top: auto; }
+/* padding-bottom carries env(safe-area-inset-bottom) so the nav's blurred
+   background fills the iOS home-indicator zone (no black strip below it). The
+   icons keep their own .nav-btn padding and sit ABOVE the indicator — adding
+   bottom padding extends the background downward without raising the icons.
+   Fallback 0px keeps a flush bar on non-notch devices (+2px breathing room). */
+nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: blur(20px) saturate(140%); backdrop-filter: blur(20px) saturate(140%); border-top: 1px solid var(--border); padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 2px); flex-shrink: 0; position: relative; z-index: 100; margin-top: auto; }
 .nav-btn { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 10px 0 8px; background: none; border: none; color: var(--text3); font-size: 10px; font-weight: 600; cursor: pointer; position: relative; transition: color 0.15s; }
 .nav-btn.active { color: var(--accent); }
 .nav-btn.active::before { content: ''; position: absolute; top: 0; left: 25%; width: 50%; height: 2px; background: var(--accent); border-radius: 0 0 2px 2px; }

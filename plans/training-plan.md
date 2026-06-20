@@ -1,9 +1,10 @@
 # Training Plan — Cut Phase 1
 
-> Version: 5.0
+> Version: 6.0
 > Created: 2026-04-06
-> Updated: 2026-06-20 (Re-entry block after ~6-week layoff)
+> Updated: 2026-06-20 (v6.0 top-class redesign for David Lloyd Serrano + re-entry block)
 > Phase: RE-ENTRY → Fat Loss / Strength Maintenance
+> Gym: David Lloyd Serrano (Madrid) — premium club, kg. Exercise selection upgraded to its machines; volume unchanged.
 > Duration: Open-ended cut — calendar weeks ISO. W18 = last trained week (strong). W19 deload + W20-W25 = unplanned layoff (life/schedule, ~6 weeks, zero training, no injury). W26-W28 = 3-week re-entry ramp. W29+ = resume normal cut.
 > Current ISO week: 25 (Mon 2026-06-15 to Sun 2026-06-21). Re-entry starts Mon 2026-06-22 (W26). Back is symptom-free, weight roughly stable (~86-88 kg, needs fresh weigh-in).
 > Next review: W29 (after the 3-week re-entry ramp — confirm loads back to W18 baseline, then reset deficit + progression)
@@ -52,6 +53,34 @@ Estas cargas están **embebidas en la app** en las notas de cada ejercicio, y el
 
 ---
 
+## 🏆 Program v6.0 — Top-Class (David Lloyd Serrano)
+
+This is the **authoritative current exercise selection** (live in the app's `PLAN`). It keeps the proven 4-day Upper/Lower structure, the 5 strength anchors, the rep/RPE schemes, eccentric-tempo accessories, and **identical per-session volume** (22/19/20/19 sets) — only the accessory *selection* is upgraded to David Lloyd's machines for better stimulus and joint-friendliness. **No added volume** (deficit + re-entry constraint). During W26–W28 these same exercises run at the conservative re-entry loads above; full loads resume W29.
+
+**Anchors (never rotate):** Barbell Bench · Barbell Back Squat · Sumo Deadlift · OHP · Chin-ups · Barbell Row.
+
+### Block A (live now)
+
+| Session | Exercises (sets × reps @ RPE) |
+|---|---|
+| **Upper A** | Bench 4×5-8@7-8 · Barbell Row 4×6-10@7-8 · Incline DB Press 3×8-12@7 (3s ecc) · **Pec Deck** 3×10-12@7 · Face Pull 3×12-15@7 · DB Lateral 3×12-15@7 · Rope Pushdown 2×10-15@7 |
+| **Lower A** | Back Squat 4×5-8@7-8 · RDL 3×8-10@7 (3s ecc) · **Hack Squat** 3×10-12@7-8 · **Seated Leg Curl** 3×10-12@7 (3s ecc) · Standing Calf 3×12-15@7 · Cable Crunch 3×10-15 |
+| **Upper B** | Chin-ups 4×5-8@7-8 · OHP 4×5-8@7-8 · **Chest-Supported Row** 3×10-12@7 · Incline DB Curl 3×10-12@7 (3s ecc) · **Lateral-Raise Machine** 3×12-15@7 · Hanging Leg Raise 3×8-12 |
+| **Lower B** | Sumo DL 4×3-6@7-8 (RPE-gated) · **Glute-Drive machine** 3×8-12@7 · BSS 3×8-10/side@7-8 · Leg Extension 3×10-15@7-8 · Lying Leg Curl 3×10-12@7 (3s ecc) · Cable Pallof 3×10-15 |
+
+### Block B (activate at W29 via plan version — rotation for novel stimulus)
+
+| Session | Exercises |
+|---|---|
+| **Upper A** | Bench · **Pendlay Row** · **Hammer Strength Chest Press** · Cable Crossover (high-low) · Reverse Pec Deck · DB Lateral · Overhead Rope Ext |
+| **Lower A** | Back Squat · **Stiff-Leg Deadlift** · **Linear Leg Press** · Seated Leg Curl · Seated Calf · Cable Crunch |
+| **Upper B** | Chin-ups (weighted) · OHP (or Machine Shoulder Press) · Lat Pulldown · **Low/High Row machine** · **Hammer Curl** · Cable Lateral · Hanging Leg Raise |
+| **Lower B** | **Trap-Bar Deadlift** (lumbar-friendly rotation) · Glute-Drive · Walking Lunge (DB) · Leg Extension · **GHR (Glute-Ham Raise / GHD)** · Hanging Leg Raise |
+
+> The detailed per-exercise rationale tables further down predate v6.0; the anchors are unchanged, and the accessory swaps above supersede the old accessory rows. The Block A/B rotation table below is updated to v6.0.
+
+---
+
 ## Rationale
 
 ### Why a 4-day Upper/Lower Split
@@ -97,14 +126,18 @@ Main compounds stay. Accessories and secondary movements rotate to:
 
 | Block A (Weeks 1-4) | Block B (Weeks 6-9) | Why the swap |
 |---|---|---|
-| Incline DB Press | DB Floor Press | Different ROM emphasis, less shoulder stress |
+| Incline DB Press | Hammer Strength Chest Press | Machine stability lets you push closer to failure safely |
+| Pec Deck | Cable Crossover (high-low) | Different resistance curve, peak-contraction emphasis |
 | Barbell Row (overhand) | Pendlay Row | Stricter form, more explosive concentric |
-| RDL | Stiff-Leg Deadlift | Greater hamstring stretch, slightly different loading |
-| Leg Press | Hack Squat (or Front Squat) | More quad isolation, different spinal loading |
+| Hack Squat | Linear Leg Press | Different quad loading / knee angle |
+| RDL | Stiff-Leg Deadlift | Greater hamstring stretch |
+| Seated Leg Curl | Lying Leg Curl | Different hip angle on the hamstring |
+| Lying Leg Curl (Lower B) | GHR / Glute-Ham Raise (GHD) | Eccentric-overload hamstring, top-tier stimulus |
+| Chest-Supported Row | Low/High Row machine | Angle variation on mid-back |
 | Incline DB Curl | Hammer Curl | Brachialis emphasis, forearm development |
-| Cable Lateral Raise | Machine Lateral Raise (or DB partials) | Different resistance curve |
-| Ab Wheel | Plank (weighted) or Dead Bug | Different core stimulus, anti-extension variety |
-| Cable Pallof Press | Landmine Anti-Rotation | Same pattern, different resistance profile |
+| Lateral-Raise Machine | Cable Lateral Raise | Different resistance profile |
+| Sumo Deadlift (Lower B anchor) | Trap-Bar Deadlift | Lumbar-friendly rotation given back history |
+| Glute-Drive | (stays) | Premium glute machine, keep both blocks |
 
 **Main compounds that DO NOT change:** Bench Press, Back Squat, Sumo Deadlift, OHP, Chin-ups. These are your strength markers — consistency is how you measure progress.
 
@@ -457,6 +490,7 @@ This data feeds into weekly check-ins and progress tracking.
 
 | Date | Change | Reason |
 |------|--------|--------|
+| 2026-06-20 | v6.0 — Top-class redesign for David Lloyd Serrano | Moved to Spain → premium club. Upgraded accessory selection to its machines while keeping the 4-day U/L structure, the 5 anchors, rep/RPE schemes, eccentric tempo, and **identical per-session volume** (22/19/20/19 — no added volume in a deficit/re-entry). Block A swaps live in the app `PLAN`: Cable Fly→Pec Deck, Leg Press→Hack Squat, Leg Curl→Seated Leg Curl, Ab Wheel→Cable Crunch, Landmine Row→Chest-Supported Row, Cable Lateral→Lateral-Raise Machine, Hip Thrust→Glute-Drive machine, Lower-B leg curl→Lying. Block B rotation documented (incl. Trap-Bar DL as lumbar-friendly Lower-B anchor rotation, GHR, Hammer chest press, Pendlay, Stiff-Leg DL) — activates W29. Also: exercise library + movement patterns extended; profile equipment inventory replaced with the DL list. See "Program v6.0" section near the top. |
 | 2026-04-06 | v1.0 created | Initial assessment |
 | 2026-04-06 | v2.0 rewrite | Full evidence-based review. Added research citations, detailed rationale, RPE phase targets, warm-up protocol, rest period guidelines, deload + diet break integration, weekly volume audit |
 | 2026-04-13 | v3.0 — Block periodization + Week 1 data | Added Block A/B exercise rotation (accessories swap at week 6, compounds stay). Registered Week 1 baselines from Supabase data (3/4 sessions). Added Week 2 targets. Flagged: app stores weights without unit indicator (kg vs lb mixed) |

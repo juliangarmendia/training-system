@@ -25,18 +25,31 @@
 
 ## Equipment access
 
-> **Update 2026-06-20:** Moved to Spain. Now trains at **David Lloyd Serrano (Madrid)** — full commercial gym, **kg plates** (all logging/programming switched to kg). Previous home/private-gym inventory below kept for reference; assume standard commercial equipment is available (racks, barbells, full DB range, machines, cables) unless found otherwise.
+> **Update 2026-06-20:** Moved to Spain. Now trains at **David Lloyd Serrano (Madrid)** — full premium club, **kg plates** (all logging/programming in kg). This is a major equipment upgrade over the previous home gym (see full inventory below). Program upgraded accordingly (training-plan.md v6.0).
 
-Home gym or private gym with strong free-weight setup:
-- Power rack with safety arms, Olympic barbell, EZ curl bar, hex/trap bar, landmine
-- Flat bench, incline bench
-- Dumbbells 5-100 lb (~2-45 kg)
-- Olympic plates, kettlebells
-- Leg curl, leg extension, leg press machines
-- Cable machine / functional trainer, high/low pulley
-- Dip station
-- Battle ropes, med balls, stability balls, parallettes
-- Treadmill, elliptical, rower, spin bikes
+### David Lloyd Serrano — equipment inventory (2026-06-20)
+
+**Racks / bars / platforms:** Hammer Strength power racks, half racks, squat racks, functional rack, Smith machine, Olympic lifting + deadlift platforms. Bars: Olympic 20 kg & 15 kg, short straight, EZ/W, **trap/hex bar**, **safety squat bar (SSB)**, landmine. Bumper + Olympic plates, collars.
+
+**Benches / free weights:** flat, utility, adjustable incline, decline, bench-press bench, shoulder-press bench. Full **dumbbells (all weights)**, kettlebells.
+
+**Chest machines:** incline press, chest press, bench press machine, **Hammer Strength chest press**, **pec deck**, **cable fly / cable crossover**.
+
+**Back machines:** lat pulldown, front pulldown, **seated row, low row, high row, cable row**, **assisted pull-up/chin-up**, 45° back extension.
+
+**Shoulder machines:** shoulder press, **lateral raise machine**, **rear delt / reverse pec deck**, cable lateral setup.
+
+**Leg / glute machines:** **hack squat**, **linear leg press**, leg press, Smith for legs, **hip thrust / glute drive machine**, glute bridge machine, hip abductor/adductor, leg extension, **seated leg curl**, **lying leg curl**, calf raise machine, **GHD / glute-ham developer (GHR)**.
+
+**Arms / cables:** biceps curl machine, triceps extension machine, assisted dip machine, high/low pulley, **dual-pulley functional trainer**, large cable stations + full attachment set (rope, EZ, straight bar, D-handles, V-bar, lat bar).
+
+**Core:** ab crunch machine, decline ab bench, hanging knee-raise station, ab mats.
+
+**Cardio:** treadmills incl. **Woodway Curve**, cross-trainers, Stairmaster, **Concept2 SkiErg**, rowers, **Assault/AirBike**, **BikeErg**, **Wattbike**, spin bikes.
+
+**Functional / HYROX:** sled + turf track, 60 kg tire, battle ropes, wall/slam/med balls, sandbags, kettlebells, plyo boxes, TRX, rings, monkey bars, pull-up rig, farmer handles, weight vest.
+
+**Recovery / club:** stretching area, foam rollers, bands, **pool, sauna, steam room**, recovery area.
 
 ## Current strength (recent working weights — source: Last Year Weights.txt, ~2025)
 
