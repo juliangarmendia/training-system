@@ -2733,6 +2733,11 @@ async function startWorkout(sessionId) {
 
 // Generate a smart coach note for an exercise based on recent performance
 function generateCoachNote(ex, allWorkouts) {
+  // During the re-entry ramp, always show the prescribed target note (with its
+  // kg load), never a dynamic hint derived from pre-layoff history — that history
+  // is stale (and pre-Spain it was logged in lb, so the hint numbers are wrong).
+  if (ex.notes && ex.notes.startsWith('Reentrada ')) return ex.notes;
+
   // Get last 2 sessions for this exercise (most recent first)
   const history = allWorkouts
     .map(w => ({ date: w.date, ex: w.exercises.find(e => e.exerciseId === ex.id) }))

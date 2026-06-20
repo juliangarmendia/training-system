@@ -322,7 +322,7 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
 .warmup-chevron { font-size: 14px; color: var(--text3); transition: transform 0.2s; }
 .warmup-card.expanded .warmup-chevron { transform: rotate(180deg); }
 .warmup-body { max-height: 0; overflow: hidden; transition: max-height 0.3s; }
-.warmup-card.expanded .warmup-body { max-height: 400px; }
+.warmup-card.expanded .warmup-body { max-height: 60vh; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
 .warmup-list { padding: 0 16px 14px; list-style: none; }
 .warmup-list li { font-size: 13px; color: var(--text2); padding: 4px 0; display: flex; align-items: center; gap: 8px; }
 .warmup-list li::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: var(--yellow); flex-shrink: 0; }
