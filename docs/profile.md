@@ -25,6 +25,8 @@
 
 ## Equipment access
 
+> **Update 2026-06-20:** Moved to Spain. Now trains at **David Lloyd Serrano (Madrid)** — full commercial gym, **kg plates** (all logging/programming switched to kg). Previous home/private-gym inventory below kept for reference; assume standard commercial equipment is available (racks, barbells, full DB range, machines, cables) unless found otherwise.
+
 Home gym or private gym with strong free-weight setup:
 - Power rack with safety arms, Olympic barbell, EZ curl bar, hex/trap bar, landmine
 - Flat bench, incline bench
