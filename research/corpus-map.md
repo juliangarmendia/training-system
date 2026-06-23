@@ -164,8 +164,12 @@ entrenado, vuelta de ~6 semanas de parón, historial lumbar (sumo DL RPE-gated),
 
 ## Lista de adquisición priorizada (papers que faltan)
 
-> **Ronda 1 de verificación web completada (2026-06-23)** — fichas con DOI/PMID en
-> [`source-coverage-audit.md`](./source-coverage-audit.md). ✓ = `included_verified` esta ronda.
+> **Rondas 1-3 de verificación web completadas (2026-06-23/24)** — fichas con DOI/PMID en
+> [`source-coverage-audit.md`](./source-coverage-audit.md). ✓ = `included_verified`.
+> Ronda 3 verificó: Wolf 2025/Maeo (STR-007), Pelland 2026 (STR-003), Byrne 2018 (REC-005, sin
+> preservación de FFM), Pareja-Blanco (ATH-002, trade-off + requiere dispositivo), Bertelsen 2017
+> (END-003), Rio 2015 (LOAD-002, n=6), Markovic/Sáez (ATH-001, low-dose no óptimo), Coyle &
+> González-Alonso (END-005, decoupling = heurística no validada). Pendiente: Kassiano DOI, Daniels.
 
 1. **Concurrent:** ✓ Huiberts 2024 (*Sports Med*, doi 10.1007/s40279-023-01943-9), ✓ Wilson 2012 (*JSCR*, PMID 22002517), Schumann 2022 (pending), Fyfe (pending).
 2. **TID:** ✓ Seiler 2010 (IJSPP), ✓ Stöggl & Sperlich 2014 (PMID 24550842), ✓ Rosenblat 2019 (PMID 29863593, solo 3 estudios), Casado (pending).

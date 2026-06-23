@@ -44,22 +44,20 @@ Claim verificado o robustamente establecido + fuente verificada + aplicabilidad 
 | LOAD-002 | Tendón: cargar progresivamente, no descansar a cero | **Cook&Purdam ✓ + Malliaras ✓** (ronda 2; isométricos→Rio pending) |
 | ATH-004 | Introducir plyo tras base (tendón adapta lento) | **Cook&Purdam ✓ + Malliaras ✓** (ronda 2) |
 | READ-006 | Sueño como palanca primaria de recuperación | **Mah 2011 ✓** + Fullagar (narrative); sueño-importa robusto |
+| STR-007 | ROM completo + énfasis en posición alargada | **Wolf 2025 ✓ + Maeo 2021/2023 ✓** (ronda 3, strong) |
+| STR-003 | Volumen 10-20 sets/músculo (cap 10-14 en déficit) | **Pelland 2026 ✓** (ronda 3; el "10+" es convención práctica, no anclada por la meta) |
 
 ## `provisional_needs_verification`
 Citada pero la fuente o el claim aún no verificado. No gobierna hasta verificar.
 
 | Rule | Pendiente |
 |---|---|
-| STR-007 | Wolf/Kassiano/Maeo long-length (no verificada) |
-| STR-003 | Pelland/Robinson volumen (Currier ✓ cubre, Pelland sin verificar) |
-| REC-005 | Byrne 2018 MATADOR (no verificada) |
-| END-002 | Daniels como toolbox (no verificada) |
+| END-002 | Daniels como toolbox (secundaria, no requiere verificación de claim) |
 | END-004 | Cap de intervals — Seiler ✓ pero el "máx 1/sem" es razonamiento |
-| END-005 | Decoupling = método; **además el dato no se extrae hoy** (ver data-sources-audit) |
+| END-005 | Decoupling = heurística (Friel, no validada) **y el dato NO se extrae hoy** → advisory + data-blocked |
 | END-006 | Run/walk = práctica aplicada |
 | INT-006 | Wilson ✓ (volumen) + Fyfe expert (no prueba reducción de interferencia) |
 | LOAD-004 | Periodización aplicada |
-| ATH-001 | Markovic/Sáez pliometría (no verificada) |
 
 ## `expert_or_extrapolated_use_with_guardrails`
 Reglas útiles basadas en práctica experta o evidencia indirecta. Pueden usarse, **con guardrail**.
@@ -76,7 +74,7 @@ Reglas útiles basadas en práctica experta o evidencia indirecta. Pueden usarse
 | HYB-003 | baja skill bajo fatiga (experto) | Filtro duro por skillRequirement |
 | HYB-004 | benchmarks ≤1/4-6 sem (experto) | Solo en frontera de bloque |
 | HYB-005 | indoor low-impact (moderate/extrapolado) | Cuando tren inferior cargado |
-| ATH-002 | power microdosing (VBT moderate) | Fresco, volumen bajo, intención máxima |
+| ATH-002 | power microdosing / velocity loss | **Pareja-Blanco ✓** (ronda 3): low-VL preserva fuerza+menos fatiga, high-VL más hipertrofia (trade-off); **requiere dispositivo de velocidad — no disponible hoy** → advisory. Fresco, volumen bajo, intención máxima |
 | READ-003 | Whoop recovery = flag (experto) | Nunca derivar dosis numérica del score |
 | READ-007 | día rojo cambia objetivo (experto) | Cambio de objetivo, no solo carga; reversible |
 | READ-008 | Meeusen consensus (`expert`) | Deload propuesto, confirma el usuario; nunca por un solo marcador |
@@ -84,22 +82,27 @@ Reglas útiles basadas en práctica experta o evidencia indirecta. Pueden usarse
 | SEL-003 | EMG ≠ hipertrofia (refuta) | Marcar como guardrail anti-hype, no como driver positivo |
 | BUD-002 | pesos de budget (heurística) | Pesos refinables con datos; no falsa precisión |
 | LOAD-003 | dolor lumbar → modificar (aplicado) | Modificar variante/ROM/carga, nunca eliminar fuerza reflexivamente |
-| END-003 | progresión running ~10%/sem | **Nielsen 2012 inconcluso** (ronda 2); usar como default prudente, no regla; re-anclar a Bertelsen 2017 (pending) |
+| END-003 | progresión running gradual | **Bertelsen 2017 ✓** (ronda 3): mecanismo carga-vs-capacidad sólido (moderate); la progresión gradual es implicación del modelo, no testeada; el ~10% es heurístico |
 | INT-003 | lift-first favorece fuerza | **Schumann débil para el orden** (ronda 2); same-session sí, orden no probado |
-| ATH-005 | unilateral ≈ bilateral | **Speirs ✓ pero n=18 rugby juvenil** (ronda 2); usar como sustituto joint-friendly, no como equivalencia probada |
+| ATH-005 | unilateral ≈ bilateral | **Speirs ✓ pero n=18 rugby juvenil** (ronda 2); sustituto joint-friendly, no equivalencia probada |
+| REC-005 | diet breaks / MATADOR | **Byrne 2018 ✓** (ronda 3): eficiencia de pérdida + menos adaptación metabólica; **NO preserva más FFM**; población obesa-sedentaria → extrapolado |
+| ATH-001 | pliometría baja dosis | **Markovic/Sáez ✓** (ronda 3): eficaz, pero la dosis-respuesta favorece MÁS volumen; usar low-dose como mantenimiento de bajo coste en déficit |
 
 ---
 
-## Resumen (tras ronda 2)
-- **`ready_to_govern_code`: ~28 reglas** — núcleo de fuerza (+ STR-006), interferencia, readiness,
-  recomp, selección (+ SEL-001), cardio (+ END-008), carga/tendón (+ LOAD-001/002, ATH-004), sueño
-  (READ-006). El cimiento del motor, ahora más ancho tras verificar ronda 2.
-- **`provisional_needs_verification`: ~10 reglas** — STR-007/STR-003 (volumen/long-length), END-002/
-  004/005/006, INT-006, LOAD-004, ATH-001, REC-005. Ronda 3 pendiente: Bertelsen, Rio 2015,
-  Wolf/Kassiano/Maeo, Pelland, González-Badillo.
-- **`expert_or_extrapolated_use_with_guardrails`: ~21 reglas** — TODO lo híbrido/HYROX-like, SFR,
-  capa de juicio readiness/recovery, + END-003/INT-003/ATH-005 (verificadas pero débiles/extrapoladas).
-  Nunca automáticas sin guardrail.
+## Resumen (tras ronda 3)
+- **`ready_to_govern_code`: ~30 reglas** — núcleo de fuerza (+ STR-003/006/007 verificadas),
+  interferencia, readiness, recomp, selección (+ SEL-001), cardio (+ END-008), carga/tendón
+  (+ LOAD-001/002, ATH-004), sueño (READ-006). El cimiento del motor.
+- **`provisional_needs_verification`: ~6 reglas** — END-002/004/005/006, INT-006, LOAD-004. END-005
+  está además **bloqueada por datos** (decoupling no se extrae hoy). Pendientes menores: Kassiano DOI.
+- **`expert_or_extrapolated_use_with_guardrails`: ~23 reglas** — TODO lo híbrido/HYROX-like, SFR,
+  capa de juicio readiness/recovery, + END-003/INT-003/ATH-005/REC-005/ATH-001/ATH-002 (verificadas
+  pero débiles/extrapoladas o bloqueadas por dispositivo/dato). Nunca automáticas sin guardrail.
+
+> **Tras 3 rondas de verificación, casi todo el corpus está verificado contra la fuente.** Lo que
+> queda provisional es mayormente heurística de práctica (Daniels, run/walk, caps de razonamiento) o
+> está bloqueado por DATOS no extraídos, no por evidencia ausente.
 
 **Implicación para implementación:** el Readiness Engine v1 + hard-day budget se apoyan casi
 enteramente en `ready_to_govern_code` (READ-001/002/004/005/006, BUD-001) **y** en datos confirmados

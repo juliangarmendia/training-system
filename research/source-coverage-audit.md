@@ -159,14 +159,39 @@ estar respaldado (`claim_verified`).
 9. **ATH-005** → Speirs verificado pero weak_extrapolated (n=18 rugby juvenil).
 10. **END-008** → Milanović verificado (strong). **READ-006** → Mah verificado (moderate, n=11 sin control).
 
-## Fuentes aún no verificadas (tras ronda 2)
+## Fichas de fuentes verificadas (ronda 3 — 2026-06-24)
+
+**Wolf 2025 + Maeo 2021/2023** — `included_verified` (STR-007, **strong**)
+- Wolf M, et al. *Lengthened partials ≈ full ROM in trained individuals.* PeerJ 2025. **doi 10.7717/peerj.18904 · PMID 39959841.** RCT 8wk, n=25 entrenados → equivalencia LP/fROM. Maeo 2023 (triceps overhead>neutral; **doi 10.1080/17461391.2022.2100279**) + Maeo 2021 (seated>prone leg curl). SUPPORTED, aplicabilidad directa. **Fix descriptor:** es estudio EXPERIMENTAL 2025, no "meta 2025" (la meta de Wolf es 2023). Kassiano: DOI pendiente.
+
+**Pelland 2026** — `included_verified` (STR-003, **strong**)
+- Pelland JC, et al. *RT Dose Response: volume & frequency meta-regressions.* Sports Med 2026 (e-pub 2025-12). **doi 10.1007/s40279-025-02344-w · PMID 41343037.** 67 estudios, n=2058. ~100% prob volumen↑→hipertrofia+fuerza↑; rendimientos decrecientes más pronunciados en fuerza. **Caveat:** NO ancla el umbral "10+ sets" — el cap 10-14 en déficit es convención práctica/experta, no derivada de la meta.
+
+**Byrne 2018 (MATADOR)** — `included_verified` (REC-005, **weak_extrapolated**)
+- Byrne NM, et al. *Intermittent ER improves weight-loss efficiency in obese men.* Int J Obes 2018;42(2):129-138. **doi 10.1038/ijo.2017.206 · PMID 28925405.** RCT, n=51 **obesos sedentarios**. INT > CON en pérdida de grasa + menor adaptación metabólica, **pero FFM igual (p=0.42)**. → **REC-005 reescrita:** eficiencia de pérdida + menos adaptación metabólica, **NO** "preserva más FFM". Población no coincide → weak_extrapolated.
+
+**Pareja-Blanco 2017/2020 (velocity loss)** — `included_verified` (ATH-002, moderate)
+- Pareja-Blanco F, et al. *Effects of velocity loss...* Scand J Med Sci Sports 2017;27(7):724-735. **doi 10.1111/sms.12678.** **TRADE-OFF:** VL bajo → más fuerza + menos fatiga + preserva fibra IIx; VL alto → más hipertrofia. Requiere dispositivo de velocidad (no disponible hoy) → advisory.
+
+**Bertelsen 2017** — `included_verified` (END-003/LOAD-001, moderate)
+- Bertelsen ML, et al. *Framework for the etiology of running-related injuries.* Scand J Med Sci Sports 2017;27(11):1170-1180. **doi 10.1111/sms.12883 · PMID 28329441.** Framework conceptual: lesión = carga > capacidad del tejido. SUPPORTED para el mecanismo; "progresión gradual" es implicación del modelo, no resultado testeado. Mejor fuente que Nielsen para END-003.
+
+**Rio 2015** — `included_verified` (LOAD-002, weak_extrapolated)
+- Rio E, et al. *Isometric exercise induces analgesia in patellar tendinopathy.* BJSM 2015;49(19):1277-1283. **doi 10.1136/bjsports-2014-094386 · PMID 25979840.** Crossover **n=6**, agudo. Analgesia isométrica SUPPORTED pero n diminuto + replicación inconsistente → isométricos como opción, no superioridad probada.
+
+**Markovic 2007 + Sáez de Villarreal 2009** — `included_verified` (ATH-001, moderate eficacia)
+- Markovic G. *Plyometric training improves vertical jump: meta.* BJSM 2007;41(6):349-355. **PMID 17347316.** + Sáez de Villarreal 2009 (JSCR; **PMID 19197203**). Pliometría mejora salto/potencia y beneficia entrenados = SUPPORTED. **"low-dose óptimo" NO soportado** — la dosis-respuesta favorece MÁS volumen. → ATH-001 reframe: low-dose como herramienta de mantenimiento de bajo coste en déficit, no maximización.
+
+**Coyle & González-Alonso 2001** — `included_verified` (END-005, physiology moderate; metric expert)
+- Coyle EF, González-Alonso J. *Cardiovascular drift: new perspectives.* Exerc Sport Sci Rev 2001;29(2):88-92. **PMID 11337829.** El drift cardiovascular (HR sube/SV baja) es real (moderate). El **decoupling como métrica y el umbral <5% son heurística de práctica (Friel), NO validados** (expert). Además el dato no se extrae hoy → END-005 advisory + data-blocked.
+
+## Fuentes aún no verificadas (tras ronda 3)
 
 | Source | Status | Notes |
 |---|---|---|
-| Bertelsen 2017 (running-injury framework) | pending_research | Mejor fuente para spikes→lesión que Nielsen 2012; re-anclar END-003/LOAD-001. |
-| Rio 2015 (isometric analgesia) | pending_research | Necesaria para el sub-claim de isométricos en LOAD-002. |
-| González-Badillo / velocity loss | pending_research | VBT no es regla núcleo; futura. |
-| Wolf/Kassiano/Maeo (long-length), Pelland (volumen) | pending_research | STR-007/STR-003 sin verificar individualmente. |
+| Kassiano (long-length, DOI específico) | pending_research | Cuerpo de trabajo consistente; confirmar DOI antes de citar por número. |
+| Daniels' Running Formula (END-002) | included_provisional | Libro/toolbox; secundaria, no requiere verificación de claim. |
+| Rio 2015 superioridad isométrica a largo plazo | pending_research | Replicación inconsistente; no afirmar superioridad. |
 | NSCA Essentials, Schoenfeld libro, Helms Pyramid, Nuckols/SBS, MASS, Trexler | included_provisional | Secundarias/terciarias; no requieren verificación de claim individual. |
 | Coffey & Hawley | included_provisional | Mecanístico, de marco. |
 | ISSN Creatine Position Stand | **out_of_scope_for_this_phase** | Suplementos fuera de alcance; viven en `research-log.md`. |
