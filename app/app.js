@@ -1419,9 +1419,9 @@ async function renderWeekBanner() {
 
   // Compute this-week stats for richer context
   const weekDates = getWeekDates().map(d => dateStr(d));
-  const [allWorkouts, allRuns] = await Promise.all([dbGetAll('workouts'), dbGetAll('runs')]);
+  const [allWorkouts, allRuns] = await Promise.all([dbGetAll('workouts'), getRunsDeduped()]);
   const wkWorkouts = (allWorkouts || []).filter(w => weekDates.includes(w.date));
-  const wkRuns = (allRuns || []).filter(r => weekDates.includes(r.date));
+  const wkRuns = (allRuns || []).filter(r => weekDates.includes(r.date)); // D1: deduped so a Coros run from Strava+intervals isn't double-counted
   let totalVolume = 0;
   wkWorkouts.forEach(w => w.exercises.forEach(ex => { totalVolume += volumeForExercise(ex, w.unit); }));
   const totalKm = wkRuns.reduce((s, r) => s + (parseFloat(r.distance) || 0), 0);
@@ -4281,8 +4281,23 @@ async function intervalsIcuSync() {
       return null;
     }
     const activities = await res.json();
+
+    // D1 (v11.9) — one-time key logger: surface the FULL set of activity keys
+    // intervals.icu actually returns in production, so we wire the confirmed
+    // intensity/zone/decoupling field names (no assumptions). Review the console
+    // once, then adjust the field mappings below if the real names differ.
+    // Mirrors the wellness key-logger in whoop.js.
+    if (!intervalsIcuSync._keyLogDone && Array.isArray(activities) && activities.length) {
+      const seen = new Set();
+      activities.forEach(a => Object.keys(a || {}).forEach(k => seen.add(k)));
+      console.info('[intervals.icu] available activity keys (D1 review):', [...seen].sort());
+      intervalsIcuSync._keyLogDone = true;
+    }
+
     const runs = (activities || []).filter(a => (a.type === 'Run' || a.sport === 'Run' || a.icu_intensity === 'easy_run' || a.type === 'TrailRun'));
     let pulled = 0;
+    // Null-safe numeric coercion for the additive D1 fields.
+    const num = (v) => (v != null && isFinite(Number(v))) ? Number(v) : null;
     for (const a of runs) {
       const stravaOrIcuId = a.id || a.external_id || `${a.start_date_local}_${a.distance}`;
       const recordId = `icu_${stravaOrIcuId}`;
@@ -4293,6 +4308,7 @@ async function intervalsIcuSync() {
       const movingSec = Number(a.moving_time || a.elapsed_time || 0);
       const durationMin = Math.round(movingSec / 60);
       const paceSecPerKm = distanceKm > 0 ? movingSec / distanceKm : 0;
+      const gapSec = num(a.gap);
       const run = {
         id: recordId,
         date,
@@ -4305,6 +4321,17 @@ async function intervalsIcuSync() {
         notes: String(a.name || ''),
         source: 'intervals.icu',
         source_id: String(stravaOrIcuId),
+        // --- D1 data unlock (v11.9): additive, null-safe. Feed the future cardio
+        // & hard-day-budget engines. Field names are best-effort vs the intervals.icu
+        // activities API — verify against the one-time key log above and adjust.
+        sport: String(a.type || a.sport || 'Run'),
+        intensityLabel: (typeof a.icu_intensity === 'string' && a.icu_intensity) ? a.icu_intensity : null,
+        trainingLoad: num(a.icu_training_load),
+        decoupling: num(a.decoupling),                 // % aerobic decoupling, pre-computed by intervals.icu (if present)
+        efficiencyFactor: num(a.icu_efficiency),
+        hrZoneTimes: Array.isArray(a.icu_hr_zone_times) ? a.icu_hr_zone_times
+                   : (Array.isArray(a.icu_zone_times) ? a.icu_zone_times : null),
+        gapPace: gapSec ? _formatPaceFromSec(gapSec) : null,  // grade-adjusted pace
         _updated_at: Date.now(),
       };
       await smartPut('runs', run);
@@ -4312,11 +4339,110 @@ async function intervalsIcuSync() {
     }
     localStorage.setItem('intervalsicu_last_sync', String(Date.now()));
     console.log(`[intervals.icu] pulled ${pulled} runs (window ${oldest} → ${newest})`);
+    try { await validateRunDedup(); } catch (_) { /* validation log only */ }
     return { pulled, total: activities.length };
   } catch (e) {
     console.warn('[intervals.icu] sync error:', e);
     return null;
   }
+}
+
+// ==================== D1 DATA UNLOCK HELPERS (v11.9) ====================
+// Pure, additive utilities for the data-foundation layer. NO programming logic,
+// NO generator changes — extraction, dedup and availability flags only.
+
+// Two runs are the SAME Coros activity (arriving via both Strava and intervals.icu)
+// if same date + sport + distance within 0.3 km + duration within 3 min.
+function _runsAreSameActivity(a, b) {
+  if (!a || !b) return false;
+  if ((a.date || '') !== (b.date || '')) return false;
+  const sa = String(a.sport || 'Run').toLowerCase();
+  const sb = String(b.sport || 'Run').toLowerCase();
+  if (sa !== sb) return false;
+  const distOk = Math.abs(Number(a.distance || 0) - Number(b.distance || 0)) <= 0.3;
+  const durOk = Math.abs(Number(a.duration || 0) - Number(b.duration || 0)) <= 3;
+  return distOk && durOk;
+}
+
+// Returns a deduped copy. Canonical preference: intervals.icu > strava > manual.
+// Never mutates the store; manual runs (no source match) are always kept.
+function dedupeRuns(runs) {
+  const sourceRank = { 'intervals.icu': 3, 'strava': 2 };
+  const rank = (r) => sourceRank[r && r.source] || 1; // manual/unknown = 1 (kept)
+  const kept = [];
+  for (const r of (runs || [])) {
+    const dupIdx = kept.findIndex(k => _runsAreSameActivity(k, r));
+    if (dupIdx === -1) { kept.push(r); continue; }
+    if (rank(r) > rank(kept[dupIdx])) {
+      const loser = kept[dupIdx];
+      if (r.feel == null && loser.feel != null) r.feel = loser.feel; // keep manual feel
+      kept[dupIdx] = r;
+    }
+  }
+  return kept;
+}
+
+// Deduped accessor — use for VOLUME/aggregation reads so one Coros run isn't
+// counted twice. Export/backup must stay raw (dbGetAll) to avoid data loss.
+async function getRunsDeduped() {
+  return dedupeRuns(await dbGetAll('runs'));
+}
+
+// Non-destructive validation: counts duplicate run pairs against real data, so we
+// VERIFY the double-count problem before any aggregation rewiring. Logs the result.
+async function validateRunDedup() {
+  const raw = await dbGetAll('runs');
+  const deduped = dedupeRuns(raw);
+  const out = { raw: raw.length, deduped: deduped.length, duplicatesRemoved: raw.length - deduped.length };
+  console.info('[D1 dedup] run dedup check:', out);
+  return out;
+}
+
+// Per-field availability flags for the FUTURE Readiness / Hard-Day-Budget engines.
+// Pure inspection of what is present/fresh — computes NO score or dose.
+// Statuses: available · missing · stale · noisy(quality) · derived · manual.
+async function dataAvailability() {
+  const todayMs = Date.parse(dateStr(new Date()) + 'T12:00:00');
+  const daysAgo = (d) => {
+    const t = Date.parse((d || '') + 'T12:00:00');
+    return isFinite(t) ? Math.round((todayMs - t) / 86400000) : Infinity;
+  };
+  const latest = (arr, key) => {
+    let best = null;
+    for (const r of (arr || [])) {
+      if (r && r[key] != null && (!best || (r.date || '') > (best.date || ''))) best = r;
+    }
+    return best;
+  };
+  const [wellness, weights, runsRaw, workouts] = await Promise.all([
+    dbGetAll('wellness').catch(() => []),
+    dbGetAll('bodyweight').catch(() => []),
+    dbGetAll('runs').catch(() => []),
+    dbGetAll('workouts').catch(() => []),
+  ]);
+  const flag = (rec, staleDays, extra) => {
+    if (!rec) return Object.assign({ status: 'missing' }, extra || {});
+    const age = daysAgo(rec.date);
+    return Object.assign({ status: age > staleDays ? 'stale' : 'available', ageDays: age, date: rec.date }, extra || {});
+  };
+  const measuredWeights = (weights || []).filter(w => w && w.measured);
+  return {
+    sleepHrs:      flag(latest(wellness, 'sleepSecs'), 2, { source: 'intervals.icu' }),
+    rhr:           flag(latest(wellness, 'restingHR'), 2, { source: 'intervals.icu', note: 'use 7d trend' }),
+    hrv:           flag(latest(wellness, 'hrv'), 2, { source: 'intervals.icu', quality: 'noisy', note: 'sleep HRV not morning RMSSD; 7d trend' }),
+    recovery:      flag(latest(wellness, 'readiness'), 2, { source: 'intervals.icu', note: 'flag only, not a dose' }),
+    ctl:           flag(latest(wellness, 'ctl'), 3, { source: 'intervals.icu', derived: true }),
+    atl:           flag(latest(wellness, 'atl'), 3, { source: 'intervals.icu', derived: true }),
+    bodyweight:    measuredWeights.length ? flag(latest(measuredWeights, 'weight'), 4, { source: 'manual/intervals', note: 'measured:true only; 7d avg' }) : { status: 'missing', note: 'no measured weigh-in; forward-fills ignored' },
+    bodyFat:       flag(latest(wellness, 'bodyFat'), 10, { source: 'intervals.icu (Wyze)', quality: 'noisy', note: 'trend only, never a decision' }),
+    runs:          (runsRaw && runsRaw.length) ? { status: 'available', count: runsRaw.length, note: 'dedupe via getRunsDeduped()' } : { status: 'missing' },
+    decoupling:    latest(runsRaw, 'decoupling') ? { status: 'available', source: 'intervals.icu', quality: 'noisy', note: 'heuristic; confirm field via key log' } : { status: 'missing', note: 'not yet returned/parsed — see key log' },
+    hrZoneTimes:   latest(runsRaw, 'hrZoneTimes') ? { status: 'available', source: 'intervals.icu', note: 'depends on correct zone setup' } : { status: 'missing', note: 'not yet returned/parsed — see key log' },
+    workouts:      (workouts && workouts.length) ? { status: 'available', count: workouts.length, note: 'RPE present; RIR & soreness NOT captured' } : { status: 'missing' },
+    soreness:      { status: 'missing', note: 'subjective check-in not yet implemented (D1 design)' },
+    pain:          { status: 'missing', note: 'subjective check-in not yet implemented (D1 design)' },
+    subjReadiness: { status: 'missing', note: 'subjective check-in not yet implemented (D1 design)' },
+  };
 }
 
 // ==================== PUSH RUNNING PLAN → intervals.icu → COROS ====================
@@ -7186,7 +7312,12 @@ function renderBodyWeightInsights(entries, nudgeEl, etaEl, plateauEl) {
     const goal = state.settings.goalWeight;
     etaEl.innerHTML = '';
     if (goal && Number.isFinite(goal)) {
-      const last30 = entries.filter(e => (now - dateOf(e)) <= 30 * dayMs);
+      const last30all = entries.filter(e => (now - dateOf(e)) <= 30 * dayMs);
+      const last30meas = last30all.filter(e => e.measured !== false);
+      // D1 (v11.9): base the rate-of-loss regression on REAL weigh-ins (measured:true);
+      // fall back to all entries only when too few measured points exist. Forward-fills
+      // from Apple Health otherwise flatten/contaminate the slope.
+      const last30 = last30meas.length >= 4 ? last30meas : last30all;
       const remaining = latest.weight - goal;
       if (Math.abs(remaining) < 0.3) {
         etaEl.innerHTML = `🎯 Goal reached — current ${latest.weight} kg vs goal ${goal} kg. Time to recompose or set a new target.`;
