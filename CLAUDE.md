@@ -2,15 +2,31 @@
 
 ## What this is
 
-AI-coached personal training system for fat loss + strength development with running as a secondary modality. Not a one-time plan. A working system that evolves with data over weeks and months.
+AI-coached **evidence-based hybrid athletic recomposition system for a trained adult**. Not a one-time plan, and not a bodybuilding / running / HYROX / generic weight-loss app. A working system that intelligently combines strength, useful hypertrophy, body recomposition, fat loss, progressive running, indoor/outdoor cardio (zone 2/3, threshold, intervals across run/row/bike/ski/treadmill), occasional dosed HYROX-like conditioning, athleticism (power, mobility, low-dose plyo), and recovery/readiness — evolving with data (Whoop/Intervals + logs) over weeks and months.
+
+The system's core job is **resource allocation under interference and recovery constraints**: you cannot maximize every quality at once, so it periodizes the tension between them.
+
+## Operating principles (multi-objective)
+
+- **Do not maximize everything at once.** Prioritize 1-2 dominant qualities per block; keep the rest in maintenance.
+- **Manage interference** between strength, running and conditioning (modality, spacing, session order).
+- **Manage recovery** as a first-class constraint; readiness is an upstream gate, not an afterthought.
+- **Use data without false precision** — wearable scores are flags and trends, never exact dose calculators.
+- **Cardio and running are co-equal trainable qualities**, not a subordinate modality. Indoor and outdoor cardio are tools chosen by objective, impact and interference.
+- **Heavy strength is maintained** even when another quality is dominant (it preserves strength and running economy).
+- **Hybrid conditioning is dosed**, low-skill, and counted in a weekly hard-day budget — never random metcons.
 
 ## Goals (priority order)
 
-1. Lose 5-8 kg, primarily fat
-2. Preserve or increase lean muscle mass
-3. Improve strength on compound movements
-4. Maintain running capacity without wrecking recovery
+1. Lose fat efficiently while preserving lean mass (recomposition; rate of loss is a performance-gated dial)
+2. Maintain or increase strength on compound movements
+3. Build aerobic capacity: progress from ~5 km to a comfortable 10-15 km in zone 2/3
+4. Add athleticism and work capacity (power, agility, hybrid conditioning) without wrecking recovery
 5. Build sustainable habits
+
+## Knowledge base
+
+The scientific corpus, evidence grading and the rule→evidence mapping that govern programming decisions live in `research/corpus-map.md`, `research/evidence-grading.md`, and `research/evidence-to-rules.md` (the single source of truth for rules, by stable Rule ID). The engine/decision architecture and metadata schemas live in `docs/architecture/`. Cite Rule IDs (e.g. `INT-001`) and ACSM summary numbers rather than re-deriving.
 
 ## How to behave
 
