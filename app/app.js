@@ -393,6 +393,182 @@ const WEEK_TEMPLATE = {
   0: { type: 'rest', label: 'Rest' },
 };
 
+// ==================== T1: SESSION TYPE TAXONOMY (v11.10) ====================
+// Backwards-compatible foundation for richer session types. PURE DATA + PURE
+// helpers + a read-time adapter. Nothing here changes existing behavior: legacy
+// workouts/runs/mobility records are interpreted by toSession() in reads; no
+// record is migrated or rewritten. budgetWeight aligns with hard-day-budget.md;
+// evidenceTags reference research/evidence-to-rules.md Rule IDs.
+const SESSION_TYPES = {
+  strength: {
+    label: 'Strength', tone: 'var(--blue)', icon: '🏋️',
+    subtypes: {
+      upper:       { label: 'Upper', budgetWeight: 1, evidenceTags: ['STR-002', 'STR-005', 'STR-006'] },
+      lower:       { label: 'Lower', budgetWeight: 2, evidenceTags: ['STR-002', 'STR-005', 'INT-001'] },
+      full:        { label: 'Full Body', budgetWeight: 2, evidenceTags: ['STR-002'] },
+      hypertrophy: { label: 'Hypertrophy', budgetWeight: 1, evidenceTags: ['STR-003', 'STR-004', 'STR-007'] },
+      maintenance: { label: 'Maintenance', budgetWeight: 1, evidenceTags: ['STR-001'] },
+    },
+  },
+  cardio: {
+    label: 'Cardio', tone: 'var(--accent)', icon: '🏃',
+    modalities: ['run_outdoor', 'treadmill', 'bike', 'row', 'ski'],
+    subtypes: {
+      zone2:     { label: 'Zone 2', budgetWeight: 0.5, evidenceTags: ['END-001', 'END-005', 'INT-002'] },
+      zone3:     { label: 'Zone 3', budgetWeight: 1, evidenceTags: ['END-001'] },
+      threshold: { label: 'Threshold', budgetWeight: 2, evidenceTags: ['END-001', 'END-004', 'BUD-001'] },
+      intervals: { label: 'Intervals', budgetWeight: 2, evidenceTags: ['END-004', 'END-008', 'INT-001', 'BUD-001'] },
+      long_easy: { label: 'Long Easy', budgetWeight: 1, evidenceTags: ['END-001', 'END-003'] },
+      recovery:  { label: 'Recovery Cardio', budgetWeight: 0, evidenceTags: ['READ-007'] },
+    },
+  },
+  hybrid: {
+    label: 'Hybrid', tone: 'var(--orange)', icon: '🔥',
+    subtypes: {
+      aerobic_circuit:    { label: 'Aerobic Circuit', budgetWeight: 1, evidenceTags: ['HYB-001', 'HYB-005'] },
+      threshold:          { label: 'Hybrid Threshold', budgetWeight: 2, evidenceTags: ['HYB-002', 'BUD-001'] },
+      strength_endurance: { label: 'Strength Endurance', budgetWeight: 2, evidenceTags: ['HYB-002', 'HYB-003'] },
+      benchmark:          { label: 'HYROX-like Benchmark', budgetWeight: 3, evidenceTags: ['HYB-004'] },
+      low_impact:         { label: 'Low-impact Hybrid', budgetWeight: 1, evidenceTags: ['HYB-005'] },
+    },
+  },
+  recovery: {
+    label: 'Recovery', tone: 'var(--purple)', icon: '🧘',
+    subtypes: {
+      mobility:    { label: 'Mobility', budgetWeight: 0, evidenceTags: ['ATH-003'] },
+      easy_cardio: { label: 'Easy Cardio', budgetWeight: 0, evidenceTags: ['READ-007'] },
+      walk:        { label: 'Walk', budgetWeight: 0, evidenceTags: [] },
+      breathing:   { label: 'Breathing', budgetWeight: 0, evidenceTags: ['READ-006'] },
+      deload:      { label: 'Deload', budgetWeight: 0, evidenceTags: ['LOAD-004', 'READ-008'] },
+    },
+  },
+  athleticism: {
+    label: 'Athleticism', tone: 'var(--teal)', icon: '⚡',
+    subtypes: {
+      plyometrics: { label: 'Plyometrics', budgetWeight: 1, evidenceTags: ['ATH-001', 'ATH-004', 'INT-004'] },
+      carries:     { label: 'Carries', budgetWeight: 1, evidenceTags: ['ATH-003'] },
+      sled:        { label: 'Sled', budgetWeight: 2, evidenceTags: ['HYB-005'] },
+      unilateral:  { label: 'Unilateral', budgetWeight: 1, evidenceTags: ['ATH-005'] },
+      core:        { label: 'Core', budgetWeight: 0.5, evidenceTags: ['ATH-003'] },
+      agility:     { label: 'Agility', budgetWeight: 1, evidenceTags: ['ATH-002', 'INT-004'] },
+    },
+  },
+  benchmark: {
+    label: 'Benchmark', tone: 'var(--red)', icon: '🎯',
+    subtypes: {
+      strength:     { label: 'Strength Test', budgetWeight: 2, evidenceTags: [] },
+      running:      { label: 'Running Test', budgetWeight: 2, evidenceTags: ['END-005'] },
+      hybrid:       { label: 'Hybrid Test', budgetWeight: 3, evidenceTags: ['HYB-004'] },
+      conditioning: { label: 'Conditioning Test', budgetWeight: 3, evidenceTags: [] },
+    },
+  },
+};
+
+// Map a legacy WEEK_TEMPLATE/activity-feed type ('gym'|'run'|'rest'|'mobility')
+// OR an already-valid family name → a canonical family (or null for rest).
+function sessionFamily(t) {
+  if (!t) return null;
+  if (SESSION_TYPES[t]) return t;            // already a family
+  if (t === 'gym' || t === 'lift' || t === 'workout') return 'strength';
+  if (t === 'run' || t === 'cardio') return 'cardio';
+  if (t === 'mobility') return 'recovery';
+  if (t === 'rest') return null;
+  return null;
+}
+
+// Is this a training (non-rest) session type? Legacy-safe.
+function isTrainingType(t) {
+  return sessionFamily(t) !== null;
+}
+
+// Canonical tone color per family. _homeTypeTone delegates here so colors stay
+// identical to today (strength→blue, cardio→accent/green, recovery→purple).
+function typeTone(family) {
+  const f = sessionFamily(family) || family;
+  return (SESSION_TYPES[f] && SESSION_TYPES[f].tone) || 'var(--blue)';
+}
+
+// Look up subtype metadata (budgetWeight, evidenceTags, label).
+function sessionSubtypeMeta(family, subtype) {
+  const fam = SESSION_TYPES[family];
+  if (!fam || !fam.subtypes) return null;
+  return fam.subtypes[subtype] || null;
+}
+
+function _subtypeFromIntensity(label) {
+  const l = String(label || '').toLowerCase();
+  if (!l) return 'zone2';
+  if (l.includes('interval') || l.includes('vo2')) return 'intervals';
+  if (l.includes('threshold') || l.includes('tempo')) return 'threshold';
+  if (l.includes('long')) return 'long_easy';
+  if (l.includes('z3') || l.includes('zone3') || l.includes('zone_3')) return 'zone3';
+  if (l.includes('recovery')) return 'recovery';
+  return 'zone2'; // easy_run and unknowns default to zone 2
+}
+
+// READ-TIME ADAPTER — normalize ANY stored record (legacy or new) into a common
+// session envelope. Never mutates/rewrites the record. originStore tells us how to
+// interpret legacy records that lack a sessionType discriminator.
+//   { id, date, ts, family, subtype, modality, title, durationMin,
+//     evidenceTags, budgetWeight, payload, source, sessionType }
+function toSession(record, originStore) {
+  if (!record) return null;
+  // New-style records already carry a discriminator.
+  if (record.sessionType && record.family) {
+    const meta = sessionSubtypeMeta(record.family, record.subtype) || {};
+    return Object.assign({
+      evidenceTags: record.evidenceTags || meta.evidenceTags || [],
+      budgetWeight: record.budgetWeight != null ? record.budgetWeight : (meta.budgetWeight != null ? meta.budgetWeight : 1),
+    }, record);
+  }
+  const store = originStore || record._store;
+  if (store === 'runs' || record.distance != null && record.avgPace != null && !record.exercises) {
+    const subtype = _subtypeFromIntensity(record.intensityLabel);
+    const meta = sessionSubtypeMeta('cardio', subtype) || {};
+    return {
+      id: record.id, date: record.date, ts: record._updated_at || null,
+      family: 'cardio', subtype, modality: record.sport ? String(record.sport).toLowerCase() : 'run_outdoor',
+      title: record.notes || meta.label || 'Run',
+      durationMin: record.duration != null ? Number(record.duration) : null,
+      perceivedEffort: record.feel != null ? Number(record.feel) : null,
+      evidenceTags: meta.evidenceTags || [], budgetWeight: meta.budgetWeight != null ? meta.budgetWeight : 0.5,
+      source: record.source || 'manual', sessionType: 'cardio.' + subtype,
+      payload: {
+        distance: record.distance, avgPace: record.avgPace, gapPace: record.gapPace || null,
+        avgHR: record.avgHR || null, maxHR: record.maxHR || null, hrZoneTimes: record.hrZoneTimes || null,
+        decoupling: record.decoupling || null, intensityLabel: record.intensityLabel || null,
+        trainingLoad: record.trainingLoad || null,
+      },
+    };
+  }
+  if (store === 'mobility_sessions' || record.routineId != null) {
+    const meta = sessionSubtypeMeta('recovery', 'mobility') || {};
+    return {
+      id: record.id, date: record.date, ts: record.createdAt || null,
+      family: 'recovery', subtype: 'mobility', modality: 'mobility',
+      title: record.routineName || 'Mobility',
+      durationMin: record.durationMin != null ? Number(record.durationMin) : null,
+      perceivedEffort: null, evidenceTags: meta.evidenceTags || [], budgetWeight: 0,
+      source: 'manual', sessionType: 'recovery.mobility',
+      payload: { routineId: record.routineId, painBefore: record.painBefore, painAfter: record.painAfter },
+    };
+  }
+  // Default: strength workout. Infer upper/lower from the session id/name.
+  const sid = String(record.session || record.sessionName || '').toLowerCase();
+  const subtype = /low|leg|squat|dead|hinge|glute/.test(sid) ? 'lower'
+                : /upper|push|pull|bench|press/.test(sid) ? 'upper' : 'maintenance';
+  const meta = sessionSubtypeMeta('strength', subtype) || {};
+  return {
+    id: record.id, date: record.date, ts: record._updated_at || null,
+    family: 'strength', subtype, modality: 'gym',
+    title: record.sessionName || 'Strength',
+    durationMin: null, perceivedEffort: null,
+    evidenceTags: meta.evidenceTags || [], budgetWeight: meta.budgetWeight != null ? meta.budgetWeight : 1,
+    source: 'manual', sessionType: 'strength.' + subtype,
+    payload: { exercises: record.exercises || [], quality: record.quality, unit: record.unit, blockTimings: record.blockTimings },
+  };
+}
+
 // ==================== DYNAMIC PLAN SYSTEM ====================
 // Module-level state — loaded from IDB at startup, fallback to hardcoded PLAN
 let activePlan = null;           // { sessions, weekTemplate, version, ... }
@@ -654,7 +830,7 @@ async function applyReentryPlan() {
 
 // ==================== DATABASE ====================
 const DB_NAME = 'TrainingApp';
-const DB_VERSION = 9;
+const DB_VERSION = 10;
 let db = null;
 
 function openDB() {
@@ -682,6 +858,11 @@ function openDB() {
       // Daily wellness (intervals.icu): readiness, hrv, restingHR, sleep, ctl/atl/rampRate,
       // macros, weight, steps. Cron + body insights read from here. v10.27 (DB v9)
       if (!d.objectStoreNames.contains('wellness')) d.createObjectStore('wellness', { keyPath: 'date' });
+      // Unified sessions — T1 (DB v10, v11.10): home for NEW training types (hybrid,
+      // athleticism, cardio non-run, benchmark) that don't fit workouts/runs/mobility.
+      // Legacy stores stay untouched; reads merge via toSession(). Not yet written to
+      // until T2 (logging) — and sync wiring for it is deferred to T2.
+      if (!d.objectStoreNames.contains('sessions')) d.createObjectStore('sessions', { keyPath: 'id' });
     };
     req.onsuccess = (e) => { db = e.target.result; resolve(db); };
     req.onerror = (e) => reject(e);
@@ -6198,9 +6379,11 @@ async function renderHomeStatTrio() {
 
 // Type → tone + cover image (Lovable: lift=strain, run=recovery, mobility=sleep)
 function _homeTypeTone(type) {
-  if (type === 'run') return { color: 'var(--accent)', name: 'run' };
-  if (type === 'mobility') return { color: 'var(--purple)', name: 'mobility' };
-  return { color: 'var(--blue)', name: 'lift' };
+  // T1: delegate color to the taxonomy (typeTone) — outputs are identical to the
+  // previous hardcoded values (cardio→accent, recovery→purple, strength→blue).
+  if (type === 'run') return { color: typeTone('cardio'), name: 'run' };
+  if (type === 'mobility') return { color: typeTone('recovery'), name: 'mobility' };
+  return { color: typeTone('strength'), name: 'lift' };
 }
 function _homeCover(name, focus) {
   const key = `${name || ''} ${focus || ''}`.toLowerCase();
