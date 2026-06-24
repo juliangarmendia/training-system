@@ -8423,6 +8423,7 @@ function bindEvents() {
       if (b) b.addEventListener('click', refresh);
     };
     refresh();
+    document.body.appendChild(panel); // was missing → panel never showed (v11.16 fix)
     ['resize', 'orientationchange', 'pageshow'].forEach(ev => window.addEventListener(ev, refresh));
     if (window.visualViewport) window.visualViewport.addEventListener('resize', refresh);
     document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
