@@ -8397,6 +8397,36 @@ function bindEvents() {
     renderTrashList();
   });
 
+  // ===== NAV-CALIBRATION-TEMP (v11.13) — REMOVE after positioning the bottom nav =====
+  // Temporary floating pad: shifts the bottom nav vertically (translateY) so Julian
+  // can dial the right position on-device and report the px value. positive = down.
+  (function navCalibration() {
+    if (document.getElementById('nav-cal')) return;
+    const navEl = document.getElementById('nav');
+    if (!navEl) return;
+    let shift = parseInt(localStorage.getItem('navCalShift') || '0', 10) || 0;
+    const apply = () => { navEl.style.transform = `translateY(${shift}px)`; };
+    apply();
+    const panel = document.createElement('div');
+    panel.id = 'nav-cal';
+    panel.style.cssText = 'position:fixed;right:8px;bottom:104px;z-index:9999;display:flex;flex-direction:column;gap:4px;align-items:center;background:rgba(0,0,0,0.82);border:1px solid #555;border-radius:12px;padding:8px 6px;font-family:monospace;color:#fff;';
+    const mk = (txt) => { const b = document.createElement('button'); b.textContent = txt; b.style.cssText = 'width:46px;height:32px;font-size:15px;border-radius:8px;border:1px solid #666;background:#1e1e1e;color:#fff;line-height:1;'; return b; };
+    const tag = document.createElement('div'); tag.textContent = 'NAV'; tag.style.cssText = 'font-size:9px;letter-spacing:.15em;color:#aaa;';
+    const val = document.createElement('div'); val.style.cssText = 'font-size:13px;font-weight:700;min-width:46px;text-align:center;';
+    const bigUp = mk('⏫'), up = mk('▲'), down = mk('▼'), bigDown = mk('⏬'), reset = mk('0');
+    const render = () => { val.textContent = shift + 'px'; };
+    const step = (d) => { shift = Math.max(-60, Math.min(420, shift + d)); localStorage.setItem('navCalShift', String(shift)); apply(); render(); };
+    bigUp.addEventListener('click', () => step(-20));
+    up.addEventListener('click', () => step(-4));
+    down.addEventListener('click', () => step(4));
+    bigDown.addEventListener('click', () => step(20));
+    reset.addEventListener('click', () => step(-shift));
+    render();
+    [tag, bigUp, up, val, down, bigDown, reset].forEach(el => panel.appendChild(el));
+    document.body.appendChild(panel);
+  })();
+  // ===== END NAV-CALIBRATION-TEMP =====
+
   // Unit toggle in workout header (segmented control)
   document.getElementById('unit-toggle').addEventListener('click', async (e) => {
     const btn = e.target.closest('.unit-opt');
