@@ -37,7 +37,7 @@
 
 html { height: 100%; }
 body {
-  height: 100%; height: 100dvh;
+  height: 100%; height: 100dvh; height: var(--app-h, 100dvh);
   font-family: var(--font-sans);
   font-feature-settings: "ss01", "cv11";
   color: var(--text);
@@ -86,7 +86,7 @@ body::before {
 .metric-trend.down { color: var(--red); background: var(--tint-red); }
 .metric-trend.flat { color: var(--text3); background: var(--surface2); }
 
-#app { display: flex; flex-direction: column; height: 100%; height: 100dvh; max-width: 480px; margin: 0 auto; position: relative; z-index: 1; }
+#app { display: flex; flex-direction: column; height: 100%; height: 100dvh; height: var(--app-h, 100dvh); max-width: 480px; margin: 0 auto; position: relative; z-index: 1; }
 
 /* ========== Typography (Lovable: Inter Tight display + JetBrains Mono numerics) ========== */
 header h1, .modal-header h3, .section-label, .section-head-title, .wb-title,

@@ -393,6 +393,24 @@ const WEEK_TEMPLATE = {
   0: { type: 'rest', label: 'Rest' },
 };
 
+// ===== iOS standalone viewport fix (v11.14) =====
+// On first paint in an installed PWA, iOS can compute 100dvh SHORTER than the
+// real screen, leaving a black bar below #app (body bg) with the nav anchored to
+// #app's bottom — until a later resize (e.g. returning from another app) corrects
+// it. Force the real height from window.innerHeight into --app-h; body/#app use
+// var(--app-h, 100dvh) with the dvh fallback if JS is unavailable.
+(function fixAppHeight() {
+  const set = () => {
+    const h = window.innerHeight;
+    if (h && h > 200) document.documentElement.style.setProperty('--app-h', h + 'px');
+  };
+  set();
+  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(set);
+  setTimeout(set, 300);
+  ['resize', 'orientationchange', 'pageshow', 'focus'].forEach(ev => window.addEventListener(ev, set));
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) set(); });
+})();
+
 // ==================== T1: SESSION TYPE TAXONOMY (v11.10) ====================
 // Backwards-compatible foundation for richer session types. PURE DATA + PURE
 // helpers + a read-time adapter. Nothing here changes existing behavior: legacy
@@ -8404,7 +8422,8 @@ function bindEvents() {
     if (document.getElementById('nav-cal')) return;
     const navEl = document.getElementById('nav');
     if (!navEl) return;
-    let shift = parseInt(localStorage.getItem('navCalShift') || '0', 10) || 0;
+    let shift = 0; // v11.14: reset each load so the old calibration offset can't fight the dvh fix
+    localStorage.setItem('navCalShift', '0');
     const apply = () => { navEl.style.transform = `translateY(${shift}px)`; };
     apply();
     const panel = document.createElement('div');
