@@ -2,7 +2,7 @@
 // Service Worker — Training App v4.0
 // ============================================================
 
-const CACHE_NAME = 'training-v11.14';
+const CACHE_NAME = 'training-v11.15';
 const APP_SHELL = [
   './',
   './index.html',

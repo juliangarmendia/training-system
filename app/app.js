@@ -393,24 +393,6 @@ const WEEK_TEMPLATE = {
   0: { type: 'rest', label: 'Rest' },
 };
 
-// ===== iOS standalone viewport fix (v11.14) =====
-// On first paint in an installed PWA, iOS can compute 100dvh SHORTER than the
-// real screen, leaving a black bar below #app (body bg) with the nav anchored to
-// #app's bottom — until a later resize (e.g. returning from another app) corrects
-// it. Force the real height from window.innerHeight into --app-h; body/#app use
-// var(--app-h, 100dvh) with the dvh fallback if JS is unavailable.
-(function fixAppHeight() {
-  const set = () => {
-    const h = window.innerHeight;
-    if (h && h > 200) document.documentElement.style.setProperty('--app-h', h + 'px');
-  };
-  set();
-  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(set);
-  setTimeout(set, 300);
-  ['resize', 'orientationchange', 'pageshow', 'focus'].forEach(ev => window.addEventListener(ev, set));
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) set(); });
-})();
-
 // ==================== T1: SESSION TYPE TAXONOMY (v11.10) ====================
 // Backwards-compatible foundation for richer session types. PURE DATA + PURE
 // helpers + a read-time adapter. Nothing here changes existing behavior: legacy
@@ -8415,36 +8397,37 @@ function bindEvents() {
     renderTrashList();
   });
 
-  // ===== NAV-CALIBRATION-TEMP (v11.13) — REMOVE after positioning the bottom nav =====
-  // Temporary floating pad: shifts the bottom nav vertically (translateY) so Julian
-  // can dial the right position on-device and report the px value. positive = down.
-  (function navCalibration() {
-    if (document.getElementById('nav-cal')) return;
-    const navEl = document.getElementById('nav');
-    if (!navEl) return;
-    let shift = 0; // v11.14: reset each load so the old calibration offset can't fight the dvh fix
-    localStorage.setItem('navCalShift', '0');
-    const apply = () => { navEl.style.transform = `translateY(${shift}px)`; };
-    apply();
+  // ===== HEIGHT-DIAG-TEMP (v11.15) — REMOVE after diagnosing the dvh gap =====
+  // Read-only readout of candidate viewport heights. Does NOT move anything.
+  // Julian reports the numbers on FIRST open (with black bar) vs AFTER returning
+  // from another app (no black bar) — the value that changes between the two and
+  // matches the screen in the good state is the correct full height to anchor to.
+  (function heightDiag() {
+    if (document.getElementById('h-diag')) return;
+    const probe = document.createElement('div');
+    probe.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:100dvh;visibility:hidden;pointer-events:none;';
+    document.body.appendChild(probe);
     const panel = document.createElement('div');
-    panel.id = 'nav-cal';
-    panel.style.cssText = 'position:fixed;right:8px;bottom:104px;z-index:9999;display:flex;flex-direction:column;gap:4px;align-items:center;background:rgba(0,0,0,0.82);border:1px solid #555;border-radius:12px;padding:8px 6px;font-family:monospace;color:#fff;';
-    const mk = (txt) => { const b = document.createElement('button'); b.textContent = txt; b.style.cssText = 'width:46px;height:32px;font-size:15px;border-radius:8px;border:1px solid #666;background:#1e1e1e;color:#fff;line-height:1;'; return b; };
-    const tag = document.createElement('div'); tag.textContent = 'NAV'; tag.style.cssText = 'font-size:9px;letter-spacing:.15em;color:#aaa;';
-    const val = document.createElement('div'); val.style.cssText = 'font-size:13px;font-weight:700;min-width:46px;text-align:center;';
-    const bigUp = mk('⏫'), up = mk('▲'), down = mk('▼'), bigDown = mk('⏬'), reset = mk('0');
-    const render = () => { val.textContent = shift + 'px'; };
-    const step = (d) => { shift = Math.max(-60, Math.min(420, shift + d)); localStorage.setItem('navCalShift', String(shift)); apply(); render(); };
-    bigUp.addEventListener('click', () => step(-20));
-    up.addEventListener('click', () => step(-4));
-    down.addEventListener('click', () => step(4));
-    bigDown.addEventListener('click', () => step(20));
-    reset.addEventListener('click', () => step(-shift));
-    render();
-    [tag, bigUp, up, val, down, bigDown, reset].forEach(el => panel.appendChild(el));
-    document.body.appendChild(panel);
+    panel.id = 'h-diag';
+    panel.style.cssText = 'position:fixed;right:8px;bottom:110px;z-index:9999;background:rgba(0,0,0,0.85);border:1px solid #555;border-radius:10px;padding:8px 10px;font-family:monospace;color:#fff;font-size:12px;line-height:1.5;min-width:128px;';
+    const refresh = () => {
+      const vv = window.visualViewport;
+      panel.innerHTML =
+        `inner: <b>${window.innerHeight}</b><br>` +
+        `client: <b>${document.documentElement.clientHeight}</b><br>` +
+        `visual: <b>${vv ? Math.round(vv.height) : '-'}</b><br>` +
+        `100dvh: <b>${probe.offsetHeight}</b><br>` +
+        `screen: <b>${window.screen ? window.screen.height : '-'}</b>` +
+        `<br><button id="h-diag-r" style="margin-top:6px;width:100%;height:28px;border-radius:6px;border:1px solid #666;background:#1e1e1e;color:#fff;">↻ refresh</button>`;
+      const b = document.getElementById('h-diag-r');
+      if (b) b.addEventListener('click', refresh);
+    };
+    refresh();
+    ['resize', 'orientationchange', 'pageshow'].forEach(ev => window.addEventListener(ev, refresh));
+    if (window.visualViewport) window.visualViewport.addEventListener('resize', refresh);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
   })();
-  // ===== END NAV-CALIBRATION-TEMP =====
+  // ===== END HEIGHT-DIAG-TEMP =====
 
   // Unit toggle in workout header (segmented control)
   document.getElementById('unit-toggle').addEventListener('click', async (e) => {
