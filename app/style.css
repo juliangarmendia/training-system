@@ -87,6 +87,14 @@ body::before {
 .metric-trend.flat { color: var(--text3); background: var(--surface2); }
 
 #app { display: flex; flex-direction: column; height: 100%; height: 100dvh; max-width: 480px; margin: 0 auto; position: relative; z-index: 1; }
+/* iOS standalone fix (v11.17): 100dvh can report the small/transient viewport
+   (~812) while the real screen is ~874, leaving a dark strip below the nav. In an
+   installed PWA, 100vh maps to the full layout viewport — use it so #app fills the
+   screen. Scoped to standalone so the browser keeps 100dvh (which renders fine). */
+@media (display-mode: standalone) {
+  body { height: 100vh; }
+  #app { height: 100vh; }
+}
 
 /* ========== Typography (Lovable: Inter Tight display + JetBrains Mono numerics) ========== */
 header h1, .modal-header h3, .section-label, .section-head-title, .wb-title,
