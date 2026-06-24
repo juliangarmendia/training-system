@@ -1531,6 +1531,10 @@ function switchTab(tab) {
   } else if (tab === 'run') { showView('run'); renderRunPlanBanner(); renderRunTotals(); renderRunHistory(); }
   else if (tab === 'nutrition') { showView('nutrition'); renderNutrition(); }
   else if (tab === 'stats') { showView('stats'); renderStats(); }
+  // BUG-UI-2 fix (v11.12): 'settings' had no branch, so the Home gear/bell/avatar
+  // (which call switchTab('settings')) only un-hid the global header ("old bar")
+  // without ever activating view-settings. Mirror the #btn-settings handler.
+  else if (tab === 'settings') { showView('settings'); renderTrashList(); }
 
   updateHeader(tab);
 }

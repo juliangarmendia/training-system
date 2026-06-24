@@ -29,9 +29,15 @@ Detectados durante la validación; vienen de la migración visual de hace semana
 - **Estado:** **ARREGLADO en v11.11** — `padding-top: calc(var(--safe-top) + 8px)` en esos dos
   contenedores (`app/style.css`, sección WORKOUT). Pendiente de confirmar en iPhone.
 
-### BUG-UI-2 — Los 3 íconos del header de Home abren la misma barra vieja de Settings
-- **Síntoma:** en Home, la campana de notificaciones, el ícono de Settings y el de "JG" **abren los
-  tres la misma barra antigua de Settings** (deberían hacer cosas distintas / o no existir esa barra
-  vieja "on top").
-- **Estado:** **ABIERTO** — bug distinto del anterior. No tocado en v11.11. A diagnosticar/arreglar
-  por separado con OK del usuario (probable markup/handler legacy de header duplicado).
+### BUG-UI-2 — Tocar Settings en Home mostraba la barra vieja en vez de abrir Settings
+- **Síntoma:** en Home, los íconos (campana / Settings / "JG") mostraban el header global antiguo
+  pero **no abrían la vista de Settings**.
+- **Causa raíz:** `switchTab()` (`app/app.js`) no tenía rama `'settings'` → al llamar
+  `switchTab('settings')` se ponía `data-tab='settings'` (des-ocultando el header global) pero nunca
+  se llamaba `showView('settings')`, así que `view-settings` no se activaba. El gear del header global
+  sí funcionaba porque usa un handler aparte (`showView('settings')` directo).
+- **Estado:** **ARREGLADO en v11.12** — añadida la rama `else if (tab === 'settings') {
+  showView('settings'); renderTrashList(); }` en `switchTab`, replicando el handler que ya funcionaba.
+  Pendiente de confirmar en iPhone.
+- **Nota (mejora opcional, no hecha):** los 3 íconos siguen abriendo todos Settings. Diferenciarlos
+  (campana→sección notificaciones, JG→perfil) es un tweak posterior si lo querés.
