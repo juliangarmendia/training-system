@@ -2071,6 +2071,12 @@ body[data-tab="home"] .home-scroll-v2 { padding-top: calc(var(--safe-top) + 10px
 /* ==================================================
    WORKOUT — Lovable live-session top bar + finish (v11.3)
    ================================================== */
+/* iOS safe-area fix (v11.11): the live-workout & active-mobility screens are
+   immersive (the wo-topbar IS their header). Their scroll must clear the status
+   bar itself — otherwise the cancel (X) sits under the clock and the timer under
+   the battery, and the (X) isn't tappable. Mirrors the home scroll's safe-top. */
+#view-workout .view-scroll,
+#view-mobility-active .view-scroll { padding-top: calc(var(--safe-top) + 8px); }
 .wo-topbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .wo-exit { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: var(--text); font-size: 20px; line-height: 1; cursor: pointer; }
 .wo-exit:active { background: rgba(255,255,255,0.12); }
