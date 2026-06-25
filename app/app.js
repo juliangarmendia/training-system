@@ -6302,6 +6302,8 @@ async function renderHomeView() {
   await Promise.all([
     showResumeBanner(),
     renderRecoveryHero(),
+    renderTrainingAdvisory(),   // T3 advisory card (read-only)
+    renderHardDayBudget(),      // T3 weekly hard-day budget (read-only)
     renderWeekCalendar(),
     renderTodaysPlan(),
     renderHomeStatTrio(),
@@ -6410,6 +6412,234 @@ async function renderRecoveryHero() {
 const ICON_ACTIVITY = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>`;
 const ICON_FLAME = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>`;
 const ICON_MOON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></svg>`;
+
+// ==================== T3: TRAINING ADVISORY LAYER (v11.21) ====================
+// Programming-intelligence layer, READ-ONLY. WHOOP = recovery source (not recomputed).
+// Reads today's PLANNED session (current PLAN/WEEK_TEMPLATE — Base Plan Engine is T4),
+// classifies its stress, reads WHOOP context + weekly hard-day budget + interference,
+// and SUGGESTS keep/modify/replace/recovery. NEVER mutates PLAN/WEEK_TEMPLATE/sessions.
+// Forward-compatible: getPlannedSessionForDate() will later read from the Base Plan Engine.
+
+// Predefined replacement library (no random improvisation).
+const ALT_LIBRARY = {
+  strength_lower: [
+    { label: 'Bike Zone 2 35-45 min', family: 'cardio', subtype: 'zone2', durationMin: 40, intensity: 'Z2', reason: 'Aeróbico sin coste de piernas', ruleIds: ['INT-002', 'HYB-005'] },
+    { label: 'Upper light accessories', family: 'strength', subtype: 'upper', durationMin: 35, intensity: 'RPE 6-7', reason: 'Estímulo bajo, evita tren inferior', ruleIds: ['STR-001'] },
+    { label: 'Mobility + core', family: 'recovery', subtype: 'mobility', durationMin: 25, intensity: 'easy', reason: 'Recuperación activa', ruleIds: ['ATH-003'] },
+    { label: 'Recovery walk 30-40 min', family: 'recovery', subtype: 'walk', durationMin: 35, intensity: 'easy', reason: 'Bajo impacto / NEAT', ruleIds: ['READ-007'] },
+  ],
+  hard_cardio: [
+    { label: 'Bike Zone 2 35-45 min', family: 'cardio', subtype: 'zone2', durationMin: 40, intensity: 'Z2', reason: 'Bajo impacto, baja interferencia', ruleIds: ['INT-002'] },
+    { label: 'Row moderado 25-30 min', family: 'cardio', subtype: 'zone2', durationMin: 28, intensity: 'Z2', reason: 'Bajo impacto', ruleIds: ['INT-002'] },
+    { label: 'Easy run/walk', family: 'cardio', subtype: 'zone2', durationMin: 30, intensity: 'easy', reason: 'Reduce carga de piernas', ruleIds: ['END-006'] },
+  ],
+  hybrid: [
+    { label: 'Bike o Row Zone 2', family: 'cardio', subtype: 'zone2', durationMin: 35, intensity: 'Z2', reason: 'Conserva aeróbico, baja fatiga', ruleIds: ['HYB-005'] },
+    { label: 'Easy SkiErg', family: 'cardio', subtype: 'zone2', durationMin: 25, intensity: 'easy', reason: 'Bajo impacto', ruleIds: ['HYB-005'] },
+    { label: 'Mobility / recovery', family: 'recovery', subtype: 'mobility', durationMin: 25, intensity: 'easy', reason: 'Recuperación', ruleIds: ['ATH-003'] },
+  ],
+  strength_upper: [
+    { label: 'Upper, sin fallo, −1-2 accesorios', family: 'strength', subtype: 'upper', durationMin: 40, intensity: 'RPE 7', reason: 'Mantener estímulo, recortar fatiga', ruleIds: ['STR-001', 'STR-004'] },
+  ],
+};
+
+// Resolve today's planned session from the CURRENT plan (T4 will swap the source).
+async function getPlannedSessionForDate(date) {
+  const ds = dateStr(date);
+  const jsDay = date.getDay();
+  let customSchedule = {};
+  try { customSchedule = await getWeekSchedule(); } catch (e) {}
+  const slot = (activeWeekTemplate && activeWeekTemplate[jsDay]) || { type: 'rest' };
+  const sessionId = getPlannedSession(jsDay, customSchedule, ds); // gym id or null
+  if (sessionId) {
+    const s = (activePlan && activePlan.sessions) ? activePlan.sessions[sessionId] : null;
+    return { type: 'gym', date: ds, sessionId, name: s ? s.name : sessionId, subtitle: s ? s.subtitle : '', exercises: (s && s.exercises) || [] };
+  }
+  if (slot.type === 'run' && customSchedule[ds] === undefined) {
+    return { type: 'run', date: ds, name: slot.label || 'Zone 2 Run', subtitle: 'Zone 2' };
+  }
+  return { type: 'rest', date: ds, name: 'Rest' };
+}
+
+// Classify the planned session's training stress (reuses toSession + SESSION_TYPES).
+function classifySessionStress(planned) {
+  if (!planned || planned.type === 'rest') {
+    return { level: 'easy', family: 'recovery', subtype: 'deload', regions: [], impact: 'low', systemicFatigue: 'low', budgetWeight: 0, ruleIds: [] };
+  }
+  if (planned.type === 'run') {
+    const meta = (typeof sessionSubtypeMeta === 'function' && sessionSubtypeMeta('cardio', 'zone2')) || {};
+    return { level: 'easy', family: 'cardio', subtype: 'zone2', regions: ['cardio'], impact: 'high', systemicFatigue: 'low', budgetWeight: meta.budgetWeight != null ? meta.budgetWeight : 0.5, ruleIds: ['END-001'] };
+  }
+  const sess = toSession({ session: planned.sessionId, sessionName: planned.name, exercises: planned.exercises || [] }, 'workouts');
+  const meta = (typeof sessionSubtypeMeta === 'function' && sessionSubtypeMeta(sess.family, sess.subtype)) || {};
+  const bw = (sess.budgetWeight != null ? sess.budgetWeight : (meta.budgetWeight != null ? meta.budgetWeight : 1));
+  const level = bw >= 2 ? 'hard' : bw >= 1 ? 'moderate' : 'easy';
+  const regions = sess.subtype === 'lower' ? ['lower'] : sess.subtype === 'upper' ? ['upper'] : ['full'];
+  return { level, family: sess.family, subtype: sess.subtype, regions, impact: 'low', systemicFatigue: bw >= 2 ? 'high' : 'medium', budgetWeight: bw, ruleIds: sess.evidenceTags || [] };
+}
+
+// WHOOP recovery context — uses WHOOP's recovery as-is (flag), does NOT recompute a score.
+async function getWhoopContext() {
+  let data = null;
+  try { if (window.whoopIsConnected && whoopIsConnected()) data = await whoopSyncData(); } catch (e) {}
+  const rec = data && data.recovery && data.recovery.length ? data.recovery[data.recovery.length - 1] : null;
+  const sleep = data && data.sleep && data.sleep.length ? data.sleep[data.sleep.length - 1] : null;
+  const sleepHrs = sleep ? sleep.durationHrs : null;
+  if (!rec || rec.score == null) {
+    return { color: 'unknown', score: null, sleepHrs, hrv: rec ? rec.hrv : null, rhr: rec ? rec.restingHR : null, source: 'whoop/intervals' };
+  }
+  const { label } = getRecoveryColor(rec.score);
+  return { color: String(label).toLowerCase(), score: rec.score, sleepHrs, hrv: rec.hrv, rhr: rec.restingHR, source: 'whoop/intervals' };
+}
+
+// Weekly hard-day budget (programming guardrail, not a physiological score).
+async function computeHardDayBudget() {
+  const weekDates = getWeekDates().map(d => dateStr(d));
+  const [workouts, runs, sessions] = await Promise.all([
+    dbGetAll('workouts').catch(() => []),
+    (typeof getRunsDeduped === 'function' ? getRunsDeduped() : dbGetAll('runs')).catch(() => []),
+    dbGetAll('sessions').catch(() => []),
+  ]);
+  const items = [];
+  const add = (rec, store) => {
+    if (!rec || !weekDates.includes(rec.date)) return;
+    const s = toSession(rec, store);
+    if (!s) return;
+    const meta = (typeof sessionSubtypeMeta === 'function' && sessionSubtypeMeta(s.family, s.subtype)) || {};
+    const w = (s.budgetWeight != null ? s.budgetWeight : (meta.budgetWeight != null ? meta.budgetWeight : 1));
+    items.push({ date: rec.date, label: s.title || s.family, weight: w });
+  };
+  (workouts || []).forEach(r => add(r, 'workouts'));
+  (runs || []).forEach(r => add(r, 'runs'));
+  (sessions || []).forEach(r => add(r, 'sessions'));
+  const used = Math.round(items.reduce((sum, it) => sum + (it.weight || 0), 0) * 10) / 10;
+  const cap = 6;
+  return { used, cap, hardSessions: items.filter(it => it.weight >= 2).length, items: items.sort((a, b) => b.weight - a.weight), overCap: used > cap };
+}
+
+// Basic interference/caution flags (forward-ready; several stay latent until T4).
+function detectInterference(planned, ctx) {
+  const flags = [];
+  const st = ctx.stress;
+  if (st.level === 'hard' && ctx.budget && ctx.budget.overCap) {
+    flags.push({ type: 'budget', ruleId: 'BUD-001', note: `Semana ya en ${ctx.budget.used}/${ctx.budget.cap} de carga dura` });
+  }
+  if (st.level === 'hard' && ctx.whoop && ctx.whoop.color === 'red') {
+    flags.push({ type: 'recovery', ruleId: 'READ-003', note: 'WHOOP rojo + sesión dura' });
+  }
+  if (st.family === 'hybrid') {
+    flags.push({ type: 'hybrid', ruleId: 'HYB-002', note: 'Híbrido cuenta como día duro' });
+  }
+  return { flags };
+}
+
+function getReplacementOptions(planned, ctx) {
+  const st = ctx.stress;
+  if (st.family === 'strength' && st.subtype === 'lower') return ALT_LIBRARY.strength_lower;
+  if (st.family === 'hybrid') return ALT_LIBRARY.hybrid;
+  if (st.family === 'cardio' && st.level !== 'easy') return ALT_LIBRARY.hard_cardio;
+  if (st.family === 'strength' && st.subtype === 'upper') return ALT_LIBRARY.strength_upper;
+  return [];
+}
+
+// Orchestrator — pure read-only. Conservative: default 'keep'; only escalate on
+// concordant multi-signal (READ-002). No 'move' in v1 (→ T3b).
+async function computeTrainingAdvisory() {
+  const planned = await getPlannedSessionForDate(new Date());
+  const stress = classifySessionStress(planned);
+  const whoop = await getWhoopContext();
+  const budget = await computeHardDayBudget();
+  const interference = detectInterference(planned, { stress, whoop, budget });
+  const nFlags = interference.flags.length;
+
+  let recommendation = 'keep';
+  let confidence = 'high';
+  const reason = [];
+
+  if (planned.type === 'rest' || stress.level === 'easy') {
+    reason.push('Sesión fácil / recovery — mantener.');
+  } else if (whoop.color === 'unknown') {
+    recommendation = 'keep'; confidence = 'low';
+    reason.push('Sin recovery de WHOOP hoy — mantener plan; confianza baja.');
+  } else if (stress.level === 'hard') {
+    const signals = (whoop.color === 'red' ? 1 : 0) + (budget.overCap ? 1 : 0) + (nFlags >= 1 ? 1 : 0);
+    if (signals >= 2) { recommendation = 'replace'; }
+    else if (whoop.color === 'red') { recommendation = 'recovery'; }
+    else if (whoop.color === 'yellow' && budget.used >= budget.cap - 1) { recommendation = 'modify'; }
+    else { recommendation = 'keep'; }
+    if (whoop.color === 'red') reason.push('WHOOP rojo.');
+    if (budget.overCap) reason.push(`Carga dura alta (${budget.used}/${budget.cap}).`);
+    else if (whoop.color === 'yellow' && budget.used >= budget.cap - 1) reason.push(`WHOOP amarillo + semana cargada (${budget.used}/${budget.cap}).`);
+    if (nFlags && interference.flags[0]) reason.push(interference.flags[0].note);
+    if (recommendation === 'keep') reason.push('Recuperación/carga ok — mantener.');
+  } else if (stress.level === 'moderate' && whoop.color === 'yellow') {
+    recommendation = 'modify';
+    reason.push('WHOOP amarillo — mantener, evitar fallo, −1-2 accesorios.');
+  } else {
+    reason.push('Recuperación y carga ok — mantener.');
+  }
+
+  const alternatives = (recommendation === 'replace' || recommendation === 'recovery' || recommendation === 'modify')
+    ? getReplacementOptions(planned, { stress }) : [];
+  const ruleIds = Array.from(new Set([
+    ...(stress.ruleIds || []), ...interference.flags.map(f => f.ruleId), 'BUD-001', 'READ-003', 'READ-005',
+  ].filter(Boolean)));
+
+  return { plannedSession: planned, plannedStress: stress, recommendation, reason, alternatives, confidence, ruleIds, whoopContext: whoop, hardDayBudgetContext: budget, interferenceContext: interference };
+}
+
+const _T3_REC = {
+  keep: { label: 'Mantener', color: 'var(--accent)' },
+  modify: { label: 'Modificar', color: 'var(--yellow)' },
+  replace: { label: 'Reemplazar', color: 'var(--red)' },
+  recovery: { label: 'Recovery', color: 'var(--purple)' },
+};
+
+// Card 1 — Today's Training Advisory (read-only)
+async function renderTrainingAdvisory() {
+  const container = document.getElementById('training-advisory');
+  if (!container) return;
+  let a;
+  try { a = await computeTrainingAdvisory(); } catch (e) { console.warn('[T3] advisory failed', e); container.innerHTML = ''; return; }
+  const rec = _T3_REC[a.recommendation] || _T3_REC.keep;
+  const whoopTxt = a.whoopContext.color === 'unknown' ? '—' : a.whoopContext.color.charAt(0).toUpperCase() + a.whoopContext.color.slice(1);
+  const stressTxt = `${a.plannedStress.level}${a.plannedStress.regions && a.plannedStress.regions.length ? ' · ' + a.plannedStress.regions.join('/') : ''}`;
+  const alts = (a.alternatives || []).slice(0, 3).map(o => `<li><strong>${o.label}</strong>${o.reason ? ` — <span class="t3-alt-why">${o.reason}</span>` : ''}</li>`).join('');
+  container.innerHTML = `
+    <section class="card t3-card">
+      <div class="t3-head">
+        <span class="t3-eyebrow">Hoy · plan actual</span>
+        <span class="t3-rec" style="color:${rec.color};background:${rec.color}1a">${rec.label}${a.confidence === 'low' ? ' ?' : ''}</span>
+      </div>
+      <div class="t3-title">${a.plannedSession.name || 'Sesión'} <span class="t3-stress">${stressTxt}</span></div>
+      <div class="t3-context">WHOOP: <b>${whoopTxt}</b> · Carga dura: <b>${a.hardDayBudgetContext.used}/${a.hardDayBudgetContext.cap}</b></div>
+      <ul class="t3-reasons">${a.reason.slice(0, 3).map(r => `<li>${r}</li>`).join('')}</ul>
+      ${alts ? `<div class="t3-alts-label">Sugeridas:</div><ol class="t3-alts">${alts}</ol>` : ''}
+      ${a.ruleIds && a.ruleIds.length ? `<div class="t3-rules">según ${a.ruleIds.slice(0, 6).join(' · ')}</div>` : ''}
+      <div class="t3-foot">Advisory — no cambia tu plan automáticamente.</div>
+    </section>`;
+}
+
+// Card 2 — Weekly Hard-Day Budget (read-only guardrail)
+async function renderHardDayBudget() {
+  const container = document.getElementById('hard-day-budget');
+  if (!container) return;
+  let b;
+  try { b = await computeHardDayBudget(); } catch (e) { console.warn('[T3] budget failed', e); container.innerHTML = ''; return; }
+  const pct = Math.min(100, Math.round((b.used / b.cap) * 100));
+  const barColor = b.overCap ? 'var(--red)' : b.used >= b.cap - 1 ? 'var(--yellow)' : 'var(--accent)';
+  const top = (b.items || []).slice(0, 3).map(it => `${it.label} (${it.weight})`).join(' · ');
+  const warn = b.overCap ? 'Semana muy cargada. Evitá sumar otro día duro salvo que sea intencional.'
+             : b.used >= b.cap - 1 ? 'Semana cargada. Cuidá el próximo día duro.' : '';
+  container.innerHTML = `
+    <section class="card t3-card">
+      <div class="t3-head"><span class="t3-eyebrow">Hard-Day Budget</span><span class="t3-budget-num">${b.used} / ${b.cap}</span></div>
+      <div class="t3-bar"><div class="t3-bar-fill" style="width:${pct}%;background:${barColor}"></div></div>
+      ${top ? `<div class="t3-context">${top}</div>` : '<div class="t3-context">Sin sesiones esta semana aún.</div>'}
+      ${warn ? `<div class="t3-warn">${warn}</div>` : ''}
+      <div class="t3-foot">Guardrail de programación (BUD-001/002) — heurístico, no fisiológico.</div>
+    </section>`;
+}
 
 // ==================== HOME STAT TRIO (Lovable dashboard cards) ====================
 // Strain (weekly RPE load) · Streak (weeks) · Volume (weekly kg) — from real logged data.

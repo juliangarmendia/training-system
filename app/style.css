@@ -96,6 +96,27 @@ body::before {
   #app { height: 100vh; }
 }
 
+/* T3 — Training Advisory + Hard-Day Budget cards (v11.21) */
+.t3-card { margin-bottom: 12px; padding: 14px 16px; }
+.t3-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.t3-eyebrow { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text2); }
+.t3-rec { font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
+.t3-budget-num { font-size: 15px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.t3-title { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
+.t3-stress { font-size: 12px; font-weight: 600; color: var(--text2); margin-left: 6px; }
+.t3-context { font-size: 13px; color: var(--text2); margin-bottom: 6px; }
+.t3-reasons { margin: 4px 0 0; padding-left: 18px; font-size: 13px; color: var(--text); }
+.t3-reasons li { margin: 2px 0; }
+.t3-alts-label { font-size: 12px; font-weight: 600; color: var(--text2); margin-top: 8px; }
+.t3-alts { margin: 4px 0 0; padding-left: 18px; font-size: 13px; }
+.t3-alts li { margin: 3px 0; }
+.t3-alt-why { color: var(--text2); }
+.t3-bar { height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; margin: 6px 0 8px; }
+.t3-bar-fill { height: 100%; border-radius: 4px; transition: width 0.5s; }
+.t3-warn { font-size: 12px; color: var(--yellow); margin-top: 4px; }
+.t3-rules { font-size: 10px; letter-spacing: 0.04em; color: var(--text3); margin-top: 8px; }
+.t3-foot { font-size: 10px; color: var(--text3); margin-top: 6px; font-style: italic; }
+
 /* ========== Typography (Lovable: Inter Tight display + JetBrains Mono numerics) ========== */
 header h1, .modal-header h3, .section-label, .section-head-title, .wb-title,
 .rpb-title, .fatigue-title, .swap-title, .pin-prompt, #welcome-greeting,
