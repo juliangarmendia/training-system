@@ -5642,6 +5642,53 @@ async function logRun() {
   renderActivityRingsHome();
 }
 
+// T2 (v11.19): log a non-run cardio (bike/row/ski) or recovery walk into the
+// 'sessions' store using the T1 envelope. LOCAL-ONLY for now (dbPut, not smartPut)
+// — sync wiring for 'sessions' is a deferred sub-step. Does NOT touch the generator.
+async function logSession() {
+  const typeVal = document.getElementById('sess-type').value; // walk|bike|row|ski
+  const duration = parseInt(document.getElementById('sess-duration').value) || null;
+  const distance = parseFloat(document.getElementById('sess-distance').value) || null;
+  const feel = getStarValue('sess-feel');
+  const notes = document.getElementById('sess-notes').value.trim();
+  if (!duration) { toast('Enter duration'); return; }
+
+  const MAP = {
+    walk: { family: 'recovery', subtype: 'walk', modality: 'walk', title: 'Recovery walk' },
+    bike: { family: 'cardio', subtype: 'zone2', modality: 'bike', title: 'Bike' },
+    row:  { family: 'cardio', subtype: 'zone2', modality: 'row', title: 'Row' },
+    ski:  { family: 'cardio', subtype: 'zone2', modality: 'ski', title: 'SkiErg' },
+  };
+  const m = MAP[typeVal] || MAP.walk;
+  const meta = (typeof sessionSubtypeMeta === 'function' && sessionSubtypeMeta(m.family, m.subtype)) || {};
+  const rec = {
+    id: uid(),
+    date: today(),
+    ts: Date.now(),
+    family: m.family,
+    subtype: m.subtype,
+    sessionType: `${m.family}.${m.subtype}`,
+    modality: m.modality,
+    title: m.title,
+    durationMin: duration,
+    distance: distance,
+    perceivedEffort: feel,
+    evidenceTags: meta.evidenceTags || [],
+    budgetWeight: meta.budgetWeight != null ? meta.budgetWeight : 0,
+    notes,
+    source: 'manual',
+    week: getWeekNumber(),
+  };
+  await dbPut('sessions', rec); // local-only (T2a)
+
+  document.getElementById('sess-duration').value = '';
+  document.getElementById('sess-distance').value = '';
+  document.getElementById('sess-notes').value = '';
+  setStarValue('sess-feel', 3);
+  toast(`${m.title} logged!`);
+  renderRecentActivity();
+}
+
 // ==================== MOBILITY (v10.5) ====================
 // Counts of mobility sessions per local date — used for week-strip indicator and streak
 async function getMobilityCountsByDate() {
@@ -6625,10 +6672,11 @@ async function renderTodaysPlan() {
 async function renderRecentActivity() {
   const container = document.getElementById('recent-activity');
   if (!container) return;
-  const [workouts, runs, mobs] = await Promise.all([
+  const [workouts, runs, mobs, sessions] = await Promise.all([
     dbGetAll('workouts'),
     dbGetAll('runs'),
     dbGetAll('mobility_sessions'),
+    dbGetAll('sessions').catch(() => []),
   ]);
 
   // Normalize all to a common shape: { date, ts, kind, title, subtitle, onTap, icon, tint, color }
@@ -6670,6 +6718,25 @@ async function renderRecentActivity() {
       subtitle: `${m.durationMin} min${(m.painBefore != null && m.painAfter != null) ? ` · pain ${m.painBefore}→${m.painAfter}` : ''}`,
       icon: iconMob, tint: 'var(--tint-teal)', color: 'var(--teal)',
       onTap: () => { switchTab('gym'); openMobilityView(); },
+    });
+  });
+  // T2 (v11.19): non-run cardio + recovery sessions from the 'sessions' store,
+  // normalized through the T1 adapter so old/new records share one render path.
+  (sessions || []).forEach(s => {
+    const sess = (typeof toSession === 'function') ? toSession(s, 'sessions') : null;
+    if (!sess) return;
+    const isCardio = sess.family === 'cardio';
+    const dist = sess.distance != null ? ` · ${sess.distance} km` : '';
+    items.push({
+      date: sess.date,
+      ts: sess.ts || new Date(`${sess.date}T12:00:00`).getTime(),
+      kind: 'session',
+      title: (sess.title || 'Session') + dist,
+      subtitle: `${sess.durationMin ? sess.durationMin + ' min' : ''}`.trim() || '—',
+      icon: isCardio ? iconRunner : iconMob,
+      tint: isCardio ? 'var(--tint-blue)' : 'var(--tint-teal)',
+      color: isCardio ? 'var(--blue)' : 'var(--teal)',
+      onTap: () => switchTab('run'),
     });
   });
 
@@ -8494,6 +8561,7 @@ function bindEvents() {
 
   // Run logging
   document.getElementById('btn-log-run').addEventListener('click', logRun);
+  { const b = document.getElementById('btn-log-session'); if (b) b.addEventListener('click', logSession); }
 
   // Nutrition
   document.getElementById('btn-log-nutrition').addEventListener('click', logNutrition);

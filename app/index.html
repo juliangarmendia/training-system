@@ -282,6 +282,28 @@
             <div class="form-row"><textarea id="run-notes" class="input-notes" placeholder="Notes (optional)" rows="2"></textarea></div>
             <button id="btn-log-run" class="btn-primary btn-lg">Log Run</button>
           </div>
+          <!-- T2 (v11.19): log non-run cardio + recovery walk → 'sessions' store (local-only) -->
+          <div class="section-head" style="margin-top:28px">
+            <div class="section-head-icon" style="background:var(--tint-teal);color:var(--teal)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+            </div>
+            <span class="section-head-title">Log Other Session</span>
+          </div>
+          <div class="card form-card">
+            <div class="form-row"><label>Type</label>
+              <select id="sess-type" class="text-input">
+                <option value="walk">Recovery walk</option>
+                <option value="bike">Cardio · Bike</option>
+                <option value="row">Cardio · Row</option>
+                <option value="ski">Cardio · SkiErg</option>
+              </select>
+            </div>
+            <div class="form-row"><label>Duration (min)</label><input type="number" id="sess-duration" step="1" min="0" placeholder="30" inputmode="numeric"></div>
+            <div class="form-row"><label>Distance (km, optional)</label><input type="number" id="sess-distance" step="0.1" min="0" placeholder="" inputmode="decimal"></div>
+            <div class="form-row"><label>How it felt</label><div id="sess-feel" class="stars"><button data-v="1" data-label="Terrible">1</button><button data-v="2" data-label="Poor">2</button><button data-v="3" class="selected" data-label="OK">3</button><button data-v="4" data-label="Good">4</button><button data-v="5" data-label="Crushed it">5</button></div></div>
+            <div class="form-row"><textarea id="sess-notes" class="input-notes" placeholder="Notes (optional)" rows="2"></textarea></div>
+            <button id="btn-log-session" class="btn-primary btn-lg">Log Session</button>
+          </div>
           <div class="section-head" style="margin-top:28px">
             <div class="section-head-icon" style="background:var(--tint-blue);color:var(--blue)">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 17 9 11 13 15 21 7"/><polyline points="14 7 21 7 21 14"/></svg>
@@ -613,7 +635,7 @@
           </div>
           <div class="section-label" style="margin-top:24px">App</div>
           <div class="card">
-            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v11.18<br>Data stored locally + cloud sync.<br>Works offline.</p>
+            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v11.19<br>Data stored locally + cloud sync.<br>Works offline.</p>
             <button id="btn-force-update" class="btn-secondary btn-full" style="text-align:center">Force Update App</button>
           </div>
         </div>
