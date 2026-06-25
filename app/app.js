@@ -1528,7 +1528,7 @@ function switchTab(tab) {
     const inWorkout = !!state.activeSession;
     showView(inWorkout ? 'workout' : 'gym');
     if (!inWorkout) renderRecentWorkouts();
-  } else if (tab === 'run') { showView('run'); renderRunPlanBanner(); renderRunTotals(); renderRunHistory(); }
+  } else if (tab === 'run') { showView('run'); renderRunPlanBanner(); renderRunTotals(); renderRunHistory(); renderSessionHistory(); }
   else if (tab === 'nutrition') { showView('nutrition'); renderNutrition(); }
   else if (tab === 'stats') { showView('stats'); renderStats(); }
   // BUG-UI-2 fix (v11.12): 'settings' had no branch, so the Home gear/bell/avatar
@@ -5686,7 +5686,43 @@ async function logSession() {
   document.getElementById('sess-notes').value = '';
   setStarValue('sess-feel', 3);
   toast(`${m.title} logged!`);
-  renderRecentActivity();
+  renderSessionHistory();
+}
+
+// T2 (v11.20): render recently-logged non-run cardio + recovery sessions in the
+// Run tab. Reads the 'sessions' store, normalizes via the T1 adapter.
+async function renderSessionHistory() {
+  const container = document.getElementById('sess-history');
+  if (!container) return;
+  const sessions = (await dbGetAll('sessions').catch(() => []))
+    .sort((a, b) => (b.ts || 0) - (a.ts || 0)).slice(0, 12);
+  if (!sessions.length) { container.innerHTML = ''; return; }
+  const iconCardio = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13" cy="4" r="2"/><path d="M5 21l3-9 2.5 2V21M15 11l-3-3-4 4 2 2"/></svg>`;
+  const iconRec = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3M12 18v3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M3 12h3M18 12h3M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/></svg>`;
+  container.innerHTML = sessions.map(s => {
+    const sess = (typeof toSession === 'function') ? toSession(s, 'sessions') : s;
+    const isCardio = sess.family === 'cardio';
+    const dist = sess.distance != null ? ` · ${sess.distance} km` : '';
+    const dur = sess.durationMin != null ? `${sess.durationMin} min` : '';
+    return `
+    <div class="history-item">
+      <div class="hi-icon" style="background:${isCardio ? 'var(--tint-blue)' : 'var(--tint-teal)'};color:${isCardio ? 'var(--blue)' : 'var(--teal)'}">${isCardio ? iconCardio : iconRec}</div>
+      <div class="hi-left">
+        <div class="hi-title">${sess.title || 'Session'}${dist}</div>
+        <div class="hi-sub">${formatDate(sess.date)}${dur ? ` · ${dur}` : ''}${sess.week ? ` · Wk ${sess.week}` : ''}</div>
+      </div>
+      <div class="hi-right">
+        ${sess.perceivedEffort ? `<div><div class="hi-stat">${sess.perceivedEffort}/5</div><div class="hi-stat-sub">feel</div></div>` : ''}
+        <button class="hi-delete" data-delete-session="${sess.id}">&times;</button>
+      </div>
+    </div>`;
+  }).join('');
+  container.querySelectorAll('[data-delete-session]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      try { await dbDelete('sessions', btn.dataset.deleteSession); } catch (e) { console.warn(e); }
+      renderSessionHistory();
+    });
+  });
 }
 
 // ==================== MOBILITY (v10.5) ====================
@@ -6326,17 +6362,19 @@ async function renderRecoveryHero() {
     return;
   }
 
-  const score = rec.score;
-  const { color, label } = getRecoveryColor(score);
-  const chip = score >= 67 ? 'Primed' : score >= 34 ? 'Adequate' : 'Low';
+  const hasScore = rec.score != null;
+  const score = hasScore ? rec.score : null;
+  const { color, label } = hasScore ? getRecoveryColor(score) : { color: 'var(--text2)', label: '' };
+  const chip = hasScore ? (score >= 67 ? 'Primed' : score >= 34 ? 'Adequate' : 'Low') : '—';
   const sleep = data.sleep && data.sleep.length ? data.sleep[data.sleep.length - 1] : null;
   const sleepTxt = sleep ? `${sleep.durationHrs}h` : '--';
-  const msg = score >= 67 ? 'Your body is ready for high strain today.'
+  const msg = !hasScore ? 'Recovery score not in yet — HRV/RHR below.'
+            : score >= 67 ? 'Your body is ready for high strain today.'
             : score >= 34 ? 'Moderate readiness — train smart, watch fatigue.'
             : 'Low recovery. Prioritise rest or go very light.';
 
   // Ring geometry (r=38 in a 100x100 box, stroke 6)
-  const r = 38, c = 2 * Math.PI * r, offset = c - (score / 100) * c;
+  const r = 38, c = 2 * Math.PI * r, offset = hasScore ? c - (score / 100) * c : c;
 
   container.innerHTML = `
     <section class="recovery-hero" data-rh>
@@ -6356,7 +6394,7 @@ async function renderRecoveryHero() {
           <span class="rh-ring-label">REC</span>
         </div>
         <div class="rh-readout">
-          <div class="rh-score" style="color:${color}">${score}<span class="rh-pct">%</span></div>
+          <div class="rh-score" style="color:${color}">${hasScore ? score : '--'}<span class="rh-pct">${hasScore ? '%' : ''}</span></div>
           <div class="rh-msg">${msg}</div>
         </div>
       </div>
