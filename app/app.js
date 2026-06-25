@@ -8397,39 +8397,6 @@ function bindEvents() {
     renderTrashList();
   });
 
-  // ===== HEIGHT-DIAG-TEMP (v11.15) — REMOVE after diagnosing the dvh gap =====
-  // Read-only readout of candidate viewport heights. Does NOT move anything.
-  // Julian reports the numbers on FIRST open (with black bar) vs AFTER returning
-  // from another app (no black bar) — the value that changes between the two and
-  // matches the screen in the good state is the correct full height to anchor to.
-  (function heightDiag() {
-    if (document.getElementById('h-diag')) return;
-    const probe = document.createElement('div');
-    probe.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:100dvh;visibility:hidden;pointer-events:none;';
-    document.body.appendChild(probe);
-    const panel = document.createElement('div');
-    panel.id = 'h-diag';
-    panel.style.cssText = 'position:fixed;right:8px;bottom:110px;z-index:9999;background:rgba(0,0,0,0.85);border:1px solid #555;border-radius:10px;padding:8px 10px;font-family:monospace;color:#fff;font-size:12px;line-height:1.5;min-width:128px;';
-    const refresh = () => {
-      const vv = window.visualViewport;
-      panel.innerHTML =
-        `inner: <b>${window.innerHeight}</b><br>` +
-        `client: <b>${document.documentElement.clientHeight}</b><br>` +
-        `visual: <b>${vv ? Math.round(vv.height) : '-'}</b><br>` +
-        `100dvh: <b>${probe.offsetHeight}</b><br>` +
-        `screen: <b>${window.screen ? window.screen.height : '-'}</b>` +
-        `<br><button id="h-diag-r" style="margin-top:6px;width:100%;height:28px;border-radius:6px;border:1px solid #666;background:#1e1e1e;color:#fff;">↻ refresh</button>`;
-      const b = document.getElementById('h-diag-r');
-      if (b) b.addEventListener('click', refresh);
-    };
-    refresh();
-    document.body.appendChild(panel); // was missing → panel never showed (v11.16 fix)
-    ['resize', 'orientationchange', 'pageshow'].forEach(ev => window.addEventListener(ev, refresh));
-    if (window.visualViewport) window.visualViewport.addEventListener('resize', refresh);
-    document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
-  })();
-  // ===== END HEIGHT-DIAG-TEMP =====
-
   // Unit toggle in workout header (segmented control)
   document.getElementById('unit-toggle').addEventListener('click', async (e) => {
     const btn = e.target.closest('.unit-opt');
