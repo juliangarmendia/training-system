@@ -6421,27 +6421,53 @@ const ICON_MOON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" st
 // Forward-compatible: getPlannedSessionForDate() will later read from the Base Plan Engine.
 
 // Predefined replacement library (no random improvisation).
+// `modality` present = loggable in 1 tap via the sessions path (T3b). Entries
+// without modality (strength modifications) stay as text guidance only.
 const ALT_LIBRARY = {
   strength_lower: [
-    { label: 'Bike Zone 2 35-45 min', family: 'cardio', subtype: 'zone2', durationMin: 40, intensity: 'Z2', reason: 'Aeróbico sin coste de piernas', ruleIds: ['INT-002', 'HYB-005'] },
+    { label: 'Bike Zone 2 35-45 min', family: 'cardio', subtype: 'zone2', modality: 'bike', durationMin: 40, intensity: 'Z2', reason: 'Aeróbico sin coste de piernas', ruleIds: ['INT-002', 'HYB-005'] },
     { label: 'Upper light accessories', family: 'strength', subtype: 'upper', durationMin: 35, intensity: 'RPE 6-7', reason: 'Estímulo bajo, evita tren inferior', ruleIds: ['STR-001'] },
-    { label: 'Mobility + core', family: 'recovery', subtype: 'mobility', durationMin: 25, intensity: 'easy', reason: 'Recuperación activa', ruleIds: ['ATH-003'] },
-    { label: 'Recovery walk 30-40 min', family: 'recovery', subtype: 'walk', durationMin: 35, intensity: 'easy', reason: 'Bajo impacto / NEAT', ruleIds: ['READ-007'] },
+    { label: 'Mobility + core', family: 'recovery', subtype: 'mobility', modality: 'mobility', durationMin: 25, intensity: 'easy', reason: 'Recuperación activa', ruleIds: ['ATH-003'] },
+    { label: 'Recovery walk 30-40 min', family: 'recovery', subtype: 'walk', modality: 'walk', durationMin: 35, intensity: 'easy', reason: 'Bajo impacto / NEAT', ruleIds: ['READ-007'] },
   ],
   hard_cardio: [
-    { label: 'Bike Zone 2 35-45 min', family: 'cardio', subtype: 'zone2', durationMin: 40, intensity: 'Z2', reason: 'Bajo impacto, baja interferencia', ruleIds: ['INT-002'] },
-    { label: 'Row moderado 25-30 min', family: 'cardio', subtype: 'zone2', durationMin: 28, intensity: 'Z2', reason: 'Bajo impacto', ruleIds: ['INT-002'] },
-    { label: 'Easy run/walk', family: 'cardio', subtype: 'zone2', durationMin: 30, intensity: 'easy', reason: 'Reduce carga de piernas', ruleIds: ['END-006'] },
+    { label: 'Bike Zone 2 35-45 min', family: 'cardio', subtype: 'zone2', modality: 'bike', durationMin: 40, intensity: 'Z2', reason: 'Bajo impacto, baja interferencia', ruleIds: ['INT-002'] },
+    { label: 'Row moderado 25-30 min', family: 'cardio', subtype: 'zone2', modality: 'row', durationMin: 28, intensity: 'Z2', reason: 'Bajo impacto', ruleIds: ['INT-002'] },
+    { label: 'Easy run/walk 30 min', family: 'cardio', subtype: 'zone2', modality: 'run', durationMin: 30, intensity: 'easy', reason: 'Reduce carga de piernas', ruleIds: ['END-006'] },
   ],
   hybrid: [
-    { label: 'Bike o Row Zone 2', family: 'cardio', subtype: 'zone2', durationMin: 35, intensity: 'Z2', reason: 'Conserva aeróbico, baja fatiga', ruleIds: ['HYB-005'] },
-    { label: 'Easy SkiErg', family: 'cardio', subtype: 'zone2', durationMin: 25, intensity: 'easy', reason: 'Bajo impacto', ruleIds: ['HYB-005'] },
-    { label: 'Mobility / recovery', family: 'recovery', subtype: 'mobility', durationMin: 25, intensity: 'easy', reason: 'Recuperación', ruleIds: ['ATH-003'] },
+    { label: 'Bike Zone 2 35 min', family: 'cardio', subtype: 'zone2', modality: 'bike', durationMin: 35, intensity: 'Z2', reason: 'Conserva aeróbico, baja fatiga', ruleIds: ['HYB-005'] },
+    { label: 'Easy SkiErg 25 min', family: 'cardio', subtype: 'zone2', modality: 'ski', durationMin: 25, intensity: 'easy', reason: 'Bajo impacto', ruleIds: ['HYB-005'] },
+    { label: 'Mobility / recovery', family: 'recovery', subtype: 'mobility', modality: 'mobility', durationMin: 25, intensity: 'easy', reason: 'Recuperación', ruleIds: ['ATH-003'] },
   ],
   strength_upper: [
     { label: 'Upper, sin fallo, −1-2 accesorios', family: 'strength', subtype: 'upper', durationMin: 40, intensity: 'RPE 7', reason: 'Mantener estímulo, recortar fatiga', ruleIds: ['STR-001', 'STR-004'] },
   ],
 };
+
+// T3b: state for 1-tap "apply" of a suggested alternative (human-confirmed).
+let _t3LastAlts = [];
+let _t3PlannedName = '';
+async function t3LogAlternative(i) {
+  const o = _t3LastAlts[i];
+  if (!o || !o.modality) return;
+  const meta = (typeof sessionSubtypeMeta === 'function' && sessionSubtypeMeta(o.family, o.subtype)) || {};
+  const rec = {
+    id: uid(), date: today(), ts: Date.now(),
+    family: o.family, subtype: o.subtype, sessionType: `${o.family}.${o.subtype}`,
+    modality: o.modality, title: o.label,
+    durationMin: o.durationMin || null, distance: null, perceivedEffort: null,
+    evidenceTags: o.ruleIds || meta.evidenceTags || [],
+    budgetWeight: meta.budgetWeight != null ? meta.budgetWeight : 0,
+    notes: _t3PlannedName ? `Cambio elegido (era ${_t3PlannedName})` : 'Cambio elegido',
+    source: 'swap', week: getWeekNumber(),
+  };
+  await smartPut('sessions', rec); // synced (T2b)
+  toast(`Registrado: ${o.label}`);
+  renderTrainingAdvisory();
+  renderHardDayBudget();
+  renderSessionHistory();
+}
 
 // Resolve today's planned session from the CURRENT plan (T4 will swap the source).
 async function getPlannedSessionForDate(date) {
@@ -6651,7 +6677,12 @@ async function renderTrainingAdvisory() {
   const dayLabel = _t3SessionLabel(a.plannedSession);
   const nameTag = (a.plannedSession.type === 'gym' && a.plannedSession.name && a.plannedSession.name !== dayLabel) ? ` <span class="t3-stress">${a.plannedSession.name}</span>` : '';
   const budgetWord = _t3BudgetWord(a.hardDayBudgetContext.used, a.hardDayBudgetContext.cap);
-  const alts = (a.alternatives || []).slice(0, 3).map(o => `<li><strong>${o.label}</strong>${o.reason ? ` — <span class="t3-alt-why">${o.reason}</span>` : ''}</li>`).join('');
+  _t3LastAlts = a.alternatives || [];
+  _t3PlannedName = a.plannedSession.name || '';
+  const alts = _t3LastAlts.slice(0, 3).map((o, i) => {
+    const btn = o.modality ? `<button class="t3-alt-btn" data-t3-alt="${i}">Registrar</button>` : '';
+    return `<li><div class="t3-alt-row"><span><strong>${o.label}</strong>${o.reason ? ` — <span class="t3-alt-why">${o.reason}</span>` : ''}</span>${btn}</div></li>`;
+  }).join('');
   container.innerHTML = `
     <section class="card t3-card">
       <div class="t3-head">
@@ -6664,6 +6695,9 @@ async function renderTrainingAdvisory() {
       ${alts ? `<div class="t3-alts-label">Alternativas:</div><ol class="t3-alts">${alts}</ol>` : ''}
       <div class="t3-foot">Es una sugerencia — vos decidís; no cambia tu plan.</div>
     </section>`;
+  container.querySelectorAll('[data-t3-alt]').forEach(btn => {
+    btn.addEventListener('click', () => t3LogAlternative(parseInt(btn.dataset.t3Alt, 10)));
+  });
 }
 
 // Card 2 — Weekly Hard-Day Budget (read-only guardrail)
