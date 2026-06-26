@@ -6722,6 +6722,150 @@ async function renderHardDayBudget() {
     </section>`;
 }
 
+// ==================== T4: IDEAL PLAN ENGINE — PREVIEW (v11.26, read-only) ====================
+// Evidence-derived ideal block, encoded as DATA (traceable to Rule IDs). The preview
+// renders it side-by-side with the current plan. It does NOT touch PLAN/WEEK_TEMPLATE/
+// generator/logs — "Aplicar" is deferred to T5. Generation logic is documented in
+// docs/architecture/ideal-plan-engine-v1.md (spec for the future algorithmic engine).
+// dow: 1=Mon..6=Sat, 0=Sun. budgetWeight mirrors SESSION_TYPES so the budget sum is consistent.
+const IDEAL_BLOCK_V1 = {
+  goal: 'Recomposición atlética + base aeróbica + mantenimiento de fuerza',
+  weeks: 5, // 4 build + 1 deload
+  progressing: ['Base aeróbica / running progresivo'],
+  maintaining: ['Fuerza pesada (2×/patrón)', 'Hipertrofia útil', 'Movilidad / athleticism'],
+  runningArc: 'S1: 2× Z2 25-30 min → S4: 1 largo Z2 45-50 min + 1 Z2/Z3 · S5: deload',
+  cautions: [
+    'No correr fuerte <24 h antes de pierna pesada (INT-001).',
+    'Híbrido no el mismo día que pierna pesada; cuenta como día duro (HYB-002).',
+    'Mayoría del cardio fácil — ~80/20 en la semana (END-001).',
+    'Potencia/plyo solo fresco, al inicio (INT-004 / ATH-002).',
+  ],
+  variants: {
+    3: {
+      label: 'Mínima · 3 días',
+      note: 'Semanas complicadas: preserva fuerza pesada + mínimo aeróbico + continuidad.',
+      days: [
+        { dow: 1, kind: 'strength', subtype: 'full', bw: 2, title: 'Full Body A', summary: 'Sentadilla + press banca + remo + core', why: 'Cubre piernas/empuje/tirón en una sola sesión.', ruleIds: ['STR-002', 'STR-005'], alt: 'strength_lower' },
+        { dow: 3, kind: 'strength', subtype: 'full', bw: 2, title: 'Full Body B', summary: 'Peso muerto + press militar + dominadas + core', why: 'Segundo full-body: bisagra + patrón vertical.', ruleIds: ['STR-002', 'STR-007'], alt: 'strength_lower' },
+        { dow: 6, kind: 'cardio', subtype: 'zone2', bw: 0.5, title: 'Carrera / Bici Z2', summary: '30-40 min fácil (bici si las piernas están cargadas)', why: 'Mínimo estímulo aeróbico y continuidad.', ruleIds: ['END-001', 'INT-002'], alt: 'hard_cardio' },
+      ],
+    },
+    4: {
+      label: 'Estándar · 4 días',
+      note: 'La opción más realista: 2 fuerza + 2 cardio, base aeróbica progresando.',
+      days: [
+        { dow: 1, kind: 'strength', subtype: 'lower', bw: 2, planRef: 'lowerA', title: 'Sentadilla · Peso muerto', why: 'Pierna pesada al inicio de semana, en fresco.', ruleIds: ['STR-005', 'INT-001'], alt: 'strength_lower' },
+        { dow: 2, kind: 'cardio', subtype: 'zone2', bw: 0.5, title: 'Bici / Carrera Z2', summary: '30-40 min fácil', why: 'Aeróbico de bajo impacto el día después de pierna.', ruleIds: ['END-001', 'INT-002'], alt: 'hard_cardio' },
+        { dow: 4, kind: 'strength', subtype: 'upper', bw: 1, planRef: 'upperA', title: 'Press banca · Remo', why: 'Tren superior: no interfiere con la pierna.', ruleIds: ['STR-002'], alt: 'strength_upper' },
+        { dow: 6, kind: 'cardio', subtype: 'long_easy', bw: 1, title: 'Carrera progresiva Z2', summary: 'Largo fácil, subiendo ~10%/sem', why: 'Progresar base aeróbica lejos de pierna pesada.', ruleIds: ['END-003', 'END-001'], alt: 'hard_cardio' },
+      ],
+    },
+    5: {
+      label: 'Óptima · 5 días',
+      note: '3 fuerza + 2 cardio; movilidad/athleticism en microdosis; días duros espaciados.',
+      days: [
+        { dow: 1, kind: 'strength', subtype: 'lower', bw: 2, planRef: 'lowerA', title: 'Sentadilla · Peso muerto', why: 'Pierna pesada al inicio, en fresco.', ruleIds: ['STR-005', 'INT-001'], alt: 'strength_lower' },
+        { dow: 2, kind: 'cardio', subtype: 'zone2', bw: 0.5, title: 'Bici / Carrera Z2', summary: '30-40 min fácil', why: 'Aeróbico bajo impacto post-pierna.', ruleIds: ['END-001', 'INT-002'], alt: 'hard_cardio' },
+        { dow: 3, kind: 'strength', subtype: 'upper', bw: 1, planRef: 'upperA', title: 'Press banca · Remo', why: 'Tren superior, sin interferir con pierna.', ruleIds: ['STR-002'], alt: 'strength_upper' },
+        { dow: 5, kind: 'cardio', subtype: 'long_easy', bw: 1, title: 'Carrera progresiva Z2', summary: 'Largo fácil (S4 sube a Z2/Z3)', why: 'Progresar base aeróbica; calidad recién al final del bloque.', ruleIds: ['END-003', 'END-004'], alt: 'hard_cardio' },
+        { dow: 6, kind: 'strength', subtype: 'maintenance', bw: 1, title: 'Full body (mantenimiento)', summary: 'Bisagra ligera + accesorios + core', why: 'Segundo estímulo de pierna SIN sumar otro día muy duro (budget).', ruleIds: ['STR-001', 'BUD-001'], alt: 'strength_lower' },
+        { dow: 0, kind: 'recovery', subtype: 'mobility', bw: 0, title: 'Movilidad + core', summary: 'Movilidad dinámica + anti-rotación + caminata', why: 'Recuperación activa.', ruleIds: ['ATH-003', 'READ-007'], alt: null },
+      ],
+    },
+  },
+};
+
+// Equipment substitutions (gym lleno / equipo no disponible) — shown per session.
+const EQUIP_SUBS = {
+  skierg: ['Row', 'Bici', 'Caminata en cinta con incline'],
+  sled: ['Farmer carries pesados', 'Push en cinta con incline', 'Walking lunges', 'Leg press conditioning', 'Intervals en bici'],
+  rack: ['Máquinas', 'Mancuernas', 'Smith machine', 'Leg press'],
+  gym_full: ['Versión solo-mancuernas', 'Versión solo-máquinas', 'Fallback de cardio (bici/cinta)'],
+};
+
+let _idealState = { variant: 4, duration: 60 };
+const _DOW_ES = { 1: 'Lun', 2: 'Mar', 3: 'Mié', 4: 'Jue', 5: 'Vie', 6: 'Sáb', 0: 'Dom' };
+const _DOW_ORDER = [1, 2, 3, 4, 5, 6, 0];
+function _idealKindFamily(kind) {
+  return kind === 'cardio' ? 'cardio' : kind === 'hybrid' ? 'hybrid' : kind === 'recovery' ? 'recovery' : 'strength';
+}
+function _idealDurGuide(kind, dur) {
+  if (kind === 'strength') return dur <= 45 ? 'Compuestos + 1-2 accesorios clave' : dur >= 75 ? 'Completa + accesorios + movilidad' : 'Sesión completa';
+  if (kind === 'cardio') return `${dur} min fácil`;
+  if (kind === 'hybrid') return `${Math.min(dur, 30)} min · baja skill`;
+  if (kind === 'recovery') return `${Math.min(dur, 40)} min suave`;
+  return `${dur} min`;
+}
+function _currentWeekLabel(dow) {
+  const slot = (activeWeekTemplate && activeWeekTemplate[dow]) || { type: 'rest' };
+  if (slot.type === 'gym' && slot.session) {
+    const s = (activePlan && activePlan.sessions) ? activePlan.sessions[slot.session] : null;
+    return s ? _t3SessionLabel({ type: 'gym', sessionId: slot.session, name: s.name, exercises: s.exercises }) : slot.session;
+  }
+  if (slot.type === 'run') return 'Carrera Z2';
+  return 'Descanso';
+}
+
+// Render the Ideal Plan Preview (read-only). No mutation of plan/template.
+function renderIdealPreview() {
+  const host = document.getElementById('ideal-preview-body');
+  if (!host) return;
+  const v = _idealState.variant, dur = _idealState.duration;
+  const variant = IDEAL_BLOCK_V1.variants[v] || IDEAL_BLOCK_V1.variants[4];
+  const byDow = {};
+  variant.days.forEach(d => { byDow[d.dow] = d; });
+  const budget = Math.round(variant.days.reduce((s, d) => s + (d.bw || 0), 0) * 10) / 10;
+
+  const variantToggle = [3, 4, 5].map(n => `<button class="ip-tog ${n === v ? 'active' : ''}" data-ip-variant="${n}">${n} días</button>`).join('');
+  const durToggle = [45, 60, 75].map(n => `<button class="ip-tog ${n === dur ? 'active' : ''}" data-ip-dur="${n}">${n}'</button>`).join('');
+
+  const idealRows = _DOW_ORDER.map(dow => {
+    const d = byDow[dow];
+    if (!d) return `<div class="ip-day ip-rest"><div class="ip-dow">${_DOW_ES[dow]}</div><div class="ip-day-main"><div class="ip-day-title">Descanso</div></div></div>`;
+    const tone = typeTone(_idealKindFamily(d.kind));
+    const lvl = _t3WeightWord(d.bw);
+    const altArr = (d.alt && ALT_LIBRARY[d.alt]) ? ALT_LIBRARY[d.alt].slice(0, 2).map(o => o.label) : [];
+    return `<div class="ip-day"><div class="ip-dow">${_DOW_ES[dow]}</div>
+      <div class="ip-day-main">
+        <div class="ip-day-title">${d.title} <span class="ip-level" style="color:${tone};background:${tone}1a">${lvl}</span></div>
+        <div class="ip-day-why">${d.why}${d.summary ? ` · ${d.summary}` : ''}</div>
+        <div class="ip-day-dur">${_idealDurGuide(d.kind, dur)}</div>
+        ${altArr.length ? `<div class="ip-day-alt">Alt: ${altArr.join(' · ')}</div>` : ''}
+      </div></div>`;
+  }).join('');
+
+  const currentRows = _DOW_ORDER.map(dow => `<div class="ip-cur-row"><span class="ip-dow">${_DOW_ES[dow]}</span><span>${_currentWeekLabel(dow)}</span></div>`).join('');
+
+  host.innerHTML = `
+    <div class="ip-goal card">
+      <div class="t3-eyebrow">Bloque · 5 semanas</div>
+      <div class="ip-goal-title">${IDEAL_BLOCK_V1.goal}</div>
+      <div class="ip-goal-sub"><b>Progresa:</b> ${IDEAL_BLOCK_V1.progressing.join(', ')}</div>
+      <div class="ip-goal-sub"><b>Mantiene:</b> ${IDEAL_BLOCK_V1.maintaining.join(', ')}</div>
+      <div class="ip-goal-sub"><b>Running:</b> ${IDEAL_BLOCK_V1.runningArc}</div>
+    </div>
+    <div class="ip-toggles"><div class="ip-tog-group">${variantToggle}</div><div class="ip-tog-group">${durToggle}</div></div>
+    <div class="ip-note">${variant.note}</div>
+    <div class="ip-budget">Carga dura de la semana: <b>${budget} / 6</b>${budget > 6 ? ' · <span class="t3-warn">en el límite</span>' : ''}</div>
+    <div class="section-label" style="margin-top:10px">Semana ideal</div>
+    <div class="ip-week">${idealRows}</div>
+    <div class="section-label" style="margin-top:16px">Tu plan actual</div>
+    <div class="ip-current card">${currentRows}</div>
+    <div class="section-label" style="margin-top:16px">Cuidados que respeta</div>
+    <ul class="ip-cautions">${IDEAL_BLOCK_V1.cautions.map(c => `<li>${c}</li>`).join('')}</ul>
+    <div class="ip-equip">Cada día tiene alternativas si el gym está lleno o falta equipo. Sin SkiErg → ${EQUIP_SUBS.skierg.join(' / ')}. Sin rack → ${EQUIP_SUBS.rack.join(' / ')}.</div>
+    <button class="btn-primary btn-lg" disabled style="opacity:0.5;margin-top:16px">Aplicar (próximamente · T5)</button>
+    <div class="t3-foot">Preview — no reemplaza tu plan. Aplicarlo viene en una fase próxima.</div>
+  `;
+  host.querySelectorAll('[data-ip-variant]').forEach(b => b.addEventListener('click', () => { _idealState.variant = parseInt(b.dataset.ipVariant, 10); renderIdealPreview(); }));
+  host.querySelectorAll('[data-ip-dur]').forEach(b => b.addEventListener('click', () => { _idealState.duration = parseInt(b.dataset.ipDur, 10); renderIdealPreview(); }));
+}
+
+function openIdealPreview() {
+  showView('ideal-preview');
+  renderIdealPreview();
+}
+
 // ==================== HOME STAT TRIO (Lovable dashboard cards) ====================
 // Strain (weekly RPE load) · Streak (weeks) · Volume (weekly kg) — from real logged data.
 async function renderHomeStatTrio() {
@@ -8812,6 +8956,10 @@ function bindEvents() {
     document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
     renderTrashList();
   });
+
+  // T4: Ideal Plan Preview open/back (read-only view)
+  { const b = document.getElementById('btn-ideal-preview'); if (b) b.addEventListener('click', openIdealPreview); }
+  { const b = document.getElementById('ip-back'); if (b) b.addEventListener('click', () => { showView('settings'); updateHeader('settings'); }); }
 
   // Unit toggle in workout header (segmented control)
   document.getElementById('unit-toggle').addEventListener('click', async (e) => {

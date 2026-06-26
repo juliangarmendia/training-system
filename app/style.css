@@ -120,6 +120,32 @@ body::before {
 .t3-alt-btn { flex-shrink: 0; font-size: 11px; font-weight: 700; padding: 5px 10px; border-radius: 16px; border: 1px solid var(--accent); background: var(--accent-dim); color: var(--accent); cursor: pointer; }
 .t3-alt-btn:active { background: var(--accent); color: #000; }
 
+/* T4 — Ideal Plan Preview */
+.ip-goal { margin-bottom: 12px; }
+.ip-goal-title { font-size: 16px; font-weight: 700; margin: 2px 0 6px; }
+.ip-goal-sub { font-size: 12px; color: var(--text2); margin-top: 2px; }
+.ip-toggles { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 8px; flex-wrap: wrap; }
+.ip-tog-group { display: flex; gap: 4px; }
+.ip-tog { font-size: 12px; font-weight: 600; padding: 6px 10px; border-radius: 16px; border: 1px solid var(--border); background: var(--surface); color: var(--text2); }
+.ip-tog.active { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); }
+.ip-note { font-size: 12px; color: var(--text2); margin-bottom: 6px; }
+.ip-budget { font-size: 13px; margin-bottom: 4px; }
+.ip-week { display: flex; flex-direction: column; gap: 6px; }
+.ip-day { display: flex; gap: 10px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; }
+.ip-day.ip-rest { opacity: 0.55; }
+.ip-dow { font-size: 11px; font-weight: 700; color: var(--text2); width: 32px; flex-shrink: 0; padding-top: 2px; }
+.ip-day-main { flex: 1; min-width: 0; }
+.ip-day-title { font-size: 14px; font-weight: 700; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ip-level { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 12px; }
+.ip-day-why { font-size: 12px; color: var(--text2); margin-top: 3px; }
+.ip-day-dur { font-size: 11px; color: var(--text3); margin-top: 3px; }
+.ip-day-alt { font-size: 11px; color: var(--text3); margin-top: 3px; font-style: italic; }
+.ip-current { display: flex; flex-direction: column; gap: 4px; }
+.ip-cur-row { display: flex; gap: 10px; font-size: 13px; }
+.ip-cautions { margin: 4px 0 0; padding-left: 18px; font-size: 12px; color: var(--text2); }
+.ip-cautions li { margin: 3px 0; }
+.ip-equip { font-size: 11px; color: var(--text3); margin-top: 12px; }
+
 /* ========== Typography (Lovable: Inter Tight display + JetBrains Mono numerics) ========== */
 header h1, .modal-header h3, .section-label, .section-head-title, .wb-title,
 .rpb-title, .fatigue-title, .swap-title, .pin-prompt, #welcome-greeting,
