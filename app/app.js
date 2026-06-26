@@ -6613,6 +6613,31 @@ function _t3BudgetWord(used, cap) {
   const r = cap ? used / cap : 0;
   return r >= 1 ? 'alta' : r >= 0.6 ? 'media-alta' : r >= 0.3 ? 'media' : 'baja';
 }
+// Descriptive session label from its actual main lifts (movement patterns), in
+// Spanish — e.g. "Sentadilla · Peso muerto" instead of the internal "Lower B".
+const _PATTERN_ES = {
+  'squat': 'Sentadilla', 'hinge': 'Peso muerto', 'horizontal-press': 'Press banca',
+  'vertical-press': 'Press militar', 'horizontal-pull': 'Remo', 'vertical-pull': 'Dominadas',
+};
+const _MUSCLE_ES = {
+  Chest: 'Pecho', Back: 'Espalda', Shoulders: 'Hombro', Quads: 'Cuádriceps', Hamstrings: 'Isquios',
+  Posterior: 'Posterior', Glutes: 'Glúteos', Triceps: 'Tríceps', Biceps: 'Bíceps', Core: 'Core',
+  Calves: 'Gemelos', 'Rear Delt': 'Deltoide post.',
+};
+function _t3SessionLabel(planned) {
+  if (!planned) return 'Sesión';
+  if (planned.type === 'run') return 'Carrera Z2';
+  if (planned.type === 'rest') return 'Descanso';
+  const exs = planned.exercises || [];
+  const major = [], minor = [];
+  for (const ex of exs) {
+    const pat = (typeof MOVEMENT_PATTERNS !== 'undefined' && MOVEMENT_PATTERNS[ex.id]) || null;
+    if (pat && _PATTERN_ES[pat]) { if (!major.includes(_PATTERN_ES[pat])) major.push(_PATTERN_ES[pat]); }
+    else { const mu = _MUSCLE_ES[ex.muscle]; if (mu && !minor.includes(mu)) minor.push(mu); }
+  }
+  const out = major.concat(minor).slice(0, 2);
+  return out.length ? out.join(' · ') : (planned.name || 'Fuerza');
+}
 
 // Card 1 — Today's Training Advisory (read-only)
 async function renderTrainingAdvisory() {
@@ -6623,7 +6648,8 @@ async function renderTrainingAdvisory() {
   const rec = _T3_REC[a.recommendation] || _T3_REC.keep;
   const whoopTxt = _t3WhoopPlain(a.whoopContext.color);
   const stressTxt = _t3StressPlain(a.plannedStress);
-  const sub = a.plannedSession.subtitle ? ` · <span class="t3-stress">${a.plannedSession.subtitle}</span>` : '';
+  const dayLabel = _t3SessionLabel(a.plannedSession);
+  const nameTag = (a.plannedSession.type === 'gym' && a.plannedSession.name && a.plannedSession.name !== dayLabel) ? ` <span class="t3-stress">${a.plannedSession.name}</span>` : '';
   const budgetWord = _t3BudgetWord(a.hardDayBudgetContext.used, a.hardDayBudgetContext.cap);
   const alts = (a.alternatives || []).slice(0, 3).map(o => `<li><strong>${o.label}</strong>${o.reason ? ` — <span class="t3-alt-why">${o.reason}</span>` : ''}</li>`).join('');
   container.innerHTML = `
@@ -6632,7 +6658,7 @@ async function renderTrainingAdvisory() {
         <span class="t3-eyebrow">Entrenamiento de hoy</span>
         <span class="t3-rec" style="color:${rec.color};background:${rec.color}1a">${rec.label}</span>
       </div>
-      <div class="t3-title">${a.plannedSession.name || 'Sesión'}${sub}</div>
+      <div class="t3-title">${dayLabel}${nameTag}</div>
       <div class="t3-context">${stressTxt ? stressTxt + ' · ' : ''}recuperación WHOOP <b>${whoopTxt}</b> · carga de la semana <b>${budgetWord}</b></div>
       <ul class="t3-reasons">${a.reason.slice(0, 3).map(r => `<li>${r}</li>`).join('')}</ul>
       ${alts ? `<div class="t3-alts-label">Alternativas:</div><ol class="t3-alts">${alts}</ol>` : ''}
