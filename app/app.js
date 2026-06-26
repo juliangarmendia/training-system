@@ -6522,13 +6522,13 @@ function detectInterference(planned, ctx) {
   const flags = [];
   const st = ctx.stress;
   if (st.level === 'hard' && ctx.budget && ctx.budget.overCap) {
-    flags.push({ type: 'budget', ruleId: 'BUD-001', note: `Semana ya en ${ctx.budget.used}/${ctx.budget.cap} de carga dura` });
+    flags.push({ type: 'budget', ruleId: 'BUD-001', note: 'La semana ya viene muy cargada de días exigentes.' });
   }
   if (st.level === 'hard' && ctx.whoop && ctx.whoop.color === 'red') {
-    flags.push({ type: 'recovery', ruleId: 'READ-003', note: 'WHOOP rojo + sesión dura' });
+    flags.push({ type: 'recovery', ruleId: 'READ-003', note: 'Recuperación en rojo para una sesión exigente.' });
   }
   if (st.family === 'hybrid') {
-    flags.push({ type: 'hybrid', ruleId: 'HYB-002', note: 'Híbrido cuenta como día duro' });
+    flags.push({ type: 'hybrid', ruleId: 'HYB-002', note: 'Una sesión híbrida cuenta como día exigente.' });
   }
   return { flags };
 }
@@ -6557,26 +6557,27 @@ async function computeTrainingAdvisory() {
   const reason = [];
 
   if (planned.type === 'rest' || stress.level === 'easy') {
-    reason.push('Sesión fácil / recovery — mantener.');
+    reason.push('Sesión suave o de descanso — mantené.');
   } else if (whoop.color === 'unknown') {
     recommendation = 'keep'; confidence = 'low';
-    reason.push('Sin recovery de WHOOP hoy — mantener plan; confianza baja.');
+    reason.push('Todavía no hay dato de recuperación de WHOOP hoy — mantengo el plan.');
   } else if (stress.level === 'hard') {
     const signals = (whoop.color === 'red' ? 1 : 0) + (budget.overCap ? 1 : 0) + (nFlags >= 1 ? 1 : 0);
     if (signals >= 2) { recommendation = 'replace'; }
     else if (whoop.color === 'red') { recommendation = 'recovery'; }
     else if (whoop.color === 'yellow' && budget.used >= budget.cap - 1) { recommendation = 'modify'; }
     else { recommendation = 'keep'; }
-    if (whoop.color === 'red') reason.push('WHOOP rojo.');
-    if (budget.overCap) reason.push(`Carga dura alta (${budget.used}/${budget.cap}).`);
-    else if (whoop.color === 'yellow' && budget.used >= budget.cap - 1) reason.push(`WHOOP amarillo + semana cargada (${budget.used}/${budget.cap}).`);
-    if (nFlags && interference.flags[0]) reason.push(interference.flags[0].note);
-    if (recommendation === 'keep') reason.push('Recuperación/carga ok — mantener.');
+    if (whoop.color === 'red') reason.push('Tu recuperación (WHOOP) está en rojo.');
+    if (budget.overCap) reason.push('La semana ya viene muy cargada de días exigentes.');
+    else if (whoop.color === 'yellow' && budget.used >= budget.cap - 1) reason.push('Recuperación media y la semana ya viene cargada.');
+    const hybFlag = interference.flags.find(f => f.type === 'hybrid');
+    if (hybFlag) reason.push(hybFlag.note);
+    if (recommendation === 'keep') reason.push('Recuperación y carga ok — mantené.');
   } else if (stress.level === 'moderate' && whoop.color === 'yellow') {
     recommendation = 'modify';
-    reason.push('WHOOP amarillo — mantener, evitar fallo, −1-2 accesorios.');
+    reason.push('Recuperación media — mantené, pero sin llegar al fallo y recortá 1-2 accesorios.');
   } else {
-    reason.push('Recuperación y carga ok — mantener.');
+    reason.push('Recuperación y carga ok — mantené.');
   }
 
   const alternatives = (recommendation === 'replace' || recommendation === 'recovery' || recommendation === 'modify')
@@ -6590,10 +6591,28 @@ async function computeTrainingAdvisory() {
 
 const _T3_REC = {
   keep: { label: 'Mantener', color: 'var(--accent)' },
-  modify: { label: 'Modificar', color: 'var(--yellow)' },
-  replace: { label: 'Reemplazar', color: 'var(--red)' },
-  recovery: { label: 'Recovery', color: 'var(--purple)' },
+  modify: { label: 'Ajustar', color: 'var(--yellow)' },
+  replace: { label: 'Cambiar', color: 'var(--red)' },
+  recovery: { label: 'Recuperar', color: 'var(--purple)' },
 };
+// Plain-language helpers (the UI must NOT show Rule IDs / raw weights / internal jargon).
+const _T3_LEVEL_ES = { hard: 'exigente', moderate: 'moderado', easy: 'suave' };
+const _T3_REGION_ES = { lower: 'Piernas', upper: 'Tren superior', full: 'Cuerpo completo', cardio: 'Cardio' };
+function _t3StressPlain(st) {
+  if (!st) return '';
+  if (st.family === 'recovery') return 'Descanso / recuperación';
+  const region = (st.regions && st.regions[0]) ? (_T3_REGION_ES[st.regions[0]] || st.regions[0]) : '';
+  const lvl = _T3_LEVEL_ES[st.level] || st.level;
+  return region ? `${region} · ${lvl}` : lvl;
+}
+function _t3WhoopPlain(color) {
+  return ({ green: 'verde', yellow: 'amarillo', red: 'rojo' })[color] || 'sin dato';
+}
+function _t3WeightWord(w) { return w >= 2 ? 'exigente' : w >= 1 ? 'moderado' : w > 0 ? 'suave' : 'recuperación'; }
+function _t3BudgetWord(used, cap) {
+  const r = cap ? used / cap : 0;
+  return r >= 1 ? 'alta' : r >= 0.6 ? 'media-alta' : r >= 0.3 ? 'media' : 'baja';
+}
 
 // Card 1 — Today's Training Advisory (read-only)
 async function renderTrainingAdvisory() {
@@ -6602,21 +6621,22 @@ async function renderTrainingAdvisory() {
   let a;
   try { a = await computeTrainingAdvisory(); } catch (e) { console.warn('[T3] advisory failed', e); container.innerHTML = ''; return; }
   const rec = _T3_REC[a.recommendation] || _T3_REC.keep;
-  const whoopTxt = a.whoopContext.color === 'unknown' ? '—' : a.whoopContext.color.charAt(0).toUpperCase() + a.whoopContext.color.slice(1);
-  const stressTxt = `${a.plannedStress.level}${a.plannedStress.regions && a.plannedStress.regions.length ? ' · ' + a.plannedStress.regions.join('/') : ''}`;
+  const whoopTxt = _t3WhoopPlain(a.whoopContext.color);
+  const stressTxt = _t3StressPlain(a.plannedStress);
+  const sub = a.plannedSession.subtitle ? ` · <span class="t3-stress">${a.plannedSession.subtitle}</span>` : '';
+  const budgetWord = _t3BudgetWord(a.hardDayBudgetContext.used, a.hardDayBudgetContext.cap);
   const alts = (a.alternatives || []).slice(0, 3).map(o => `<li><strong>${o.label}</strong>${o.reason ? ` — <span class="t3-alt-why">${o.reason}</span>` : ''}</li>`).join('');
   container.innerHTML = `
     <section class="card t3-card">
       <div class="t3-head">
-        <span class="t3-eyebrow">Hoy · plan actual</span>
-        <span class="t3-rec" style="color:${rec.color};background:${rec.color}1a">${rec.label}${a.confidence === 'low' ? ' ?' : ''}</span>
+        <span class="t3-eyebrow">Entrenamiento de hoy</span>
+        <span class="t3-rec" style="color:${rec.color};background:${rec.color}1a">${rec.label}</span>
       </div>
-      <div class="t3-title">${a.plannedSession.name || 'Sesión'} <span class="t3-stress">${stressTxt}</span></div>
-      <div class="t3-context">WHOOP: <b>${whoopTxt}</b> · Carga dura: <b>${a.hardDayBudgetContext.used}/${a.hardDayBudgetContext.cap}</b></div>
+      <div class="t3-title">${a.plannedSession.name || 'Sesión'}${sub}</div>
+      <div class="t3-context">${stressTxt ? stressTxt + ' · ' : ''}recuperación WHOOP <b>${whoopTxt}</b> · carga de la semana <b>${budgetWord}</b></div>
       <ul class="t3-reasons">${a.reason.slice(0, 3).map(r => `<li>${r}</li>`).join('')}</ul>
-      ${alts ? `<div class="t3-alts-label">Sugeridas:</div><ol class="t3-alts">${alts}</ol>` : ''}
-      ${a.ruleIds && a.ruleIds.length ? `<div class="t3-rules">según ${a.ruleIds.slice(0, 6).join(' · ')}</div>` : ''}
-      <div class="t3-foot">Advisory — no cambia tu plan automáticamente.</div>
+      ${alts ? `<div class="t3-alts-label">Alternativas:</div><ol class="t3-alts">${alts}</ol>` : ''}
+      <div class="t3-foot">Es una sugerencia — vos decidís; no cambia tu plan.</div>
     </section>`;
 }
 
@@ -6628,16 +6648,17 @@ async function renderHardDayBudget() {
   try { b = await computeHardDayBudget(); } catch (e) { console.warn('[T3] budget failed', e); container.innerHTML = ''; return; }
   const pct = Math.min(100, Math.round((b.used / b.cap) * 100));
   const barColor = b.overCap ? 'var(--red)' : b.used >= b.cap - 1 ? 'var(--yellow)' : 'var(--accent)';
-  const top = (b.items || []).slice(0, 3).map(it => `${it.label} (${it.weight})`).join(' · ');
-  const warn = b.overCap ? 'Semana muy cargada. Evitá sumar otro día duro salvo que sea intencional.'
-             : b.used >= b.cap - 1 ? 'Semana cargada. Cuidá el próximo día duro.' : '';
+  const levelWord = _t3BudgetWord(b.used, b.cap);
+  const top = (b.items || []).slice(0, 3).map(it => `${it.label} (${_t3WeightWord(it.weight)})`).join(' · ');
+  const warn = b.overCap ? 'Semana muy cargada. Evitá sumar otro día exigente salvo que sea a propósito.'
+             : b.used >= b.cap - 1 ? 'Semana cargada. Cuidá el próximo día exigente.' : '';
   container.innerHTML = `
     <section class="card t3-card">
-      <div class="t3-head"><span class="t3-eyebrow">Hard-Day Budget</span><span class="t3-budget-num">${b.used} / ${b.cap}</span></div>
+      <div class="t3-head"><span class="t3-eyebrow">Carga de la semana</span><span class="t3-budget-num" style="text-transform:capitalize">${levelWord}</span></div>
       <div class="t3-bar"><div class="t3-bar-fill" style="width:${pct}%;background:${barColor}"></div></div>
-      ${top ? `<div class="t3-context">${top}</div>` : '<div class="t3-context">Sin sesiones esta semana aún.</div>'}
+      <div class="t3-context">Suma cuánto esfuerzo exigente acumulaste esta semana. Cuanto más llena la barra, más cargada viene — conviene no encadenar muchos días duros seguidos.</div>
+      ${top ? `<div class="t3-context">Lo que más sumó: ${top}</div>` : '<div class="t3-context">Sin entrenamientos esta semana aún.</div>'}
       ${warn ? `<div class="t3-warn">${warn}</div>` : ''}
-      <div class="t3-foot">Guardrail de programación (BUD-001/002) — heurístico, no fisiológico.</div>
     </section>`;
 }
 
