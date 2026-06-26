@@ -6772,6 +6772,19 @@ const IDEAL_BLOCK_V1 = {
         { dow: 0, kind: 'recovery', subtype: 'mobility', bw: 0, title: 'Movilidad + core', summary: 'Movilidad dinámica + anti-rotación + caminata', why: 'Recuperación activa.', ruleIds: ['ATH-003', 'READ-007'], alt: null },
       ],
     },
+    6: {
+      label: 'Máxima · 6 días',
+      note: 'Cuando hay tiempo: días extra FÁCILES (correr 30 min cuesta poco) sin subir la carga dura.',
+      days: [
+        { dow: 1, kind: 'strength', subtype: 'lower', bw: 2, planRef: 'lowerA', title: 'Sentadilla · Peso muerto', why: 'Pierna pesada al inicio, en fresco.', ruleIds: ['STR-005', 'INT-001'], alt: 'strength_lower' },
+        { dow: 2, kind: 'cardio', subtype: 'zone2', bw: 0.5, title: 'Carrera Z2 30 min', summary: 'Fácil, conversacional', why: 'Volumen aeróbico barato (no suma carga dura).', ruleIds: ['END-001'], alt: 'hard_cardio' },
+        { dow: 3, kind: 'strength', subtype: 'upper', bw: 1, planRef: 'upperA', title: 'Press banca · Remo', why: 'Tren superior, sin interferir con la pierna.', ruleIds: ['STR-002'], alt: 'strength_upper' },
+        { dow: 4, kind: 'cardio', subtype: 'zone2', bw: 0.5, title: 'Carrera / Bici Z2', summary: 'Fácil', why: 'Más base aeróbica fácil.', ruleIds: ['END-001', 'END-003'], alt: 'hard_cardio' },
+        { dow: 5, kind: 'strength', subtype: 'maintenance', bw: 1, title: 'Full body (mantenimiento)', summary: 'Bisagra ligera + accesorios + core', why: '2º estímulo de pierna sin otro día muy duro.', ruleIds: ['STR-001', 'BUD-001'], alt: 'strength_lower' },
+        { dow: 6, kind: 'cardio', subtype: 'long_easy', bw: 1, title: 'Carrera larga fácil Z2', summary: 'Largo, subiendo ~10%/sem', why: 'Construye el motor aeróbico hacia 10-15 km.', ruleIds: ['END-003', 'END-005'], alt: 'hard_cardio' },
+        { dow: 0, kind: 'recovery', subtype: 'mobility', bw: 0, title: 'Movilidad + core', summary: 'Movilidad + anti-rotación + caminata', why: 'Recuperación activa.', ruleIds: ['ATH-003'], alt: null },
+      ],
+    },
   },
 };
 
@@ -6816,7 +6829,7 @@ function renderIdealPreview() {
   variant.days.forEach(d => { byDow[d.dow] = d; });
   const budget = Math.round(variant.days.reduce((s, d) => s + (d.bw || 0), 0) * 10) / 10;
 
-  const variantToggle = [3, 4, 5].map(n => `<button class="ip-tog ${n === v ? 'active' : ''}" data-ip-variant="${n}">${n} días</button>`).join('');
+  const variantToggle = [3, 4, 5, 6].map(n => `<button class="ip-tog ${n === v ? 'active' : ''}" data-ip-variant="${n}">${n} días</button>`).join('');
   const durToggle = [45, 60, 75].map(n => `<button class="ip-tog ${n === dur ? 'active' : ''}" data-ip-dur="${n}">${n}'</button>`).join('');
 
   const idealRows = _DOW_ORDER.map(dow => {

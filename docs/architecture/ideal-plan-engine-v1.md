@@ -54,7 +54,16 @@ peso/fat-loss. Ajustar: subir running ~10%/sem si la base aguanta; mantener fuer
 cargado; cambiar modalidad si hay impacto; mover/quitar híbrido; deload si corresponde. **Nunca progresar
 todo a la vez** (GEN-001). Todo con aprobación (no auto-mutación).
 
+## Dirección confirmada (usuario, 2026-06-26) — el ideal es el DEFAULT
+El plan ideal NO es algo a "aplicar" manualmente: debe ser el **default automático**. El usuario solo
+elige el **número de días (3/4/5/6)** para flexar estímulos según la semana (viaje → 3; semana holgada
+→ 6). Días extra = carreras Z2 fáciles (correr 30' casi no suma carga dura). **Variante de 6 días ya
+agregada** (v11.27): budget ~6, sin sumar días duros. → reformula T5 (abajo).
+
 ## Roadmap
 - **T4b:** generador algorítmico (arma bloque/semana desde reglas+perfil en runtime).
-- **T5:** aplicar el plan ideal (reemplazar `WEEK_TEMPLATE`/`PLAN` con confirmación, versionado).
+- **T5 (reformulado):** el plan ideal pasa a ser el **default vivo** (reemplaza la fuente de
+  `getPlannedSessionForDate`/`WEEK_TEMPLATE`), con **selector de días (3/4/5/6)**. Versionado,
+  reversible, **sin perder logs** (workouts/runs pasados intactos; solo cambia el plan hacia adelante).
+  Se elimina el botón "Aplicar" (ya es el default). El advisory diario (T3) sigue flexando dentro del día.
 - **T6:** loop de adaptación semanal + periodización multi-bloque + progression/modality engines.
