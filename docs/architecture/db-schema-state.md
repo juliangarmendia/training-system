@@ -7,9 +7,12 @@ Estado vivo del esquema IndexedDB de la PWA y reglas de rollback seguro. Actuali
 
 - **DB version actual:** **v10** (`app/app.js` → `const DB_VERSION = 10`).
 - **Store nuevo (T1):** `sessions` (keyPath `id`).
-- **Estado de `sessions`:** **vacío / local-only**. T1 no escribe nada en él.
-- **Sync:** **NO conectado todavía** — `sessions` no está en la lista de stores sincronizados
-  (`app/supabase-sync.js:239`). Se conectará en T2 (añadir a la lista + crear tabla Supabase).
+- **Estado de `sessions`:** activo. T2a loguea recovery-walk / cardio non-run.
+- **Sync:** **CONECTADO (T2b, v11.24)** — tabla Supabase `public.sessions` creada (PK
+  `(user_id, record_id)`, RLS por `auth.uid()`, mismo patrón que `wellness`/`steps`) y `sessions`
+  agregado a la lista de sync (`app/supabase-sync.js`). `logSession` usa `smartPut` → sincroniza.
+  Nota: las sesiones logueadas en T2a (vía `dbPut` local-only) no se empujaron retroactivamente; las
+  nuevas sí. Last-write-wins por `_updated_at`.
 
 ### Stores IndexedDB (v10)
 `workouts` · `runs` · `nutrition` · `settings` · `sync_queue` · `bodyweight` · `trash` · `plans` ·

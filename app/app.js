@@ -5679,7 +5679,7 @@ async function logSession() {
     source: 'manual',
     week: getWeekNumber(),
   };
-  await dbPut('sessions', rec); // local-only (T2a)
+  await smartPut('sessions', rec); // T2b: syncs to Supabase (sessions table created)
 
   document.getElementById('sess-duration').value = '';
   document.getElementById('sess-distance').value = '';
