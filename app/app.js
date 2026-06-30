@@ -84,7 +84,7 @@ const PLAN = {
         { id: 'pallof-press', name: 'Cable Pallof Press', muscle: 'Core', sets: 3, reps: '10-15', rpe: '-', defaultRest: 60, notes: 'Anti-rotation. Slow and controlled.' },
       ]
     },
-    // ---- T5: full-body & maintenance sessions for the 3/5/6-day ideal variants ----
+    // ---- T5: full-body sessions for the 3/4-day ideal variants (5/6-day use Upper/Lower) ----
     // Reuse existing library exercise ids so ensureExerciseLibrarySeeded() picks them up.
     // kg targets inherit the post-ramp baseline (REENTRY_WEEKS W28) since the ideal
     // plan replaces the re-entry ramp directly. Lumbar caution preserved on squat/DL.
@@ -118,21 +118,6 @@ const PLAN = {
         { id: 'ohp', name: 'Overhead Press', muscle: 'Shoulders', sets: 3, reps: '5-8', rpe: '7-8', defaultRest: 150, notes: 'Objetivo ~52.5 kg. De pie, estricto, sin leg drive.', compound: true },
         { id: 'chinups', name: 'Chin-ups', muscle: 'Back', sets: 3, reps: '6-8', rpe: '7-8', defaultRest: 150, notes: 'Objetivo BW +10 kg. Assisted machine si <5 reps.', bw: true, compound: true },
         { id: 'hanging-leg-raise', name: 'Hanging Leg Raise', muscle: 'Core', sets: 3, reps: '8-12', rpe: '-', defaultRest: 60, notes: 'Scale to knee raises if needed.', bw: true },
-      ]
-    },
-    maintenance: {
-      id: 'maintenance', name: 'Full Body (mantenimiento)', subtitle: 'Bisagra ligera · Accesorios · Core', icon: '🧩',
-      warmup: [
-        '5 min treadmill walk or light bike',
-        'Leg swings front/back — 2 × 10/side',
-        'Band pull-aparts — 2 × 15',
-        'Glute bridges — 2 × 10',
-      ],
-      exercises: [
-        { id: 'rdl', name: 'Barbell RDL', muscle: 'Hamstrings', sets: 3, reps: '8-10', rpe: '6-7', defaultRest: 120, notes: 'Bisagra LIGERA (mantenimiento, no PR). 3s eccentric, stop mid-shin.' },
-        { id: 'chest-supported-row', name: 'Chest-Supported Row', muscle: 'Back', sets: 3, reps: '10-12', rpe: '7', defaultRest: 90, notes: 'Strict, sin fatiga lumbar. Squeeze arriba.' },
-        { id: 'incline-db-press', name: 'Incline DB Press', muscle: 'Chest', sets: 3, reps: '8-12', rpe: '7', defaultRest: 90, notes: '30-45°. 3s eccentric.', db: true },
-        { id: 'pallof-press', name: 'Cable Pallof Press', muscle: 'Core', sets: 3, reps: '10-15', rpe: '-', defaultRest: 60, notes: 'Anti-rotation. Slow and controlled.' },
       ]
     }
   }
@@ -980,7 +965,7 @@ const state = {
   restTimerInterval: null,
   restTimerRemaining: 0,
   restTimerTotal: 0,
-  settings: { unit: 'kg', proteinTarget: 170, calorieTarget: 2500, startDate: null, userName: '', goalWeight: null, idealVariant: 5, idealDuration: 60 },
+  settings: { unit: 'kg', proteinTarget: 170, calorieTarget: 2500, startDate: null, userName: '', goalWeight: null, idealVariant: 6 },
   sessionQuality: 3,
   quickMode: false,
   selectedStrengthLift: 'bench-press',
@@ -1582,7 +1567,7 @@ function switchTab(tab) {
     const inWorkout = !!state.activeSession;
     showView(inWorkout ? 'workout' : 'gym');
     if (!inWorkout) renderRecentWorkouts();
-  } else if (tab === 'run') { showView('run'); renderRunPlanBanner(); renderRunTotals(); renderRunHistory(); renderSessionHistory(); }
+  } else if (tab === 'cardio') { showView('cardio'); renderRunPlanBanner(); renderSessionHistory(); renderRunTotals(); renderRunHistory(); }
   else if (tab === 'nutrition') { showView('nutrition'); renderNutrition(); }
   else if (tab === 'stats') { showView('stats'); renderStats(); }
   // BUG-UI-2 fix (v11.12): 'settings' had no branch, so the Home gear/bell/avatar
@@ -1625,9 +1610,9 @@ function updateHeader(tab) {
     if (state.currentView === 'workout' && state.activeSession) return;
     title.textContent = 'Training';
     sub.textContent = `Week ${wk}${dayChip} · ${deload ? 'Deload' : 'Cut'}`;
-  } else if (tab === 'run') {
-    title.textContent = 'Running';
-    sub.textContent = `Week ${wk}${dayChip} · Zone 2`;
+  } else if (tab === 'cardio') {
+    title.textContent = 'Cardio';
+    sub.textContent = `Week ${wk}${dayChip} · Zona 2`;
   } else if (tab === 'nutrition') {
     title.textContent = 'Nutrition';
     sub.textContent = `Target: ${state.settings.proteinTarget}g protein`;
@@ -1828,15 +1813,15 @@ async function renderWeekStrip() {
       // Done: filled blue pill with km label (tabular-nums, more visual than a generic dot)
       const kmLabel = (parseFloat(dayRun.distance) || 0).toFixed(1);
       runCell.innerHTML = `<div class="ws-day">${dayNames[i]}</div><div class="ws-run-pill done">${kmLabel}</div>`;
-      runCell.addEventListener('click', () => { switchTab('run'); });
+      runCell.addEventListener('click', () => { switchTab('cardio'); });
     } else if (planRun) {
       // Planned but not done: outlined blue ring
       runCell.innerHTML = `<div class="ws-day">${dayNames[i]}</div><div class="ws-run-pill planned"></div>`;
-      runCell.addEventListener('click', () => { switchTab('run'); });
+      runCell.addEventListener('click', () => { switchTab('cardio'); });
     } else {
       // No plan, no run: very subtle empty marker
       runCell.innerHTML = `<div class="ws-day">${dayNames[i]}</div><div class="ws-run-pill empty"></div>`;
-      runCell.addEventListener('click', () => { switchTab('run'); });
+      runCell.addEventListener('click', () => { switchTab('cardio'); });
     }
 
     // Long-press to toggle run day
@@ -5743,6 +5728,48 @@ async function logSession() {
   renderSessionHistory();
 }
 
+// T5.1: unified Cardio logger — any modality (run/treadmill/bike/row/ski/walk) + intensity.
+// Writes to the 'sessions' store (T1 envelope). Legacy 'runs' still render via toSession().
+async function logCardio() {
+  const modality = document.getElementById('cardio-modality').value;   // run_outdoor|treadmill|bike|row|ski|walk
+  const intensity = document.getElementById('cardio-intensity').value; // zone2|long_easy|zone3|threshold|intervals
+  const duration = parseInt(document.getElementById('cardio-duration').value) || null;
+  const distance = parseFloat(document.getElementById('cardio-distance').value) || null;
+  const hr = parseInt(document.getElementById('cardio-hr').value) || null;
+  const feel = getStarValue('cardio-feel');
+  const notes = document.getElementById('cardio-notes').value.trim();
+  if (!duration && !distance) { toast('Poné duración o distancia'); return; }
+
+  const isWalk = modality === 'walk';
+  const family = isWalk ? 'recovery' : 'cardio';
+  const subtype = isWalk ? 'walk' : intensity;
+  const meta = (typeof sessionSubtypeMeta === 'function' && sessionSubtypeMeta(family, subtype)) || {};
+  const MOD = { run_outdoor: 'Carrera', treadmill: 'Cinta', bike: 'Bici', row: 'Remo', ski: 'SkiErg', walk: 'Caminata' };
+  const INT = { zone2: 'Z2', long_easy: 'Largo Z2', zone3: 'Z3', threshold: 'Umbral', intervals: 'Intervalos' };
+  const title = isWalk ? 'Caminata (recuperación)' : `${MOD[modality] || 'Cardio'} · ${INT[subtype] || 'Z2'}`;
+
+  const rec = {
+    id: uid(), date: today(), ts: Date.now(),
+    family, subtype, sessionType: `${family}.${subtype}`,
+    modality, title,
+    durationMin: duration, distance, avgHR: hr,
+    perceivedEffort: feel,
+    evidenceTags: meta.evidenceTags || [],
+    budgetWeight: meta.budgetWeight != null ? meta.budgetWeight : 0,
+    notes, source: 'manual', week: getWeekNumber(),
+  };
+  await smartPut('sessions', rec);
+
+  document.getElementById('cardio-duration').value = '';
+  document.getElementById('cardio-distance').value = '';
+  document.getElementById('cardio-hr').value = '';
+  document.getElementById('cardio-notes').value = '';
+  setStarValue('cardio-feel', 3);
+  toast(`${title} registrado`);
+  renderSessionHistory();
+  try { renderRunTotals(); } catch (e) {}
+}
+
 // T2 (v11.20): render recently-logged non-run cardio + recovery sessions in the
 // Run tab. Reads the 'sessions' store, normalizes via the T1 adapter.
 async function renderSessionHistory() {
@@ -6358,6 +6385,7 @@ async function renderHomeView() {
     renderRecoveryHero(),
     renderTrainingAdvisory(),   // T3 advisory card (read-only)
     renderHardDayBudget(),      // T3 weekly hard-day budget (read-only)
+    renderPlanSelector(),       // T5.1 day-count selector (3/4/5/Ideal)
     renderWeekCalendar(),
     renderTodaysPlan(),
     renderHomeStatTrio(),
@@ -6533,12 +6561,25 @@ async function getPlannedSessionForDate(date) {
   const sessionId = getPlannedSession(jsDay, customSchedule, ds); // gym id or null
   if (sessionId) {
     const s = (activePlan && activePlan.sessions) ? activePlan.sessions[sessionId] : null;
-    return { type: 'gym', date: ds, sessionId, name: s ? s.name : sessionId, subtitle: s ? s.subtitle : '', exercises: (s && s.exercises) || [] };
+    // Z2 finisher only applies when the day comes from the template (not a manual override).
+    const z2 = (slot.type === 'gym' && customSchedule[ds] === undefined) ? (slot.z2FinisherMin || null) : null;
+    return { type: 'gym', date: ds, sessionId, name: s ? s.name : sessionId, subtitle: s ? s.subtitle : '', exercises: (s && s.exercises) || [], z2FinisherMin: z2 };
   }
-  if (slot.type === 'run' && customSchedule[ds] === undefined) {
-    return { type: 'run', date: ds, name: slot.label || 'Zone 2 Run', subtitle: 'Zone 2' };
+  if (customSchedule[ds] === undefined) {
+    if (slot.type === 'run') { // cardio day (internal type stays 'run' for compatibility)
+      return { type: 'run', date: ds, name: slot.label || 'Cardio Z2', subtitle: cardioSubtypeLabel(slot.subtype), subtype: slot.subtype || 'zone2', durationMin: slot.durationMin || null };
+    }
+    if (slot.type === 'recovery') {
+      return { type: 'recovery', date: ds, name: slot.label || 'Recuperación activa', subtitle: 'Movilidad + Z2 suave', z2FinisherMin: slot.z2FinisherMin || null };
+    }
   }
   return { type: 'rest', date: ds, name: 'Rest' };
+}
+
+// Spanish label for a cardio subtype (used in planned-session cards).
+function cardioSubtypeLabel(subtype) {
+  const map = { zone2: 'Zona 2 · fácil', zone3: 'Zona 3', threshold: 'Umbral', intervals: 'Intervalos', long_easy: 'Largo Z2 · calidad', recovery: 'Recuperación' };
+  return map[subtype] || 'Zona 2 · fácil';
 }
 
 // Classify the planned session's training stress (reuses toSession + SESSION_TYPES).
@@ -6546,9 +6587,14 @@ function classifySessionStress(planned) {
   if (!planned || planned.type === 'rest') {
     return { level: 'easy', family: 'recovery', subtype: 'deload', regions: [], impact: 'low', systemicFatigue: 'low', budgetWeight: 0, ruleIds: [] };
   }
+  if (planned.type === 'recovery') {
+    return { level: 'easy', family: 'recovery', subtype: 'mobility', regions: [], impact: 'low', systemicFatigue: 'low', budgetWeight: 0, ruleIds: ['ATH-003', 'READ-007'] };
+  }
   if (planned.type === 'run') {
-    const meta = (typeof sessionSubtypeMeta === 'function' && sessionSubtypeMeta('cardio', 'zone2')) || {};
-    return { level: 'easy', family: 'cardio', subtype: 'zone2', regions: ['cardio'], impact: 'high', systemicFatigue: 'low', budgetWeight: meta.budgetWeight != null ? meta.budgetWeight : 0.5, ruleIds: ['END-001'] };
+    const subtype = planned.subtype || 'zone2';
+    const meta = (typeof sessionSubtypeMeta === 'function' && sessionSubtypeMeta('cardio', subtype)) || {};
+    const bw = meta.budgetWeight != null ? meta.budgetWeight : 0.5;
+    return { level: bw >= 2 ? 'hard' : bw >= 1 ? 'moderate' : 'easy', family: 'cardio', subtype, regions: ['cardio'], impact: 'high', systemicFatigue: 'low', budgetWeight: bw, ruleIds: meta.evidenceTags || ['END-001'] };
   }
   const sess = toSession({ session: planned.sessionId, sessionName: planned.name, exercises: planned.exercises || [] }, 'workouts');
   const meta = (typeof sessionSubtypeMeta === 'function' && sessionSubtypeMeta(sess.family, sess.subtype)) || {};
@@ -6782,61 +6828,67 @@ async function renderHardDayBudget() {
 // generator/logs — "Aplicar" is deferred to T5. Generation logic is documented in
 // docs/architecture/ideal-plan-engine-v1.md (spec for the future algorithmic engine).
 // dow: 1=Mon..6=Sat, 0=Sun. budgetWeight mirrors SESSION_TYPES so the budget sum is consistent.
+// T5.1: the IDEAL is a 4-day Upper/Lower split (covers the 6 patterns 2×/wk, ~14-18 sets/muscle,
+// hypertrophy-leaning for recomp/aesthetics) + a daily Z2 stimulus (finisher on strength days,
+// dedicated cardio days, 1 active-recovery day) → a stimulus every day of the week. Strength days
+// carry z2Finisher (min) so the aerobic dose shows daily. Full sessions are 60-75 min; quick-mode
+// compresses them to ~40-45 min (it is the time-saver, NOT a permanently light day).
+// Variants flex DOWN from the ideal for busy/travel weeks. dow: 1=Mon..6=Sat, 0=Sun.
 const IDEAL_BLOCK_V1 = {
-  goal: 'Recomposición atlética + base aeróbica + mantenimiento de fuerza',
+  goal: 'Recomposición (bajar grasa + tonificar) + base aeróbica + fuerza',
   weeks: 5, // 4 build + 1 deload
-  progressing: ['Base aeróbica / running progresivo'],
-  maintaining: ['Fuerza pesada (2×/patrón)', 'Hipertrofia útil', 'Movilidad / athleticism'],
-  runningArc: 'S1: 2× Z2 25-30 min → S4: 1 largo Z2 45-50 min + 1 Z2/Z3 · S5: deload',
+  progressing: ['Fuerza/hipertrofia (Upper/Lower 2×)', 'Base aeróbica (Z2 diario)'],
+  maintaining: ['Movilidad / athleticism'],
+  runningArc: 'Z2 fácil casi todos los días + 1 sesión de calidad/sem (largo o progresivo Z2/Z3).',
   cautions: [
-    'No correr fuerte <24 h antes de pierna pesada (INT-001).',
-    'Híbrido no el mismo día que pierna pesada; cuenta como día duro (HYB-002).',
+    'No hacer cardio fuerte <24 h antes de pierna pesada (INT-001) — la calidad va el sábado.',
+    'Z2 finisher SIEMPRE fácil/conversacional: no interfiere con la fuerza (END-001).',
     'Mayoría del cardio fácil — ~80/20 en la semana (END-001).',
-    'Potencia/plyo solo fresco, al inicio (INT-004 / ATH-002).',
+    'En déficit: mantener intensidad, no subir volumen agresivo; quick-mode si hay fatiga (LOAD).',
   ],
   variants: {
     3: {
       label: 'Mínima · 3 días',
-      note: 'Semanas complicadas: preserva fuerza pesada + mínimo aeróbico + continuidad.',
+      note: 'Viaje / sin gym: preserva fuerza con 2 full-body + 1 cardio. Continuidad.',
       days: [
-        { dow: 1, kind: 'strength', subtype: 'full', bw: 2, planRef: 'fullA', title: 'Full Body A', summary: 'Sentadilla + press banca + remo + core', why: 'Cubre piernas/empuje/tirón en una sola sesión.', ruleIds: ['STR-002', 'STR-005'], alt: 'strength_lower' },
-        { dow: 3, kind: 'strength', subtype: 'full', bw: 2, planRef: 'fullB', title: 'Full Body B', summary: 'Peso muerto + press militar + dominadas + core', why: 'Segundo full-body: bisagra + patrón vertical.', ruleIds: ['STR-002', 'STR-007'], alt: 'strength_lower' },
-        { dow: 6, kind: 'cardio', subtype: 'zone2', bw: 0.5, title: 'Carrera / Bici Z2', summary: '30-40 min fácil (bici si las piernas están cargadas)', why: 'Mínimo estímulo aeróbico y continuidad.', ruleIds: ['END-001', 'INT-002'], alt: 'hard_cardio' },
+        { dow: 1, kind: 'strength', subtype: 'full', bw: 2, planRef: 'fullA', title: 'Full Body A', summary: 'Sentadilla + press banca + remo + core', why: 'Cubre piernas/empuje/tirón en una sesión.', ruleIds: ['STR-002', 'STR-005'], alt: 'strength_lower' },
+        { dow: 3, kind: 'strength', subtype: 'full', bw: 2, planRef: 'fullB', title: 'Full Body B', summary: 'Peso muerto + press militar + dominadas + core', why: 'Bisagra + patrón vertical.', ruleIds: ['STR-002', 'STR-007'], alt: 'strength_lower' },
+        { dow: 6, kind: 'cardio', subtype: 'zone2', bw: 0.5, durationMin: 35, title: 'Cardio Z2', summary: '30-40 min fácil (bici/remo/cinta o correr)', why: 'Mínimo estímulo aeróbico.', ruleIds: ['END-001', 'INT-002'], alt: 'hard_cardio' },
       ],
     },
     4: {
-      label: 'Estándar · 4 días',
-      note: 'La opción más realista: 2 fuerza + 2 cardio, base aeróbica progresando.',
+      label: 'Reducida · 4 días',
+      note: '2 full-body + 2 cardio. Para semanas con menos margen, sin perder cobertura.',
       days: [
-        { dow: 1, kind: 'strength', subtype: 'lower', bw: 2, planRef: 'lowerA', title: 'Sentadilla · Peso muerto', why: 'Pierna pesada al inicio de semana, en fresco.', ruleIds: ['STR-005', 'INT-001'], alt: 'strength_lower' },
-        { dow: 2, kind: 'cardio', subtype: 'zone2', bw: 0.5, title: 'Bici / Carrera Z2', summary: '30-40 min fácil', why: 'Aeróbico de bajo impacto el día después de pierna.', ruleIds: ['END-001', 'INT-002'], alt: 'hard_cardio' },
-        { dow: 4, kind: 'strength', subtype: 'upper', bw: 1, planRef: 'upperA', title: 'Press banca · Remo', why: 'Tren superior: no interfiere con la pierna.', ruleIds: ['STR-002'], alt: 'strength_upper' },
-        { dow: 6, kind: 'cardio', subtype: 'long_easy', bw: 1, title: 'Carrera progresiva Z2', summary: 'Largo fácil, subiendo ~10%/sem', why: 'Progresar base aeróbica lejos de pierna pesada.', ruleIds: ['END-003', 'END-001'], alt: 'hard_cardio' },
+        { dow: 1, kind: 'strength', subtype: 'full', bw: 2, planRef: 'fullA', z2Finisher: 15, title: 'Full Body A', summary: 'Sentadilla + press + remo + core', why: 'Full-body cubre todo; +Z2 corto al final.', ruleIds: ['STR-002', 'STR-005'], alt: 'strength_lower' },
+        { dow: 2, kind: 'cardio', subtype: 'zone2', bw: 0.5, durationMin: 35, title: 'Cardio Z2', summary: '30-40 min fácil', why: 'Aeróbico de bajo impacto.', ruleIds: ['END-001', 'INT-002'], alt: 'hard_cardio' },
+        { dow: 4, kind: 'strength', subtype: 'full', bw: 2, planRef: 'fullB', z2Finisher: 15, title: 'Full Body B', summary: 'Peso muerto + OHP + dominadas + core', why: 'Bisagra + patrón vertical; +Z2 corto.', ruleIds: ['STR-002', 'STR-007'], alt: 'strength_upper' },
+        { dow: 6, kind: 'cardio', subtype: 'long_easy', bw: 1, durationMin: 45, title: 'Cardio largo Z2', summary: 'Largo fácil, subiendo ~10%/sem', why: 'Progresar base aeróbica lejos de pierna.', ruleIds: ['END-003', 'END-001'], alt: 'hard_cardio' },
       ],
     },
     5: {
-      label: 'Óptima · 5 días',
-      note: '3 fuerza + 2 cardio; movilidad/athleticism en microdosis; días duros espaciados.',
+      label: 'Alta · 5 días',
+      note: '3 fuerza (lower/upper/upper) + 2 cardio + recuperación. Casi el ideal.',
       days: [
-        { dow: 1, kind: 'strength', subtype: 'lower', bw: 2, planRef: 'lowerA', title: 'Sentadilla · Peso muerto', why: 'Pierna pesada al inicio, en fresco.', ruleIds: ['STR-005', 'INT-001'], alt: 'strength_lower' },
-        { dow: 2, kind: 'cardio', subtype: 'zone2', bw: 0.5, title: 'Bici / Carrera Z2', summary: '30-40 min fácil', why: 'Aeróbico bajo impacto post-pierna.', ruleIds: ['END-001', 'INT-002'], alt: 'hard_cardio' },
-        { dow: 3, kind: 'strength', subtype: 'upper', bw: 1, planRef: 'upperA', title: 'Press banca · Remo', why: 'Tren superior, sin interferir con pierna.', ruleIds: ['STR-002'], alt: 'strength_upper' },
-        { dow: 5, kind: 'cardio', subtype: 'long_easy', bw: 1, title: 'Carrera progresiva Z2', summary: 'Largo fácil (S4 sube a Z2/Z3)', why: 'Progresar base aeróbica; calidad recién al final del bloque.', ruleIds: ['END-003', 'END-004'], alt: 'hard_cardio' },
-        { dow: 6, kind: 'strength', subtype: 'maintenance', bw: 1, planRef: 'maintenance', title: 'Full body (mantenimiento)', summary: 'Bisagra ligera + accesorios + core', why: 'Segundo estímulo de pierna SIN sumar otro día muy duro (budget).', ruleIds: ['STR-001', 'BUD-001'], alt: 'strength_lower' },
-        { dow: 0, kind: 'recovery', subtype: 'mobility', bw: 0, title: 'Movilidad + core', summary: 'Movilidad dinámica + anti-rotación + caminata', why: 'Recuperación activa.', ruleIds: ['ATH-003', 'READ-007'], alt: null },
+        { dow: 1, kind: 'strength', subtype: 'lower', bw: 2, planRef: 'lowerA', z2Finisher: 15, title: 'Lower A · Sentadilla', why: 'Pierna pesada al inicio, en fresco.', ruleIds: ['STR-005', 'INT-001'], alt: 'strength_lower' },
+        { dow: 2, kind: 'strength', subtype: 'upper', bw: 1, planRef: 'upperA', z2Finisher: 15, title: 'Upper A · Press/Remo', why: 'Tren superior horizontal; +Z2 corto.', ruleIds: ['STR-002'], alt: 'strength_upper' },
+        { dow: 3, kind: 'cardio', subtype: 'zone2', bw: 0.5, durationMin: 35, title: 'Cardio Z2', summary: '30-40 min fácil + movilidad', why: 'Aeróbico de bajo impacto.', ruleIds: ['END-001', 'INT-002'], alt: 'hard_cardio' },
+        { dow: 5, kind: 'strength', subtype: 'upper', bw: 1, planRef: 'upperB', z2Finisher: 15, title: 'Upper B · Dominadas/OHP', why: 'Patrón vertical (lo que faltaba); +Z2 corto.', ruleIds: ['STR-002', 'STR-007'], alt: 'strength_upper' },
+        { dow: 6, kind: 'cardio', subtype: 'long_easy', bw: 1, durationMin: 45, title: 'Cardio calidad Z2', summary: 'Largo / progresivo Z2/Z3', why: 'Única sesión de calidad de la semana.', ruleIds: ['END-003', 'END-004'], alt: 'hard_cardio' },
+        { dow: 0, kind: 'recovery', subtype: 'mobility', bw: 0, z2Finisher: 20, title: 'Recuperación activa', summary: 'Movilidad + core + Z2 suave 20 min', why: 'Recuperación activa con estímulo aeróbico.', ruleIds: ['ATH-003', 'READ-007'], alt: null },
       ],
     },
     6: {
-      label: 'Máxima · 6 días',
-      note: 'Cuando hay tiempo: días extra FÁCILES (correr 30 min cuesta poco) sin subir la carga dura.',
+      label: 'Completa · ideal',
+      note: 'EL IDEAL: 4 fuerza (Upper/Lower 2×, los 6 patrones) + Z2 diario + 1 calidad + recuperación. Estímulo los 7 días. Quick-mode si falta tiempo.',
       days: [
-        { dow: 1, kind: 'strength', subtype: 'lower', bw: 2, planRef: 'lowerA', title: 'Sentadilla · Peso muerto', why: 'Pierna pesada al inicio, en fresco.', ruleIds: ['STR-005', 'INT-001'], alt: 'strength_lower' },
-        { dow: 2, kind: 'cardio', subtype: 'zone2', bw: 0.5, title: 'Carrera Z2 30 min', summary: 'Fácil, conversacional', why: 'Volumen aeróbico barato (no suma carga dura).', ruleIds: ['END-001'], alt: 'hard_cardio' },
-        { dow: 3, kind: 'strength', subtype: 'upper', bw: 1, planRef: 'upperA', title: 'Press banca · Remo', why: 'Tren superior, sin interferir con la pierna.', ruleIds: ['STR-002'], alt: 'strength_upper' },
-        { dow: 4, kind: 'cardio', subtype: 'zone2', bw: 0.5, title: 'Carrera / Bici Z2', summary: 'Fácil', why: 'Más base aeróbica fácil.', ruleIds: ['END-001', 'END-003'], alt: 'hard_cardio' },
-        { dow: 5, kind: 'strength', subtype: 'maintenance', bw: 1, planRef: 'maintenance', title: 'Full body (mantenimiento)', summary: 'Bisagra ligera + accesorios + core', why: '2º estímulo de pierna sin otro día muy duro.', ruleIds: ['STR-001', 'BUD-001'], alt: 'strength_lower' },
-        { dow: 6, kind: 'cardio', subtype: 'long_easy', bw: 1, title: 'Carrera larga fácil Z2', summary: 'Largo, subiendo ~10%/sem', why: 'Construye el motor aeróbico hacia 10-15 km.', ruleIds: ['END-003', 'END-005'], alt: 'hard_cardio' },
-        { dow: 0, kind: 'recovery', subtype: 'mobility', bw: 0, title: 'Movilidad + core', summary: 'Movilidad + anti-rotación + caminata', why: 'Recuperación activa.', ruleIds: ['ATH-003'], alt: null },
+        { dow: 1, kind: 'strength', subtype: 'lower', bw: 2, planRef: 'lowerA', z2Finisher: 20, title: 'Lower A · Sentadilla', why: 'Pierna pesada al inicio, en fresco. +20 min Z2 fácil al final.', ruleIds: ['STR-005', 'INT-001'], alt: 'strength_lower' },
+        { dow: 2, kind: 'strength', subtype: 'upper', bw: 1, planRef: 'upperA', z2Finisher: 20, title: 'Upper A · Press/Remo', why: 'Empuje/tirón horizontal. +20 min Z2 fácil.', ruleIds: ['STR-002'], alt: 'strength_upper' },
+        { dow: 3, kind: 'cardio', subtype: 'zone2', bw: 0.5, durationMin: 40, title: 'Cardio Z2 + movilidad', summary: '35-45 min fácil (bici/remo/cinta) + movilidad/core', why: 'Día aeróbico dedicado entre estímulos de fuerza.', ruleIds: ['END-001', 'END-003'], alt: 'hard_cardio' },
+        { dow: 4, kind: 'strength', subtype: 'lower', bw: 2, planRef: 'lowerB', z2Finisher: 20, title: 'Lower B · Bisagra', why: 'Bisagra (peso muerto) — 2º estímulo de pierna. +20 min Z2.', ruleIds: ['STR-005', 'STR-007'], alt: 'strength_lower' },
+        { dow: 5, kind: 'strength', subtype: 'upper', bw: 1, planRef: 'upperB', z2Finisher: 20, title: 'Upper B · Dominadas/OHP', why: 'Patrón vertical (dominadas + press militar). +20 min Z2.', ruleIds: ['STR-002', 'STR-007'], alt: 'strength_upper' },
+        { dow: 6, kind: 'cardio', subtype: 'long_easy', bw: 1, durationMin: 50, title: 'Cardio calidad Z2', summary: 'Largo fácil o progresivo Z2/Z3 — única sesión de calidad', why: 'Construye el motor aeróbico para la grasa; lejos de pierna.', ruleIds: ['END-003', 'END-005'], alt: 'hard_cardio' },
+        { dow: 0, kind: 'recovery', subtype: 'mobility', bw: 0, z2Finisher: 20, title: 'Recuperación activa', summary: 'Movilidad + core + caminata/Z2 suave 20 min', why: 'Recuperación activa; estímulo suave los 7 días.', ruleIds: ['ATH-003', 'READ-007'], alt: null },
       ],
     },
   },
@@ -6851,22 +6903,24 @@ const EQUIP_SUBS = {
 };
 
 // T5: the chosen day-count (3/4/5/6) and per-session duration persist in settings (synced).
-function _idealVariant() { const v = state.settings && state.settings.idealVariant; return (v === 3 || v === 4 || v === 5 || v === 6) ? v : 5; }
-function _idealDuration() { const d = state.settings && state.settings.idealDuration; return (d === 45 || d === 60 || d === 75) ? d : 60; }
+// T5.1: default to the full IDEAL (variant 6 "Completa"). Selector flexes down to 3/4/5.
+function _idealVariant() { const v = state.settings && state.settings.idealVariant; return (v === 3 || v === 4 || v === 5 || v === 6) ? v : 6; }
 
-// T5: derive a week template ({0..6: slot}) from the chosen ideal variant.
-// strength → gym (planRef session) · cardio → run (label + subtype) · recovery → rest(label) · gap → rest.
+// T5.1: derive a week template ({0..6: slot}) from the chosen ideal variant.
+// strength → gym (+z2FinisherMin) · cardio → run (subtype + durationMin) · recovery → recovery (+z2FinisherMin) · gap → rest.
 function buildWeekTemplateFromIdeal(variantNum) {
-  const variant = IDEAL_BLOCK_V1.variants[variantNum] || IDEAL_BLOCK_V1.variants[5];
+  const variant = IDEAL_BLOCK_V1.variants[variantNum] || IDEAL_BLOCK_V1.variants[6];
   const tpl = {};
   for (let d = 0; d <= 6; d++) tpl[d] = { type: 'rest', label: 'Rest' };
   for (const day of variant.days) {
     if (day.kind === 'strength' && day.planRef) {
       tpl[day.dow] = { type: 'gym', session: day.planRef };
+      if (day.z2Finisher) tpl[day.dow].z2FinisherMin = day.z2Finisher;
     } else if (day.kind === 'cardio') {
-      tpl[day.dow] = { type: 'run', label: day.title, subtype: day.subtype || 'zone2' };
-    } else { // recovery, or a strength day missing a concrete session → labelled rest
-      tpl[day.dow] = { type: 'rest', label: day.title || 'Rest' };
+      tpl[day.dow] = { type: 'run', label: day.title, subtype: day.subtype || 'zone2', durationMin: day.durationMin || null };
+    } else if (day.kind === 'recovery') {
+      tpl[day.dow] = { type: 'recovery', label: day.title || 'Recuperación activa', subtype: day.subtype || 'mobility' };
+      if (day.z2Finisher) tpl[day.dow].z2FinisherMin = day.z2Finisher;
     }
   }
   return tpl;
@@ -6895,27 +6949,36 @@ async function applyIdealPlan({ force = false } = {}) {
   console.log(`[Plan] Ideal default → "${targetLabel}"`);
 }
 
-// T5: user flexes the day-count (3/4/5/6). Persists the choice (synced) and regenerates
-// the plan FORWARD as a new version. Past logs (workouts/runs/sessions) are untouched.
-async function setIdealVariant(n) {
-  if (![3, 4, 5, 6].includes(n)) return;
-  if (n === _idealVariant() && /^Ideal · /.test((activePlan && activePlan.label) || '')) {
-    renderIdealPreview();
-    return; // no change
-  }
-  state.settings.idealVariant = n;
-  await smartPut('settings', { key: 'userSettings', data: state.settings });
-  await applyIdealPlan({ force: true });
-  renderIdealPreview();
-  try { renderWeekStrip(); } catch (e) {}
-  toast(`Plan a ${n} días — sesiones pasadas intactas`);
+// T5.1: clear per-date schedule overrides for TODAY and FUTURE dates, so a regenerated
+// plan shows up immediately on the current week. Past days keep their overrides (history).
+async function clearFutureScheduleOverrides() {
+  try {
+    const sched = await getWeekSchedule();
+    const t = today();
+    let changed = false;
+    for (const ds of Object.keys(sched)) { if (ds >= t) { delete sched[ds]; changed = true; } }
+    if (changed) await saveWeekSchedule(sched);
+  } catch (e) {}
 }
 
-async function setIdealDuration(d) {
-  if (![45, 60, 75].includes(d)) return;
-  state.settings.idealDuration = d;
+// T5.1: user flexes the day-count (3/4/5/6; 6 = the full ideal). Persists the choice (synced),
+// regenerates the plan FORWARD, clears future overrides so the change is visible immediately,
+// and preserves past/done days. Logs (workouts/runs/sessions) are never touched.
+async function setIdealVariant(n) {
+  if (![3, 4, 5, 6].includes(n)) return;
+  const changed = n !== _idealVariant() || !/^Ideal/.test((activePlan && activePlan.label) || '');
+  state.settings.idealVariant = n;
   await smartPut('settings', { key: 'userSettings', data: state.settings });
-  renderIdealPreview();
+  if (changed) {
+    await applyIdealPlan({ force: true });
+    await clearFutureScheduleOverrides();
+  }
+  try { await renderHomeView(); } catch (e) {}
+  try { renderIdealPreview(); } catch (e) {}
+  if (changed) {
+    const lbl = (IDEAL_BLOCK_V1.variants[n] && IDEAL_BLOCK_V1.variants[n].label) || `${n} días`;
+    toast(`Plan: ${lbl} — días pasados intactos`);
+  }
 }
 const _DOW_ES = { 1: 'Lun', 2: 'Mar', 3: 'Mié', 4: 'Jue', 5: 'Vie', 6: 'Sáb', 0: 'Dom' };
 const _DOW_ORDER = [1, 2, 3, 4, 5, 6, 0];
@@ -6939,18 +7002,27 @@ function _currentWeekLabel(dow) {
   return (slot.label && slot.label !== 'Rest') ? slot.label : 'Descanso';
 }
 
-// Render the Ideal Plan Preview (read-only). No mutation of plan/template.
+// Per-day guidance text for the ideal week (full session + quick-mode + Z2 finisher).
+function _idealDayGuide(d) {
+  if (d.kind === 'strength') return `Sesión completa 60-75' (quick-mode 40-45')${d.z2Finisher ? ` · +${d.z2Finisher}' Z2 al final` : ''}`;
+  if (d.kind === 'cardio') return `${d.durationMin || 35}' ${d.subtype === 'long_easy' ? 'calidad' : 'fácil'}`;
+  if (d.kind === 'recovery') return `Movilidad + core${d.z2Finisher ? ` · Z2 suave ${d.z2Finisher}'` : ''}`;
+  return '';
+}
+
+// Render the Ideal Plan view (the LIVE plan). Day-count selector regenerates it.
 function renderIdealPreview() {
   const host = document.getElementById('ideal-preview-body');
   if (!host) return;
-  const v = _idealVariant(), dur = _idealDuration();
-  const variant = IDEAL_BLOCK_V1.variants[v] || IDEAL_BLOCK_V1.variants[5];
+  const v = _idealVariant();
+  const variant = IDEAL_BLOCK_V1.variants[v] || IDEAL_BLOCK_V1.variants[6];
   const byDow = {};
   variant.days.forEach(d => { byDow[d.dow] = d; });
-  const budget = Math.round(variant.days.reduce((s, d) => s + (d.bw || 0), 0) * 10) / 10;
 
-  const variantToggle = [3, 4, 5, 6].map(n => `<button class="ip-tog ${n === v ? 'active' : ''}" data-ip-variant="${n}">${n} días</button>`).join('');
-  const durToggle = [45, 60, 75].map(n => `<button class="ip-tog ${n === dur ? 'active' : ''}" data-ip-dur="${n}">${n}'</button>`).join('');
+  const variantToggle = [3, 4, 5, 6].map(n => {
+    const lab = n === 6 ? 'Ideal' : `${n}d`;
+    return `<button class="ip-tog ${n === v ? 'active' : ''}" data-ip-variant="${n}">${lab}</button>`;
+  }).join('');
 
   const idealRows = _DOW_ORDER.map(dow => {
     const d = byDow[dow];
@@ -6962,7 +7034,7 @@ function renderIdealPreview() {
       <div class="ip-day-main">
         <div class="ip-day-title">${d.title} <span class="ip-level" style="color:${tone};background:${tone}1a">${lvl}</span></div>
         <div class="ip-day-why">${d.why}${d.summary ? ` · ${d.summary}` : ''}</div>
-        <div class="ip-day-dur">${_idealDurGuide(d.kind, dur)}</div>
+        <div class="ip-day-dur">${_idealDayGuide(d)}</div>
         ${altArr.length ? `<div class="ip-day-alt">Alt: ${altArr.join(' · ')}</div>` : ''}
       </div></div>`;
   }).join('');
@@ -6971,31 +7043,59 @@ function renderIdealPreview() {
 
   host.innerHTML = `
     <div class="ip-goal card">
-      <div class="t3-eyebrow">Bloque · 5 semanas</div>
+      <div class="t3-eyebrow">Tu plan</div>
       <div class="ip-goal-title">${IDEAL_BLOCK_V1.goal}</div>
       <div class="ip-goal-sub"><b>Progresa:</b> ${IDEAL_BLOCK_V1.progressing.join(', ')}</div>
       <div class="ip-goal-sub"><b>Mantiene:</b> ${IDEAL_BLOCK_V1.maintaining.join(', ')}</div>
-      <div class="ip-goal-sub"><b>Running:</b> ${IDEAL_BLOCK_V1.runningArc}</div>
+      <div class="ip-goal-sub"><b>Cardio:</b> ${IDEAL_BLOCK_V1.runningArc}</div>
     </div>
-    <div class="ip-toggles"><div class="ip-tog-group">${variantToggle}</div><div class="ip-tog-group">${durToggle}</div></div>
+    <div class="ip-toggles"><div class="ip-tog-group">${variantToggle}</div></div>
     <div class="ip-note">${variant.note}</div>
-    <div class="ip-budget">Carga dura de la semana: <b>${budget} / 6</b>${budget > 6 ? ' · <span class="t3-warn">en el límite</span>' : ''}</div>
-    <div class="section-label" style="margin-top:10px">Semana ideal</div>
+    <div class="section-label" style="margin-top:10px">Semana</div>
     <div class="ip-week">${idealRows}</div>
     <div class="section-label" style="margin-top:16px">Esta semana en tu calendario</div>
     <div class="ip-current card">${currentRows}</div>
     <div class="section-label" style="margin-top:16px">Cuidados que respeta</div>
     <ul class="ip-cautions">${IDEAL_BLOCK_V1.cautions.map(c => `<li>${c}</li>`).join('')}</ul>
     <div class="ip-equip">Cada día tiene alternativas si el gym está lleno o falta equipo. Sin SkiErg → ${EQUIP_SUBS.skierg.join(' / ')}. Sin rack → ${EQUIP_SUBS.rack.join(' / ')}.</div>
-    <div class="t3-foot">Este es tu plan vivo. Elegí los días según la semana — solo cambia hacia adelante; tus sesiones registradas quedan intactas.</div>
+    <div class="t3-foot">Este es tu plan vivo. <b>Ideal</b> = semana completa (estímulo los 7 días). Bajá los días en semanas de viaje — solo cambia hacia adelante; tus sesiones registradas quedan intactas.</div>
   `;
   host.querySelectorAll('[data-ip-variant]').forEach(b => b.addEventListener('click', () => { setIdealVariant(parseInt(b.dataset.ipVariant, 10)); }));
-  host.querySelectorAll('[data-ip-dur]').forEach(b => b.addEventListener('click', () => { setIdealDuration(parseInt(b.dataset.ipDur, 10)); }));
 }
 
 function openIdealPreview() {
   showView('ideal-preview');
   renderIdealPreview();
+}
+
+// T5.1: compact day-count selector on Home. Default 6 = the full ideal; flex down for busy weeks.
+async function renderPlanSelector() {
+  const container = document.getElementById('plan-selector');
+  if (!container) return;
+  const v = _idealVariant();
+  const variant = IDEAL_BLOCK_V1.variants[v] || IDEAL_BLOCK_V1.variants[6];
+  const days = variant.days || [];
+  const strengthN = days.filter(d => d.kind === 'strength').length;
+  const cardioN = days.filter(d => d.kind === 'cardio').length;
+  const z2N = days.filter(d => d.z2Finisher).length;
+  const toggles = [3, 4, 5, 6].map(n => {
+    const lab = n === 6 ? 'Ideal' : `${n}`;
+    return `<button class="ip-tog ${n === v ? 'active' : ''}" data-ps-variant="${n}">${lab}</button>`;
+  }).join('');
+  container.innerHTML = `
+    <div class="home-sec-row" style="margin-top:24px">
+      <h2 class="home-h2">Tu plan</h2>
+      <span class="home-link-mono" id="plan-detail">Ver ›</span>
+    </div>
+    <div class="card" style="padding:14px 16px">
+      <div class="ip-tog-group" style="display:flex;gap:6px;margin-bottom:10px">${toggles}</div>
+      <div class="muted" style="font-size:12.5px;line-height:1.5">
+        <b>${variant.label}</b> · ${strengthN} fuerza + ${cardioN} cardio${z2N ? ` · Z2 en ${z2N} días` : ''}
+      </div>
+    </div>`;
+  container.querySelectorAll('[data-ps-variant]').forEach(b => b.addEventListener('click', () => setIdealVariant(parseInt(b.dataset.psVariant, 10))));
+  const det = container.querySelector('#plan-detail');
+  if (det) det.onclick = () => openIdealPreview();
 }
 
 // ==================== HOME STAT TRIO (Lovable dashboard cards) ====================
@@ -7076,8 +7176,9 @@ async function renderWeekCalendar() {
   const weekDates = getWeekDates();
   const todayStr = today();
   const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  const [workouts, runs, mobs] = await Promise.all([dbGetAll('workouts'), dbGetAll('runs'), dbGetAll('mobility_sessions')]);
-  const customSchedule = await getWeekSchedule();
+  const [workouts, runs, mobs, sessions] = await Promise.all([dbGetAll('workouts'), dbGetAll('runs'), dbGetAll('mobility_sessions'), dbGetAll('sessions')]);
+  // Rich planned session per date (cardio/recovery-aware), so cardio days are not invisible.
+  const plannedArr = await Promise.all(weekDates.map(d => getPlannedSessionForDate(d).catch(() => null)));
 
   let doneCount = 0;
   const cells = weekDates.map((date, i) => {
@@ -7088,14 +7189,23 @@ async function renderWeekCalendar() {
     const gym = workouts.find(w => w.date === ds);
     const run = runs.find(r => r.date === ds);
     const mob = mobs.find(m => m.date === ds);
-    const done = !!(gym || run || mob);
+    const sess = sessions.find(s => s.date === ds); // logged cardio/recovery (unified store)
+    const done = !!(gym || run || mob || sess);
     if (done) doneCount++;
-    const planned = isPast ? null : getPlannedSession(jsDay, customSchedule, ds);
-    let type = gym ? 'lift' : run ? 'run' : mob ? 'mobility' : (planned ? 'lift' : null);
+    const planned = plannedArr[i];
+    const pType = planned ? planned.type : null;
+    // Type for color: logged activity wins; otherwise the planned slot (gym/cardio/recovery).
+    let type = gym ? 'lift'
+      : (run || (sess && sess.family === 'cardio')) ? 'run'
+      : (mob || (sess && sess.family === 'recovery')) ? 'mobility'
+      : pType === 'gym' ? 'lift' : pType === 'run' ? 'run' : pType === 'recovery' ? 'mobility' : null;
     const tone = _homeTypeTone(type).color;
+    // Aerobic mark on upcoming days that carry a Z2 finisher (strength/recovery) → cardio shows daily.
+    const hasAero = !isPast && !done && planned && planned.z2FinisherMin > 0;
 
     let status; // done | today | upcoming | rest
     if (done) status = 'done';
+    else if (isToday && type) status = 'today';
     else if (isToday) status = 'today';
     else if (!isPast && type) status = 'upcoming';
     else status = 'rest';
@@ -7104,6 +7214,7 @@ async function renderWeekCalendar() {
     if (status === 'done') dot = `<span class="wc-check" style="background:${tone}">✓</span>`;
     else if (status === 'rest') dot = `<span class="wc-rest"></span>`;
     else dot = `<span class="wc-bar" style="background:${isToday ? 'var(--bg)' : tone}"></span>`;
+    if (hasAero) dot += `<span class="wc-aero" title="+ Z2 fácil" style="display:block;width:5px;height:5px;border-radius:50%;background:${typeTone('cardio')};margin:3px auto 0"></span>`;
 
     return { i, ds, jsDay, isToday, dateNum: date.getDate(), label: dayNames[i], status, dot, gym, planned };
   });
@@ -7145,9 +7256,9 @@ async function renderWeekCalendar() {
 async function pickDayActivity(ds, jsDay) {
   const dayLabel = new Date(ds + 'T12:00:00').toLocaleDateString('en', { weekday: 'long', month: 'short', day: 'numeric' });
   const choice = await showActionSheet(dayLabel, [
-    { value: 'gym', label: 'Gym — strength', icon: '🏋️' },
-    { value: 'run', label: 'Running', icon: '🏃' },
-    { value: 'mobility', label: 'Mobility', icon: '🧘' },
+    { value: 'gym', label: 'Gym — fuerza', icon: '🏋️' },
+    { value: 'run', label: 'Cardio', icon: '🏃' },
+    { value: 'mobility', label: 'Movilidad', icon: '🧘' },
   ]);
   if (!choice) return;
   if (choice === 'gym') {
@@ -7155,7 +7266,7 @@ async function pickDayActivity(ds, jsDay) {
     const planned = getPlannedSession(jsDay, customSchedule, ds);
     showSessionPicker(planned || Object.keys(activePlan.sessions)[0], ds); // lists muscle-group sessions
   } else if (choice === 'run') {
-    switchTab('run');
+    switchTab('cardio');
   } else if (choice === 'mobility') {
     switchTab('gym');
     if (typeof openMobilityView === 'function') openMobilityView();
@@ -7169,20 +7280,25 @@ async function renderHomeQueue() {
   if (!container) return;
   const weekDates = getWeekDates();
   const todayStr = today();
-  const customSchedule = await getWeekSchedule();
   const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  // Rich planned per day so cardio/recovery days appear in the queue (not just gym).
+  const plannedArr = await Promise.all(weekDates.map(d => getPlannedSessionForDate(d).catch(() => null)));
 
   const rows = [];
   weekDates.forEach((date, i) => {
     const ds = dateStr(date);
     if (ds <= todayStr) return; // upcoming only
-    const planned = getPlannedSession(date.getDay(), customSchedule, ds);
-    if (!planned) return;
-    const s = activePlan.sessions[planned];
-    const name = s ? s.name : planned;
-    const focus = (s && s.subtitle) ? s.subtitle : 'Strength';
-    rows.push({ ds, label: dayNames[i], name, focus, key: planned,
-      img: _homeCover(name, focus), tone: 'var(--blue)' });
+    const p = plannedArr[i];
+    if (!p || p.type === 'rest') return;
+    if (p.type === 'gym') {
+      const focus = (p.subtitle || 'Strength') + (p.z2FinisherMin ? ` · +${p.z2FinisherMin}' Z2` : '');
+      rows.push({ ds, label: dayNames[i], name: p.name, focus, kind: 'gym', key: p.sessionId, img: _homeCover(p.name, p.subtitle), tone: typeTone('strength') });
+    } else if (p.type === 'run') {
+      const focus = (p.subtitle || 'Zona 2') + (p.durationMin ? ` · ${p.durationMin}'` : '');
+      rows.push({ ds, label: dayNames[i], name: p.name, focus, kind: 'cardio', img: 'img/session-rest.jpg', tone: typeTone('cardio') });
+    } else if (p.type === 'recovery') {
+      rows.push({ ds, label: dayNames[i], name: p.name, focus: p.subtitle || 'Movilidad + Z2 suave', kind: 'recovery', img: 'img/session-rest.jpg', tone: typeTone('recovery') });
+    }
   });
 
   if (aheadEl) aheadEl.textContent = rows.length ? `${rows.length} ahead` : '';
@@ -7194,7 +7310,7 @@ async function renderHomeQueue() {
 
   container.innerHTML = `
     <ul class="home-queue">
-      ${rows.slice(0, 5).map((r, i) => `
+      ${rows.slice(0, 6).map((r, i) => `
         <li><button class="queue-row" data-q="${i}">
           <span class="queue-thumb"><img src="${r.img}" alt="" loading="lazy"></span>
           <span class="queue-body">
@@ -7206,9 +7322,14 @@ async function renderHomeQueue() {
         </button></li>`).join('')}
     </ul>`;
 
-  rows.slice(0, 5).forEach((r, i) => {
+  rows.slice(0, 6).forEach((r, i) => {
     const el = container.querySelector(`[data-q="${i}"]`);
-    if (el) el.addEventListener('click', () => showSessionPicker(r.key, r.ds));
+    if (!el) return;
+    el.addEventListener('click', () => {
+      if (r.kind === 'gym') showSessionPicker(r.key, r.ds);
+      else if (r.kind === 'cardio') switchTab('cardio');
+      else { switchTab('gym'); if (typeof openMobilityView === 'function') openMobilityView(); }
+    });
   });
 }
 
@@ -7217,16 +7338,53 @@ async function renderTodaysPlan() {
   const container = document.getElementById('todays-plan-card');
   if (!container) return;
   const ds = today();
-  const jsDay = new Date().getDay();
-  const customSchedule = await getWeekSchedule();
-  const plannedSession = getPlannedSession(jsDay, customSchedule, ds);
+  const planned = await getPlannedSessionForDate(new Date());
 
-  // Already-done state
-  const allWorkouts = await dbGetAll('workouts');
+  const [allWorkouts, runs, mobs, sessions] = await Promise.all([
+    dbGetAll('workouts'), dbGetAll('runs'), dbGetAll('mobility_sessions'), dbGetAll('sessions')]);
   const doneWorkout = allWorkouts.find(w => w.date === ds);
+  const doneCardio = runs.find(r => r.date === ds) || sessions.find(s => s.date === ds && s.family === 'cardio');
+  const doneRecovery = mobs.find(m => m.date === ds) || sessions.find(s => s.date === ds && s.family === 'recovery');
 
-  // Rest day — no planned session
-  if (!plannedSession) {
+  // --- Cardio day → cardio hero (links to the Cardio logger) ---
+  if (planned.type === 'run') {
+    const done = !!doneCardio;
+    const sub = (planned.subtitle || 'Zona 2 · fácil') + (planned.durationMin ? ` · ${planned.durationMin}'` : '');
+    container.innerHTML = `
+      <section class="session-hero" data-sh>
+        <img class="sh-img" src="img/session-rest.jpg" alt="" loading="lazy">
+        <div class="sh-scrim"></div>
+        <div class="sh-top"><span class="sh-chip">Cardio</span>${done ? `<span class="sh-chip sh-chip-done">✓ Done</span>` : `<span class="sh-chip sh-chip-today">● Today</span>`}</div>
+        <div class="sh-bottom">
+          <div class="sh-eyebrow">${done ? 'Completado' : sub}</div>
+          <h3 class="sh-title">${planned.name}<br><span class="sh-title-sub">${planned.subtitle || 'Zona 2'}</span></h3>
+          <button class="sh-cta${done ? ' sh-cta-ghost' : ''}"><span class="sh-cta-label">${done ? 'Ver cardio' : 'Registrar cardio'}</span>${done ? '' : '<span class="sh-cta-arrow">›</span>'}</button>
+        </div>
+      </section>`;
+    container.querySelector('[data-sh]').addEventListener('click', () => switchTab('cardio'));
+    return;
+  }
+
+  // --- Active recovery day ---
+  if (planned.type === 'recovery') {
+    const done = !!doneRecovery;
+    container.innerHTML = `
+      <section class="session-hero" data-sh>
+        <img class="sh-img" src="img/session-rest.jpg" alt="" loading="lazy">
+        <div class="sh-scrim"></div>
+        <div class="sh-top"><span class="sh-chip">Recuperación</span>${done ? `<span class="sh-chip sh-chip-done">✓ Done</span>` : `<span class="sh-chip sh-chip-today">● Today</span>`}</div>
+        <div class="sh-bottom">
+          <div class="sh-eyebrow">${planned.subtitle || 'Movilidad + Z2 suave'}</div>
+          <h3 class="sh-title">${planned.name}<br><span class="sh-title-sub">Recuperación activa</span></h3>
+          <button class="sh-cta sh-cta-ghost"><span class="sh-cta-label">Movilidad</span></button>
+        </div>
+      </section>`;
+    container.querySelector('[data-sh]').addEventListener('click', () => { switchTab('gym'); if (typeof openMobilityView === 'function') openMobilityView(); });
+    return;
+  }
+
+  // --- Pure rest day ---
+  if (planned.type !== 'gym') {
     container.innerHTML = `
       <section class="session-hero session-hero-rest">
         <div class="sh-rest-emoji">😌</div>
@@ -7235,15 +7393,17 @@ async function renderTodaysPlan() {
     return;
   }
 
+  // --- Strength day (gym) ---
+  const plannedSession = planned.sessionId;
   const s = activePlan.sessions[plannedSession];
-  const name = s ? s.name : plannedSession;
-  const focus = s && s.subtitle ? s.subtitle : 'Strength';
+  const name = planned.name || (s ? s.name : plannedSession);
+  const focus = planned.subtitle || (s && s.subtitle) || 'Strength';
   const exCount = s && Array.isArray(s.exercises) ? s.exercises.length : null;
   const planSets = (s && Array.isArray(s.exercises))
     ? s.exercises.reduce((sum, ex) => sum + (typeof ex.sets === 'number' ? ex.sets : (Array.isArray(ex.sets) ? ex.sets.length : 3)), 0)
     : null;
 
-  // Eyebrow line: actual when done, planned estimate otherwise
+  // Eyebrow: actual when done; planned estimate (+ Z2 finisher) otherwise
   let eyebrow;
   if (doneWorkout) {
     const doneSets = (doneWorkout.exercises || []).reduce((n, ex) => n + (ex.sets || []).filter(x => x.done).length, 0);
@@ -7252,14 +7412,14 @@ async function renderTodaysPlan() {
     const parts = [];
     if (exCount) parts.push(`${exCount} exercises`);
     if (planSets) parts.push(`${planSets} sets`);
-    parts.push('~50 min');
+    parts.push('60-75 min');
+    if (planned.z2FinisherMin) parts.push(`+${planned.z2FinisherMin}' Z2`);
     eyebrow = parts.join(' · ');
   }
 
-  // Map session → cover image by name/focus keywords
   const key = `${name} ${focus}`.toLowerCase();
   let img = 'img/hero-pull.jpg';
-  if (/leg|lower|squat|quad|hamstring/.test(key)) img = 'img/session-legs.jpg';
+  if (/leg|lower|squat|quad|hamstring|bisagra/.test(key)) img = 'img/session-legs.jpg';
   else if (/push|chest|press|shoulder/.test(key)) img = 'img/session-push.jpg';
   else if (/mobility|recovery|rest|stretch/.test(key)) img = 'img/session-rest.jpg';
 
@@ -7331,7 +7491,7 @@ async function renderRecentActivity() {
       title: `${r.distance} km · ${r.avgPace}/km`,
       subtitle: `${r.duration} min${r.avgHR ? ` · ${r.avgHR} bpm` : ''}`,
       icon: iconRunner, tint: 'var(--tint-blue)', color: 'var(--blue)',
-      onTap: () => switchTab('run'),
+      onTap: () => switchTab('cardio'),
     });
   });
   mobs.forEach(m => {
@@ -7361,7 +7521,7 @@ async function renderRecentActivity() {
       icon: isCardio ? iconRunner : iconMob,
       tint: isCardio ? 'var(--tint-blue)' : 'var(--tint-teal)',
       color: isCardio ? 'var(--blue)' : 'var(--teal)',
-      onTap: () => switchTab('run'),
+      onTap: () => switchTab('cardio'),
     });
   });
 
@@ -7439,9 +7599,9 @@ async function renderActivityRingsHome() {
           <span class="ar-legend-label">Workouts</span>
           <span class="ar-legend-val">${workoutsToday}/${plannedToday}</span>
         </div>
-        <div class="ar-legend-row" data-ring-tab="run">
+        <div class="ar-legend-row" data-ring-tab="cardio">
           <span class="ar-dot ar-dot-blue"></span>
-          <span class="ar-legend-label">Run today</span>
+          <span class="ar-legend-label">Cardio today</span>
           <span class="ar-legend-val">${kmToday.toFixed(1)} km</span>
         </div>
         <div class="ar-legend-row" data-ring-tab="nutrition">
@@ -7462,7 +7622,9 @@ async function renderActivityRingsHome() {
 async function renderRunTotals() {
   const container = document.getElementById('run-totals-card');
   if (!container) return;
-  const runs = await dbGetAll('runs');
+  // Totals span legacy runs + unified cardio sessions that recorded a distance.
+  const [legacyRuns, sessions] = await Promise.all([dbGetAll('runs'), dbGetAll('sessions')]);
+  const runs = legacyRuns.concat(sessions.filter(s => s.family === 'cardio' && parseFloat(s.distance) > 0));
 
   const now = new Date();
   // ISO week start: Monday 00:00 local
@@ -8794,7 +8956,7 @@ async function renderSwimlaneTL() {
         if (!d.workout && !d.run && d.date <= todayStr) {
           active = true;
           label = '✓';
-        } else if (d.planned.type === 'rest') {
+        } else if (d.planned.type === 'rest' || d.planned.type === 'recovery') {
           label = '·';
         }
       }
@@ -9188,9 +9350,8 @@ function bindEvents() {
     await startWorkout(state.activeSession);
   });
 
-  // Run logging
-  document.getElementById('btn-log-run').addEventListener('click', logRun);
-  { const b = document.getElementById('btn-log-session'); if (b) b.addEventListener('click', logSession); }
+  // Cardio logging (unified)
+  { const b = document.getElementById('btn-log-cardio'); if (b) b.addEventListener('click', logCardio); }
 
   // Nutrition
   document.getElementById('btn-log-nutrition').addEventListener('click', logNutrition);
@@ -9266,7 +9427,7 @@ function bindEvents() {
   // Theme: dark-only (no toggle UI)
 
   // Star selectors
-  ['run-feel', 'nut-hunger', 'nut-energy'].forEach(setupStarGroup);
+  ['cardio-feel', 'nut-hunger', 'nut-energy'].forEach(setupStarGroup);
 
   // Rest timer controls
   document.getElementById('timer-skip').addEventListener('click', stopRestTimer);

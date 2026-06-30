@@ -207,7 +207,7 @@ header h1 { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
 /* ========== Section Color Temperature ========== */
 #view-home { --section-accent: var(--accent); --section-glow: var(--accent-glow); }
 #view-gym, #view-workout { --section-accent: var(--orange); --section-glow: rgba(251,161,0,0.12); }
-#view-run { --section-accent: var(--blue); --section-glow: rgba(0,163,255,0.12); }
+#view-cardio { --section-accent: var(--blue); --section-glow: rgba(0,163,255,0.12); }
 #view-nutrition { --section-accent: var(--accent); --section-glow: rgba(104,227,113,0.12); }
 #view-stats { --section-accent: var(--purple); --section-glow: rgba(139,141,255,0.12); }
 #view-settings { --section-accent: var(--teal); --section-glow: rgba(34,205,229,0.12); }

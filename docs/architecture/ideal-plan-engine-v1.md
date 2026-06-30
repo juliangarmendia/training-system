@@ -76,6 +76,29 @@ diario (T3) sigue flexando dentro del día.
 - Se autoraron sesiones concretas `fullA`/`fullB`/`maintenance` en `PLAN.sessions` (variantes 3/5/6),
   reutilizando ejercicios de la librería, con **objetivos kg heredados del baseline W28** y caución lumbar.
 
+## T5.1 — IDEAL real + cardio visible + logger Cardio (v11.29, 2026-07-01)
+Tras uso real, se corrigió el IDEAL y se arreglaron bugs de visibilidad:
+
+- **IDEAL redefinido** (objetivo: bajar grasa/recomp/estética, 87→81-82 kg, estímulo los 7 días). Default =
+  variante **6 "Completa"**: **4 días Upper/Lower** (`lowerA`/`upperA`/`lowerB`/`upperB` — cubren los 6 patrones
+  2×/sem, ~14-18 series/músculo) + **Z2 finisher diario** (campo `z2Finisher` en días de fuerza) + 1 cardio de
+  calidad + 1 recuperación activa. Variantes 3/4/5 flexan hacia abajo. `state.settings.idealVariant` default → **6**.
+- Se **eliminó la sesión `maintenance`** (era relleno flojo: no cubría OHP ni dominadas, cuádriceps 1×/sem).
+  El IDEAL usa los 4 probados; `fullA`/`fullB` quedan para las variantes 3-4.
+- **Modelo de slot extendido**: gym `{session, z2FinisherMin}` · cardio `{type:'run', subtype, durationMin}` ·
+  `{type:'recovery', z2FinisherMin}`. `getPlannedSessionForDate` resuelve los 4 tipos.
+- **Causa raíz del "solo veo 2 entrenamientos"**: los renderers de Home usaban `getPlannedSession()` (gym-only →
+  null para cardio). Reescritos `renderTodaysPlan`/`renderHomeQueue`/`renderWeekCalendar`/`pickDayActivity` para
+  usar `getPlannedSessionForDate()` → el cardio se ve los 7 días (indicador aeróbico en días con Z2).
+- **Selector en Home**: `renderPlanSelector()` (`#plan-selector`) con botones 3/4/5/Ideal → `setIdealVariant()`,
+  que ahora re-renderiza Home y **limpia overrides futuros** (`clearFutureScheduleOverrides`) para que el cambio
+  se vea en la semana actual, preservando días pasados.
+- **Quick-mode** (ya existía) es el compresor de tiempo: sesiones completas 60-75', quick-mode ~40-45'. Se quitó
+  el toggle de duración 45/60/75.
+- **Logger Cardio unificado**: pestaña Run→**Cardio**; `logCardio()` (un form: modalidad run/cinta/bici/remo/ski/
+  caminata + intensidad Z2/Z3/umbral/intervalos/largo) escribe a `sessions` (envelope T1). Historial/totales siguen
+  leyendo los `runs` legacy vía `toSession()`.
+
 ## Roadmap
 - **T4b:** generador algorítmico (arma bloque/semana desde reglas+perfil en runtime; hoy `IDEAL_BLOCK_V1` es data).
 - **T6:** loop de adaptación semanal + periodización multi-bloque + progression/modality engines.

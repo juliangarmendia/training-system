@@ -151,6 +151,7 @@
           <div id="recovery-hero"></div>
           <div id="training-advisory"></div>
           <div id="hard-day-budget"></div>
+          <div id="plan-selector"></div>
           <div id="week-calendar"></div>
           <div class="home-sec-row" style="margin-top:24px">
             <h2 class="home-h2">Today's session</h2>
@@ -265,66 +266,63 @@
         <div id="plate-sheet-result"></div>
       </div>
 
-      <!-- Running -->
-      <section id="view-run" class="view">
+      <!-- Cardio (unified logger: run / treadmill / bike / row / ski / walk) -->
+      <section id="view-cardio" class="view">
         <div class="view-scroll">
           <div class="run-plan-banner" id="run-plan-banner"></div>
           <div class="section-head">
             <div class="section-head-icon" style="background:var(--tint-blue);color:var(--blue)">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13" cy="4" r="2"/><path d="M5 21l3-9 2.5 2V21M15 11l-3-3-4 4 2 2"/></svg>
             </div>
-            <span class="section-head-title">Log a Run</span>
+            <span class="section-head-title">Registrar cardio</span>
           </div>
           <div class="card form-card">
-            <div class="form-row"><label>Distance (km)</label><input type="number" id="run-distance" step="0.1" min="0" placeholder="5.0" inputmode="decimal"></div>
-            <div class="form-row"><label>Duration (min)</label><input type="number" id="run-duration" step="1" min="0" placeholder="38" inputmode="numeric"></div>
-            <div class="form-row"><label>Avg HR (bpm)</label><input type="number" id="run-hr" step="1" min="0" placeholder="129" inputmode="numeric"></div>
-            <div class="form-row"><label>How it felt</label><div id="run-feel" class="stars"><button data-v="1" data-label="Terrible">1</button><button data-v="2" data-label="Poor">2</button><button data-v="3" class="selected" data-label="OK">3</button><button data-v="4" data-label="Good">4</button><button data-v="5" data-label="Crushed it">5</button></div></div>
-            <div class="form-row quality-legend-row"><span></span><div class="quality-legend">1 Terrible · 2 Poor · 3 OK · 4 Good · 5 Crushed it</div></div>
-            <div class="form-row"><textarea id="run-notes" class="input-notes" placeholder="Notes (optional)" rows="2"></textarea></div>
-            <button id="btn-log-run" class="btn-primary btn-lg">Log Run</button>
-          </div>
-          <!-- T2 (v11.19): log non-run cardio + recovery walk → 'sessions' store (local-only) -->
-          <div class="section-head" style="margin-top:28px">
-            <div class="section-head-icon" style="background:var(--tint-teal);color:var(--teal)">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
-            </div>
-            <span class="section-head-title">Log Other Session</span>
-          </div>
-          <div class="card form-card">
-            <div class="form-row"><label>Type</label>
-              <select id="sess-type" class="text-input">
-                <option value="walk">Recovery walk</option>
-                <option value="bike">Cardio · Bike</option>
-                <option value="row">Cardio · Row</option>
-                <option value="ski">Cardio · SkiErg</option>
+            <div class="form-row"><label>Modalidad</label>
+              <select id="cardio-modality" class="text-input">
+                <option value="run_outdoor">Correr (afuera)</option>
+                <option value="treadmill">Cinta</option>
+                <option value="bike">Bici</option>
+                <option value="row">Remo</option>
+                <option value="ski">SkiErg</option>
+                <option value="walk">Caminata (recuperación)</option>
               </select>
             </div>
-            <div class="form-row"><label>Duration (min)</label><input type="number" id="sess-duration" step="1" min="0" placeholder="30" inputmode="numeric"></div>
-            <div class="form-row"><label>Distance (km, optional)</label><input type="number" id="sess-distance" step="0.1" min="0" placeholder="" inputmode="decimal"></div>
-            <div class="form-row"><label>How it felt</label><div id="sess-feel" class="stars"><button data-v="1" data-label="Terrible">1</button><button data-v="2" data-label="Poor">2</button><button data-v="3" class="selected" data-label="OK">3</button><button data-v="4" data-label="Good">4</button><button data-v="5" data-label="Crushed it">5</button></div></div>
-            <div class="form-row"><textarea id="sess-notes" class="input-notes" placeholder="Notes (optional)" rows="2"></textarea></div>
-            <button id="btn-log-session" class="btn-primary btn-lg">Log Session</button>
+            <div class="form-row"><label>Intensidad</label>
+              <select id="cardio-intensity" class="text-input">
+                <option value="zone2" selected>Zona 2 · fácil</option>
+                <option value="long_easy">Largo Z2 · calidad</option>
+                <option value="zone3">Zona 3</option>
+                <option value="threshold">Umbral</option>
+                <option value="intervals">Intervalos</option>
+              </select>
+            </div>
+            <div class="form-row"><label>Duración (min)</label><input type="number" id="cardio-duration" step="1" min="0" placeholder="35" inputmode="numeric"></div>
+            <div class="form-row"><label>Distancia (km, opcional)</label><input type="number" id="cardio-distance" step="0.1" min="0" placeholder="" inputmode="decimal"></div>
+            <div class="form-row"><label>FC media (opcional)</label><input type="number" id="cardio-hr" step="1" min="0" placeholder="129" inputmode="numeric"></div>
+            <div class="form-row"><label>Cómo se sintió</label><div id="cardio-feel" class="stars"><button data-v="1" data-label="Terrible">1</button><button data-v="2" data-label="Poor">2</button><button data-v="3" class="selected" data-label="OK">3</button><button data-v="4" data-label="Good">4</button><button data-v="5" data-label="Crushed it">5</button></div></div>
+            <div class="form-row quality-legend-row"><span></span><div class="quality-legend">1 Terrible · 2 Poor · 3 OK · 4 Good · 5 Crushed it</div></div>
+            <div class="form-row"><textarea id="cardio-notes" class="input-notes" placeholder="Notas (opcional)" rows="2"></textarea></div>
+            <button id="btn-log-cardio" class="btn-primary btn-lg">Registrar cardio</button>
           </div>
-          <div class="section-head" style="margin-top:20px">
+          <div class="section-head" style="margin-top:28px">
             <div class="section-head-icon" style="background:var(--tint-teal);color:var(--teal)">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>
             </div>
-            <span class="section-head-title">Recent Sessions</span>
+            <span class="section-head-title">Cardio reciente</span>
           </div>
           <div id="sess-history" class="recent-list"></div>
           <div class="section-head" style="margin-top:28px">
             <div class="section-head-icon" style="background:var(--tint-blue);color:var(--blue)">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 17 9 11 13 15 21 7"/><polyline points="14 7 21 7 21 14"/></svg>
             </div>
-            <span class="section-head-title">Distance Totals</span>
+            <span class="section-head-title">Totales de distancia</span>
           </div>
           <div id="run-totals-card" class="run-totals-card"></div>
           <div class="section-head" style="margin-top:28px">
             <div class="section-head-icon" style="background:var(--tint-blue);color:var(--blue)">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>
             </div>
-            <span class="section-head-title">Run History</span>
+            <span class="section-head-title">Carreras (historial)</span>
           </div>
           <div id="run-history" class="recent-list"></div>
         </div>
@@ -658,7 +656,7 @@
           </div>
           <div class="section-label" style="margin-top:24px">App</div>
           <div class="card">
-            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v11.28<br>Data stored locally + cloud sync.<br>Works offline.</p>
+            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v11.29<br>Data stored locally + cloud sync.<br>Works offline.</p>
             <button id="btn-force-update" class="btn-secondary btn-full" style="text-align:center">Force Update App</button>
           </div>
         </div>
@@ -697,9 +695,9 @@
         <div class="nav-icon-wrap"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="10" rx="1"/><line x1="6" y1="4" x2="6" y2="20"/><line x1="18" y1="4" x2="18" y2="20"/></svg></div>
         <span>Gym</span>
       </button>
-      <button class="nav-btn" data-tab="run">
+      <button class="nav-btn" data-tab="cardio">
         <div class="nav-icon-wrap"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="14" cy="4" r="2"/><path d="M6 21l3-9 2.5 2V21M16 11l-3-3-4 4 2 2"/></svg></div>
-        <span>Run</span>
+        <span>Cardio</span>
       </button>
       <button class="nav-btn" data-tab="nutrition">
         <div class="nav-icon-wrap"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8h1a4 4 0 010 8h-1"/><path d="M2 8h16v9a4 4 0 01-4 4H6a4 4 0 01-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg></div>
