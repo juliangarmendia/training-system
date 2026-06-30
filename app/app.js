@@ -83,6 +83,57 @@ const PLAN = {
         { id: 'leg-curl-b', name: 'Lying Leg Curl', muscle: 'Hamstrings', sets: 3, reps: '10-12', rpe: '7', defaultRest: 90, notes: '3s eccentric, squeeze 1s. Second hamstring hit.', superset: 'A' },
         { id: 'pallof-press', name: 'Cable Pallof Press', muscle: 'Core', sets: 3, reps: '10-15', rpe: '-', defaultRest: 60, notes: 'Anti-rotation. Slow and controlled.' },
       ]
+    },
+    // ---- T5: full-body & maintenance sessions for the 3/5/6-day ideal variants ----
+    // Reuse existing library exercise ids so ensureExerciseLibrarySeeded() picks them up.
+    // kg targets inherit the post-ramp baseline (REENTRY_WEEKS W28) since the ideal
+    // plan replaces the re-entry ramp directly. Lumbar caution preserved on squat/DL.
+    fullA: {
+      id: 'fullA', name: 'Full Body A', subtitle: 'Squat · Press · Pull', icon: '🏋️',
+      warmup: [
+        '5 min treadmill walk or light bike',
+        'Leg swings front/back — 2 × 10/side',
+        'Band pull-aparts — 2 × 15',
+        'Bodyweight squats — 1 × 10',
+        'Squat: bar × 10, 50% × 6, 70% × 4, 85% × 2',
+      ],
+      exercises: [
+        { id: 'back-squat', name: 'Barbell Back Squat', muscle: 'Quads', sets: 4, reps: '5-8', rpe: '7-8', defaultRest: 180, notes: 'Objetivo ~97.5 kg. Prioridad #1, usa safeties. Rampa lumbar conservadora.', compound: true },
+        { id: 'bench-press', name: 'Barbell Bench Press', muscle: 'Chest', sets: 3, reps: '6-8', rpe: '7-8', defaultRest: 150, notes: 'Objetivo ~92.5 kg. Full ROM, control eccentric.', compound: true },
+        { id: 'barbell-row', name: 'Barbell Row', muscle: 'Back', sets: 3, reps: '8-10', rpe: '7-8', defaultRest: 120, notes: 'Objetivo ~67.5 kg. Strict, no heaving.', compound: true },
+        { id: 'cable-crunch', name: 'Cable Crunch', muscle: 'Core', sets: 3, reps: '10-15', rpe: '-', defaultRest: 60, notes: 'Controlled flexion, no hip movement.' },
+      ]
+    },
+    fullB: {
+      id: 'fullB', name: 'Full Body B', subtitle: 'Hinge · OHP · Pull-up', icon: '🔥',
+      warmup: [
+        '5 min treadmill walk or light bike',
+        'Hip circles — 1 × 10/side',
+        'Glute bridges — 2 × 10',
+        'Scapular pull-ups — 2 × 8',
+        'Deadlift: bar × 8, 50% × 5, 70% × 3, 85% × 1',
+      ],
+      exercises: [
+        { id: 'sumo-dl', name: 'Sumo Deadlift', muscle: 'Posterior', sets: 3, reps: '3-6', rpe: '7-8', defaultRest: 210, notes: 'Objetivo ~110 kg. Reset cada rep. Primer set decide: si sale ≥RPE 8, no subir. Historial lumbar.', compound: true },
+        { id: 'ohp', name: 'Overhead Press', muscle: 'Shoulders', sets: 3, reps: '5-8', rpe: '7-8', defaultRest: 150, notes: 'Objetivo ~52.5 kg. De pie, estricto, sin leg drive.', compound: true },
+        { id: 'chinups', name: 'Chin-ups', muscle: 'Back', sets: 3, reps: '6-8', rpe: '7-8', defaultRest: 150, notes: 'Objetivo BW +10 kg. Assisted machine si <5 reps.', bw: true, compound: true },
+        { id: 'hanging-leg-raise', name: 'Hanging Leg Raise', muscle: 'Core', sets: 3, reps: '8-12', rpe: '-', defaultRest: 60, notes: 'Scale to knee raises if needed.', bw: true },
+      ]
+    },
+    maintenance: {
+      id: 'maintenance', name: 'Full Body (mantenimiento)', subtitle: 'Bisagra ligera · Accesorios · Core', icon: '🧩',
+      warmup: [
+        '5 min treadmill walk or light bike',
+        'Leg swings front/back — 2 × 10/side',
+        'Band pull-aparts — 2 × 15',
+        'Glute bridges — 2 × 10',
+      ],
+      exercises: [
+        { id: 'rdl', name: 'Barbell RDL', muscle: 'Hamstrings', sets: 3, reps: '8-10', rpe: '6-7', defaultRest: 120, notes: 'Bisagra LIGERA (mantenimiento, no PR). 3s eccentric, stop mid-shin.' },
+        { id: 'chest-supported-row', name: 'Chest-Supported Row', muscle: 'Back', sets: 3, reps: '10-12', rpe: '7', defaultRest: 90, notes: 'Strict, sin fatiga lumbar. Squeeze arriba.' },
+        { id: 'incline-db-press', name: 'Incline DB Press', muscle: 'Chest', sets: 3, reps: '8-12', rpe: '7', defaultRest: 90, notes: '30-45°. 3s eccentric.', db: true },
+        { id: 'pallof-press', name: 'Cable Pallof Press', muscle: 'Core', sets: 3, reps: '10-15', rpe: '-', defaultRest: 60, notes: 'Anti-rotation. Slow and controlled.' },
+      ]
     }
   }
 };
@@ -790,6 +841,9 @@ function buildReentrySessions(cfg) {
   return sessions;
 }
 
+// RETIRED in T5 (v11.28): no longer called from init(). The ideal plan (applyIdealPlan)
+// is now the live default and replaced the re-entry ramp directly (user decision 2026-06-30).
+// Kept for reference/rollback; the W28 kg targets were folded into the full/maintenance sessions.
 // Install / advance / retire the re-entry plan based on today's date. Idempotent:
 // it only writes a new plan version when the active plan's label needs to change,
 // and it never clobbers a manually-created custom plan.
@@ -926,7 +980,7 @@ const state = {
   restTimerInterval: null,
   restTimerRemaining: 0,
   restTimerTotal: 0,
-  settings: { unit: 'kg', proteinTarget: 170, calorieTarget: 2500, startDate: null, userName: '', goalWeight: null },
+  settings: { unit: 'kg', proteinTarget: 170, calorieTarget: 2500, startDate: null, userName: '', goalWeight: null, idealVariant: 5, idealDuration: 60 },
   sessionQuality: 3,
   quickMode: false,
   selectedStrengthLift: 'bench-press',
@@ -6745,8 +6799,8 @@ const IDEAL_BLOCK_V1 = {
       label: 'Mínima · 3 días',
       note: 'Semanas complicadas: preserva fuerza pesada + mínimo aeróbico + continuidad.',
       days: [
-        { dow: 1, kind: 'strength', subtype: 'full', bw: 2, title: 'Full Body A', summary: 'Sentadilla + press banca + remo + core', why: 'Cubre piernas/empuje/tirón en una sola sesión.', ruleIds: ['STR-002', 'STR-005'], alt: 'strength_lower' },
-        { dow: 3, kind: 'strength', subtype: 'full', bw: 2, title: 'Full Body B', summary: 'Peso muerto + press militar + dominadas + core', why: 'Segundo full-body: bisagra + patrón vertical.', ruleIds: ['STR-002', 'STR-007'], alt: 'strength_lower' },
+        { dow: 1, kind: 'strength', subtype: 'full', bw: 2, planRef: 'fullA', title: 'Full Body A', summary: 'Sentadilla + press banca + remo + core', why: 'Cubre piernas/empuje/tirón en una sola sesión.', ruleIds: ['STR-002', 'STR-005'], alt: 'strength_lower' },
+        { dow: 3, kind: 'strength', subtype: 'full', bw: 2, planRef: 'fullB', title: 'Full Body B', summary: 'Peso muerto + press militar + dominadas + core', why: 'Segundo full-body: bisagra + patrón vertical.', ruleIds: ['STR-002', 'STR-007'], alt: 'strength_lower' },
         { dow: 6, kind: 'cardio', subtype: 'zone2', bw: 0.5, title: 'Carrera / Bici Z2', summary: '30-40 min fácil (bici si las piernas están cargadas)', why: 'Mínimo estímulo aeróbico y continuidad.', ruleIds: ['END-001', 'INT-002'], alt: 'hard_cardio' },
       ],
     },
@@ -6768,7 +6822,7 @@ const IDEAL_BLOCK_V1 = {
         { dow: 2, kind: 'cardio', subtype: 'zone2', bw: 0.5, title: 'Bici / Carrera Z2', summary: '30-40 min fácil', why: 'Aeróbico bajo impacto post-pierna.', ruleIds: ['END-001', 'INT-002'], alt: 'hard_cardio' },
         { dow: 3, kind: 'strength', subtype: 'upper', bw: 1, planRef: 'upperA', title: 'Press banca · Remo', why: 'Tren superior, sin interferir con pierna.', ruleIds: ['STR-002'], alt: 'strength_upper' },
         { dow: 5, kind: 'cardio', subtype: 'long_easy', bw: 1, title: 'Carrera progresiva Z2', summary: 'Largo fácil (S4 sube a Z2/Z3)', why: 'Progresar base aeróbica; calidad recién al final del bloque.', ruleIds: ['END-003', 'END-004'], alt: 'hard_cardio' },
-        { dow: 6, kind: 'strength', subtype: 'maintenance', bw: 1, title: 'Full body (mantenimiento)', summary: 'Bisagra ligera + accesorios + core', why: 'Segundo estímulo de pierna SIN sumar otro día muy duro (budget).', ruleIds: ['STR-001', 'BUD-001'], alt: 'strength_lower' },
+        { dow: 6, kind: 'strength', subtype: 'maintenance', bw: 1, planRef: 'maintenance', title: 'Full body (mantenimiento)', summary: 'Bisagra ligera + accesorios + core', why: 'Segundo estímulo de pierna SIN sumar otro día muy duro (budget).', ruleIds: ['STR-001', 'BUD-001'], alt: 'strength_lower' },
         { dow: 0, kind: 'recovery', subtype: 'mobility', bw: 0, title: 'Movilidad + core', summary: 'Movilidad dinámica + anti-rotación + caminata', why: 'Recuperación activa.', ruleIds: ['ATH-003', 'READ-007'], alt: null },
       ],
     },
@@ -6780,7 +6834,7 @@ const IDEAL_BLOCK_V1 = {
         { dow: 2, kind: 'cardio', subtype: 'zone2', bw: 0.5, title: 'Carrera Z2 30 min', summary: 'Fácil, conversacional', why: 'Volumen aeróbico barato (no suma carga dura).', ruleIds: ['END-001'], alt: 'hard_cardio' },
         { dow: 3, kind: 'strength', subtype: 'upper', bw: 1, planRef: 'upperA', title: 'Press banca · Remo', why: 'Tren superior, sin interferir con la pierna.', ruleIds: ['STR-002'], alt: 'strength_upper' },
         { dow: 4, kind: 'cardio', subtype: 'zone2', bw: 0.5, title: 'Carrera / Bici Z2', summary: 'Fácil', why: 'Más base aeróbica fácil.', ruleIds: ['END-001', 'END-003'], alt: 'hard_cardio' },
-        { dow: 5, kind: 'strength', subtype: 'maintenance', bw: 1, title: 'Full body (mantenimiento)', summary: 'Bisagra ligera + accesorios + core', why: '2º estímulo de pierna sin otro día muy duro.', ruleIds: ['STR-001', 'BUD-001'], alt: 'strength_lower' },
+        { dow: 5, kind: 'strength', subtype: 'maintenance', bw: 1, planRef: 'maintenance', title: 'Full body (mantenimiento)', summary: 'Bisagra ligera + accesorios + core', why: '2º estímulo de pierna sin otro día muy duro.', ruleIds: ['STR-001', 'BUD-001'], alt: 'strength_lower' },
         { dow: 6, kind: 'cardio', subtype: 'long_easy', bw: 1, title: 'Carrera larga fácil Z2', summary: 'Largo, subiendo ~10%/sem', why: 'Construye el motor aeróbico hacia 10-15 km.', ruleIds: ['END-003', 'END-005'], alt: 'hard_cardio' },
         { dow: 0, kind: 'recovery', subtype: 'mobility', bw: 0, title: 'Movilidad + core', summary: 'Movilidad + anti-rotación + caminata', why: 'Recuperación activa.', ruleIds: ['ATH-003'], alt: null },
       ],
@@ -6796,7 +6850,73 @@ const EQUIP_SUBS = {
   gym_full: ['Versión solo-mancuernas', 'Versión solo-máquinas', 'Fallback de cardio (bici/cinta)'],
 };
 
-let _idealState = { variant: 4, duration: 60 };
+// T5: the chosen day-count (3/4/5/6) and per-session duration persist in settings (synced).
+function _idealVariant() { const v = state.settings && state.settings.idealVariant; return (v === 3 || v === 4 || v === 5 || v === 6) ? v : 5; }
+function _idealDuration() { const d = state.settings && state.settings.idealDuration; return (d === 45 || d === 60 || d === 75) ? d : 60; }
+
+// T5: derive a week template ({0..6: slot}) from the chosen ideal variant.
+// strength → gym (planRef session) · cardio → run (label + subtype) · recovery → rest(label) · gap → rest.
+function buildWeekTemplateFromIdeal(variantNum) {
+  const variant = IDEAL_BLOCK_V1.variants[variantNum] || IDEAL_BLOCK_V1.variants[5];
+  const tpl = {};
+  for (let d = 0; d <= 6; d++) tpl[d] = { type: 'rest', label: 'Rest' };
+  for (const day of variant.days) {
+    if (day.kind === 'strength' && day.planRef) {
+      tpl[day.dow] = { type: 'gym', session: day.planRef };
+    } else if (day.kind === 'cardio') {
+      tpl[day.dow] = { type: 'run', label: day.title, subtype: day.subtype || 'zone2' };
+    } else { // recovery, or a strength day missing a concrete session → labelled rest
+      tpl[day.dow] = { type: 'rest', label: day.title || 'Rest' };
+    }
+  }
+  return tpl;
+}
+
+// T5: install the ideal plan as the LIVE default plan source (replaces the re-entry ramp).
+// Idempotent: only writes a new version when the target label differs (or force=true).
+// Never clobbers a manually-created custom plan unless forced (user taps the selector).
+async function applyIdealPlan({ force = false } = {}) {
+  const n = _idealVariant();
+  const lbl = (activePlan && activePlan.label) || '';
+  const managed = /^Ideal/.test(lbl) || lbl === 'Upper/Lower 4-Day Split' || lbl === 'Fallback' || /^Re-Entry/.test(lbl);
+  if (!managed && !force) return; // respect a custom plan the user set themselves
+  const targetLabel = `Ideal · ${n} días`;
+  if (lbl === targetLabel && !force) return; // already current → no version churn
+  await createNewPlanVersion({
+    label: targetLabel,
+    weekNumber: getWeekNumber(),
+    sessions: JSON.parse(JSON.stringify(PLAN.sessions)),
+    weekTemplate: buildWeekTemplateFromIdeal(n),
+  });
+  if (state.settings.unit !== 'kg') {
+    state.settings.unit = 'kg';
+    await dbPut('settings', { key: 'userSettings', data: state.settings });
+  }
+  console.log(`[Plan] Ideal default → "${targetLabel}"`);
+}
+
+// T5: user flexes the day-count (3/4/5/6). Persists the choice (synced) and regenerates
+// the plan FORWARD as a new version. Past logs (workouts/runs/sessions) are untouched.
+async function setIdealVariant(n) {
+  if (![3, 4, 5, 6].includes(n)) return;
+  if (n === _idealVariant() && /^Ideal · /.test((activePlan && activePlan.label) || '')) {
+    renderIdealPreview();
+    return; // no change
+  }
+  state.settings.idealVariant = n;
+  await smartPut('settings', { key: 'userSettings', data: state.settings });
+  await applyIdealPlan({ force: true });
+  renderIdealPreview();
+  try { renderWeekStrip(); } catch (e) {}
+  toast(`Plan a ${n} días — sesiones pasadas intactas`);
+}
+
+async function setIdealDuration(d) {
+  if (![45, 60, 75].includes(d)) return;
+  state.settings.idealDuration = d;
+  await smartPut('settings', { key: 'userSettings', data: state.settings });
+  renderIdealPreview();
+}
 const _DOW_ES = { 1: 'Lun', 2: 'Mar', 3: 'Mié', 4: 'Jue', 5: 'Vie', 6: 'Sáb', 0: 'Dom' };
 const _DOW_ORDER = [1, 2, 3, 4, 5, 6, 0];
 function _idealKindFamily(kind) {
@@ -6815,16 +6935,16 @@ function _currentWeekLabel(dow) {
     const s = (activePlan && activePlan.sessions) ? activePlan.sessions[slot.session] : null;
     return s ? _t3SessionLabel({ type: 'gym', sessionId: slot.session, name: s.name, exercises: s.exercises }) : slot.session;
   }
-  if (slot.type === 'run') return 'Carrera Z2';
-  return 'Descanso';
+  if (slot.type === 'run') return slot.label || 'Carrera Z2';
+  return (slot.label && slot.label !== 'Rest') ? slot.label : 'Descanso';
 }
 
 // Render the Ideal Plan Preview (read-only). No mutation of plan/template.
 function renderIdealPreview() {
   const host = document.getElementById('ideal-preview-body');
   if (!host) return;
-  const v = _idealState.variant, dur = _idealState.duration;
-  const variant = IDEAL_BLOCK_V1.variants[v] || IDEAL_BLOCK_V1.variants[4];
+  const v = _idealVariant(), dur = _idealDuration();
+  const variant = IDEAL_BLOCK_V1.variants[v] || IDEAL_BLOCK_V1.variants[5];
   const byDow = {};
   variant.days.forEach(d => { byDow[d.dow] = d; });
   const budget = Math.round(variant.days.reduce((s, d) => s + (d.bw || 0), 0) * 10) / 10;
@@ -6862,16 +6982,15 @@ function renderIdealPreview() {
     <div class="ip-budget">Carga dura de la semana: <b>${budget} / 6</b>${budget > 6 ? ' · <span class="t3-warn">en el límite</span>' : ''}</div>
     <div class="section-label" style="margin-top:10px">Semana ideal</div>
     <div class="ip-week">${idealRows}</div>
-    <div class="section-label" style="margin-top:16px">Tu plan actual</div>
+    <div class="section-label" style="margin-top:16px">Esta semana en tu calendario</div>
     <div class="ip-current card">${currentRows}</div>
     <div class="section-label" style="margin-top:16px">Cuidados que respeta</div>
     <ul class="ip-cautions">${IDEAL_BLOCK_V1.cautions.map(c => `<li>${c}</li>`).join('')}</ul>
     <div class="ip-equip">Cada día tiene alternativas si el gym está lleno o falta equipo. Sin SkiErg → ${EQUIP_SUBS.skierg.join(' / ')}. Sin rack → ${EQUIP_SUBS.rack.join(' / ')}.</div>
-    <button class="btn-primary btn-lg" disabled style="opacity:0.5;margin-top:16px">Aplicar (próximamente · T5)</button>
-    <div class="t3-foot">Preview — no reemplaza tu plan. Aplicarlo viene en una fase próxima.</div>
+    <div class="t3-foot">Este es tu plan vivo. Elegí los días según la semana — solo cambia hacia adelante; tus sesiones registradas quedan intactas.</div>
   `;
-  host.querySelectorAll('[data-ip-variant]').forEach(b => b.addEventListener('click', () => { _idealState.variant = parseInt(b.dataset.ipVariant, 10); renderIdealPreview(); }));
-  host.querySelectorAll('[data-ip-dur]').forEach(b => b.addEventListener('click', () => { _idealState.duration = parseInt(b.dataset.ipDur, 10); renderIdealPreview(); }));
+  host.querySelectorAll('[data-ip-variant]').forEach(b => b.addEventListener('click', () => { setIdealVariant(parseInt(b.dataset.ipVariant, 10)); }));
+  host.querySelectorAll('[data-ip-dur]').forEach(b => b.addEventListener('click', () => { setIdealDuration(parseInt(b.dataset.ipDur, 10)); }));
 }
 
 function openIdealPreview() {
@@ -9467,7 +9586,7 @@ async function init() {
   await ensurePlanSeeded();
   await ensureExerciseLibrarySeeded();
   await loadActivePlan();
-  await applyReentryPlan();   // install/advance the W26-W28 re-entry ramp by date (kg)
+  await applyIdealPlan();     // T5: install the ideal plan as the live default (replaces re-entry ramp)
   await loadExerciseLibrary();
 
   bindEvents();

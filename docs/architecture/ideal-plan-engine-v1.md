@@ -60,10 +60,22 @@ elige el **número de días (3/4/5/6)** para flexar estímulos según la semana 
 → 6). Días extra = carreras Z2 fáciles (correr 30' casi no suma carga dura). **Variante de 6 días ya
 agregada** (v11.27): budget ~6, sin sumar días duros. → reformula T5 (abajo).
 
+## T5 — IMPLEMENTADO (v11.28, 2026-06-30)
+El plan ideal es ahora el **default vivo**. `applyIdealPlan()` (en `init()`, reemplaza a
+`applyReentryPlan()`) instala `Ideal · {n} días` como versión activa del store `plans`;
+`buildWeekTemplateFromIdeal(n)` deriva el week template desde `IDEAL_BLOCK_V1.variants[n].days`
+(strength→gym vía `planRef`, cardio→run, recovery→rest). El selector de días persiste en
+`state.settings.idealVariant` (default **5**, sincronizado); `setIdealVariant(n)` regenera el plan
+**hacia adelante** como versión nueva — los logs (`workouts`/`runs`/`sessions`) son stores aparte, intactos.
+Idempotente por label (no churn de versiones por carga). Se eliminó el botón "Aplicar". El advisory
+diario (T3) sigue flexando dentro del día.
+
+**Decisiones de implementación:**
+- El ideal **reemplazó el ramp de re-entry de inmediato** (decisión del usuario 2026-06-30, no esperó al
+  cierre de ventana 2026-07-12). `applyReentryPlan()`/`REENTRY_*` quedan en el código sin invocarse (rollback).
+- Se autoraron sesiones concretas `fullA`/`fullB`/`maintenance` en `PLAN.sessions` (variantes 3/5/6),
+  reutilizando ejercicios de la librería, con **objetivos kg heredados del baseline W28** y caución lumbar.
+
 ## Roadmap
-- **T4b:** generador algorítmico (arma bloque/semana desde reglas+perfil en runtime).
-- **T5 (reformulado):** el plan ideal pasa a ser el **default vivo** (reemplaza la fuente de
-  `getPlannedSessionForDate`/`WEEK_TEMPLATE`), con **selector de días (3/4/5/6)**. Versionado,
-  reversible, **sin perder logs** (workouts/runs pasados intactos; solo cambia el plan hacia adelante).
-  Se elimina el botón "Aplicar" (ya es el default). El advisory diario (T3) sigue flexando dentro del día.
+- **T4b:** generador algorítmico (arma bloque/semana desde reglas+perfil en runtime; hoy `IDEAL_BLOCK_V1` es data).
 - **T6:** loop de adaptación semanal + periodización multi-bloque + progression/modality engines.
