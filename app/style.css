@@ -2063,6 +2063,10 @@ body[data-tab="home"] .home-scroll-v2 { padding-top: calc(var(--safe-top) + 10px
 .wc-check { width: 16px; height: 16px; border-radius: 50%; display: grid; place-items: center; font-size: 10px; font-weight: 800; color: var(--bg); }
 .wc-bar { display: block; width: 16px; height: 4px; border-radius: 2px; opacity: 0.75; }
 .wc-rest { display: block; width: 4px; height: 4px; border-radius: 50%; background: var(--text3); }
+.wc-lines { display: flex; flex-direction: column; gap: 3px; align-items: center; }
+.wc-line { display: block; width: 16px; height: 4px; border-radius: 2px; }
+.wc-leg { display: inline-flex; align-items: center; gap: 4px; margin-left: 10px; }
+.wc-leg-dot { display: inline-block; width: 8px; height: 4px; border-radius: 2px; }
 
 /* ---- Historial banner button ---- */
 .historial-btn { margin-top: 12px; width: 100%; display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-radius: 18px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); color: var(--text); cursor: pointer; }

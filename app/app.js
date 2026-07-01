@@ -7190,31 +7190,33 @@ async function renderWeekCalendar() {
     const run = runs.find(r => r.date === ds);
     const mob = mobs.find(m => m.date === ds);
     const sess = sessions.find(s => s.date === ds); // logged cardio/recovery (unified store)
+    const loggedCardio = run || (sess && sess.family === 'cardio');
+    const loggedRecovery = mob || (sess && sess.family === 'recovery');
     const done = !!(gym || run || mob || sess);
     if (done) doneCount++;
     const planned = plannedArr[i];
     const pType = planned ? planned.type : null;
-    // Type for color: logged activity wins; otherwise the planned slot (gym/cardio/recovery).
-    let type = gym ? 'lift'
-      : (run || (sess && sess.family === 'cardio')) ? 'run'
-      : (mob || (sess && sess.family === 'recovery')) ? 'mobility'
-      : pType === 'gym' ? 'lift' : pType === 'run' ? 'run' : pType === 'recovery' ? 'mobility' : null;
-    const tone = _homeTypeTone(type).color;
-    // Aerobic mark on upcoming days that carry a Z2 finisher (strength/recovery) → cardio shows daily.
-    const hasAero = !isPast && !done && planned && planned.z2FinisherMin > 0;
 
-    let status; // done | today | upcoming | rest
-    if (done) status = 'done';
-    else if (isToday && type) status = 'today';
-    else if (isToday) status = 'today';
-    else if (!isPast && type) status = 'upcoming';
-    else status = 'rest';
+    // Two independent tracks per day: strength + cardio. State: done | planned | none.
+    // (Past days show only what was logged — no "planned" ghosting.)
+    const strengthState = gym ? 'done' : (!isPast && pType === 'gym') ? 'planned' : 'none';
+    const cardioPlanned = !isPast && (pType === 'run' || (planned && planned.z2FinisherMin > 0));
+    const cardioState = loggedCardio ? 'done' : cardioPlanned ? 'planned' : 'none';
+    const recoveryOnly = !isPast && pType === 'recovery' && !planned.z2FinisherMin;
 
+    const anyContent = strengthState !== 'none' || cardioState !== 'none' || loggedRecovery || recoveryOnly;
+    const status = isToday ? 'today' : (anyContent ? 'active' : 'rest');
+
+    const sCol = typeTone('strength'), cCol = typeTone('cardio');
+    const track = isToday ? 'rgba(0,0,0,0.14)' : 'rgba(255,255,255,0.10)';
+    const line = (st, col) => {
+      const bg = st === 'none' ? track : col;
+      const op = st === 'done' ? 1 : st === 'planned' ? 0.5 : 1;
+      return `<span class="wc-line" style="background:${bg};opacity:${op}"></span>`;
+    };
     let dot;
-    if (status === 'done') dot = `<span class="wc-check" style="background:${tone}">✓</span>`;
-    else if (status === 'rest') dot = `<span class="wc-rest"></span>`;
-    else dot = `<span class="wc-bar" style="background:${isToday ? 'var(--bg)' : tone}"></span>`;
-    if (hasAero) dot += `<span class="wc-aero" title="+ Z2 fácil" style="display:block;width:5px;height:5px;border-radius:50%;background:${typeTone('cardio')};margin:3px auto 0"></span>`;
+    if (status === 'rest') dot = `<span class="wc-rest"></span>`;
+    else dot = `<span class="wc-lines">${line(strengthState, sCol)}${line(cardioState, cCol)}</span>`;
 
     return { i, ds, jsDay, isToday, dateNum: date.getDate(), label: dayNames[i], status, dot, gym, planned };
   });
@@ -7222,7 +7224,10 @@ async function renderWeekCalendar() {
   container.innerHTML = `
     <div class="home-sec-row">
       <h2 class="home-h2">This week</h2>
-      <span class="home-link-mono">${doneCount}/7 <span class="home-link-dim">done</span></span>
+      <span class="home-link-mono">
+        <span class="wc-leg"><span class="wc-leg-dot" style="background:${typeTone('strength')}"></span>Fuerza</span>
+        <span class="wc-leg"><span class="wc-leg-dot" style="background:${typeTone('cardio')}"></span>Cardio</span>
+      </span>
     </div>
     <div class="week-cal">
       ${cells.map(c => `
