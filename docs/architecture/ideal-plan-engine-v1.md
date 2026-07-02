@@ -115,6 +115,13 @@ Tras uso real, se corrigió el IDEAL y se arreglaron bugs de visibilidad:
   (bici→Ride, correr/cinta→Run, remo→Rowing, ski→Workout), `POST /athlete/{id}/events`, `external_id: pwa-cardio-{date}`
   (idempotente). Botón en la tarjeta de cardio (Home) y en el banner de la pestaña Cardio.
 
+## T5.3 — Catálogo de cardio → COROS cualquier día (v11.32, 2026-07-02)
+`CARDIO_LIBRARY` (data): workouts curados (Z2 5/8/10k, bici Z2 40/60, remo Z2, progresivo, umbral 3×8, VO2 5×3,
+bici 4×4, remo 6×2, recuperación) con builder de DSL intervals.icu (repeats con sintaxis indentada). `renderCardioLibrary()`
+muestra el catálogo SIEMPRE en la pestaña Cardio (no solo días de cardio). `pushCardioWorkout(item)` → `POST /events`
+(external_id `pwa-cardio-{date}-{id}`) para HOY. `_icuZoneToken(z)` usa las zonas bpm cacheadas (o etiqueta Zn).
+Resuelve: poder mandar a COROS cualquier día (ej. correr en un día de fuerza).
+
 ## Roadmap
 - **T4b:** generador algorítmico (arma bloque/semana desde reglas+perfil en runtime; hoy `IDEAL_BLOCK_V1` es data).
 - **T6:** loop de adaptación semanal + periodización multi-bloque + progression/modality engines.

@@ -1607,7 +1607,7 @@ function switchTab(tab) {
     const inWorkout = !!state.activeSession;
     showView(inWorkout ? 'workout' : 'gym');
     if (!inWorkout) renderRecentWorkouts();
-  } else if (tab === 'cardio') { showView('cardio'); renderRunPlanBanner(); renderSessionHistory(); renderRunTotals(); renderRunHistory(); }
+  } else if (tab === 'cardio') { showView('cardio'); renderRunPlanBanner(); renderCardioLibrary(); renderSessionHistory(); renderRunTotals(); renderRunHistory(); }
   else if (tab === 'nutrition') { showView('nutrition'); renderNutrition(); }
   else if (tab === 'stats') { showView('stats'); renderStats(); }
   // BUG-UI-2 fix (v11.12): 'settings' had no branch, so the Home gear/bell/avatar
@@ -4930,6 +4930,102 @@ async function pushCardioToIntervalsIcu() {
     else { console.warn('[intervals.icu] cardio push failed', res.status, await res.text()); toast(`Falló el envío (${res.status})`); }
   } catch (e) {
     console.warn('[intervals.icu] cardio push error:', e);
+    toast('Error de red al enviar');
+  }
+}
+
+// Zone → intervals.icu HR token. Uses cached bpm zones (most accurate for COROS),
+// else the zone label. z in {z1,z2,z3,z4,z5}.
+function _icuZoneToken(z) {
+  const map = { z2: 'zone2', z3: 'zone3', z4: 'threshold', z5: 'intervals' };
+  const zc = state.settings && state.settings.icuZones;
+  const key = map[z];
+  const r = key && zc && zc.z && zc.z[key];
+  if (r && r.length === 2) return `${r[0]}-${r[1]} HR`;
+  return `${(z || 'z2').toUpperCase()} HR`;
+}
+
+// ==================== CARDIO LIBRARY (T5.3) ====================
+// Curated, evidence-based cardio workouts the user can send to intervals.icu → COROS
+// ANY day (not only planned cardio days). Aligned to his goals: fat loss + aerobic base
+// (5k→10-15k Z2) with ~1 quality session/week. Each item builds an intervals.icu DSL;
+// repeats use the indent-based syntax (space before "- " groups the steps under "Nx").
+const CARDIO_LIBRARY = [
+  { group: 'Base aeróbica (Z2)', id: 'run_z2_5k',  modality: 'run_outdoor', label: 'Carrera Z2 · 5 km',  note: 'Fácil, conversacional', dsl: () => `- 5km ${_icuZoneToken('z2')}` },
+  { group: 'Base aeróbica (Z2)', id: 'run_z2_8k',  modality: 'run_outdoor', label: 'Carrera Z2 · 8 km',  note: 'Base media', dsl: () => `- 8km ${_icuZoneToken('z2')}` },
+  { group: 'Base aeróbica (Z2)', id: 'run_z2_10k', modality: 'run_outdoor', label: 'Carrera Z2 · 10 km (largo)', note: 'Largo del fin de semana', dsl: () => `- 10km ${_icuZoneToken('z2')}` },
+  { group: 'Base aeróbica (Z2)', id: 'bike_z2_40', modality: 'bike', label: 'Bici Z2 · 40 min', note: 'Bajo impacto', dsl: () => `- 40m ${_icuZoneToken('z2')}` },
+  { group: 'Base aeróbica (Z2)', id: 'bike_z2_60', modality: 'bike', label: 'Bici Z2 · 60 min', note: 'Volumen aeróbico barato', dsl: () => `- 60m ${_icuZoneToken('z2')}` },
+  { group: 'Base aeróbica (Z2)', id: 'row_z2_30',  modality: 'row',  label: 'Remo Z2 · 30 min', note: 'Cuerpo completo, suave', dsl: () => `- 30m ${_icuZoneToken('z2')}` },
+
+  { group: 'Calidad (1×/sem)', id: 'run_prog', modality: 'run_outdoor', label: 'Progresivo Z2→Z3 · 35 min', note: 'Termina algo más rápido', dsl: () => `- 15m ${_icuZoneToken('z2')}\n- 15m ${_icuZoneToken('z3')}\n- 5m ${_icuZoneToken('z2')}` },
+  { group: 'Calidad (1×/sem)', id: 'run_tempo', modality: 'run_outdoor', label: 'Umbral · 3×8 min Z4', note: 'Tempo sostenido', dsl: () => `- 10m ${_icuZoneToken('z2')}\n3x\n - 8m ${_icuZoneToken('z4')}\n - 2m ${_icuZoneToken('z1')}\n- 5m ${_icuZoneToken('z2')}` },
+  { group: 'Calidad (1×/sem)', id: 'run_vo2', modality: 'run_outdoor', label: 'VO2 · 5×3 min Z5', note: 'Intervalos duros', dsl: () => `- 12m ${_icuZoneToken('z2')}\n5x\n - 3m ${_icuZoneToken('z5')}\n - 3m ${_icuZoneToken('z1')}\n- 8m ${_icuZoneToken('z2')}` },
+  { group: 'Calidad (1×/sem)', id: 'bike_intervals', modality: 'bike', label: 'Bici · 4×4 min Z4', note: 'Intervalos bajo impacto', dsl: () => `- 10m ${_icuZoneToken('z2')}\n4x\n - 4m ${_icuZoneToken('z4')}\n - 3m ${_icuZoneToken('z1')}\n- 5m ${_icuZoneToken('z2')}` },
+  { group: 'Calidad (1×/sem)', id: 'row_intervals', modality: 'row', label: 'Remo · 6×2 min Z4', note: 'Potencia aeróbica', dsl: () => `- 8m ${_icuZoneToken('z2')}\n6x\n - 2m ${_icuZoneToken('z4')}\n - 2m ${_icuZoneToken('z1')}\n- 5m ${_icuZoneToken('z2')}` },
+
+  { group: 'Recuperación', id: 'walk_30', modality: 'walk', label: 'Caminata Z1 · 30 min', note: 'Recuperación activa', dsl: () => `- 30m Z1 HR` },
+  { group: 'Recuperación', id: 'bike_recov', modality: 'bike', label: 'Bici recuperación Z1 · 30 min', note: 'Piernas cargadas', dsl: () => `- 30m Z1 HR` },
+];
+
+// Render the "Enviar a COROS" catalog inside the Cardio tab (always visible).
+function renderCardioLibrary() {
+  const host = document.getElementById('cardio-library');
+  if (!host) return;
+  const hasCreds = !!(state.settings && state.settings.intervalsIcuApiKey && state.settings.intervalsIcuAthleteId);
+  const groups = [...new Set(CARDIO_LIBRARY.map(w => w.group))];
+  const zNote = (state.settings && state.settings.icuZones) ? 'Zonas de FC desde intervals.icu ✓' : 'Sin zonas cacheadas — se usan etiquetas Z2/Z4/Z5';
+  host.innerHTML = `
+    <div class="section-head" style="margin-top:4px">
+      <div class="section-head-icon" style="background:var(--tint-blue);color:var(--blue)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4Z"/></svg>
+      </div>
+      <span class="section-head-title">Enviar a COROS</span>
+    </div>
+    ${hasCreds ? '' : `<div class="clib-warn">Configurá intervals.icu en Settings para enviar a tu COROS.</div>`}
+    ${groups.map(g => `
+      <div class="clib-group">${g}</div>
+      ${CARDIO_LIBRARY.filter(w => w.group === g).map(w => `
+        <button class="clib-row" data-clib="${w.id}" ${hasCreds ? '' : 'disabled'}>
+          <span class="clib-body"><span class="clib-label">${w.label}</span><span class="clib-note">${w.note}</span></span>
+          <span class="clib-send">→ COROS</span>
+        </button>`).join('')}
+    `).join('')}
+    <div class="clib-foot">${zNote} · se programa para hoy en tu calendario intervals.icu → COROS.</div>
+  `;
+  host.querySelectorAll('[data-clib]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const item = CARDIO_LIBRARY.find(w => w.id === btn.dataset.clib);
+      if (item) pushCardioWorkout(item);
+    });
+  });
+}
+
+// Push one catalog workout to intervals.icu as today's planned event.
+async function pushCardioWorkout(item) {
+  const apiKey = state.settings && state.settings.intervalsIcuApiKey;
+  const athleteId = state.settings && state.settings.intervalsIcuAthleteId;
+  if (!apiKey || !athleteId) { toast('Configurá intervals.icu en Settings primero'); return; }
+  const date = today();
+  const auth = 'Basic ' + btoa(`API_KEY:${apiKey}`);
+  const body = {
+    external_id: `pwa-cardio-${date}-${item.id}`, // idempotent per (day, workout)
+    name: item.label,
+    start_date_local: `${date}T06:00:00`,
+    category: 'WORKOUT',
+    type: _ICU_TYPE_BY_MODALITY[item.modality] || 'Workout',
+    description: item.dsl(),
+  };
+  try {
+    const res = await fetch(`https://intervals.icu/api/v1/athlete/${encodeURIComponent(athleteId)}/events`, {
+      method: 'POST',
+      headers: { 'Authorization': auth, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (res.ok) toast(`${item.label} → COROS ✓`);
+    else { console.warn('[intervals.icu] catalog push failed', res.status, await res.text()); toast(`Falló el envío (${res.status})`); }
+  } catch (e) {
+    console.warn('[intervals.icu] catalog push error:', e);
     toast('Error de red al enviar');
   }
 }

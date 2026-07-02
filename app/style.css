@@ -2074,6 +2074,16 @@ body[data-tab="home"] .home-scroll-v2 { padding-top: calc(var(--safe-top) + 10px
 .cardio-rx-row > b { text-align: right; }
 .cardio-rx-actions { display: flex; gap: 8px; margin-top: 12px; }
 .cardio-rx-actions button { flex: 1; }
+.clib-group { font-size: 12px; font-weight: 700; letter-spacing: 0.02em; color: var(--text2); text-transform: uppercase; margin: 16px 2px 8px; }
+.clib-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; text-align: left; padding: 12px 14px; margin-bottom: 8px; border-radius: 14px; background: var(--surface); border: 1px solid var(--border); color: var(--text); cursor: pointer; }
+.clib-row:active { background: var(--surface2); }
+.clib-row:disabled { opacity: 0.5; cursor: default; }
+.clib-body { display: flex; flex-direction: column; gap: 2px; }
+.clib-label { font-size: 14px; font-weight: 600; }
+.clib-note { font-size: 12px; color: var(--text2); }
+.clib-send { font-size: 12px; font-weight: 700; color: var(--blue); white-space: nowrap; }
+.clib-warn, .clib-foot { font-size: 12px; color: var(--text2); margin: 8px 2px; }
+.clib-foot { margin-top: 12px; }
 
 /* ---- Historial banner button ---- */
 .historial-btn { margin-top: 12px; width: 100%; display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-radius: 18px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); color: var(--text); cursor: pointer; }
