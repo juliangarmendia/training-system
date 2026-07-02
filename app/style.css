@@ -2067,6 +2067,13 @@ body[data-tab="home"] .home-scroll-v2 { padding-top: calc(var(--safe-top) + 10px
 .wc-line { display: block; width: 16px; height: 4px; border-radius: 2px; }
 .wc-leg { display: inline-flex; align-items: center; gap: 4px; margin-left: 10px; }
 .wc-leg-dot { display: inline-block; width: 8px; height: 4px; border-radius: 2px; }
+.cardio-rx { margin-top: 10px; padding: 14px 16px; }
+.cardio-rx-row { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+.cardio-rx-row:last-of-type { border-bottom: none; }
+.cardio-rx-row > span { color: var(--text2); }
+.cardio-rx-row > b { text-align: right; }
+.cardio-rx-actions { display: flex; gap: 8px; margin-top: 12px; }
+.cardio-rx-actions button { flex: 1; }
 
 /* ---- Historial banner button ---- */
 .historial-btn { margin-top: 12px; width: 100%; display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-radius: 18px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); color: var(--text); cursor: pointer; }

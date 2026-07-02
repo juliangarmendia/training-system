@@ -99,6 +99,22 @@ Tras uso real, se corrigió el IDEAL y se arreglaron bugs de visibilidad:
   caminata + intensidad Z2/Z3/umbral/intervalos/largo) escribe a `sessions` (envelope T1). Historial/totales siguen
   leyendo los `runs` legacy vía `toSession()`.
 
+## T5.2 — Swaps persistentes + prescripción de cardio + push intervals.icu (v11.31, 2026-07-02)
+- **Swaps de ejercicio persistentes y reversibles**: `exerciseOverrides = {sessionId:{origId:{id,name}}}` en settings
+  (sincronizado, `loadExerciseOverrides` en init). `resolveSessionExercises()` los aplica en `startWorkout` y en la
+  rama gym de `getPlannedSessionForDate` (mantiene el esquema sets/reps del slot). `buildExerciseCard` guarda
+  `origId/origName`. `showSwapUI` reescrito: persiste vía `setExerciseOverride`, ofrece "↩ Volver al original"
+  (`clearExerciseOverride`) y llama `saveActiveWorkout`. NO lo pisa el cambio de variante del ideal.
+- **Prescripción de cardio**: `buildWeekTemplateFromIdeal` lleva `summary` al slot; `getPlannedSessionForDate` cardio
+  devuelve `summary` + `hrTarget`. `renderTodaysPlan` y `renderRunPlanBanner` muestran duración + zona + qué hacer +
+  rango de FC (o guía RPE/conversacional vía `cardioIntensityGuide`). Se quitó el "HR<140" hardcodeado.
+- **Zonas de FC desde intervals.icu**: `fetchIntervalsIcuZones()` lee el perfil del atleta (sportSettings/LTHR/max_hr),
+  cachea `settings.icuZones` (sincronizado); corre en `intervalsIcuSync` y al guardar credenciales. `cardioHrTarget(subtype)`
+  devuelve el rango bpm. Defensivo: bpm nativos → derivado de LTHR → derivado de FCmax → guía sin bpm.
+- **Push de cardio del día**: `pushCardioToIntervalsIcu()` + `_generateCardioDsl()` — action sheet de modalidad
+  (bici→Ride, correr/cinta→Run, remo→Rowing, ski→Workout), `POST /athlete/{id}/events`, `external_id: pwa-cardio-{date}`
+  (idempotente). Botón en la tarjeta de cardio (Home) y en el banner de la pestaña Cardio.
+
 ## Roadmap
 - **T4b:** generador algorítmico (arma bloque/semana desde reglas+perfil en runtime; hoy `IDEAL_BLOCK_V1` es data).
 - **T6:** loop de adaptación semanal + periodización multi-bloque + progression/modality engines.

@@ -739,6 +739,46 @@ async function loadExerciseLibrary() {
   console.log(`[Plan] Exercise library: ${all.length} exercises loaded`);
 }
 
+// ==================== EXERCISE SWAP OVERRIDES (T5.2) ====================
+// Persistent, reversible per-session exercise swaps. Shape:
+//   { [sessionId]: { [originalExId]: { id, name } } }
+// Stored in settings (synced), applied at render time. Survives reloads and
+// future sessions, and is NOT wiped when the ideal variant regenerates the plan
+// (that only touches weekTemplate + base sessions, not this override map).
+let exerciseOverrides = {};
+
+async function loadExerciseOverrides() {
+  const saved = await dbGet('settings', 'exerciseOverrides');
+  exerciseOverrides = (saved && saved.data) || {};
+}
+
+async function setExerciseOverride(sessionId, origId, newId, newName) {
+  if (!exerciseOverrides[sessionId]) exerciseOverrides[sessionId] = {};
+  exerciseOverrides[sessionId][origId] = { id: newId, name: newName };
+  await smartPut('settings', { key: 'exerciseOverrides', data: exerciseOverrides });
+}
+
+async function clearExerciseOverride(sessionId, origId) {
+  if (exerciseOverrides[sessionId]) {
+    delete exerciseOverrides[sessionId][origId];
+    if (!Object.keys(exerciseOverrides[sessionId]).length) delete exerciseOverrides[sessionId];
+  }
+  await smartPut('settings', { key: 'exerciseOverrides', data: exerciseOverrides });
+}
+
+// Apply the saved overrides to a session's exercise list. Keeps the slot's
+// programming (sets/reps/RPE/rest/superset) and only swaps the movement; tracks
+// _origId/_origName so the swap is reversible in the UI.
+function resolveSessionExercises(sessionId, exercises) {
+  const ov = exerciseOverrides[sessionId];
+  if (!ov || !Array.isArray(exercises)) return exercises;
+  return exercises.map(ex => {
+    const sub = ov[ex.id];
+    if (!sub) return ex;
+    return { ...ex, id: sub.id, name: sub.name, _origId: ex.id, _origName: ex.name };
+  });
+}
+
 // Create a new plan version (for weekly updates)
 async function createNewPlanVersion(modifications) {
   const plans = await dbGetAll('plans');
@@ -2695,8 +2735,10 @@ function syncQuickModeUI() {
 }
 
 async function startWorkout(sessionId) {
-  const session = activePlan.sessions[sessionId];
-  if (!session) return;
+  const baseSession = activePlan.sessions[sessionId];
+  if (!baseSession) return;
+  // Apply persistent exercise swaps (T5.2). id is preserved so session.id works for the swap UI.
+  const session = { ...baseSession, exercises: resolveSessionExercises(sessionId, baseSession.exercises) };
 
   state.activeSession = sessionId;
   // Preserve workoutStartTime if user is just toggling Quick mode on the same
@@ -3097,6 +3139,8 @@ function buildExerciseCard(ex, exIdx, previous, restSettings, exerciseNotes, del
   const card = document.createElement('div');
   card.className = 'exercise-card';
   card.dataset.exerciseId = ex.id;
+  card.dataset.origId = ex._origId || ex.id;       // original slot exercise (swap key)
+  card.dataset.origName = ex._origName || ex.name; // for the "back to original" option
   if (exIdx === 0) card.classList.add('expanded');
 
   let setsHTML = '';
@@ -4449,6 +4493,8 @@ function renderIntervalsIcuUI() {
     state.settings.intervalsIcuAthleteId = athInput.value.trim();
     await saveSettings();
     if (typeof toast === 'function') toast('intervals.icu config saved');
+    // Pull HR zones now so cardio prescriptions get real bpm ranges (best-effort).
+    fetchIntervalsIcuZones().catch(() => {});
     // Rerender the coach card so the "Push to COROS" button toggles based on key presence.
     if (typeof loadAndRenderWeeklyCoach === 'function') loadAndRenderWeeklyCoach();
   };
@@ -4564,11 +4610,67 @@ async function intervalsIcuSync() {
     localStorage.setItem('intervalsicu_last_sync', String(Date.now()));
     console.log(`[intervals.icu] pulled ${pulled} runs (window ${oldest} → ${newest})`);
     try { await validateRunDedup(); } catch (_) { /* validation log only */ }
+    try { await fetchIntervalsIcuZones(); } catch (_) { /* zones are best-effort */ }
     return { pulled, total: activities.length };
   } catch (e) {
     console.warn('[intervals.icu] sync error:', e);
     return null;
   }
+}
+
+// ==================== INTERVALS.ICU HR ZONES (T5.2) ====================
+// Pull the athlete's HR zones (the same ones synced to his COROS) so cardio
+// prescriptions show real bpm ranges. Cached in settings.icuZones (synced).
+// Defensive: intervals.icu's athlete/sportSettings shape varies, so we try the
+// native zone bounds first, then derive from LTHR, then from max HR.
+async function fetchIntervalsIcuZones() {
+  const apiKey = state.settings && state.settings.intervalsIcuApiKey;
+  const athleteId = state.settings && state.settings.intervalsIcuAthleteId;
+  if (!apiKey || !athleteId) return null;
+  const auth = 'Basic ' + btoa(`API_KEY:${apiKey}`);
+  const res = await fetch(`https://intervals.icu/api/v1/athlete/${encodeURIComponent(athleteId)}`, { headers: { Authorization: auth } });
+  if (!res.ok) { console.warn('[intervals.icu] athlete fetch failed:', res.status); return null; }
+  const a = await res.json();
+  const settings = Array.isArray(a.sportSettings) ? a.sportSettings : [];
+  // Prefer the Run profile, else the first, else the athlete top-level fields.
+  const sp = settings.find(s => Array.isArray(s.types) && s.types.some(t => /run/i.test(t))) || settings[0] || {};
+  const lthr = Number(sp.lthr || a.icu_lthr || a.lthr) || null;
+  const maxHr = Number(sp.max_hr || a.icu_max_hr || a.max_hr) || null;
+  const rawZones = Array.isArray(sp.hr_zones) ? sp.hr_zones.map(Number).filter(n => isFinite(n))
+                 : (Array.isArray(a.icu_hr_zones) ? a.icu_hr_zones.map(Number).filter(n => isFinite(n)) : []);
+
+  const z = {};
+  const bpmLooking = rawZones.length >= 4 && rawZones.every(n => n > 60 && n < 230);
+  if (bpmLooking) {
+    // Absolute bpm upper bounds [Z1max, Z2max, Z3max, Z4max, (Z5max)]
+    const top = maxHr || (rawZones[rawZones.length - 1] + 10);
+    z.zone2 = [rawZones[0] + 1, rawZones[1]];
+    z.zone3 = [rawZones[1] + 1, rawZones[2]];
+    z.threshold = [rawZones[2] + 1, rawZones[3]];
+    z.intervals = [rawZones[3] + 1, rawZones[4] || top];
+  } else if (lthr) {
+    const r = (lo, hi) => [Math.round(lthr * lo), Math.round(lthr * hi)];
+    z.zone2 = r(0.75, 0.88); z.zone3 = r(0.88, 0.95); z.threshold = r(0.95, 1.02); z.intervals = r(1.02, 1.10);
+  } else if (maxHr) {
+    const r = (lo, hi) => [Math.round(maxHr * lo), Math.round(maxHr * hi)];
+    z.zone2 = r(0.60, 0.72); z.zone3 = r(0.72, 0.82); z.threshold = r(0.82, 0.90); z.intervals = r(0.90, 1.00);
+  } else {
+    return null; // nothing usable
+  }
+  z.long_easy = z.zone2;
+  state.settings.icuZones = { lthr, maxHr, z, updatedAt: Date.now() };
+  await smartPut('settings', { key: 'userSettings', data: state.settings });
+  console.log('[intervals.icu] HR zones cached', state.settings.icuZones);
+  return state.settings.icuZones;
+}
+
+// Return a bpm-range string for a cardio subtype from cached zones, or null.
+function cardioHrTarget(subtype) {
+  const zc = state.settings && state.settings.icuZones;
+  if (!zc || !zc.z) return null;
+  const key = (subtype === 'long_easy') ? 'zone2' : (subtype || 'zone2');
+  const r = zc.z[key] || zc.z.zone2;
+  return (r && r.length === 2) ? `${r[0]}-${r[1]} bpm` : null;
 }
 
 // ==================== D1 DATA UNLOCK HELPERS (v11.9) ====================
@@ -4764,6 +4866,72 @@ async function pushRunningPlanToIntervalsIcu() {
     }
   }
   if (typeof toast === 'function') toast(`Pushed ${pushed} run${pushed === 1 ? '' : 's'}${failed ? ` · ${failed} failed` : ''}`);
+}
+
+// ==================== PUSH TODAY'S CARDIO → intervals.icu → COROS (T5.2) ====================
+// intervals.icu event `type` per modality (drives which COROS activity it maps to).
+const _ICU_TYPE_BY_MODALITY = { bike: 'Ride', run_outdoor: 'Run', treadmill: 'Run', row: 'Rowing', ski: 'Workout', walk: 'Walk' };
+const _ICU_ZONE_BY_SUBTYPE = { zone2: 'Z2', long_easy: 'Z2', zone3: 'Z3', threshold: 'Z4', intervals: 'Z5', recovery: 'Z1' };
+
+// Build a one-step intervals.icu DSL for a planned cardio session, using cached
+// bpm zones when available (most accurate for COROS), else the zone label.
+function _generateCardioDsl(planned) {
+  const dur = planned.durationMin ? `${planned.durationMin}m` : '40m';
+  const st = planned.subtype || 'zone2';
+  const zc = state.settings && state.settings.icuZones;
+  const key = st === 'long_easy' ? 'zone2' : st;
+  const r = zc && zc.z && zc.z[key];
+  let target;
+  if (r && r.length === 2) target = `${r[0]}-${r[1]} HR`;   // absolute bpm range
+  else target = `${_ICU_ZONE_BY_SUBTYPE[st] || 'Z2'} HR`;   // zone label fallback
+  return `- ${dur} ${target}`;
+}
+
+async function pushCardioToIntervalsIcu() {
+  const apiKey = state.settings && state.settings.intervalsIcuApiKey;
+  const athleteId = state.settings && state.settings.intervalsIcuAthleteId;
+  if (!apiKey || !athleteId) { toast('Configurá intervals.icu en Settings primero'); return; }
+
+  const date = today();
+  let planned = null;
+  try { planned = await getPlannedSessionForDate(new Date()); } catch (e) {}
+  if (!planned || planned.type !== 'run') {
+    // No cardio planned today — default to a Z2 40' so the button still works.
+    planned = { type: 'run', name: 'Cardio Z2', subtype: 'zone2', durationMin: 40, hrTarget: cardioHrTarget('zone2') };
+  }
+
+  // Ask which modality so intervals.icu maps to the right COROS activity type.
+  const modality = await showActionSheet('¿Qué vas a hacer?', [
+    { value: 'bike', label: 'Bici', icon: '🚴' },
+    { value: 'run_outdoor', label: 'Correr', icon: '🏃' },
+    { value: 'treadmill', label: 'Cinta', icon: '🏃' },
+    { value: 'row', label: 'Remo', icon: '🚣' },
+    { value: 'ski', label: 'SkiErg', icon: '⛷️' },
+  ]);
+  if (!modality) return;
+
+  const auth = 'Basic ' + btoa(`API_KEY:${apiKey}`);
+  const externalId = `pwa-cardio-${date}`; // idempotent: re-push same day updates the event
+  const body = {
+    external_id: externalId,
+    name: planned.name || 'Cardio Z2',
+    start_date_local: `${date}T06:00:00`,
+    category: 'WORKOUT',
+    type: _ICU_TYPE_BY_MODALITY[modality] || 'Workout',
+    description: _generateCardioDsl(planned),
+  };
+  try {
+    const res = await fetch(`https://intervals.icu/api/v1/athlete/${encodeURIComponent(athleteId)}/events`, {
+      method: 'POST',
+      headers: { 'Authorization': auth, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (res.ok) toast('Enviado a intervals.icu → COROS');
+    else { console.warn('[intervals.icu] cardio push failed', res.status, await res.text()); toast(`Falló el envío (${res.status})`); }
+  } catch (e) {
+    console.warn('[intervals.icu] cardio push error:', e);
+    toast('Error de red al enviar');
+  }
 }
 
 // Tiny markdown subset: bold (**...**), bullets ("- "), and line breaks.
@@ -5627,21 +5795,31 @@ function stopRestTimer() {
 }
 
 // ==================== RUNNING MODULE ====================
-function renderRunPlanBanner() {
-  const wk = getWeekNumber();
-  const runsAllowed = getRunsThisWeek(wk);
+async function renderRunPlanBanner() {
   const banner = document.getElementById('run-plan-banner');
+  if (!banner) return;
+  let planned = null;
+  try { planned = await getPlannedSessionForDate(new Date()); } catch (e) {}
 
-  let detail = '';
-  if (wk <= 3) detail = '1 run/week (Saturday). Build the habit first.';
-  else if (wk <= 6) detail = '2 runs/week (Wednesday + Saturday). Aerobic base building.';
-  else detail = '2 runs + optional 3rd (Sunday). Maintain or progress.';
-
-  banner.innerHTML = `
-    <div class="rpb-title">Week ${wk} Running Plan</div>
-    <div class="rpb-detail">${detail}</div>
-    <span class="rpb-badge">${runsAllowed === 3 ? '2-3' : runsAllowed} runs this week · Zone 2 · HR &lt; 140 bpm</span>
-  `;
+  if (planned && planned.type === 'run') {
+    const hr = planned.hrTarget ? `FC ${planned.hrTarget}` : cardioIntensityGuide(planned.subtype);
+    const badge = [planned.durationMin ? `${planned.durationMin} min` : '', planned.subtitle, hr].filter(Boolean).join(' · ');
+    banner.innerHTML = `
+      <div class="rpb-title">Hoy: ${planned.name}</div>
+      <div class="rpb-detail">${planned.summary || planned.subtitle}</div>
+      <span class="rpb-badge">${badge}</span>
+      <button class="btn-secondary btn-full" id="rpb-push-icu" style="margin-top:10px;text-align:center">Enviar a intervals.icu</button>
+    `;
+    const b = banner.querySelector('#rpb-push-icu');
+    if (b) b.addEventListener('click', () => pushCardioToIntervalsIcu());
+  } else {
+    const wk = getWeekNumber();
+    banner.innerHTML = `
+      <div class="rpb-title">Cardio</div>
+      <div class="rpb-detail">Hoy no hay cardio planificado — podés registrar una sesión igual (bici/remo/cinta/caminata).</div>
+      <span class="rpb-badge">Semana ${wk} · Zona 2 la mayoría de los días</span>
+    `;
+  }
 }
 
 async function logRun() {
@@ -6563,11 +6741,13 @@ async function getPlannedSessionForDate(date) {
     const s = (activePlan && activePlan.sessions) ? activePlan.sessions[sessionId] : null;
     // Z2 finisher only applies when the day comes from the template (not a manual override).
     const z2 = (slot.type === 'gym' && customSchedule[ds] === undefined) ? (slot.z2FinisherMin || null) : null;
-    return { type: 'gym', date: ds, sessionId, name: s ? s.name : sessionId, subtitle: s ? s.subtitle : '', exercises: (s && s.exercises) || [], z2FinisherMin: z2 };
+    const exs = s ? resolveSessionExercises(sessionId, s.exercises) : [];
+    return { type: 'gym', date: ds, sessionId, name: s ? s.name : sessionId, subtitle: s ? s.subtitle : '', exercises: exs || [], z2FinisherMin: z2 };
   }
   if (customSchedule[ds] === undefined) {
     if (slot.type === 'run') { // cardio day (internal type stays 'run' for compatibility)
-      return { type: 'run', date: ds, name: slot.label || 'Cardio Z2', subtitle: cardioSubtypeLabel(slot.subtype), subtype: slot.subtype || 'zone2', durationMin: slot.durationMin || null };
+      const st = slot.subtype || 'zone2';
+      return { type: 'run', date: ds, name: slot.label || 'Cardio Z2', subtitle: cardioSubtypeLabel(st), subtype: st, durationMin: slot.durationMin || null, summary: slot.summary || null, hrTarget: cardioHrTarget(st) };
     }
     if (slot.type === 'recovery') {
       return { type: 'recovery', date: ds, name: slot.label || 'Recuperación activa', subtitle: 'Movilidad + Z2 suave', z2FinisherMin: slot.z2FinisherMin || null };
@@ -6580,6 +6760,19 @@ async function getPlannedSessionForDate(date) {
 function cardioSubtypeLabel(subtype) {
   const map = { zone2: 'Zona 2 · fácil', zone3: 'Zona 3', threshold: 'Umbral', intervals: 'Intervalos', long_easy: 'Largo Z2 · calidad', recovery: 'Recuperación' };
   return map[subtype] || 'Zona 2 · fácil';
+}
+
+// Fallback intensity cue (RPE / conversational) when no bpm zones are cached.
+function cardioIntensityGuide(subtype) {
+  const map = {
+    zone2: 'Conversacional · podés hablar · RPE 3-4',
+    long_easy: 'Conversacional · podés hablar · RPE 3-4',
+    zone3: 'Cómodo-duro · frases cortas · RPE 5-6',
+    threshold: 'Duro sostenido · RPE 7-8',
+    intervals: 'Muy duro por tramos · RPE 9',
+    recovery: 'Muy suave · RPE 2',
+  };
+  return map[subtype] || map.zone2;
 }
 
 // Classify the planned session's training stress (reuses toSession + SESSION_TYPES).
@@ -6917,7 +7110,7 @@ function buildWeekTemplateFromIdeal(variantNum) {
       tpl[day.dow] = { type: 'gym', session: day.planRef };
       if (day.z2Finisher) tpl[day.dow].z2FinisherMin = day.z2Finisher;
     } else if (day.kind === 'cardio') {
-      tpl[day.dow] = { type: 'run', label: day.title, subtype: day.subtype || 'zone2', durationMin: day.durationMin || null };
+      tpl[day.dow] = { type: 'run', label: day.title, subtype: day.subtype || 'zone2', durationMin: day.durationMin || null, summary: day.summary || null };
     } else if (day.kind === 'recovery') {
       tpl[day.dow] = { type: 'recovery', label: day.title || 'Recuperación activa', subtype: day.subtype || 'mobility' };
       if (day.z2Finisher) tpl[day.dow].z2FinisherMin = day.z2Finisher;
@@ -7355,6 +7548,12 @@ async function renderTodaysPlan() {
   if (planned.type === 'run') {
     const done = !!doneCardio;
     const sub = (planned.subtitle || 'Zona 2 · fácil') + (planned.durationMin ? ` · ${planned.durationMin}'` : '');
+    const hrLine = planned.hrTarget ? `FC objetivo: <b>${planned.hrTarget}</b>` : cardioIntensityGuide(planned.subtype);
+    const rxRows = [
+      planned.durationMin ? `<div class="cardio-rx-row"><span>Duración</span><b>${planned.durationMin} min</b></div>` : '',
+      `<div class="cardio-rx-row"><span>Intensidad</span><b>${hrLine}</b></div>`,
+      planned.summary ? `<div class="cardio-rx-row"><span>Qué hacer</span><b>${planned.summary}</b></div>` : '',
+    ].join('');
     container.innerHTML = `
       <section class="session-hero" data-sh>
         <img class="sh-img" src="img/session-rest.jpg" alt="" loading="lazy">
@@ -7363,10 +7562,20 @@ async function renderTodaysPlan() {
         <div class="sh-bottom">
           <div class="sh-eyebrow">${done ? 'Completado' : sub}</div>
           <h3 class="sh-title">${planned.name}<br><span class="sh-title-sub">${planned.subtitle || 'Zona 2'}</span></h3>
-          <button class="sh-cta${done ? ' sh-cta-ghost' : ''}"><span class="sh-cta-label">${done ? 'Ver cardio' : 'Registrar cardio'}</span>${done ? '' : '<span class="sh-cta-arrow">›</span>'}</button>
         </div>
-      </section>`;
+      </section>
+      <div class="cardio-rx card">
+        ${rxRows}
+        <div class="cardio-rx-actions">
+          <button class="btn-primary" id="rx-log-cardio">${done ? 'Ver cardio' : 'Registrar cardio'}</button>
+          <button class="btn-secondary" id="rx-push-icu">Enviar a intervals.icu</button>
+        </div>
+      </div>`;
     container.querySelector('[data-sh]').addEventListener('click', () => switchTab('cardio'));
+    const logBtn = container.querySelector('#rx-log-cardio');
+    if (logBtn) logBtn.addEventListener('click', () => switchTab('cardio'));
+    const pushBtn = container.querySelector('#rx-push-icu');
+    if (pushBtn) pushBtn.addEventListener('click', () => pushCardioToIntervalsIcu());
     return;
   }
 
@@ -7996,31 +8205,51 @@ function showSwapUI(card, ex, session) {
   const existing = card.querySelector('.swap-panel');
   if (existing) { existing.remove(); return; }
 
-  const alts = getAlternatives(ex.muscle, ex.id);
-  if (alts.length === 0) { toast('No alternatives available'); return; }
+  const sessionId = session && session.id;
+  const origId = card.dataset.origId || ex.id;
+  const origName = card.dataset.origName || ex.name;
+  const currentId = card.dataset.exerciseId;
+  const isOverridden = currentId !== origId;
+
+  // Options = same-muscle alternatives + the original slot exercise, minus the current one.
+  const byId = new Map();
+  (EXERCISE_ALTERNATIVES[ex.muscle] || []).forEach(a => byId.set(a.id, a.name));
+  byId.set(origId, origName); // ensure the original is always offered
+  byId.delete(currentId);
+  const opts = [...byId.entries()].map(([id, name]) => ({ id, name }));
+  if (opts.length === 0) { toast('No hay alternativas'); return; }
 
   const panel = document.createElement('div');
   panel.className = 'swap-panel';
+  const revertBtn = isOverridden
+    ? `<button class="swap-option swap-revert" data-swap-id="${origId}" data-swap-name="${origName}">↩ Volver al original (${origName})</button>`
+    : '';
   panel.innerHTML = `
-    <div class="swap-title">Swap ${ex.name} for:</div>
-    ${alts.map(a => `<button class="swap-option" data-swap-id="${a.id}" data-swap-name="${a.name}">${a.name}</button>`).join('')}
-    <button class="swap-cancel">Cancel</button>
+    <div class="swap-title">Cambiar ${ex.name} por:</div>
+    ${revertBtn}
+    ${opts.map(a => `<button class="swap-option" data-swap-id="${a.id}" data-swap-name="${a.name}">${a.name}</button>`).join('')}
+    <button class="swap-cancel">Cancelar</button>
   `;
 
   panel.querySelector('.swap-cancel').addEventListener('click', () => panel.remove());
   panel.querySelectorAll('.swap-option').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
       const newId = btn.dataset.swapId;
       const newName = btn.dataset.swapName;
-      // Update the card
+      // Persist (or clear, if reverting to the original) — synced, survives reloads.
+      if (sessionId) {
+        if (newId === origId) await clearExerciseOverride(sessionId, origId);
+        else await setExerciseOverride(sessionId, origId, newId, newName);
+      }
+      // Update the card in place
       card.dataset.exerciseId = newId;
-      card.querySelector('.exercise-name').textContent = newName;
-      card.querySelector('.exercise-name').dataset.exId = newId;
-      // Update header display
+      const nameEl = card.querySelector('.exercise-name');
+      if (nameEl) { nameEl.childNodes[0].textContent = newName + ' '; nameEl.dataset.exId = newId; }
       const notesEl = card.querySelector('.exercise-notes');
-      if (notesEl) notesEl.textContent = `Swapped from ${ex.name}`;
+      if (notesEl) notesEl.textContent = newId === origId ? '' : `Cambiado de ${origName}`;
       panel.remove();
-      toast(`Swapped to ${newName}`);
+      await saveActiveWorkout();
+      toast(newId === origId ? `Volviste a ${newName}` : `Cambiado a ${newName}`);
     });
   });
 
@@ -9754,6 +9983,7 @@ async function init() {
   await loadActivePlan();
   await applyIdealPlan();     // T5: install the ideal plan as the live default (replaces re-entry ramp)
   await loadExerciseLibrary();
+  await loadExerciseOverrides(); // T5.2: persistent exercise swaps
 
   bindEvents();
 
