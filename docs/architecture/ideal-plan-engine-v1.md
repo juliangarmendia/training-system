@@ -114,6 +114,7 @@ Tras uso real, se corrigió el IDEAL y se arreglaron bugs de visibilidad:
 - **Push de cardio del día**: `pushCardioToIntervalsIcu()` + `_generateCardioDsl()` — action sheet de modalidad
   (bici→Ride, correr/cinta→Run, remo→Rowing, ski→Workout), `POST /athlete/{id}/events`, `external_id: pwa-cardio-{date}`
   (idempotente). Botón en la tarjeta de cardio (Home) y en el banner de la pestaña Cardio.
+  > ⚠️ Corregido en v11.33: el DSL emitía bpm absolutos (inválidos) y `/events` no era idempotente.
 
 ## T5.3 — Catálogo de cardio → COROS cualquier día (v11.32, 2026-07-02)
 `CARDIO_LIBRARY` (data): workouts curados (Z2 5/8/10k, bici Z2 40/60, remo Z2, progresivo, umbral 3×8, VO2 5×3,
@@ -121,6 +122,38 @@ bici 4×4, remo 6×2, recuperación) con builder de DSL intervals.icu (repeats c
 muestra el catálogo SIEMPRE en la pestaña Cardio (no solo días de cardio). `pushCardioWorkout(item)` → `POST /events`
 (external_id `pwa-cardio-{date}-{id}`) para HOY. `_icuZoneToken(z)` usa las zonas bpm cacheadas (o etiqueta Zn).
 Resuelve: poder mandar a COROS cualquier día (ej. correr en un día de fuerza).
+> ⚠️ Corregido en v11.33: los repeats NO se agrupan por sangría y `_icuZoneToken` no puede emitir bpm.
+
+## v11.33 — Fix: objetivos de FC rotos en el envío a COROS (2026-08-15)
+
+**Causa raíz:** intervals.icu **no soporta objetivos de FC en bpm absolutos**. El desarrollador lo
+confirma explícitamente: *"You need to specify the HR range in % of threshold HR. This is so
+workouts are portable between athletes."* La guía del workout builder sólo documenta `60% HR`
+(% de FCmáx), `95% LTHR` y `Z2 HR`.
+
+T5.2 introdujo `_generateCardioDsl` emitiendo `- 40m 128-145 HR` bajo el supuesto
+*"cached bpm zones … most accurate for COROS"*, y T5.3 lo extendió a todo el catálogo vía
+`_icuZoneToken`. Sin `%`, intervals.icu parsea ese número como **porcentaje**: 128-145 % de FCmáx
+≈ 240-275 bpm → objetivo imposible en el reloj. Antes de T5.2 sólo existía `_generateIntervalsIcuDsl`
+emitiendo `Z2 HR`, que sí funcionaba.
+
+Corregido:
+- **`_icuZoneToken(z)`** reducido a etiqueta de zona `Zn HR`, siempre. Es el punto único que decide
+  el formato del objetivo. Las bpm de `settings.icuZones` quedan **sólo para pantalla**
+  (`cardioHrTarget`), nunca en el DSL. Arregla también `z1`, que antes no estaba en el map y
+  mezclaba dos formatos dentro del mismo workout.
+- **`_generateCardioDsl`** usa `_ICU_ZONE_BY_SUBTYPE`; **`_generateIntervalsIcuDsl`** traduce la
+  rama legacy `target_hr_max` (bpm crudos) a zona con el nuevo `_zoneForBpm()`.
+- **Bloques de repetición**: los `Nx` iban con sangría y sin líneas en blanco. La sangría no agrupa
+  nada — *"Leave one empty line before and after every repeat block"* — así que la vuelta a la calma
+  se absorbía dentro de la serie (umbral 3×8 compilaba a 10+3×(8+2+5) = 55 min en vez de 45).
+  Helpers `_icuRepeat` / `_icuDsl` concentran la regla.
+- **Duplicados**: `POST /events` NO deduplica por `external_id` (el comentario "idempotent" era
+  falso); cada reenvío creaba un evento nuevo y el COROS recibía varios el mismo día. Nuevo
+  `_icuUpsertEvents()` → `POST /events/bulk?upsert=true`, usado por los tres pushes. Se mantiene
+  `external_id` por workout: reenviar el mismo lo actualiza, y dos distintos conviven en un día.
+- **`fetchIntervalsIcuZones`** endurecida (un array de % de LTHR como [68,83,94,105] pasaba el test
+  de "parece bpm") y añade `z.zone1` / `z.recovery`.
 
 ## Roadmap
 - **T4b:** generador algorítmico (arma bloque/semana desde reglas+perfil en runtime; hoy `IDEAL_BLOCK_V1` es data).

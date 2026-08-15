@@ -4640,24 +4640,35 @@ async function fetchIntervalsIcuZones() {
                  : (Array.isArray(a.icu_hr_zones) ? a.icu_hr_zones.map(Number).filter(n => isFinite(n)) : []);
 
   const z = {};
-  const bpmLooking = rawZones.length >= 4 && rawZones.every(n => n > 60 && n < 230);
+  // Are rawZones absolute bpm, or percentages of LTHR? A %-of-LTHR array like
+  // [68,83,94,105] sits entirely inside a naive 60..230 "bpm" window, so also require
+  // a top bound that is genuinely bpm-sized and consistent with maxHr when we know it.
+  const top = rawZones[rawZones.length - 1];
+  const bpmLooking = rawZones.length >= 4
+    && rawZones.every((n, i) => n > 60 && n < 230 && (i === 0 || n > rawZones[i - 1]))
+    && top > 120
+    && (!maxHr || (top >= maxHr * 0.7 && top <= maxHr * 1.1));
   if (bpmLooking) {
     // Absolute bpm upper bounds [Z1max, Z2max, Z3max, Z4max, (Z5max)]
-    const top = maxHr || (rawZones[rawZones.length - 1] + 10);
+    const ceiling = maxHr || (top + 10);
+    z.zone1 = [Math.round((maxHr || rawZones[0] * 1.6) * 0.45), rawZones[0]];
     z.zone2 = [rawZones[0] + 1, rawZones[1]];
     z.zone3 = [rawZones[1] + 1, rawZones[2]];
     z.threshold = [rawZones[2] + 1, rawZones[3]];
-    z.intervals = [rawZones[3] + 1, rawZones[4] || top];
+    z.intervals = [rawZones[3] + 1, rawZones[4] || ceiling];
   } else if (lthr) {
     const r = (lo, hi) => [Math.round(lthr * lo), Math.round(lthr * hi)];
+    z.zone1 = r(0.55, 0.75);
     z.zone2 = r(0.75, 0.88); z.zone3 = r(0.88, 0.95); z.threshold = r(0.95, 1.02); z.intervals = r(1.02, 1.10);
   } else if (maxHr) {
     const r = (lo, hi) => [Math.round(maxHr * lo), Math.round(maxHr * hi)];
+    z.zone1 = r(0.45, 0.60);
     z.zone2 = r(0.60, 0.72); z.zone3 = r(0.72, 0.82); z.threshold = r(0.82, 0.90); z.intervals = r(0.90, 1.00);
   } else {
     return null; // nothing usable
   }
   z.long_easy = z.zone2;
+  z.recovery = z.zone1;
   state.settings.icuZones = { lthr, maxHr, z, updatedAt: Date.now() };
   await smartPut('settings', { key: 'userSettings', data: state.settings });
   console.log('[intervals.icu] HR zones cached', state.settings.icuZones);
@@ -4671,6 +4682,21 @@ function cardioHrTarget(subtype) {
   const key = (subtype === 'long_easy') ? 'zone2' : (subtype || 'zone2');
   const r = zc.z[key] || zc.z.zone2;
   return (r && r.length === 2) ? `${r[0]}-${r[1]} bpm` : null;
+}
+
+// Inverse of cardioHrTarget: which zone (z1..z5) does an absolute bpm fall in?
+// Used to translate a legacy raw-bpm target into a zone label, since the
+// intervals.icu DSL has no absolute-bpm syntax. Defaults to z2 without zones.
+function _zoneForBpm(bpm) {
+  const n = Number(bpm);
+  const zc = state.settings && state.settings.icuZones;
+  if (!isFinite(n) || !zc || !zc.z) return 'z2';
+  const bands = [['z1', zc.z.zone1], ['z2', zc.z.zone2], ['z3', zc.z.zone3], ['z4', zc.z.threshold], ['z5', zc.z.intervals]];
+  const usable = bands.filter(([, r]) => r && r.length === 2);
+  if (!usable.length) return 'z2';
+  for (const [z, r] of usable) if (n >= r[0] && n <= r[1]) return z;
+  if (n < usable[0][1][0]) return usable[0][0];              // below the lowest band
+  return usable[usable.length - 1][0];                       // above the highest band
 }
 
 // ==================== D1 DATA UNLOCK HELPERS (v11.9) ====================
@@ -4808,13 +4834,34 @@ function _generateIntervalsIcuDsl(run) {
   } else if (run.type === 'intervals' || run.type === 'vo2') {
     target = 'Z5 HR';
   } else if (run.target_hr_max) {
-    // Treat the max as the upper bound of a 15bpm window (Z2 = ~125-140).
-    const lo = Math.max(100, run.target_hr_max - 15);
-    target = `${lo}-${run.target_hr_max} HR`;
+    // A raw bpm cap can't be sent as-is (intervals.icu has no absolute-bpm syntax —
+    // see _icuZoneToken), so resolve it to the zone that contains it.
+    target = _icuZoneToken(_zoneForBpm(run.target_hr_max));
   }
 
   lines.push(`- ${dur}${target ? ' ' + target : ''}`);
   return lines.join('\n');
+}
+
+// Upsert planned events on the intervals.icu calendar.
+//
+// Uses the BULK endpoint with upsert=true. The plain POST /events does NOT match on
+// external_id, so before v11.33 every re-push created a DUPLICATE event and the COROS
+// received several workouts for the same day. Per the API guide: "Events that do not
+// exist will be created. Those that already exist are updated. The external_id is only
+// matched against events created by your application."
+async function _icuUpsertEvents(events) {
+  const apiKey = state.settings && state.settings.intervalsIcuApiKey;
+  const athleteId = state.settings && state.settings.intervalsIcuAthleteId;
+  if (!apiKey || !athleteId) throw new Error('intervals.icu no configurado');
+  const auth = 'Basic ' + btoa(`API_KEY:${apiKey}`);
+  const res = await fetch(`https://intervals.icu/api/v1/athlete/${encodeURIComponent(athleteId)}/events/bulk?upsert=true`, {
+    method: 'POST',
+    headers: { 'Authorization': auth, 'Content-Type': 'application/json' },
+    body: JSON.stringify(events),
+  });
+  if (!res.ok) throw new Error(`${res.status} ${await res.text().catch(() => '')}`.trim());
+  return res;
 }
 
 async function pushRunningPlanToIntervalsIcu() {
@@ -4836,36 +4883,27 @@ async function pushRunningPlanToIntervalsIcu() {
     return;
   }
 
-  const auth = 'Basic ' + btoa(`API_KEY:${apiKey}`);
-  let pushed = 0;
-  let failed = 0;
-  for (const run of plan) {
-    const dsl = _generateIntervalsIcuDsl(run);
-    const date = run.date || null;
-    if (!date) { failed++; continue; }
-    // external_id makes the push idempotent — re-pushing the same plan
-    // updates the existing event instead of creating duplicates.
-    const externalId = `pwa-${latest.weekKey}-${run.id}`;
-    try {
-      const res = await fetch(`https://intervals.icu/api/v1/athlete/${encodeURIComponent(athleteId)}/events`, {
-        method: 'POST',
-        headers: { 'Authorization': auth, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          external_id: externalId,
-          name: run.label || 'Programmed run',
-          start_date_local: `${date}T06:00:00`,
-          category: 'WORKOUT',
-          type: 'Run',
-          description: dsl,
-        }),
-      });
-      if (res.ok) pushed++; else { failed++; console.warn('[intervals.icu] push failed', res.status, await res.text()); }
-    } catch (e) {
-      failed++;
-      console.warn('[intervals.icu] network error:', e);
-    }
+  // external_id keeps the push idempotent, but only through the bulk upsert endpoint
+  // (see _icuUpsertEvents) — the whole week goes in a single request.
+  const events = plan
+    .filter(run => run.date)
+    .map(run => ({
+      external_id: `pwa-${latest.weekKey}-${run.id}`,
+      name: run.label || 'Programmed run',
+      start_date_local: `${run.date}T06:00:00`,
+      category: 'WORKOUT',
+      type: 'Run',
+      description: _generateIntervalsIcuDsl(run),
+    }));
+  const skipped = plan.length - events.length; // runs without a date
+  if (!events.length) { if (typeof toast === 'function') toast('No dated runs to push'); return; }
+  try {
+    await _icuUpsertEvents(events);
+    if (typeof toast === 'function') toast(`Pushed ${events.length} run${events.length === 1 ? '' : 's'}${skipped ? ` · ${skipped} sin fecha` : ''}`);
+  } catch (e) {
+    console.warn('[intervals.icu] push failed:', e);
+    if (typeof toast === 'function') toast(`Falló el envío (${e.message || 'error'})`);
   }
-  if (typeof toast === 'function') toast(`Pushed ${pushed} run${pushed === 1 ? '' : 's'}${failed ? ` · ${failed} failed` : ''}`);
 }
 
 // ==================== PUSH TODAY'S CARDIO → intervals.icu → COROS (T5.2) ====================
@@ -4873,18 +4911,12 @@ async function pushRunningPlanToIntervalsIcu() {
 const _ICU_TYPE_BY_MODALITY = { bike: 'Ride', run_outdoor: 'Run', treadmill: 'Run', row: 'Rowing', ski: 'Workout', walk: 'Walk' };
 const _ICU_ZONE_BY_SUBTYPE = { zone2: 'Z2', long_easy: 'Z2', zone3: 'Z3', threshold: 'Z4', intervals: 'Z5', recovery: 'Z1' };
 
-// Build a one-step intervals.icu DSL for a planned cardio session, using cached
-// bpm zones when available (most accurate for COROS), else the zone label.
+// Build a one-step intervals.icu DSL for a planned cardio session. The target is
+// always a zone label — see _icuZoneToken for why absolute bpm is not an option.
 function _generateCardioDsl(planned) {
   const dur = planned.durationMin ? `${planned.durationMin}m` : '40m';
   const st = planned.subtype || 'zone2';
-  const zc = state.settings && state.settings.icuZones;
-  const key = st === 'long_easy' ? 'zone2' : st;
-  const r = zc && zc.z && zc.z[key];
-  let target;
-  if (r && r.length === 2) target = `${r[0]}-${r[1]} HR`;   // absolute bpm range
-  else target = `${_ICU_ZONE_BY_SUBTYPE[st] || 'Z2'} HR`;   // zone label fallback
-  return `- ${dur} ${target}`;
+  return `- ${dur} ${_icuZoneToken(_ICU_ZONE_BY_SUBTYPE[st] || 'Z2')}`;
 }
 
 async function pushCardioToIntervalsIcu() {
@@ -4910,10 +4942,9 @@ async function pushCardioToIntervalsIcu() {
   ]);
   if (!modality) return;
 
-  const auth = 'Basic ' + btoa(`API_KEY:${apiKey}`);
-  const externalId = `pwa-cardio-${date}`; // idempotent: re-push same day updates the event
+  // One "today's cardio" slot: re-pushing replaces it instead of piling up events.
   const body = {
-    external_id: externalId,
+    external_id: `pwa-cardio-${date}`,
     name: planned.name || 'Cardio Z2',
     start_date_local: `${date}T06:00:00`,
     category: 'WORKOUT',
@@ -4921,35 +4952,41 @@ async function pushCardioToIntervalsIcu() {
     description: _generateCardioDsl(planned),
   };
   try {
-    const res = await fetch(`https://intervals.icu/api/v1/athlete/${encodeURIComponent(athleteId)}/events`, {
-      method: 'POST',
-      headers: { 'Authorization': auth, 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    if (res.ok) toast('Enviado a intervals.icu → COROS');
-    else { console.warn('[intervals.icu] cardio push failed', res.status, await res.text()); toast(`Falló el envío (${res.status})`); }
+    await _icuUpsertEvents([body]);
+    toast('Enviado a intervals.icu → COROS');
   } catch (e) {
-    console.warn('[intervals.icu] cardio push error:', e);
-    toast('Error de red al enviar');
+    console.warn('[intervals.icu] cardio push failed:', e);
+    toast(`Falló el envío (${e.message || 'error'})`);
   }
 }
 
-// Zone → intervals.icu HR token. Uses cached bpm zones (most accurate for COROS),
-// else the zone label. z in {z1,z2,z3,z4,z5}.
+// Zone → intervals.icu HR target token. z in {z1,z2,z3,z4,z5}.
+//
+// ALWAYS a zone label — never absolute bpm. intervals.icu does NOT support absolute
+// bpm targets ("You need to specify the HR range in % of threshold HR. This is so
+// workouts are portable between athletes." — david, intervals.icu). A bare number
+// before `HR` is parsed as a PERCENT of max HR, so `128-145 HR` became 128-145% of
+// max HR (~240-275 bpm) and reached the COROS as an impossible target. That was the
+// v11.31/v11.32 bug. The cached bpm in settings.icuZones is for on-screen display
+// only (see cardioHrTarget) and must never reach the DSL.
 function _icuZoneToken(z) {
-  const map = { z2: 'zone2', z3: 'zone3', z4: 'threshold', z5: 'intervals' };
-  const zc = state.settings && state.settings.icuZones;
-  const key = map[z];
-  const r = key && zc && zc.z && zc.z[key];
-  if (r && r.length === 2) return `${r[0]}-${r[1]} HR`;
-  return `${(z || 'z2').toUpperCase()} HR`;
+  const n = String(z || 'z2').toUpperCase();
+  return `${/^Z[1-5]$/.test(n) ? n : 'Z2'} HR`;
 }
 
 // ==================== CARDIO LIBRARY (T5.3) ====================
 // Curated, evidence-based cardio workouts the user can send to intervals.icu → COROS
 // ANY day (not only planned cardio days). Aligned to his goals: fat loss + aerobic base
-// (5k→10-15k Z2) with ~1 quality session/week. Each item builds an intervals.icu DSL;
-// repeats use the indent-based syntax (space before "- " groups the steps under "Nx").
+// (5k→10-15k Z2) with ~1 quality session/week. Each item builds an intervals.icu DSL.
+
+// A repeat block is delimited by BLANK LINES, not by indentation: "Leave one empty
+// line before and after every repeat block" (intervals.icu builder guide). Until
+// v11.33 these were written with a leading space and no blank lines, so the parser
+// swallowed the cooldown into the repeat — the 3x8 threshold session compiled to
+// 10 + 3x(8+2+5) = 55 min instead of 45. Keep the rule in these two helpers only.
+const _icuRepeat = (n, ...steps) => ['', `${n}x`, ...steps, ''];
+const _icuDsl = (...parts) => parts.flat().join('\n');
+
 const CARDIO_LIBRARY = [
   { group: 'Base aeróbica (Z2)', id: 'run_z2_5k',  modality: 'run_outdoor', label: 'Carrera Z2 · 5 km',  note: 'Fácil, conversacional', dsl: () => `- 5km ${_icuZoneToken('z2')}` },
   { group: 'Base aeróbica (Z2)', id: 'run_z2_8k',  modality: 'run_outdoor', label: 'Carrera Z2 · 8 km',  note: 'Base media', dsl: () => `- 8km ${_icuZoneToken('z2')}` },
@@ -4958,14 +4995,14 @@ const CARDIO_LIBRARY = [
   { group: 'Base aeróbica (Z2)', id: 'bike_z2_60', modality: 'bike', label: 'Bici Z2 · 60 min', note: 'Volumen aeróbico barato', dsl: () => `- 60m ${_icuZoneToken('z2')}` },
   { group: 'Base aeróbica (Z2)', id: 'row_z2_30',  modality: 'row',  label: 'Remo Z2 · 30 min', note: 'Cuerpo completo, suave', dsl: () => `- 30m ${_icuZoneToken('z2')}` },
 
-  { group: 'Calidad (1×/sem)', id: 'run_prog', modality: 'run_outdoor', label: 'Progresivo Z2→Z3 · 35 min', note: 'Termina algo más rápido', dsl: () => `- 15m ${_icuZoneToken('z2')}\n- 15m ${_icuZoneToken('z3')}\n- 5m ${_icuZoneToken('z2')}` },
-  { group: 'Calidad (1×/sem)', id: 'run_tempo', modality: 'run_outdoor', label: 'Umbral · 3×8 min Z4', note: 'Tempo sostenido', dsl: () => `- 10m ${_icuZoneToken('z2')}\n3x\n - 8m ${_icuZoneToken('z4')}\n - 2m ${_icuZoneToken('z1')}\n- 5m ${_icuZoneToken('z2')}` },
-  { group: 'Calidad (1×/sem)', id: 'run_vo2', modality: 'run_outdoor', label: 'VO2 · 5×3 min Z5', note: 'Intervalos duros', dsl: () => `- 12m ${_icuZoneToken('z2')}\n5x\n - 3m ${_icuZoneToken('z5')}\n - 3m ${_icuZoneToken('z1')}\n- 8m ${_icuZoneToken('z2')}` },
-  { group: 'Calidad (1×/sem)', id: 'bike_intervals', modality: 'bike', label: 'Bici · 4×4 min Z4', note: 'Intervalos bajo impacto', dsl: () => `- 10m ${_icuZoneToken('z2')}\n4x\n - 4m ${_icuZoneToken('z4')}\n - 3m ${_icuZoneToken('z1')}\n- 5m ${_icuZoneToken('z2')}` },
-  { group: 'Calidad (1×/sem)', id: 'row_intervals', modality: 'row', label: 'Remo · 6×2 min Z4', note: 'Potencia aeróbica', dsl: () => `- 8m ${_icuZoneToken('z2')}\n6x\n - 2m ${_icuZoneToken('z4')}\n - 2m ${_icuZoneToken('z1')}\n- 5m ${_icuZoneToken('z2')}` },
+  { group: 'Calidad (1×/sem)', id: 'run_prog', modality: 'run_outdoor', label: 'Progresivo Z2→Z3 · 35 min', note: 'Termina algo más rápido', dsl: () => _icuDsl(`- 15m ${_icuZoneToken('z2')}`, `- 15m ${_icuZoneToken('z3')}`, `- 5m ${_icuZoneToken('z2')}`) },
+  { group: 'Calidad (1×/sem)', id: 'run_tempo', modality: 'run_outdoor', label: 'Umbral · 3×8 min Z4', note: 'Tempo sostenido', dsl: () => _icuDsl(`- 10m ${_icuZoneToken('z2')}`, _icuRepeat(3, `- 8m ${_icuZoneToken('z4')}`, `- 2m ${_icuZoneToken('z1')}`), `- 5m ${_icuZoneToken('z2')}`) },
+  { group: 'Calidad (1×/sem)', id: 'run_vo2', modality: 'run_outdoor', label: 'VO2 · 5×3 min Z5', note: 'Intervalos duros', dsl: () => _icuDsl(`- 12m ${_icuZoneToken('z2')}`, _icuRepeat(5, `- 3m ${_icuZoneToken('z5')}`, `- 3m ${_icuZoneToken('z1')}`), `- 8m ${_icuZoneToken('z2')}`) },
+  { group: 'Calidad (1×/sem)', id: 'bike_intervals', modality: 'bike', label: 'Bici · 4×4 min Z4', note: 'Intervalos bajo impacto', dsl: () => _icuDsl(`- 10m ${_icuZoneToken('z2')}`, _icuRepeat(4, `- 4m ${_icuZoneToken('z4')}`, `- 3m ${_icuZoneToken('z1')}`), `- 5m ${_icuZoneToken('z2')}`) },
+  { group: 'Calidad (1×/sem)', id: 'row_intervals', modality: 'row', label: 'Remo · 6×2 min Z4', note: 'Potencia aeróbica', dsl: () => _icuDsl(`- 8m ${_icuZoneToken('z2')}`, _icuRepeat(6, `- 2m ${_icuZoneToken('z4')}`, `- 2m ${_icuZoneToken('z1')}`), `- 5m ${_icuZoneToken('z2')}`) },
 
-  { group: 'Recuperación', id: 'walk_30', modality: 'walk', label: 'Caminata Z1 · 30 min', note: 'Recuperación activa', dsl: () => `- 30m Z1 HR` },
-  { group: 'Recuperación', id: 'bike_recov', modality: 'bike', label: 'Bici recuperación Z1 · 30 min', note: 'Piernas cargadas', dsl: () => `- 30m Z1 HR` },
+  { group: 'Recuperación', id: 'walk_30', modality: 'walk', label: 'Caminata Z1 · 30 min', note: 'Recuperación activa', dsl: () => `- 30m ${_icuZoneToken('z1')}` },
+  { group: 'Recuperación', id: 'bike_recov', modality: 'bike', label: 'Bici recuperación Z1 · 30 min', note: 'Piernas cargadas', dsl: () => `- 30m ${_icuZoneToken('z1')}` },
 ];
 
 // Render the "Enviar a COROS" catalog inside the Cardio tab (always visible).
@@ -4974,7 +5011,11 @@ function renderCardioLibrary() {
   if (!host) return;
   const hasCreds = !!(state.settings && state.settings.intervalsIcuApiKey && state.settings.intervalsIcuAthleteId);
   const groups = [...new Set(CARDIO_LIBRARY.map(w => w.group))];
-  const zNote = (state.settings && state.settings.icuZones) ? 'Zonas de FC desde intervals.icu ✓' : 'Sin zonas cacheadas — se usan etiquetas Z2/Z4/Z5';
+  // The target is always sent as a zone label (Z1-Z5) — intervals.icu resolves it
+  // against your own zones before it reaches the COROS. The cached bpm is shown
+  // here purely as a reference for you.
+  const z2 = cardioHrTarget('zone2');
+  const zNote = z2 ? `Objetivo por zona · tu Z2 = ${z2}` : 'Objetivo por zona (Z1-Z5), según tus zonas de intervals.icu';
   host.innerHTML = `
     <div class="section-head" style="margin-top:4px">
       <div class="section-head-icon" style="background:var(--tint-blue);color:var(--blue)">
@@ -5002,14 +5043,15 @@ function renderCardioLibrary() {
 }
 
 // Push one catalog workout to intervals.icu as today's planned event.
+// external_id is per (day, workout): sending the SAME workout again updates it,
+// while two different workouts can coexist on one day (Z2 morning + intervals later).
 async function pushCardioWorkout(item) {
   const apiKey = state.settings && state.settings.intervalsIcuApiKey;
   const athleteId = state.settings && state.settings.intervalsIcuAthleteId;
   if (!apiKey || !athleteId) { toast('Configurá intervals.icu en Settings primero'); return; }
   const date = today();
-  const auth = 'Basic ' + btoa(`API_KEY:${apiKey}`);
   const body = {
-    external_id: `pwa-cardio-${date}-${item.id}`, // idempotent per (day, workout)
+    external_id: `pwa-cardio-${date}-${item.id}`,
     name: item.label,
     start_date_local: `${date}T06:00:00`,
     category: 'WORKOUT',
@@ -5017,16 +5059,11 @@ async function pushCardioWorkout(item) {
     description: item.dsl(),
   };
   try {
-    const res = await fetch(`https://intervals.icu/api/v1/athlete/${encodeURIComponent(athleteId)}/events`, {
-      method: 'POST',
-      headers: { 'Authorization': auth, 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    if (res.ok) toast(`${item.label} → COROS ✓`);
-    else { console.warn('[intervals.icu] catalog push failed', res.status, await res.text()); toast(`Falló el envío (${res.status})`); }
+    await _icuUpsertEvents([body]);
+    toast(`${item.label} → COROS ✓`);
   } catch (e) {
-    console.warn('[intervals.icu] catalog push error:', e);
-    toast('Error de red al enviar');
+    console.warn('[intervals.icu] catalog push failed:', e);
+    toast(`Falló el envío (${e.message || 'error'})`);
   }
 }
 
