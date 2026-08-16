@@ -4960,6 +4960,68 @@ async function pushCardioToIntervalsIcu() {
   }
 }
 
+// ---- Z2 finisher on strength days (v11.34) ----
+//
+// IDEAL_BLOCK_V1 prescribes 15-20' of easy Z2 after each strength session (`z2Finisher`),
+// which is what the block's "aerobic stimulus every day" rests on — 80 min/week in the
+// 6-day variant. Until v11.34 that prescription existed ONLY as the string "+20' Z2"
+// concatenated into a Home eyebrow: it had no zone, no HR target, no modality, and could
+// be neither logged nor sent to the watch. So on the 4 strength days the aerobic dose was
+// invisible (see assessments/2026-08-16_system-audit.md, A3).
+//
+// These helpers make it real. They add NO training volume: the dose has been in the plan
+// since v11.28. Logged as a normal cardio session (family cardio / subtype zone2) so it
+// counts in the hard-day budget like any other Z2, tagged `origin: 'z2_finisher'` so it
+// can be told apart from a standalone cardio day.
+const _Z2F_MODALITIES = [
+  { value: 'bike', label: 'Bici', icon: '🚴' },
+  { value: 'treadmill', label: 'Cinta', icon: '🏃' },
+  { value: 'row', label: 'Remo', icon: '🚣' },
+  { value: 'ski', label: 'SkiErg', icon: '⛷️' },
+  { value: 'run_outdoor', label: 'Correr', icon: '🏃' },
+];
+
+async function logZ2Finisher(minutes) {
+  const mins = parseInt(minutes, 10) || 20;
+  const modality = await showActionSheet('¿Con qué lo hiciste?', _Z2F_MODALITIES);
+  if (!modality) return;
+  const meta = (typeof sessionSubtypeMeta === 'function' && sessionSubtypeMeta('cardio', 'zone2')) || {};
+  const MOD = { run_outdoor: 'Carrera', treadmill: 'Cinta', bike: 'Bici', row: 'Remo', ski: 'SkiErg' };
+  await smartPut('sessions', {
+    id: uid(), date: today(), ts: Date.now(),
+    family: 'cardio', subtype: 'zone2', sessionType: 'cardio.zone2',
+    modality, title: `${MOD[modality] || 'Cardio'} · Z2 post-fuerza`,
+    durationMin: mins, distance: null, avgHR: null, perceivedEffort: null,
+    evidenceTags: meta.evidenceTags || ['END-001'],
+    budgetWeight: meta.budgetWeight != null ? meta.budgetWeight : 0.5,
+    notes: '', source: 'manual', origin: 'z2_finisher', week: getWeekNumber(),
+  });
+  toast(`Z2 ${mins}' registrado`);
+  try { renderTodaysPlan(); } catch (e) {}
+  try { renderSessionHistory(); } catch (e) {}
+}
+
+async function pushZ2FinisherToIntervalsIcu(minutes) {
+  const mins = parseInt(minutes, 10) || 20;
+  const modality = await showActionSheet('¿Con qué lo vas a hacer?', _Z2F_MODALITIES);
+  if (!modality) return;
+  const date = today();
+  try {
+    await _icuUpsertEvents([{
+      external_id: `pwa-z2finisher-${date}`,
+      name: `Z2 ${mins}' post-fuerza`,
+      start_date_local: `${date}T18:00:00`,
+      category: 'WORKOUT',
+      type: _ICU_TYPE_BY_MODALITY[modality] || 'Workout',
+      description: _generateCardioDsl({ subtype: 'zone2', durationMin: mins }),
+    }]);
+    toast('Enviado a intervals.icu → COROS');
+  } catch (e) {
+    console.warn('[intervals.icu] Z2 finisher push failed:', e);
+    toast(`Falló el envío (${e.message || 'error'})`);
+  }
+}
+
 // Zone → intervals.icu HR target token. z in {z1,z2,z3,z4,z5}.
 //
 // ALWAYS a zone label — never absolute bpm. intervals.icu does NOT support absolute
@@ -5006,7 +5068,28 @@ const CARDIO_LIBRARY = [
 ];
 
 // Render the "Enviar a COROS" catalog inside the Cardio tab (always visible).
-function renderCardioLibrary() {
+// Which catalog subtypes are "hard"? Used only to ADVISE, never to block.
+const _CLIB_HARD = new Set(['threshold', 'intervals', 'zone3']);
+
+// Map a catalog item to the cardio subtype it really is, so it can be compared
+// against today's planned session. Derived from the item id (the DSL builders are
+// opaque), which is why this lives next to CARDIO_LIBRARY.
+function _clibSubtype(item) {
+  const id = String(item.id || '');
+  if (/tempo|umbral|threshold/.test(id)) return 'threshold';
+  if (/vo2|interval/.test(id)) return 'intervals';
+  if (/prog/.test(id)) return 'zone3';
+  if (/recov|walk/.test(id)) return 'recovery';
+  if (/10k|60|long/.test(id)) return 'long_easy';
+  return 'zone2';
+}
+
+// v11.34: the catalog used to be 13 identical buttons with no context — you could send
+// a VO2 session the evening before heavy legs and nothing would say a word. It now
+// recommends and warns, and STILL SENDS ANYTHING: advise, don't block (user decision,
+// 2026-08-16). The signal reuses computeTrainingAdvisory(), which already computes the
+// planned session, its stress level, WHOOP state and the hard-day budget.
+async function renderCardioLibrary() {
   const host = document.getElementById('cardio-library');
   if (!host) return;
   const hasCreds = !!(state.settings && state.settings.intervalsIcuApiKey && state.settings.intervalsIcuAthleteId);
@@ -5016,6 +5099,27 @@ function renderCardioLibrary() {
   // here purely as a reference for you.
   const z2 = cardioHrTarget('zone2');
   const zNote = z2 ? `Objetivo por zona · tu Z2 = ${z2}` : 'Objetivo por zona (Z1-Z5), según tus zonas de intervals.icu';
+
+  let advice = null;
+  try { advice = await computeTrainingAdvisory(); } catch (e) { /* context is optional */ }
+  const planned = advice && advice.plannedSession;
+  const budget = advice && advice.hardDayBudgetContext;
+  const whoopRed = advice && advice.whoopContext && advice.whoopContext.color === 'red';
+  // A hard cardio session is discouraged when the day already carries heavy legs
+  // (INT-001), the week is over its hard-day cap (BUD-001), or recovery is red.
+  const legsToday = planned && planned.type === 'gym' && /lower|pierna|squat|bisagra/i.test(`${planned.sessionId} ${planned.subtitle || ''}`);
+  const overCap = !!(budget && budget.overCap);
+  const hardDiscouraged = legsToday || overCap || whoopRed;
+  const hardWhy = legsToday ? 'hoy toca pierna' : overCap ? 'la semana ya viene cargada' : whoopRed ? 'recuperación en rojo' : '';
+  const wantSubtype = planned && planned.type === 'run' ? (planned.subtype || 'zone2') : null;
+
+  let header = '';
+  if (planned && planned.type === 'run') {
+    header = `<div class="clib-today">Hoy toca <b>${planned.name || cardioSubtypeLabel(planned.subtype)}</b>${planned.durationMin ? ` · ${planned.durationMin}'` : ''}. Podés enviar cualquier otro igual.</div>`;
+  } else if (planned && planned.type === 'gym') {
+    header = `<div class="clib-today">Hoy toca <b>${planned.name || 'fuerza'}</b>. Si además querés cardio, mejor fácil${hardDiscouraged ? ` — ${hardWhy}` : ''}.</div>`;
+  }
+
   host.innerHTML = `
     <div class="section-head" style="margin-top:4px">
       <div class="section-head-icon" style="background:var(--tint-blue);color:var(--blue)">
@@ -5023,16 +5127,25 @@ function renderCardioLibrary() {
       </div>
       <span class="section-head-title">Enviar a COROS</span>
     </div>
+    ${header}
     ${hasCreds ? '' : `<div class="clib-warn">Configurá intervals.icu en Settings para enviar a tu COROS.</div>`}
     ${groups.map(g => `
       <div class="clib-group">${g}</div>
-      ${CARDIO_LIBRARY.filter(w => w.group === g).map(w => `
-        <button class="clib-row" data-clib="${w.id}" ${hasCreds ? '' : 'disabled'}>
-          <span class="clib-body"><span class="clib-label">${w.label}</span><span class="clib-note">${w.note}</span></span>
+      ${CARDIO_LIBRARY.filter(w => w.group === g).map(w => {
+        const st = _clibSubtype(w);
+        const isHard = _CLIB_HARD.has(st);
+        const rec = wantSubtype && st === wantSubtype;
+        const warn = isHard && hardDiscouraged;
+        return `<button class="clib-row${rec ? ' clib-rec' : ''}" data-clib="${w.id}" ${hasCreds ? '' : 'disabled'}>
+          <span class="clib-body">
+            <span class="clib-label">${w.label}${rec ? '<span class="clib-badge">Recomendado hoy</span>' : ''}</span>
+            <span class="clib-note">${warn ? `⚠ Exigente — ${hardWhy}` : w.note}</span>
+          </span>
           <span class="clib-send">→ COROS</span>
-        </button>`).join('')}
+        </button>`;
+      }).join('')}
     `).join('')}
-    <div class="clib-foot">${zNote} · se programa para hoy en tu calendario intervals.icu → COROS.</div>
+    <div class="clib-foot">${zNote} · se programa para hoy en tu calendario intervals.icu → COROS. Los avisos son orientativos: podés enviar cualquiera.</div>
   `;
   host.querySelectorAll('[data-clib]').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -7715,6 +7828,21 @@ async function renderTodaysPlan() {
   // --- Active recovery day ---
   if (planned.type === 'recovery') {
     const done = !!doneRecovery;
+    // Same fix as the strength day: the recovery slot also carries a real Z2 dose.
+    const rMin = planned.z2FinisherMin;
+    const rDone = (sessions || []).some(x => x.date === ds && x.origin === 'z2_finisher');
+    const rHr = cardioHrTarget('zone2');
+    const rBlock = rMin ? `
+      <div class="cardio-rx card">
+        <div class="rx-sub">Z2 suave ${rDone ? '<span class="rx-done">✓ hecho</span>' : ''}</div>
+        <div class="cardio-rx-row"><span>Duración</span><b>${rMin} min</b></div>
+        <div class="cardio-rx-row"><span>Intensidad</span><b>${rHr ? `FC ${rHr}` : cardioIntensityGuide('zone2')}</b></div>
+        <div class="cardio-rx-row"><span>Qué hacer</span><b>Caminata, bici suave o remo fácil</b></div>
+        <div class="cardio-rx-actions">
+          <button class="btn-secondary" id="rx-log-z2">${rDone ? 'Registrar otro' : 'Registrar Z2'}</button>
+          <button class="btn-secondary" id="rx-push-z2">Enviar a COROS</button>
+        </div>
+      </div>` : '';
     container.innerHTML = `
       <section class="session-hero" data-sh>
         <img class="sh-img" src="img/session-rest.jpg" alt="" loading="lazy">
@@ -7725,8 +7853,12 @@ async function renderTodaysPlan() {
           <h3 class="sh-title">${planned.name}<br><span class="sh-title-sub">Recuperación activa</span></h3>
           <button class="sh-cta sh-cta-ghost"><span class="sh-cta-label">Movilidad</span></button>
         </div>
-      </section>`;
+      </section>${rBlock}`;
     container.querySelector('[data-sh]').addEventListener('click', () => { switchTab('gym'); if (typeof openMobilityView === 'function') openMobilityView(); });
+    const rLog = container.querySelector('#rx-log-z2');
+    if (rLog) rLog.addEventListener('click', () => logZ2Finisher(rMin));
+    const rPush = container.querySelector('#rx-push-z2');
+    if (rPush) rPush.addEventListener('click', () => pushZ2FinisherToIntervalsIcu(rMin));
     return;
   }
 
@@ -7777,6 +7909,33 @@ async function renderTodaysPlan() {
     ? `<span class="sh-cta-label">View session</span>`
     : `<span class="sh-cta-label">Start workout</span><span class="sh-cta-arrow">›</span>`;
 
+  // v11.34: a strength day used to be a photo plus the string "6 exercises · 20 sets ·
+  // 60-75 min · +20' Z2" — it never said WHAT to do. Cardio days already had a full
+  // prescription card; this gives strength days the same, reusing .cardio-rx.
+  const rxExercises = (s && Array.isArray(s.exercises) ? s.exercises : []).map(ex => {
+    const sets = typeof ex.sets === 'number' ? ex.sets : (Array.isArray(ex.sets) ? ex.sets.length : 3);
+    const scheme = `${sets}×${ex.reps || '—'}${ex.rpe ? ` @RPE ${ex.rpe}` : ''}`;
+    return `<div class="cardio-rx-row"><span>${ex.compound ? '<b class="rx-key">•</b> ' : ''}${ex.name}</span><b>${scheme}</b></div>`;
+  }).join('');
+
+  // The Z2 finisher is a real prescription (IDEAL_BLOCK_V1.z2Finisher), not a label.
+  let z2Block = '';
+  const z2Min = planned.z2FinisherMin;
+  if (z2Min) {
+    const z2Done = (sessions || []).some(x => x.date === ds && x.origin === 'z2_finisher');
+    const hr = cardioHrTarget('zone2');
+    const intensity = hr ? `FC ${hr}` : cardioIntensityGuide('zone2');
+    z2Block = `
+      <div class="rx-sub">Al terminar · Z2 fácil ${z2Done ? '<span class="rx-done">✓ hecho</span>' : ''}</div>
+      <div class="cardio-rx-row"><span>Duración</span><b>${z2Min} min</b></div>
+      <div class="cardio-rx-row"><span>Intensidad</span><b>${intensity}</b></div>
+      <div class="cardio-rx-row"><span>Qué hacer</span><b>Bici, remo o cinta — conversacional</b></div>
+      <div class="cardio-rx-actions">
+        <button class="btn-secondary" id="rx-log-z2">${z2Done ? 'Registrar otro' : 'Registrar Z2'}</button>
+        <button class="btn-secondary" id="rx-push-z2">Enviar a COROS</button>
+      </div>`;
+  }
+
   container.innerHTML = `
     <section class="session-hero" data-sh>
       <img class="sh-img" src="${img}" alt="" loading="lazy">
@@ -7790,12 +7949,17 @@ async function renderTodaysPlan() {
         <h3 class="sh-title">${name}<br><span class="sh-title-sub">${focus}</span></h3>
         <button class="sh-cta${doneWorkout ? ' sh-cta-ghost' : ''}">${cta}</button>
       </div>
-    </section>`;
+    </section>
+    ${(rxExercises || z2Block) ? `<div class="cardio-rx card">${rxExercises}${z2Block}</div>` : ''}`;
 
   const open = doneWorkout
     ? () => openEditWorkout(doneWorkout.id)
     : () => showSessionPicker(plannedSession);
   container.querySelector('[data-sh]').addEventListener('click', open);
+  const logZ2 = container.querySelector('#rx-log-z2');
+  if (logZ2) logZ2.addEventListener('click', () => logZ2Finisher(z2Min));
+  const pushZ2 = container.querySelector('#rx-push-z2');
+  if (pushZ2) pushZ2.addEventListener('click', () => pushZ2FinisherToIntervalsIcu(z2Min));
   const detail = document.getElementById('todays-detail');
   if (detail) detail.onclick = open;
 }

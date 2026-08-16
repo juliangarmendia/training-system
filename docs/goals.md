@@ -1,6 +1,21 @@
 # Goals and Constraints
 
-> Last updated: 2026-04-06
+> Last updated: 2026-04-06 · **Estado revisado: 2026-08-16** (auditoría del sistema)
+>
+> ⚠️ Los **objetivos** siguen siendo válidos. Las **restricciones operativas** describen el plan de
+> abril y ya no coinciden con el sistema vivo:
+>
+> | Dice | Realidad desde v11.28 (2026-06-30) |
+> |---|---|
+> | "Training days/week: 4 gym + 2-3 runs" | 4 sesiones de fuerza + Z2 casi diario + 1 cardio largo + recuperación activa (variante 6 del IDEAL); el usuario flexa a 3/4/5 días |
+> | "Running schedule: Wed + Sat" | El IDEAL coloca los días; el selector de variante los mueve |
+> | "Equipment access: power rack, barbell..." | Inventario del gimnasio anterior. El actual es David Lloyd Serrano (ver `profile.md`) |
+> | "Timeline: 10-16 weeks... Reassessment at week 9" | Vencido. Arrancó en abril; la reevaluación nunca ocurrió |
+> | "Deload every 4-5 weeks" | **No se dispara desde mayo** — decisión abierta D1 de la auditoría |
+>
+> El objetivo declarado del sistema hoy es más amplio que este documento: recomposición atlética
+> híbrida, con **cardio como cualidad co-igual** (`CLAUDE.md`), no carrera como modalidad secundaria.
+> Y la salud entra ahora por `LONG-001..004`. → [`../assessments/2026-08-16_system-audit.md`](../assessments/2026-08-16_system-audit.md)
 
 ## Primary goals
 

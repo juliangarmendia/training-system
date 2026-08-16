@@ -160,6 +160,41 @@ entrenado, vuelta de ~6 semanas de parón, historial lumbar (sumo DL RPE-gated),
 - **Caveats:** trade-off especificidad-de-correr vs interferencia.
 - **Reglas:** SEL-004, INT-002, HYB-005. Schema en [`../docs/architecture/cardio-modality-schema-v1.md`](../docs/architecture/cardio-modality-schema-v1.md).
 
+## 11. Longevidad y salud
+
+> Módulo añadido **2026-08-16**. Hasta esa fecha el corpus no tenía **ningún** contenido de salud,
+> pese a que el usuario tenía 5 analíticas sin procesar desde 2021
+> ([`../assessments/2026-08-16_system-audit.md`](../assessments/2026-08-16_system-audit.md)).
+
+- **Primaria:** Mandsager 2018 (fitness cardiorrespiratorio y mortalidad, n=122.007) · Momma 2022 (meta de actividad de fuerza y mortalidad, 16 cohortes) · Leong 2015 (PURE, fuerza de agarre, n=139.691) · Cappuccio 2010 (duración del sueño y mortalidad, meta prospectiva).
+- **Secundaria:** —
+- **Terciaria:** —
+- **Experto:** LONG-003 es una regla de **alcance**, no un hallazgo: define que el sistema registra marcadores y deriva al médico, nunca interpreta ni trata.
+- **Gobierna:** por qué se protege el estímulo aeróbico y la frecuencia de fuerza aunque no sean la cualidad dominante; el suelo de sueño; cómo se tratan (y cómo NO se tratan) los marcadores sanguíneos.
+- **Aplicabilidad al usuario:** alta en dirección, **baja en dato**: su fitness cardiorrespiratorio nunca se midió con test graduado y la última analítica tiene ~23 meses.
+- **Población estudiada:** cohortes poblacionales generales, mucho más amplias y menos entrenadas que el usuario.
+- **Estado energético:** n/a (evidencia observacional a largo plazo).
+- **Nivel de evidencia:** strong (LONG-001/002, por tamaño y consistencia); moderate (LONG-004); expert (LONG-003, regla de alcance).
+- **Caveats:** **todo este módulo es observacional**. Asociación dosis-respuesta, no demostración aleatorizada de que subir el fitness baje la mortalidad; causalidad inversa y confusión residual son preocupaciones reales. La fuerza de agarre es un **marcador** de salud general, no un objetivo a entrenar. Este módulo **no puede prescribir tratamiento** (LONG-003).
+- **Reglas derivadas:** LONG-001..004. Datos en [`../data/processed/2026-08-16_blood-markers.md`](../data/processed/2026-08-16_blood-markers.md).
+
+## 12. Ambiente (calor y frío)
+
+> Módulo añadido **2026-08-16**. El único paper ambiental del corpus era el de lesiones por frío,
+> y su resumen aún asumía Buenos Aires tras la mudanza a Madrid de junio de 2026.
+
+- **Primaria:** Armstrong 2007 (ACSM Position Stand, exertional heat illness) · ACSM Expert Consensus 2021 (heat illness: reconocimiento, manejo, vuelta a la actividad) · Périard 2015 y 2016 (aclimatación al calor; adaptaciones cardiovasculares) · Coyle & González-Alonso 2001 (deriva cardiovascular, compartido con END-005) · Castellani 2006 (ACSM, lesiones por frío — baja aplicabilidad).
+- **Secundaria:** —
+- **Terciaria:** —
+- **Experto:** la prescripción práctica "mantener la FC y dejar caer el ritmo" es corolario aplicado, no protocolo testeado.
+- **Gobierna:** cómo se lee un objetivo de FC en calor, cuándo se pasa a indoor, dosis de hidratación por encima de la basal, y por qué el ritmo a FC fija (END-005) queda confundido en verano.
+- **Aplicabilidad:** **alta y ahora mismo** — Madrid en agosto.
+- **Población:** atletas de competición y contextos ocupacionales; la transferencia a "mover la carrera fácil a indoor una tarde de calor" es extrapolación prudente.
+- **Estado energético:** el déficit agrava el riesgo (menos glucógeno, menos ingesta de líquido).
+- **Nivel de evidencia:** moderate (fisiología sólida; prescripción aplicada).
+- **Caveats:** **los PDF de Armstrong 2007 y del consenso 2021 no están en `data/ACSM/`**. Se citan desde registro bibliográfico verificado, así que **no se citan umbrales concretos de WBGT**: hacerlo sería inventarlos. Ver lista de adquisición.
+- **Reglas derivadas:** ENV-001..002. Interactúa con END-005 (confusor), REC-006 (hidratación), INT-002/HYB-005 (modalidad indoor).
+
 ---
 
 ## Lista de adquisición priorizada (papers que faltan)
@@ -182,3 +217,16 @@ entrenado, vuelta de ~6 semanas de parón, historial lumbar (sumo DL RPE-gated),
 
 Los 6 position stands de ACSM ya están en `data/ACSM/` y resumidos en `acsm-summaries.md`.
 Re-anclar las entradas "héroe" sueltas de `research-log.md` superadas por las meta-regresiones 2024.
+
+### Ronda 4 — pendientes tras la auditoría del 2026-08-16
+
+9. **Calor (prioridad alta, estacional):** ✓ verificados bibliográficamente Armstrong 2007
+   (doi 10.1249/MSS.0b013e31802fa199, PMID 17473783) y el ACSM Expert Consensus 2021
+   (doi 10.1249/JSR.0000000000001058), pero **ninguno de los dos PDF está en `data/ACSM/`**. Hasta
+   tenerlos, ENV-002 no puede citar umbrales concretos (WBGT, tiempos de exposición) y se queda en
+   la recomendación cualitativa. **Descargarlos es la adquisición de mayor valor inmediato.**
+10. **Longevidad:** ✓ verificados Mandsager 2018, Momma 2022, Leong 2015, Cappuccio 2010. Pendiente
+    de considerar: Kodama 2009 (VO₂max y mortalidad, meta) y García-Hermoso 2018 (fuerza muscular y
+    mortalidad) para reforzar LONG-001/002; ninguno es necesario para las reglas actuales.
+11. **Aclimatación al calor:** Périard 2015 (doi 10.1111/sms.12408) y 2016 verificados por registro;
+    Périard 2017 (heat acclimation decay, *Sports Med*) sin verificar → `pending_research`.

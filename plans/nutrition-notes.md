@@ -1,7 +1,31 @@
 # Nutrition Plan — Cut Phase 1
 
+> ## ⚠️ Revisar antes de usar los números (2026-08-16)
+>
+> Los **principios** siguen vigentes y ahora tienen Rule ID. Los **números** están calculados sobre
+> un contexto que cambió:
+>
+> - **Peso base 88,6 kg** → el último peso fiable es 86,7 kg del **2026-05-04**, hace 3,5 meses.
+>   Todo lo derivado (proteína, TDEE, g/kg) arrastra ese desfase.
+> - **TDEE ~2.900 kcal** usa multiplicador 1,55 para *"4 gym + 2 runs"*. El IDEAL son 4 sesiones de
+>   fuerza + Z2 casi diario + 1 cardio largo + recuperación activa. **El multiplicador se quedó corto.**
+> - La tabla de **periodización de CHO** nombra días de la semana del plan de abril
+>   (*"Lower Mar/Vie"*, *"Upper Lun/Jue"*). Léela como **tipo de día**, no como día del calendario.
+> - **No se recalculan aquí** porque no hay datos: sin registros desde el 2026-06-25, un TDEE nuevo
+>   sería inventado. Recalibrar requiere 2-3 semanas de peso diario (auditoría §3).
+>
+> **Reglas nuevas que formalizan lo que este documento ya practicaba** — antes no tenían Rule ID, así
+> que ningún motor podía aplicarlas: `REC-006` hidratación · `REC-007` CHO por tipo de día ·
+> `REC-008` energy availability · `REC-009` pasos/NEAT.
+>
+> **Vitamina D:** la sección de suplementos sugiere 1.000-2.000 UI/día y "get blood levels tested if
+> possible". **Ya se midió: 11,2 ng/mL en ago-2023 = deficiencia** (<20), nunca re-controlada. Esa
+> dosis es de mantenimiento, no de corrección — es decisión médica, no de este documento. Ver
+> [`../data/processed/2026-08-16_blood-markers.md`](../data/processed/2026-08-16_blood-markers.md).
+
 > Version: 3.0
 > Last updated: 2026-05-02 (W19 ACSM refinements: hydration pre-session, carb periodization, LEA monitoring)
+> Estado revisado: 2026-08-16 (auditoría del sistema — ver aviso de arriba)
 
 ---
 

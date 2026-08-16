@@ -155,6 +155,57 @@ Corregido:
 - **`fetchIntervalsIcuZones`** endurecida (un array de % de LTHR como [68,83,94,105] pasaba el test
   de "parece bpm") y añade `z.zone1` / `z.recovery`.
 
+## Auditoría del bloque (2026-08-16) — correcciones a este documento
+
+Auditoría completa en
+[`../../assessments/2026-08-16_system-audit.md`](../../assessments/2026-08-16_system-audit.md) §1.
+Afirmaciones de este documento que **eran falsas** y quedan corregidas aquí:
+
+| Decía | Realidad |
+|---|---|
+| T5.1: los 4 días *"cubren los 6 patrones 2×/sem"* | **Falso.** En la variante 6, empuje horizontal, press vertical y tirón vertical son **1×/sem** (10 series de pecho en una sola sesión). Solo tirón horizontal, sentadilla y bisagra llegan a 2× |
+| UI: `renderIdealPreview()` muestra *"hard-day budget X/6"* | **Ya no lo muestra.** Y el budget planificado de la variante 6 suma **7,5** contra un tope de 6 |
+| "5 semanas (4 build + 1 deload, **LOAD-004**)" | **No está implementado.** `isDeloadWeek(wk)` sigue siendo `wk === 5 \|\| wk === 9` del programa de abril; `getWeekNumber()` va por ~la 19 → **devuelve `false` para siempre** desde mayo |
+| Arco de running "S1 25-30' → S4 45-50'" (END-003) | **No hay progresión.** Los `durationMin` son constantes (40 y 50) y no cambian nunca |
+| Variante 5 = *"3 fuerza (lower/upper/upper)"* | Correcto pero es la elección equivocada: al bajar de 6 a 5 días se cae **`lowerB`**, así que el **sumo deadlift desaparece de la semana** entera |
+| `progressing: ['Fuerza/hipertrofia', 'Base aeróbica']` vs GEN-001 | **No es una violación.** GEN-001 fue reatribuida y degradada a `expert` en la ronda 4: sus fuentes (Huiberts 2024, Soligard 2016) no sostenían el claim. Dos cualidades en progresión son defendibles para este perfil |
+
+Ninguno de estos puntos se arregló en el código: son decisiones D1-D5 del informe, pendientes de
+que el usuario elija. Lo que **sí** se corrigió es la visibilidad (abajo).
+
+## v11.34 — El Z2 finisher pasa a existir (2026-08-16)
+
+`z2Finisher` estaba en los datos de 9 días (80 min/semana en la variante 6) y era **la tesis del
+bloque**: "estímulo aeróbico los 7 días". Rastreado en el código, su único uso era concatenar el
+texto `+20' Z2` en el eyebrow de Home y en la cola semanal. No se renderizaba dentro del
+entrenamiento, no se podía registrar ni enviar al reloj, no tenía zona ni FC objetivo, y no contaba
+en el budget. **Los 4 días de fuerza no tenían dosis aeróbica real.**
+
+Corregido en `renderTodaysPlan()`:
+- Los días de **fuerza** ganan tarjeta de prescripción (reutiliza `.cardio-rx`, que los días de
+  cardio ya tenían): ejercicios con series × reps @ RPE, y el Z2 finisher como bloque propio con
+  duración, FC objetivo real (`cardioHrTarget`) y qué hacer.
+- Nuevos `logZ2Finisher()` y `pushZ2FinisherToIntervalsIcu()`. Se registra como sesión normal
+  (`family: 'cardio'`, `subtype: 'zone2'`) con `origin: 'z2_finisher'` para distinguirla, así que
+  **cuenta en el hard-day budget** como cualquier otro Z2.
+- El día de **recuperación** lleva el mismo bloque (también tiene `z2Finisher: 20`).
+
+**No añade volumen:** la dosis está prescrita desde v11.28; lo que cambia es que ahora existe en la
+interfaz.
+
+## v11.34 — Recomendación en el catálogo de cardio (2026-08-16)
+
+`CARDIO_LIBRARY` permitía enviar VO₂ 5×3 la víspera de pierna pesada sin que nada dijera nada.
+`renderCardioLibrary()` es ahora `async` y consume `computeTrainingAdvisory()` —que ya calculaba
+sesión planificada, nivel de esfuerzo, WHOOP y budget, sin estar conectada al catálogo— para:
+badge **"Recomendado hoy"** en el workout que encaja con el plan, y aviso en los exigentes cuando
+hoy toca pierna (INT-001), la semana pasó el tope (BUD-001) o la recuperación está en rojo.
+
+**Decisión explícita del usuario: avisar, nunca bloquear.** Los 13 workouts siguen enviables
+cualquier día.
+
 ## Roadmap
 - **T4b:** generador algorítmico (arma bloque/semana desde reglas+perfil en runtime; hoy `IDEAL_BLOCK_V1` es data).
 - **T6:** loop de adaptación semanal + periodización multi-bloque + progression/modality engines.
+- **Antes que ambos:** arreglar el sync de Supabase (apagado desde ~2026-06-30) y decidir D1-D5. Sin
+  datos no hay adaptación posible, que es justo lo que T6 promete.

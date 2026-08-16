@@ -13,6 +13,39 @@
 
 ---
 
+### ⚠️ HUECO W19–W32 (2026-05-04 → 2026-08-09) — sin registro
+
+Documentado el **2026-08-16** durante la auditoría del sistema. **14 semanas completas sin revisión.**
+Esto no es un olvido de redacción: es que no hay datos con los que escribirla.
+
+**Qué se sabe con certeza** (consulta directa a Supabase `ycfodifvpvosukepcxie`, 2026-08-16):
+
+| Tabla | Filas | Último registro |
+|---|---|---|
+| `workouts` | 15 | **2026-06-25** |
+| `runs` | 8 | 2026-05-24 |
+| `wellness` | 61 | 2026-06-30 |
+| `steps` | 58 | 2026-06-29 |
+| `bodyweight` | 15 | 2026-05-27 |
+| `nutrition` | 11 | 2026-05-28 |
+| `sessions` | **0** | — |
+
+`wellness` y `steps` se rellenan solos en cada sync, así que su última fecha marca **el último sync
+correcto: ~2026-06-30** — justo cuando el plan IDEAL pasó a ser el default (v11.28).
+
+**Qué NO se sabe:** si entrenó, cuánto, con qué cargas, ni cuánto pesa. Puede que los datos existan
+solo en el IndexedDB del iPhone y nunca hayan subido, o puede que no haya entrenado. **Ambas
+hipótesis siguen abiertas** y no se resuelven desde el repositorio.
+
+**Por qué no se hizo backfill:** `/weekly-review-auto` tiene una ruta de backfill, pero necesita
+datos. Rellenar 14 semanas sin ellos sería inventarlas, y `CLAUDE.md` lo prohíbe explícitamente.
+
+**Desbloqueo:** arreglar el sync es la tarea previa a cualquier revisión, ajuste de plan o
+actualización de perfil. Tres pistas concretas en
+[`../assessments/2026-08-16_system-audit.md`](../assessments/2026-08-16_system-audit.md) §3.
+
+---
+
 ### Week 18 (Program Wk 4 — final push before deload) — 2026-04-27 to 2026-05-03
 
 **Weight:** ~86.7 kg today (manual baseline 4/24). 4-week trend −0.59%/wk on target. W18 sampling collapsed (intervals.icu pulls all forward-fills) — manual weigh-in 4-7×/wk needed.

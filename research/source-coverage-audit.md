@@ -212,9 +212,103 @@ estar respaldado (`claim_verified`).
 9. **READ-008** (Meeusen): evidenceLevel → expert; caveat anti-marcador-único.
 10. **STR-002/003/005**: añadido Currier 2023 BJSM como soporte.
 
+## Fichas de fuentes verificadas (ronda 4 — 2026-08-16, auditoría del sistema)
+
+> Verificadas por búsqueda web durante la auditoría
+> ([`../assessments/2026-08-16_system-audit.md`](../assessments/2026-08-16_system-audit.md)).
+> Cubren los módulos nuevos 11 (longevidad) y 12 (ambiente), las reglas operativas de nutrición, y
+> **la corrección de GEN-001**, que había atravesado las 3 rondas anteriores sin ficha.
+
+### GEN — corrección de una regla no verificada
+
+**GEN-001** — `source_verified ✗ · claim_verified ✗` → **fuentes reatribuidas, regla degradada**
+
+- **Texto anterior:** *"Progress only ONE dominant quality per block"*, `evidenceLevel: moderate`,
+  `confidence: high`, fuentes `["concurrent-training synthesis (Huiberts 2024)", "training-load
+  consensus (Soligard 2016)"]`.
+- **Problema:** ninguna de las dos fuentes sostiene el claim.
+  - **Huiberts 2024** (ficha en ronda 1, M3): su claim verificado es que la interferencia es *real
+    pero **modesta***, modulada por sexo y training status, con los **entrenados protegidos en
+    VO₂max**. Eso es INT-005 (`strong`), y para un perfil recreacional apunta en dirección
+    **contraria** a "una sola cualidad".
+  - **Soligard 2016**: consenso IOC de **carga y lesión**. No trata cuántas cualidades progresar.
+- **Agravante de proceso:** GEN-001 no tenía ficha en este documento ni figuraba en "Gaps
+  remanentes" — se coló en las 3 rondas. Es la regla sobre la que descansa toda la estructura de
+  bloques y era la menos verificada del corpus.
+- **Contradicción entre documentos:** `evidence-to-rules.md` la graduaba `moderate`/`high`, mientras
+  `rule-readiness.md` ya la clasificaba como `expert_or_extrapolated_use_with_guardrails` con base
+  "síntesis". Ahora ambos dicen `expert`.
+- **Resolución:** reescrita como heurística de presupuesto de fatiga acotada por BUD-001 e INT-006;
+  `evidenceLevel` moderate → **expert**; `confidence` high → **medium**; fuentes → práctica aplicada.
+  **Dos cualidades en progresión dejan de ser una violación.**
+
+> GEN-002 (meta-principio de validez poblacional) y GEN-003 (regla de proceso) siguen sin ficha
+> **por diseño**: no son claims empíricos y no admiten `claim_verified`. Queda anotado para que no
+> se vuelva a leer como un olvido.
+
+### M11 — Longevidad / salud
+
+**Mandsager 2018** — `source_verified ✓ · claim_verified ✓ · included_verified` (**strong**)
+- Mandsager K, Harb S, Cremer P, Phelan D, Nissen SE, Jaber W. *Association of Cardiorespiratory Fitness With Long-term Mortality Among Adults Undergoing Exercise Treadmill Testing.* JAMA Netw Open 2018;1(6):e183605. **doi 10.1001/jamanetworkopen.2018.3605.**
+- Tipo: cohorte retrospectiva, centro académico terciario (Cleveland Clinic), 1991-2014. n=**122.007**, edad media 53,4 años, seguimiento mediano 8,4 años.
+- Claim (LONG-001): SUPPORTED — el fitness cardiorrespiratorio se asocia inversamente con la mortalidad a largo plazo **sin límite superior de beneficio**; el beneficio persiste en mayores e hipertensos.
+- Aplicabilidad: **indirecta**. Población clínicamente derivada a ergometría, no atletas recreacionales sanos. evidenceLevel **strong** (tamaño + consistencia), confidence high para la dirección.
+- **Caveat duro:** observacional. Causalidad inversa (enfermedad subclínica → bajo fitness → muerte) y confusión residual no se descartan. **No demuestra que subir el fitness baje la mortalidad.**
+
+**Momma 2022** — `source_verified ✓ · claim_verified ✓ · included_verified` (**strong**)
+- Momma H, Kawakami R, Honda T, Sawada SS. *Muscle-strengthening activities are associated with lower risk and mortality in major non-communicable diseases: a systematic review and meta-analysis of cohort studies.* Br J Sports Med 2022;56(13):755-763. **doi 10.1136/bjsports-2021-105061 · PMID 35228201.**
+- Tipo: SR + meta de 16 estudios de cohorte. Independiente de la actividad aeróbica.
+- Claim (LONG-002): SUPPORTED — 10-17% menos riesgo de mortalidad por cualquier causa, ECV, cáncer total y diabetes; el beneficio se concentra en **30-60 min/semana**, con atenuación por encima.
+- Aplicabilidad: directa en dirección. evidenceLevel strong, confidence high.
+- **Caveat:** observacional. La atenuación por encima de 60 min/sem **no** implica que el volumen actual del usuario (~4 h/sem) sea contraproducente: implica que el retorno *de salud* ya está asegurado muy por debajo.
+
+**Leong 2015 (PURE)** — `source_verified ✓ · claim_verified ✓ · included_verified` (**strong**, soporte de LONG-002)
+- Leong DP, Teo KK, Rangarajan S, et al. *Prognostic value of grip strength: findings from the Prospective Urban Rural Epidemiology (PURE) study.* Lancet 2015;386(9990):266-273. **doi 10.1016/S0140-6736(14)62000-6 · PMID 25982160.**
+- Tipo: estudio poblacional longitudinal, 17 países. n=139.691 con estado vital conocido.
+- Claim: SUPPORTED — la fuerza de agarre se asocia inversamente con mortalidad por cualquier causa (HR **1,16 por cada 5 kg menos**, IC95% 1,13-1,20), mortalidad CV, infarto e ictus; **mejor predictor que la presión sistólica**.
+- **Caveat clave:** el agarre es un **MARCADOR** de salud sistémica, no un objetivo de entrenamiento. No inferir que entrenar agarre baje la mortalidad. evidenceLevel strong (como marcador), confidence high.
+
+**Cappuccio 2010** — `source_verified ✓ · claim_verified ⚠ parcial · included_verified` (**moderate**)
+- Cappuccio FP, D'Elia L, Strazzullo P, Miller MA. *Sleep duration and all-cause mortality: a systematic review and meta-analysis of prospective studies.* Sleep 2010;33(5):585-592. **doi 10.1093/sleep/33.5.585.**
+- Tipo: SR + meta de estudios prospectivos (seguimiento 4-25 años), **112.566 muertes**.
+- Claim (LONG-004): SUPPORTED para la asociación en **U** de la duración del sueño con la mortalidad.
+- **Caveat:** la rama de sueño LARGO se interpreta ampliamente como causalidad inversa (la enfermedad causa dormir más) → **no tratar una noche larga como señal de riesgo**. Comparte objetivo accionable con READ-006: **no contarlas como evidencia independiente**. evidenceLevel moderate, confidence medium.
+
+### M12 — Ambiente / calor
+
+**Armstrong 2007 (ACSM Position Stand)** — `source_verified ✓ · claim_verified ⚠ · included_provisional`
+- Armstrong LE, Casa DJ, Millard-Stafford M, Moran DS, Pyne SW, Roberts WO. *ACSM Position Stand: Exertional Heat Illness during Training and Competition.* Med Sci Sports Exerc 2007;39(3):556-572. **doi 10.1249/MSS.0b013e31802fa199 · PMID 17473783.**
+- **PDF NO disponible en `data/ACSM/`** → `included_provisional`, no `included_verified`. Verificado el registro bibliográfico, no el texto completo. **Por eso ENV-002 no cita ningún umbral numérico (WBGT, tiempos): citarlos sin el PDF sería inventarlos.**
+
+**ACSM Expert Consensus 2021 (heat illness)** — `source_verified ✓ · claim_verified ⚠ · included_provisional`
+- *ACSM Expert Consensus Statement on Exertional Heat Illness: Recognition, Management, and Return to Activity.* Curr Sports Med Rep 2021. **doi 10.1249/JSR.0000000000001058.**
+- Más reciente que Armstrong 2007. Mismo estado: registro verificado, PDF ausente.
+
+**Périard 2015 + 2016** — `source_verified ✓ · claim_verified ✓ · included_verified` (**moderate**)
+- Périard JD, Racinais S, Sawka MN. *Adaptations and mechanisms of human heat acclimation: Applications for competitive athletes and sports.* Scand J Med Sci Sports 2015;25(S1):20-38. **doi 10.1111/sms.12408.** + Périard JD, Travers GJS, Racinais S, Sawka MN. *Cardiovascular adaptations supporting human exercise-heat acclimation.* Auton Neurosci 2016.
+- Claim (ENV-001): SUPPORTED — en el primer día de ejercicio en calor la **FC es mucho más alta** y el volumen sistólico más bajo que en condiciones templadas para la misma carga; con la aclimatación (~1-2 semanas) la FC baja a una carga dada, se expande el volumen plasmático y sube la tasa de sudoración.
+- **Distinción importante:** la FISIOLOGÍA está soportada (moderate). La PRESCRIPCIÓN "mantener la FC y dejar caer el ritmo" es el corolario aplicado —y es exactamente el enfoque de *controlled exercise intensity* que propone Périard— pero **no es un protocolo testeado contra alternativas**. confidence medium.
+
+### Nutrición operativa — reglas nuevas sobre fuentes ya en el corpus
+
+`REC-006` (hidratación), `REC-007` (CHO por tipo de día) y `REC-008` (energy availability) se apoyan
+en **Thomas/Erdman/Burke 2016** y **Burke 2021**, ya leídos y resumidos con números citados del PDF
+en [`acsm-summaries.md`](./acsm-summaries.md) §3 y §5. `REC-009` (pasos/NEAT) y `ATH-006` (suelo de
+movilidad) se apoyan en **Garber 2011** y **Jakicic 2024**, ídem §2 y §4. **No son fuentes nuevas:**
+son acciones que la síntesis ACSM ya había producido y que nunca recibieron Rule ID, por lo que
+ningún motor podía aplicarlas. Los PDF están en `data/ACSM/`, así que estas cinco reglas nacen con
+respaldo de texto completo.
+
+Caveats trasladados a las reglas: el umbral de 30 kcal/kg FFM/d procede en buena parte de literatura
+RED-S femenina (extrapolación de dirección, no del número); la banda de CHO 5-7 g/kg/d está por
+encima de lo que permite el déficit, de ahí que REC-007 **redistribuya en vez de subir**; y Garber
+2011 prescribe una dosis de flexibilidad pero **no demuestra** que prevenga lesiones.
+
 ## Gaps remanentes
 
-- **Reglas sin paper nombrado:** REC-004 (muscle-memory), END-005 (decoupling = método), END-006 (práctica), READ-003/007 (experto), STR-010 (experto), GEN-003 (proceso), BUD-002 (experto), HYB-001..005 (extrapolado).
-- **Pendientes de verificar:** Speirs (ATH-005), Mah, Fyfe, Schumann, González-Badillo.
+- **Reglas sin paper nombrado:** REC-004 (muscle-memory), END-005 (decoupling = método), END-006 (práctica), READ-003/007 (experto), STR-010 (experto), **GEN-001 (reatribuida a práctica aplicada en la ronda 4)**, GEN-003 (proceso), BUD-002 (experto), HYB-001..005 (extrapolado), LONG-003 (regla de alcance, no un claim empírico).
+- **PDF ausentes que limitan una regla:** Armstrong 2007 y ACSM Expert Consensus 2021 (calor) — verificados bibliográficamente pero sin texto completo, por lo que **ENV-002 no puede citar umbrales numéricos**. Es la adquisición de mayor valor inmediato (ver `corpus-map.md`, ronda 4).
+- **Módulo 11 enteramente observacional:** LONG-001/002/004 descansan en cohortes y metas de cohortes. Dirección robusta, causalidad no establecida. Ninguna justifica subir volumen: el techo lo sigue poniendo BUD-001.
+- **Pendientes de verificar:** Speirs (ATH-005), Mah, Fyfe, Schumann, González-Badillo, Périard 2017 (heat acclimation decay).
 - **Extrapolación poblacional explícita:** Seiler/Stöggl/Rosenblat (atletas elite → recreacional); Markovic/Sáez (atletas jóvenes); Wilson/Huiberts (mayormente no-entrenados); todas las fuentes carecen de brazos en déficit → el contexto de déficit es extrapolado en todo el corpus.
 - **Suplementos:** fuera de alcance de esta fase (no olvidados).

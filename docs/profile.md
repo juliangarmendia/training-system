@@ -1,26 +1,31 @@
 # User Profile
 
-> Last updated: 2026-06-20
+> Last updated: 2026-06-20 · **Estado revisado: 2026-08-16** (auditoría del sistema)
+>
+> ⚠️ **Los datos de estado están caducados y no se pueden refrescar.** El espejo de datos en
+> Supabase lleva apagado desde ~2026-06-30 y no hay workouts registrados desde el 2026-06-25, así
+> que cualquier peso o carga "actual" que se escribiera aquí sería inventado. Los campos afectados
+> van marcados **`STALE`**. → [`../assessments/2026-08-16_system-audit.md`](../assessments/2026-08-16_system-audit.md)
 
 ## Basic info
 
 - **Age:** 33 (born 1993-03-10)
 - **Sex:** Male
 - **Height:** 182 cm
-- **Current weight:** ~86-88 kg (estimate — last reliable weigh-in 86.7 kg on 2026-05-04; ~6-week training layoff since, weight self-reported stable/slightly up; needs fresh measurement)
-- **Estimated body fat %:** ~21% (bioimpedance — directional, not precise)
-- **BMI:** 26.7
-- **Estimated lean mass:** ~69.8 kg
+- **Current weight:** **`STALE`** — última medición fiable **86,7 kg el 2026-05-04** (hace ~3,5 meses). Cualquier estimación posterior no tiene respaldo. Requiere pesarse 4-7×/sem durante 2 semanas para reconstruir la tendencia
+- **Estimated body fat %:** ~21% **`STALE`** (bioimpedancia de abril de 2026 — direccional, no precisa)
+- **BMI:** 26.7 **`STALE`** (derivado del peso caducado)
+- **Estimated lean mass:** ~69.8 kg **`STALE`** (derivado)
 - **Target weight:** 80-83 kg
 
 ## Training background
 
 - **Years training consistently:** At least ~9+ months documented with a trainer. Training has been on-and-off — consistency in showing up but not in frequency
 - **Primary style:** Gym (compound lifts + CrossFit-influenced conditioning). Some running
-- **Current status:** Re-entry after a ~6-week layoff (W19-W25, May-Jun 2026, life/schedule, no injury, back symptom-free). Last trained week W18 was strong. On a 3-week re-entry ramp (W26-W28) before resuming the normal cut
-- **Current frequency:** Variable — consistency is the main challenge
-- **Current running volume:** ~5 km sessions, zone 2
-- **Injuries or limitations:** None
+- **Current status:** **`STALE`** — el ramp de reentrada W26-W28 terminó el 2026-07-12 y el plan IDEAL lo reemplazó el 2026-06-30 (v11.28). Desde entonces **no hay sesiones registradas**, así que el estado de entrenamiento real es desconocido
+- **Current frequency:** Desconocida desde el 2026-06-25. El plan prescribe 4 sesiones de fuerza + Z2 casi diario (variante 6 del IDEAL)
+- **Current running volume:** **`STALE`** — última carrera registrada 2026-05-24
+- **Injuries or limitations:** **Historial lumbar** — dos contracturas (W2 y W16 de 2026), ambas precedidas por semanas con **cero movilidad**. Consecuencias vigentes: sumo deadlift con gate de RPE (el primer working set decide si se progresa, máx +2,5 kg/semana), movilidad obligatoria 2-3×/sem (**ATH-006**), y variantes lumbar-friendly disponibles (trap bar) por **LOAD-003**. *(Corregido el 2026-08-16: este campo decía "None", en contradicción con las reglas que el propio sistema aplica por ese historial.)*
 - **Availability:** Can train almost every day
 
 ## Equipment access
@@ -83,3 +88,22 @@
 - **Current approach:** Eating "normally," reducing alcohol. No structured tracking
 - **Estimated protein:** Unknown
 - **Dietary restrictions:** None reported
+
+## Marcadores de salud (añadido 2026-08-16)
+
+Serie longitudinal completa en
+[`../data/processed/2026-08-16_blood-markers.md`](../data/processed/2026-08-16_blood-markers.md)
+(5 analíticas, 2021 → sep-2024). Gobernado por **LONG-003**: el sistema registra y deriva; **no
+interpreta ni trata**.
+
+- **Última analítica: 2024-09-20 → ~23 meses.** Es baseline histórico, **no** estado actual.
+  Ninguna regla se dispara sobre estos valores.
+- **Para el médico, no para el plan:** vitamina D **11,2 ng/mL** (ago-2023) = deficiencia, nunca
+  re-medida · colesterol LDL **149 → 170 mg/dL** y total 226 → 260 entre 2021 y 2024, con HDL (68)
+  y triglicéridos (101) intactos; ApoB 110.
+- **Sano y estable:** HOMA 2,8 → **1,3**, HbA1c 5,3%, hepatograma, tiroides, B12, homocisteína,
+  ferritina y ritmo de cortisol.
+- **Nunca medido:** **testosterona / SHBG** (llamativo en déficit prolongado, cuando el sistema ya
+  vigila la libido como proxy en REC-008), Lp(a), y **VO₂max con test graduado** (LONG-001 no tiene
+  dato propio: las estimaciones de Whoop/COROS son tendencia, no valor).
+- **Acción sugerida:** analítica nueva; lista mínima en el archivo procesado.

@@ -10,7 +10,8 @@ reescriben la regla.
 - **Rule IDs** estables por dominio: `STR` strength · `REC` recomposition/nutrition ·
   `INT` concurrent/interference · `END` endurance/running · `HYB` hybrid conditioning ·
   `ATH` athleticism · `READ` readiness · `LOAD` load management · `SEL` exercise/modality selection ·
-  `BUD` hard-day budget · `GEN` general/meta. Nunca reutilizar ni renumerar un id retirado.
+  `BUD` hard-day budget · `LONG` longevity/health · `ENV` environment · `GEN` general/meta.
+  Nunca reutilizar ni renumerar un id retirado.
 - **`evidenceLevel`** — enum único en TODO el repo: `strong | moderate | weak_extrapolated | expert`.
   No existe otro vocabulario. Un matiz tipo "moderada-alta" se expresa con
   `evidenceLevel: moderate` + `confidence: high`, nunca con un enum nuevo.
@@ -23,17 +24,17 @@ reescriben la regla.
 [
   {
     "id": "GEN-001",
-    "rule": "Progress only ONE dominant quality per block; keep the rest in maintenance.",
+    "rule": "Prefer ONE dominant quality per block when weekly hard-stress is already at cap; two qualities may progress together at moderate loads. This is a fatigue-budgeting heuristic, not an interference finding.",
     "domain": ["periodization", "general"],
     "population": ["trained_adults"],
     "energyState": ["deficit", "maintenance"],
     "goal": ["recomposition", "fatigue_management"],
-    "evidenceLevel": "moderate",
-    "sources": ["concurrent-training synthesis (Huiberts 2024)", "training-load consensus (Soligard 2016)"],
+    "evidenceLevel": "expert",
+    "sources": ["applied periodization practice (synthesis)", "bounded by BUD-001 (hard-day cap) and INT-006 (endurance cap in strength blocks)"],
     "applicabilityToUser": "high",
-    "confidence": "high",
-    "caveats": ["Maintenance still requires a minimum effective dose (e.g. heavy strength 2x/wk)."],
-    "programmingAction": "Block Planner sets 1 dominant + 1-2 maintained qualities; Progression Engine only advances the dominant one."
+    "confidence": "medium",
+    "caveats": ["REATTRIBUTED 2026-08-16 (audit). Previously cited Huiberts 2024 + Soligard 2016 and graded moderate/high; NEITHER supports it. Huiberts 2024 finds interference REAL BUT MODEST, modulated by sex/training status, with trained individuals PROTECTED in VO2max - that is INT-005, and for a recreational profile it argues the opposite way. Soligard 2016 is the IOC load/injury consensus, silent on how many qualities to progress. The rule had NO ficha in source-coverage-audit.md and slipped through all 3 verification rounds. It survives as applied practice, downgraded to expert/medium.", "For a recreational adult in a moderate deficit doing 4 strength days + mostly easy cardio, progressing strength AND aerobic base simultaneously is normal and defensible - do not treat two progressing qualities as a violation.", "Maintenance still requires a minimum effective dose (e.g. heavy strength 2x/wk)."],
+    "programmingAction": "Block Planner may set 1 dominant + 1-2 maintained qualities. The binding constraint is the hard-day budget (BUD-001), not the number of qualities. Never auto-enforced."
   },
   {
     "id": "GEN-002",
@@ -260,6 +261,62 @@ reescriben la regla.
     "confidence": "medium",
     "caveats": ["Existing system already runs diet breaks on weeks 5 & 9."],
     "programmingAction": "Block Planner co-locates diet breaks with deloads."
+  },
+  {
+    "id": "REC-006",
+    "rule": "Drink 5-10 mL/kg bodyweight of fluid in the 2-4 h before a session (~500 mL for this user); keep within-session losses under 2% bodyweight.",
+    "domain": ["nutrition", "hydration", "performance"],
+    "population": ["trained_adults", "recreational_athletes"],
+    "energyState": ["deficit", "maintenance"],
+    "goal": ["performance", "fatigue_management"],
+    "evidenceLevel": "strong",
+    "sources": ["Thomas, Erdman & Burke 2016 (Joint Position Statement AND/DC/ACSM; Med Sci Sports Exerc 48(3):543-568; doi 10.1249/MSS.0000000000000852; summarised in research/acsm-summaries.md #3)"],
+    "applicabilityToUser": "high",
+    "confidence": "high",
+    "caveats": ["Already practised in plans/nutrition-notes.md since W19; formalised as a Rule ID 2026-08-16 so the engine can act on it.", "Interacts with ENV-001: heat raises sweat losses and blunts thirst, so the pre-session dose matters more in a Madrid summer.", "Supporting observation, not proof: the 2024-09-20 panel shows urine density 1.036 (very concentrated) alongside urea 59 mg/dL with normal creatinine/eGFR - consistent with dehydration at sampling. See data/processed/2026-08-16_blood-markers.md."],
+    "programmingAction": "Nutrition guidance surfaces a pre-session hydration prompt; Cardio Engine raises it under ENV-001 heat conditions."
+  },
+  {
+    "id": "REC-007",
+    "rule": "Periodise carbohydrate by day type rather than raising total intake: more on heavy-lower and long-cardio days, less on rest days, protein and weekly calories unchanged.",
+    "domain": ["nutrition", "performance", "periodization"],
+    "population": ["trained_adults"],
+    "energyState": ["deficit"],
+    "goal": ["performance", "fat_loss"],
+    "evidenceLevel": "moderate",
+    "sources": ["Thomas, Erdman & Burke 2016 (Table 2: moderate training load 5-7 g/kg/d; doi 10.1249/MSS.0000000000000852)"],
+    "applicabilityToUser": "high",
+    "confidence": "medium",
+    "caveats": ["The user's baseline (~3.2 g/kg) sits BELOW the ACSM moderate band by deliberate choice - carbohydrate absorbs the deficit. Redistribution is the lever available; raising the total is not, without ending the deficit.", "The day-type table in plans/nutrition-notes.md names weekdays from the retired April plan (Lower Tue/Fri) and must be read as day TYPE, not weekday, under the current IDEAL.", "Performance benefit is inferred from CHO availability literature; no trial tests this exact redistribution in a deficit."],
+    "programmingAction": "Nutrition guidance maps the day's session family to a CHO target band."
+  },
+  {
+    "id": "REC-008",
+    "rule": "Keep energy availability above ~30 kcal/kg FFM/day; treat sustained low EA as an upstream gate on training load, confirmed by symptoms rather than by the arithmetic alone.",
+    "domain": ["nutrition", "recovery", "readiness"],
+    "population": ["trained_adults", "lean_athletes"],
+    "energyState": ["deficit"],
+    "goal": ["muscle_preservation", "fatigue_management"],
+    "evidenceLevel": "moderate",
+    "sources": ["Thomas, Erdman & Burke 2016 (EA framework, <30 kcal/kg FFM/d risk threshold; doi 10.1249/MSS.0000000000000852)", "Burke et al. 2021 (ACSM Expert Consensus, Weight Loss in Weight-Category Sports; Curr Sports Med Rep 20(4):199-217; doi 10.1249/JSR.0000000000000846)"],
+    "applicabilityToUser": "high",
+    "confidence": "medium",
+    "caveats": ["The 30 kcal/kg FFM/d threshold comes largely from female athlete/RED-S literature; applicability to a male recreational lifter is an extrapolation of DIRECTION, not of the exact number.", "acsm-summaries.md #3 estimates ~27 kcal/kg FFM/d on training days for this user - marginal, transient low EA on hard days is common in a planned cut and is not by itself pathological.", "Burke 2021 is a consensus statement (expert by design) and its population is weight-category athletes.", "Symptom set to confirm against: mood, libido, sleep quality, illness frequency, morning HR - already tracked weekly in plans/nutrition-notes.md.", "Testosterone/SHBG have NEVER been measured (see data/processed/2026-08-16_blood-markers.md), so the endocrine limb of this rule is currently unverifiable for this user."],
+    "programmingAction": "Recovery Engine treats 2+ worsening LEA markers over 2 weeks as a trigger for an early diet break plus a volume cut; never derives a calorie number from the EA estimate alone."
+  },
+  {
+    "id": "REC-009",
+    "rule": "Hold a daily step floor (~7,000-10,000) through the deficit; NEAT falls spontaneously as energy intake drops.",
+    "domain": ["nutrition", "lifestyle", "fat_loss"],
+    "population": ["trained_adults"],
+    "energyState": ["deficit"],
+    "goal": ["fat_loss", "adherence"],
+    "evidenceLevel": "moderate",
+    "sources": ["Garber et al. 2011 (ACSM Position Stand; >=7,000 steps/d; Med Sci Sports Exerc 43(7):1334-1359; doi 10.1249/MSS.0b013e318213fefb)", "Jakicic et al. 2024 (ACSM Consensus, Physical Activity and Excess Body Weight; Transl J ACSM 9(4):e000266)"],
+    "applicabilityToUser": "high",
+    "confidence": "medium",
+    "caveats": ["Steps are ALREADY ingested (store `steps`, via the intervals.icu companion) - this is the cheapest unused signal in the system.", "Jakicic 2024: HIIT is NOT superior to moderate activity for body-weight regulation, and total energy expenditure matters more than modality - so steps compete on equal terms with structured cardio for fat loss.", "The specific 7,000 figure is a public-health floor, not an optimum for a trained adult in a deficit."],
+    "programmingAction": "Surface the weekly step trend as adherence context; never convert steps into a calorie prescription."
   },
 
   {
@@ -601,6 +658,20 @@ reescriben la regla.
     "caveats": ["VERIFIED but scope-limited: n=18 YOUNG MALE RUGBY players, 5 wk, sprint/agility outcomes (not the user's goals). Failure to detect a group difference in a small sample is not proven equivalence. Transferable takeaway: unilateral work is a joint-friendly, lower-axial-load substitute without a strength penalty -> weak_extrapolated for this user."],
     "programmingAction": "Exercise Selection Engine includes unilateral lower (BSS, lunges, step-ups) for athleticism and joint resilience."
   },
+  {
+    "id": "ATH-006",
+    "rule": "Hold a mobility/flexibility floor of 2-3 sessions per week, ~60 s total per major muscle-tendon unit.",
+    "domain": ["athleticism", "mobility", "injury_prevention"],
+    "population": ["trained_adults"],
+    "energyState": ["deficit", "maintenance"],
+    "goal": ["injury_prevention", "athleticism"],
+    "evidenceLevel": "moderate",
+    "sources": ["Garber et al. 2011 (ACSM Position Stand, flexibility FITT-VP: >=2-3 d/wk, static holds 10-30 s, ~60 s total per exercise; doi 10.1249/MSS.0b013e318213fefb)"],
+    "applicabilityToUser": "high",
+    "confidence": "medium",
+    "caveats": ["Garber 2011 prescribes a flexibility dose but does NOT establish that it prevents injury - do not oversell it as prophylaxis.", "The user-specific case is stronger than the general one: mobility was ZERO in the weeks preceding both lumbar episodes (W2 and W16), which is why the system already mandates 3x/wk.", "Garber 2011 also recommends neuromotor/balance work 2-3 d/wk; that remains deliberately OUT of scope during the cut (see acsm-summaries.md #2) and has no rule."],
+    "programmingAction": "Block Planner keeps mobility slots on recovery/cardio days; Recovery Engine flags a week with fewer than 2."
+  },
 
   {
     "id": "READ-001",
@@ -856,13 +927,113 @@ reescriben la regla.
     "confidence": "medium",
     "caveats": ["Weights are heuristic starting points, refined with logged data; not falsely precise."],
     "programmingAction": "See hard-day-budget.md for weights and cap; engines sum and constrain."
+  },
+
+  {
+    "id": "LONG-001",
+    "rule": "Treat cardiorespiratory fitness as a health outcome in its own right, not only as a means to body composition: the fitness-mortality gradient is steep and shows no upper limit of benefit.",
+    "domain": ["longevity", "endurance"],
+    "population": ["adults", "trained_adults"],
+    "energyState": ["deficit", "maintenance", "surplus"],
+    "goal": ["healthspan", "aerobic_base"],
+    "evidenceLevel": "strong",
+    "sources": ["Mandsager et al. 2018 (retrospective cohort, n=122,007 treadmill-tested adults, median follow-up 8.4 y; JAMA Netw Open 1(6):e183605; doi 10.1001/jamanetworkopen.2018.3605; verified)"],
+    "applicabilityToUser": "high",
+    "confidence": "high",
+    "caveats": ["OBSERVATIONAL. A dose-response association, not a randomised demonstration that raising CRF lowers mortality; reverse causation and residual confounding are live concerns in a clinically-referred cohort.", "The user's CRF has NEVER been measured. Whoop/COROS VO2max estimates are not a graded exercise test - treat them as trend, not value (GEN-002).", "This rule justifies protecting aerobic work when time is scarce; it does NOT justify raising volume past the hard-day budget (BUD-001)."],
+    "programmingAction": "Goal Engine keeps a minimum aerobic dose even in strength-dominant blocks; the aerobic quality is never the first thing cut for convenience."
+  },
+  {
+    "id": "LONG-002",
+    "rule": "Keep resistance training in the plan for health reasons independent of hypertrophy or aesthetics; ~30-60 min/week of muscle-strengthening activity carries most of the mortality benefit.",
+    "domain": ["longevity", "strength"],
+    "population": ["adults", "trained_adults"],
+    "energyState": ["deficit", "maintenance", "surplus"],
+    "goal": ["healthspan", "strength_maintenance"],
+    "evidenceLevel": "strong",
+    "sources": ["Momma et al. 2022 (SR + meta of 16 cohort studies; 10-17% lower all-cause mortality/CVD/cancer/diabetes risk, benefit concentrated at 30-60 min/wk; Br J Sports Med 56(13):755-763; doi 10.1136/bjsports-2021-105061; PMID 35228201; verified)", "Leong et al. 2015 (PURE, n=139,691, 17 countries; grip strength inversely associated with all-cause and CV mortality, HR 1.16 per 5 kg lower; Lancet 386(9990):266-273; doi 10.1016/S0140-6736(14)62000-6; PMID 25982160; verified)"],
+    "applicabilityToUser": "high",
+    "confidence": "high",
+    "caveats": ["OBSERVATIONAL, both. Grip strength is a MARKER of overall health, not a target to train - do not infer that grip work lowers mortality.", "The 30-60 min/wk sweet spot with attenuation beyond it is a population-health finding; it does not imply the user's ~4 h/wk is counterproductive, only that the health return is already banked well below current volume.", "Practical consequence: on a compressed week, strength frequency is worth protecting even at heavily reduced volume - which is exactly what the 3-day IDEAL variant does."],
+    "programmingAction": "Block Planner never drops strength below 2 sessions/wk; the minimum-dose variant is framed as health-preserving, not as a failure week."
+  },
+  {
+    "id": "LONG-003",
+    "rule": "Track health markers longitudinally and surface them as context; never derive treatment from them. Abnormal markers are a referral, not a programming input.",
+    "domain": ["longevity", "evidence_integrity"],
+    "population": ["adults"],
+    "energyState": ["deficit", "maintenance", "surplus"],
+    "goal": ["healthspan"],
+    "evidenceLevel": "expert",
+    "sources": ["scope rule for this system; clinical interpretation is explicitly out of scope"],
+    "applicabilityToUser": "high",
+    "confidence": "high",
+    "caveats": ["This is a GUARDRAIL, not a finding. A training system must not titrate lipids, prescribe supplements against a deficiency, or interpret an abnormal panel.", "Current data: last panel 2024-09-20 (~23 months old) -> historical baseline only, NO rule may fire on it (GEN-002 population/recency filter). See data/processed/2026-08-16_blood-markers.md.", "Two open items flagged there for a clinician, not for the engine: vitamin D 11.2 ng/mL (deficiency, 2023, never rechecked) and LDL 149 -> 170 mg/dL with ApoB 110.", "Where markers legitimately touch training, they do so through existing rules - REC-006 (hydration/urea), REC-008 (energy availability), READ-006 (sleep) - not through new dosing logic."],
+    "programmingAction": "Surface marker trends and staleness in the profile; flag when a panel is older than ~12 months; never gate a session on a lab value."
+  },
+  {
+    "id": "LONG-004",
+    "rule": "Protect habitual sleep duration in the 7-8 h range as a longevity target, not only a recovery lever; both short and long sleep associate with higher mortality.",
+    "domain": ["longevity", "recovery", "readiness"],
+    "population": ["adults"],
+    "energyState": ["deficit", "maintenance", "surplus"],
+    "goal": ["healthspan", "fatigue_management"],
+    "evidenceLevel": "moderate",
+    "sources": ["Cappuccio et al. 2010 (SR + meta of prospective studies, 112,566 deaths; U-shaped association of sleep duration with all-cause mortality; Sleep 33(5):585-592; doi 10.1093/sleep/33.5.585; verified)"],
+    "applicabilityToUser": "high",
+    "confidence": "medium",
+    "caveats": ["OBSERVATIONAL and U-shaped: the long-sleep limb is widely read as reverse causation (illness causes long sleep), so do NOT treat a long night as a risk signal.", "Complements READ-006 (sleep as the primary recovery lever) with a different rationale; they share the same actionable target, so do not double-count them as independent evidence.", "Directly actionable here: sleep duration is one of the few fields classified `available` AND high-reliability in data-sources-audit.md.", "Observed precedent: the W18 review recorded a 6.3 h average alongside HRV down 14% and RHR +5 - the mechanism is not hypothetical for this user."],
+    "programmingAction": "Readiness Engine surfaces the rolling sleep trend against a 7-8 h band; Recovery Engine prioritises sleep before any other intervention."
+  },
+
+  {
+    "id": "ENV-001",
+    "rule": "In the heat, hold the HR target and let pace fall; do not chase the usual pace. For the same power output, heart rate rises with heat strain, so an HR-anchored easy run is simply slower in August.",
+    "domain": ["environment", "endurance", "modality_selection"],
+    "population": ["trained_adults", "recreational_runners"],
+    "energyState": ["deficit", "maintenance"],
+    "goal": ["aerobic_base", "fatigue_management"],
+    "evidenceLevel": "moderate",
+    "sources": ["Periard et al. 2015 (Adaptations and mechanisms of human heat acclimation; Scand J Med Sci Sports 25(S1):20-38; doi 10.1111/sms.12408; verified)", "Periard et al. 2016 (Cardiovascular adaptations supporting human exercise-heat acclimation; Auton Neurosci; verified)", "Coyle & Gonzalez-Alonso 2001 (cardiovascular drift; PMID 11337829; already cited by END-005)"],
+    "applicabilityToUser": "high",
+    "confidence": "medium",
+    "caveats": ["The PHYSIOLOGY is well established (HR up and stroke volume down for a given work rate in heat, partially reversing over ~1-2 weeks of acclimation). The PRESCRIPTION 'hold HR, let pace go' is the practical corollary and is applied practice, not a tested protocol.", "Direct consequence for this system: a pace slowdown in a Madrid summer is NOT evidence of lost fitness, and pace-at-fixed-HR (END-005) is confounded in these months - do not read aerobic progress from it until autumn.", "Acclimation partially closes the gap within 1-2 weeks of consistent heat exposure, so mid-summer comparisons are unstable in both directions."],
+    "programmingAction": "Cardio Engine keeps zone/HR as the target in heat and annotates pace expectations; Readiness Engine suppresses pace-based aerobic-progress claims during hot months."
+  },
+  {
+    "id": "ENV-002",
+    "rule": "Move hard or long sessions indoors, or to the cooler ends of the day, when heat is high; raise fluid intake above the REC-006 baseline and treat heat as a hard-day cost multiplier.",
+    "domain": ["environment", "load_management", "injury_prevention"],
+    "population": ["trained_adults", "recreational_runners"],
+    "energyState": ["deficit", "maintenance"],
+    "goal": ["injury_prevention", "fatigue_management"],
+    "evidenceLevel": "moderate",
+    "sources": ["Armstrong et al. 2007 (ACSM Position Stand, Exertional Heat Illness during Training and Competition; Med Sci Sports Exerc 39(3):556-572; doi 10.1249/MSS.0b013e31802fa199; PMID 17473783; verified)", "ACSM Expert Consensus Statement on Exertional Heat Illness: Recognition, Management, and Return to Activity 2021 (Curr Sports Med Rep; doi 10.1249/JSR.0000000000001058; verified)"],
+    "applicabilityToUser": "high",
+    "confidence": "medium",
+    "caveats": ["NEITHER PDF is in data/ACSM/ - cited from verified bibliographic records, so the specific thresholds are NOT quoted here. Marked as an acquisition item in corpus-map.md; do not invent WBGT numbers.", "Both sources address exertional heat ILLNESS in competitive/occupational settings; the transfer to 'shift the easy run indoors on a hot afternoon' is prudent extrapolation, not their finding.", "The equipment inventory already supports this fully: treadmill, bike/erg, rower, SkiErg, plus pool and air-conditioned facility (docs/profile.md).", "A deficit compounds the risk: lower glycogen and fluid intake, both flagged in Thomas 2016."],
+    "programmingAction": "Modality Engine prefers indoor low-impact options in heat (reuses INT-002/HYB-005 machinery); Nutrition guidance raises the REC-006 pre-session dose."
   }
 ]
 ```
 
 ## Índice de Rule IDs
 
-GEN-001..003 · STR-001..008, STR-010 · REC-001..005 · INT-001..006 · END-001..008 · HYB-001..005 ·
-ATH-001..005 · READ-001..008 · LOAD-001..004 · SEL-001..004 · BUD-001..002.
+GEN-001..003 · STR-001..008, STR-010 · REC-001..009 · INT-001..006 · END-001..008 · HYB-001..005 ·
+ATH-001..006 · READ-001..008 · LOAD-001..004 · SEL-001..004 · BUD-001..002 · **LONG-001..004** ·
+**ENV-001..002**. Total: **70 reglas** (59 + 11 añadidas en la ronda 4).
+
 (STR-008 = periodización; STR-009 reservado para double-progression al poblarlo con cita formal.
 ATH-005 = unilateral, provisional hasta verificar Speirs.)
+
+**Añadidas 2026-08-16** (auditoría del sistema, ver
+[`../assessments/2026-08-16_system-audit.md`](../assessments/2026-08-16_system-audit.md)):
+
+- `REC-006..009` + `ATH-006` — operacionalizan acciones de la síntesis ACSM que ya se practicaban en
+  `plans/nutrition-notes.md` pero **no tenían Rule ID**, y por tanto ningún motor podía aplicarlas
+  (hidratación, CHO por tipo de día, energy availability, pasos/NEAT, suelo de movilidad).
+- `LONG-001..004` — módulo 11, longevidad/salud. No existía nada de salud en el corpus.
+- `ENV-001..002` — módulo 12, ambiente. El único paper ambiental era el de frío; nada de calor pese
+  a entrenar un verano en Madrid.
+- `GEN-001` **reatribuida y degradada** a `expert`/`confidence: medium`: sus fuentes citadas
+  (Huiberts 2024, Soligard 2016) no sostienen el claim y nunca tuvo ficha de verificación.

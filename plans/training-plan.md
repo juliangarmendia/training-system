@@ -1,8 +1,29 @@
 # Training Plan — Cut Phase 1
 
+> ## ⚠️ PARCIALMENTE OBSOLETO — leer esto primero (2026-08-16)
+>
+> **El plan vivo ya no es este documento.** Desde v11.28 (2026-06-30) la semana la genera
+> `IDEAL_BLOCK_V1` en `app/app.js`, no las tablas de aquí. Qué sigue valiendo y qué no:
+>
+> | Sección | Estado |
+> |---|---|
+> | Anchors, esquemas series/reps/RPE, descansos, tempo excéntrico | ✅ **Vigente** — es lo que la app ejecuta |
+> | Selección de ejercicios "Program v6.0 Block A" | ✅ Vigente (son las sesiones `upperA`/`lowerA`/`upperB`/`lowerB`) |
+> | Progresión doble, protocolo de estancamiento, warm-up, sustituciones | ✅ Vigente |
+> | **Bloque de reentrada W26-W28** | ❌ **Caducado** el 2026-07-12. Lo reemplazó el IDEAL el 30-jun |
+> | **"Current ISO week: 25", "Next review: W29"** | ❌ Caducado. Hoy es W33; la revisión W29 nunca ocurrió |
+> | **Estructura semanal (Mon-Sun, 4 días + 2 runs)** | ❌ Superada por el IDEAL (4 fuerza + Z2 diario + 1 cardio + recuperación) |
+> | **Deload en semanas 5 y 9** | ⚠️ **No se dispara desde mayo** — ver auditoría, A4 |
+> | Targets de W19 y W20+ | ❌ Históricos |
+>
+> **No se reescribe con números nuevos porque no los hay**: no hay workouts registrados desde el
+> 2026-06-25 (espejo de datos caído, ver auditoría §3). Cualquier carga "actual" aquí sería
+> inventada. → [`../assessments/2026-08-16_system-audit.md`](../assessments/2026-08-16_system-audit.md)
+
 > Version: 6.0
 > Created: 2026-04-06
 > Updated: 2026-06-20 (v6.0 top-class redesign for David Lloyd Serrano + re-entry block)
+> Estado revisado: 2026-08-16 (auditoría del sistema — ver aviso de arriba)
 > Phase: RE-ENTRY → Fat Loss / Strength Maintenance
 > Gym: David Lloyd Serrano (Madrid) — premium club, kg. Exercise selection upgraded to its machines; volume unchanged.
 > Duration: Open-ended cut — calendar weeks ISO. W18 = last trained week (strong). W19 deload + W20-W25 = unplanned layoff (life/schedule, ~6 weeks, zero training, no injury). W26-W28 = 3-week re-entry ramp. W29+ = resume normal cut.

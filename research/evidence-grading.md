@@ -38,6 +38,9 @@ Un matiz como "moderada-alta" NO crea un enum nuevo: se expresa con `evidenceLev
 | Tendón: cargar progresivamente, no descansar a cero | LOAD-002 | Cook & Purdam 2009 ✓ + Malliaras 2013 ✓ (HSR; isométricos→Rio pending) |
 | Core anti-rotación/anti-extensión para columna | ATH-003 | McGill |
 | No aplicar evidencia de novato/obeso/elite sin marcar extrapolación | GEN-002 | meta-principio |
+| Hidratación 5-10 mL/kg pre-sesión; pérdidas <2% del peso | REC-006 | Thomas 2016 ✓ (ACSM/AND/DC) |
+| El fitness cardiorrespiratorio predice mortalidad sin techo de beneficio | LONG-001 | Mandsager 2018 ✓ (n=122.007) — **observacional** |
+| 30-60 min/sem de fuerza bastan para el grueso del beneficio de mortalidad | LONG-002 | Momma 2022 ✓ + Leong 2015 ✓ (PURE) — **observacional** |
 
 ## MODERATE — dirección confiable, magnitud incierta
 
@@ -54,6 +57,13 @@ Un matiz como "moderada-alta" NO crea un enum nuevo: se expresa con `evidenceLev
 | Cap de endurance en bloque de fuerza | INT-006 | Wilson — volumen-dependiente |
 | Deload 4-6 sem o reactivo | LOAD-004 | periodización aplicada |
 | Modificar (no eliminar) fuerza ante dolor lumbar | LOAD-003 | BJSM/Barbell Medicine aplicado |
+| Periodizar CHO por tipo de día sin cambiar el total | REC-007 | Thomas 2016 Tabla 2 — la banda 5-7 g/kg/d está por encima de lo que permite el déficit |
+| Energy availability ≥30 kcal/kg FFM/d | REC-008 | Thomas 2016 + Burke 2021 — umbral de literatura RED-S femenina, extrapolación de dirección |
+| Suelo de pasos (~7-10k/d) contra la caída de NEAT | REC-009 | Garber 2011 + Jakicic 2024 |
+| Suelo de movilidad 2-3 d/sem | ATH-006 | Garber 2011 — prescribe dosis, **no** prueba prevención de lesiones |
+| Sueño 7-8 h también como objetivo de longevidad | LONG-004 | Cappuccio 2010 ✓ — asociación en U; rama larga = probable causalidad inversa |
+| En calor, mantener la FC y dejar caer el ritmo | ENV-001 | Périard 2015/2016 ✓ (fisiología); la prescripción es corolario aplicado |
+| Mover a indoor y subir líquidos con calor alto | ENV-002 | Armstrong 2007 + consenso ACSM 2021 — **sin PDF**, sin umbrales citables |
 
 ## WEAK_EXTRAPOLATED — inferido, usar con cautela
 
@@ -80,6 +90,8 @@ Un matiz como "moderada-alta" NO crea un enum nuevo: se expresa con `evidenceLev
 | Resolución de conflictos entre fuentes | GEN-003 | regla de proceso |
 | Recomp en entrenados (Barakat es narrative review) | REC-003 | Barakat 2020 ✓ (narrative → expert) |
 | Trigger de deload / overreaching | READ-008 | Meeusen 2013 ✓ (consensus; advierte contra marcador único) |
+| Preferir una cualidad dominante por bloque cuando el budget está al tope | GEN-001 | **Degradada 2026-08-16**: sus fuentes citadas (Huiberts 2024, Soligard 2016) no la sostenían. Práctica aplicada, acotada por BUD-001 |
+| Registrar marcadores de salud y derivar; nunca interpretar ni tratar | LONG-003 | regla de alcance del sistema |
 
 > Recursos de divulgación (Stronger by Science, MASS, Renaissance Periodization, Barbell Medicine,
 > E3 Rehab) son **terciarios**: útiles como interpretación práctica de la evidencia primaria, nunca

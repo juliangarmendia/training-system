@@ -1,7 +1,29 @@
 # Running Plan — Cut Phase 1
 
+> ## 🛑 OBSOLETO — su tesis central ya no es la del sistema (2026-08-16)
+>
+> Es el documento más desfasado del repo. Se conserva por su valor de razonamiento, pero **no
+> describe el plan actual y varias de sus afirmaciones contradicen directamente al sistema vigente**:
+>
+> | Afirma | Realidad |
+> |---|---|
+> | *"Why Not HIIT During a Cut"*, *"Zone 3 NOT during this plan"* | `CARDIO_LIBRARY` ofrece Z3/Z4/Z5 y **END-008** (`strong`, Milanović 2015) dice que HIIT y MICT suben ambos el VO₂max: se elige por coste de fatiga, no por dogma |
+> | *"Running: secondary modality... gym wins"* | `CLAUDE.md`: cardio y carrera son **cualidades co-iguales** |
+> | Zona 2 = 120-140 bpm, techo MAF 142 | Las zonas se traen de intervals.icu (`fetchIntervalsIcuZones`) y son las del atleta, no una fórmula |
+> | Estructura semanas 1-9, 1→3 carreras | El IDEAL prescribe Z2 casi diario + 1 sesión más larga el sábado |
+> | Peso 88,6 kg, ritmo 7:40/km | De abril de 2026 |
+>
+> **Lo que sí sigue valiendo:** el razonamiento sobre interferencia (Wilson 2012), las reglas de
+> colocación respecto a los días de pierna, la sección de **NEAT/pasos** (ahora formalizada como
+> **REC-009**) y las banderas rojas para recortar carrera.
+>
+> **Falta y no está aquí:** el efecto del **calor** — reglas nuevas `ENV-001/002`. En verano en
+> Madrid, mantener la FC significa correr más lento, y el ritmo a FC fija no es leíble como
+> progreso. → [`../assessments/2026-08-16_system-audit.md`](../assessments/2026-08-16_system-audit.md)
+
 > Version: 2.0
 > Created: 2026-04-06
+> Estado revisado: 2026-08-16 (auditoría del sistema — ver aviso de arriba)
 
 ---
 
