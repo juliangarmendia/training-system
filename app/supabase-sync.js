@@ -110,22 +110,45 @@ function renderAuthUI() {
     return;
   }
 
-  getUser().then(user => {
+  getUser().then(async user => {
     if (user) {
+      // v11.35: this used to say "Data backed up automatically" unconditionally — it kept
+      // saying it for the seven weeks nothing was actually uploading. Show real state.
+      const st = await getSyncStatus();
+      const pending = st.total || 0;
+      const quarantined = st.quarantined || 0;
+      const ageH = st.oldest ? Math.floor((Date.now() - st.oldest) / 3600000) : 0;
+      const stale = pending > 0 && ageH >= 24;
+      const lastOk = st.lastOkAt ? new Date(st.lastOkAt).toLocaleString() : 'nunca';
+
+      let statusHTML;
+      if (quarantined > 0) {
+        statusHTML = `<div style="font-size:12px;margin-top:8px;color:var(--red)">
+          ⚠ ${quarantined} registro${quarantined === 1 ? '' : 's'} en cuarentena (no se pudieron subir).
+          ${pending - quarantined > 0 ? `${pending - quarantined} pendiente(s).` : ''}<br>Último sync correcto: ${lastOk}</div>`;
+      } else if (stale) {
+        statusHTML = `<div style="font-size:12px;margin-top:8px;color:var(--red)">
+          ⚠ ${pending} cambio${pending === 1 ? '' : 's'} sin subir desde hace ${ageH >= 48 ? `${Math.floor(ageH / 24)} días` : `${ageH} h`}.<br>Último sync correcto: ${lastOk}</div>`;
+      } else if (pending > 0) {
+        statusHTML = `<div class="muted" style="font-size:12px;margin-top:8px">${pending} cambio(s) en cola. Último sync: ${lastOk}</div>`;
+      } else {
+        statusHTML = `<div class="muted" style="font-size:12px;margin-top:8px">✓ Todo sincronizado. Último sync: ${lastOk}</div>`;
+      }
+
       section.innerHTML = `
         <div class="form-row inline">
           <label style="font-size:13px">${user.email}</label>
           <button id="btn-signout" class="btn-secondary" style="width:auto;padding:8px 16px">Sign Out</button>
         </div>
-        <div class="muted" style="font-size:12px;margin-top:8px">
-          Synced to cloud. Data backed up automatically.
-        </div>
+        ${statusHTML}
         <button id="btn-force-sync" class="btn-secondary" style="margin-top:8px;width:100%;text-align:center">Force Sync Now</button>
       `;
       document.getElementById('btn-signout').addEventListener('click', supaSignOut);
       document.getElementById('btn-force-sync').addEventListener('click', async () => {
         await syncAll();
-        toast('Sync complete');
+        const after = await getSyncStatus();
+        toast(after.total > 0 ? `Quedan ${after.total} sin subir` : 'Sincronizado');
+        renderAuthUI();
       });
     } else {
       section.innerHTML = `
@@ -177,6 +200,28 @@ async function enqueueSync(store, action, data) {
   }
 }
 
+// A queue item that can NEVER succeed used to freeze the whole queue.
+//
+// Until v11.35 this loop did `break` on the first failure. The comment said "leave in
+// queue for retry", but a permanently-failing item is retried forever and everything
+// queued behind it is stuck with it — a poison message with head-of-line blocking.
+// That is exactly what happened: `plans` was in the sync store list but the table was
+// never created in Supabase, so the plan version written by applyIdealPlan() on
+// 2026-06-30 (v11.28) froze every outbound write for seven weeks. Nothing surfaced it
+// because the only signal was a console.warn.
+//
+// Now: a failure skips that item and the rest still go out; repeated or permanent
+// failures land in quarantine instead of blocking. See
+// assessments/2026-08-16_system-audit.md §3.
+const SYNC_MAX_ATTEMPTS = 5;
+// Errors that retrying cannot fix: missing table/column, malformed input.
+const SYNC_PERMANENT_CODES = new Set(['42P01', '42703', '22P02', 'PGRST205', 'PGRST204']);
+
+function _queueKey(item) {
+  const rid = item.data && (item.data.id || item.data.date || item.data.key);
+  return `${item.store}::${rid}`;
+}
+
 async function drainSyncQueue() {
   if (!supabaseClient) return;
   const user = await getUser();
@@ -191,10 +236,28 @@ async function drainSyncQueue() {
 
   if (!queue || queue.length === 0) return;
 
-  // Sort by timestamp
+  // Oldest first.
   queue.sort((a, b) => a.timestamp - b.timestamp);
 
+  // Collapse superseded upserts. These carry the FULL record, so when the same record
+  // was written several times only the newest matters — a long backlog is mostly
+  // duplicates (e.g. settings rewritten on every change). This also removes the risk
+  // of a retried older upsert overwriting a newer one that already landed.
+  const newestUpsert = new Map();
   for (const item of queue) {
+    if (item.action !== 'upsert' || item.quarantined) continue;
+    newestUpsert.set(_queueKey(item), item.id);
+  }
+  const superseded = queue.filter(i => i.action === 'upsert' && !i.quarantined && newestUpsert.get(_queueKey(i)) !== i.id);
+  for (const item of superseded) {
+    try { await dbDelete('sync_queue', item.id); } catch (e) {}
+  }
+  const pending = queue.filter(i => !superseded.includes(i));
+
+  let sent = 0, failed = 0, quarantined = 0;
+
+  for (const item of pending) {
+    if (item.quarantined) { quarantined++; continue; }
     try {
       if (item.action === 'upsert') {
         const { error } = await supabaseClient
@@ -214,14 +277,58 @@ async function drainSyncQueue() {
           .eq('record_id', item.data.id || item.data.date || item.data.key);
         if (error) throw error;
       }
-      // Remove from queue on success
       await dbDelete('sync_queue', item.id);
+      sent++;
     } catch (e) {
-      console.warn('[Sync] Failed to sync item:', item, e);
-      // Leave in queue for retry
-      break;
+      // NEVER break — one bad item must not hold back the rest.
+      const attempts = (item.attempts || 0) + 1;
+      const permanent = !!(e && e.code && SYNC_PERMANENT_CODES.has(e.code));
+      const isQuarantined = permanent || attempts >= SYNC_MAX_ATTEMPTS;
+      failed++;
+      if (isQuarantined) quarantined++;
+      console.warn(`[Sync] ${item.store} failed (attempt ${attempts}${permanent ? ', permanent' : ''})`, e);
+      try {
+        await dbPut('sync_queue', {
+          ...item,
+          attempts,
+          lastError: String((e && (e.message || e.code)) || e),
+          quarantined: isQuarantined,
+        });
+      } catch (e2) {}
     }
   }
+
+  await setSyncStatus({ sent, failed, quarantined, pending: await countSyncQueue() });
+}
+
+// ==================== SYNC STATUS (so a failure is visible) ====================
+// Stored with dbPut, never smartPut: writing status must not enqueue more work.
+async function countSyncQueue() {
+  try {
+    const q = await dbGetAll('sync_queue');
+    return {
+      total: q.length,
+      quarantined: q.filter(i => i.quarantined).length,
+      oldest: q.length ? Math.min(...q.map(i => i.timestamp || Date.now())) : null,
+    };
+  } catch { return { total: 0, quarantined: 0, oldest: null }; }
+}
+
+async function setSyncStatus(partial) {
+  try {
+    const prev = (await dbGet('settings', 'syncStatus')) || {};
+    const data = { ...(prev.data || {}), ...partial, at: Date.now() };
+    if (partial.failed === 0 && partial.quarantined === 0) data.lastOkAt = Date.now();
+    await dbPut('settings', { key: 'syncStatus', data });
+  } catch (e) {}
+}
+
+async function getSyncStatus() {
+  try {
+    const row = await dbGet('settings', 'syncStatus');
+    const counts = await countSyncQueue();
+    return { ...(row && row.data ? row.data : {}), ...counts };
+  } catch { return { total: 0, quarantined: 0, oldest: null }; }
 }
 
 // ==================== FULL SYNC ====================
@@ -235,8 +342,9 @@ async function syncAll() {
   // First drain any pending local changes
   await drainSyncQueue();
 
-  // Pull from cloud for each store
-  const stores = ['workouts', 'runs', 'nutrition', 'settings', 'bodyweight', 'plans', 'exercises', 'steps', 'wellness', 'sessions'];
+  // Pull from cloud for each store. `mobility_sessions` was missing until v11.35: the
+  // table exists and push worked, but it was never pulled back on another device.
+  const stores = ['workouts', 'runs', 'nutrition', 'settings', 'bodyweight', 'plans', 'exercises', 'steps', 'wellness', 'sessions', 'mobility_sessions'];
   const lastSync = await dbGet('settings', 'lastSyncTimestamp');
   const since = lastSync ? lastSync.data : '1970-01-01T00:00:00Z';
 
@@ -271,6 +379,7 @@ async function syncAll() {
 
   // Update last sync timestamp
   await dbPut('settings', { key: 'lastSyncTimestamp', data: new Date().toISOString() });
+  await setSyncStatus({ pulledAt: Date.now() });
   console.log('[Sync] Sync complete');
 }
 
@@ -299,6 +408,8 @@ window.renderAuthUI = renderAuthUI;
 window.supaSignOut = supaSignOut;
 window.syncAll = syncAll;
 window.getSupaUser = getUser;
+window.getSyncStatus = getSyncStatus;
+window.drainSyncQueue = drainSyncQueue;
 Object.defineProperty(window, '__supabaseClient', { get: () => supabaseClient });
 
 // ==================== SQL SCHEMA ====================

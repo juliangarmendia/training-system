@@ -33,15 +33,22 @@ Esto no es un olvido de redacción: es que no hay datos con los que escribirla.
 `wellness` y `steps` se rellenan solos en cada sync, así que su última fecha marca **el último sync
 correcto: ~2026-06-30** — justo cuando el plan IDEAL pasó a ser el default (v11.28).
 
-**Qué NO se sabe:** si entrenó, cuánto, con qué cargas, ni cuánto pesa. Puede que los datos existan
-solo en el IndexedDB del iPhone y nunca hayan subido, o puede que no haya entrenado. **Ambas
-hipótesis siguen abiertas** y no se resuelven desde el repositorio.
+**✅ RESUELTO el mismo día.** Julian confirmó que ha entrenado con normalidad (dos sesiones esa
+semana y una carrera el 16-ago), lo que descartó la hipótesis de "no entrenó" y apuntó a un fallo
+de sync. Y lo era:
 
-**Por qué no se hizo backfill:** `/weekly-review-auto` tiene una ruta de backfill, pero necesita
-datos. Rellenar 14 semanas sin ellos sería inventarlas, y `CLAUDE.md` lo prohíbe explícitamente.
+La cola de salida estaba **congelada desde el 2026-06-30** por un mensaje envenenado.
+`drainSyncQueue()` hacía `break` ante el primer fallo, y el elemento que fallaba era un upsert al
+store `plans`, cuya **tabla nunca se creó en Supabase**. `applyIdealPlan()` lo encoló el día que
+salió v11.28 (2026-06-30) y bloqueó todo lo posterior durante siete semanas. El fallo sólo se
+registraba en un `console.warn` mientras Settings decía *"Data backed up automatically"*.
 
-**Desbloqueo:** arreglar el sync es la tarea previa a cualquier revisión, ajuste de plan o
-actualización de perfil. Tres pistas concretas en
+**No se perdió nada.** IndexedDB en el iPhone conserva el registro completo, y las carreras además
+viven en COROS, Strava e intervals.icu. Corregido en v11.35: tablas creadas, la cola ya no se
+bloquea ante un elemento roto, y el estado del sync es visible.
+
+**El backfill de W19–W32 ya es posible** en cuanto el backlog suba (basta abrir la app). Merece su
+propia pasada con `/weekly-review-auto`, con datos reales en vez de inventados. Detalle completo en
 [`../assessments/2026-08-16_system-audit.md`](../assessments/2026-08-16_system-audit.md) §3.
 
 ---

@@ -207,20 +207,51 @@ Consulta directa a Supabase (`ycfodifvpvosukepcxie`, 2026-08-16):
 | `nutrition` | 11 | 2026-05-28 |
 | `sessions` | **0** | — |
 
-`wellness`/`steps` se rellenan solos en cada sync, así que su última fecha ≈ **el último sync
-correcto: ~2026-06-30** — justo cuando el IDEAL pasó a ser el default. Tres pistas concretas:
+### ✅ CAUSA RAÍZ ENCONTRADA Y CORREGIDA (2026-08-16, v11.35)
 
-1. El último sync fue ~30-jun; nada después.
-2. `sessions` tiene **0 filas** pese a que `db-schema-state.md` lo declara "CONECTADO (T2b, v11.24)"
-   y a que el logger unificado de Cardio escribe ahí desde v11.29.
-3. `plans` y `exercises` están en la lista de sync de `supabase-sync.js:239` pero **no tienen tabla**
-   en Supabase.
+**Un mensaje envenenado bloqueaba la cola de salida desde el 30 de junio.**
 
-**Consecuencia:** no hay datos con los que actualizar el perfil ni con los que hacer backfill de las
-14 revisiones semanales que faltan (W19–W32). Cualquier número "actual" en un documento sería
-inventado. Esto **no se arregló** en esta ronda — es un bug operativo que merece su propia sesión de
-depuración. **Es lo primero que conviene atacar después de esto:** sin datos, ningún ajuste de plan
-se puede validar.
+`drainSyncQueue()` recorría la cola ordenada por timestamp y, ante el **primer** fallo, hacía
+`break` — salía del bucle entero. El comentario decía *"leave in queue for retry"*, pero un elemento
+que **nunca puede tener éxito** se reintenta para siempre y arrastra consigo todo lo encolado
+después. Head-of-line blocking clásico.
+
+El elemento envenenado era un registro de `plans`:
+
+1. `applyIdealPlan()` corre en `init()`. La primera vez, el plan activo era `Re-Entry ...` ≠
+   `Ideal · 6 días`, así que llamó a `createNewPlanVersion()`.
+2. Esa función hace `smartPut('plans', …)` → `syncedPut` → `enqueueSync('plans', 'upsert', …)`.
+3. **La tabla `plans` no existía en Supabase.** Estaba en la lista de sync (`supabase-sync.js:239`)
+   pero nunca se creó — igual que `exercises`.
+4. Error permanente → `break` → **cola congelada**.
+
+**La fecha encaja exactamente.** Último push correcto en todas las tablas: **2026-06-30**.
+`v11.28 "T5 — ideal plan is the live default"` se commiteó el **2026-06-30**.
+
+Y explica el detalle que más chirriaba: **`sessions` con 0 filas** pese a estar conectada desde
+v11.24. El logger unificado de Cardio empezó a escribir ahí en **v11.29 (2026-07-01)** — un día
+*después* del atasco. Nunca tuvo una sola oportunidad de subir.
+
+**Descartado:** no fue sesión caducada. Los pushes del 30-jun prueban autenticación válida posterior
+al último sign-in (21-jun), y la sesión se auto-renueva.
+
+**Por qué nadie se enteró en 7 semanas:** el fallo era un `console.warn` y nada más, mientras
+Settings decía *"Synced to cloud. Data backed up automatically."* de forma incondicional.
+
+**Corregido en v11.35:**
+- Tablas `plans` y `exercises` creadas (migración `add_plans_and_exercises_sync_tables`, patrón
+  idéntico a `sessions`: PK `(user_id, record_id)`, RLS por `auth.uid()`). El backlog drena solo.
+- `drainSyncQueue`: `break` → `continue`; contador de intentos; **cuarentena** para fallos
+  permanentes (`42P01`, `PGRST205`…) o tras 5 intentos. Un elemento roto ya no puede bloquear.
+  Además colapsa upserts superseded del mismo registro, que en 7 semanas de backlog son mayoría.
+- Settings muestra estado real (pendientes, cuarentena, último sync correcto) y Home avisa si hay
+  backlog de más de 24 h.
+- `mobility_sessions` añadido al pull; **backup JSON completo** (el CSV se dejaba `sessions` y
+  `mobility_sessions`); `navigator.storage.persist()` en `init()` — antes ni se pedía.
+
+**Nada se perdió:** IndexedDB en el iPhone conserva todo, y las carreras además viven en
+COROS/Strava/intervals.icu. El backfill de W19–W32 sigue pendiente y ahora **es posible** en cuanto
+suba el backlog.
 
 ---
 
@@ -303,30 +334,22 @@ Solo de **superficie**. No se tocó qué prescribe el plan.
 
 ## 7 · Decisiones para Julian
 
-Ninguna aplicada. Ordenadas por severidad.
+> **Actualización 2026-08-16 (v11.35):** D1, D2 y D3 **aplicadas** a petición del usuario, junto con
+> el arreglo del sync (§3). D4-D7 siguen abiertas.
 
-### D1 · Deload muerto (A4) — recomendado: arreglar
+### ✅ Aplicadas en v11.35
 
-El más grave. Tres opciones:
-
-| Opción | Qué implica |
+| # | Qué se hizo |
 |---|---|
-| **Anclar el deload al bloque del IDEAL** (recomendado) | `isDeloadWeek` pasa a contar semanas dentro del bloque de 5 (4 build + 1 deload) en vez de contra `startDate` de abril. Cumple LOAD-004. Coste: una semana de cada cinco al 50% de volumen |
-| Solo reactivo | Borrar el deload programado y confiar en `checkDeloadNeeded()`. **Requiere arreglar antes el sync (§3)**, porque sin workouts registrados no dispara nunca |
-| Dejarlo | Sin deload indefinido. En déficit, es la vía directa al estancamiento |
+| **D1** | `isDeloadWeek` se ancla al bloque de 5 semanas del IDEAL (`deloadAnchorWeek` en settings) en vez de a `wk===5\|\|wk===9` de abril. El ancla se fija a la semana actual, así que **el primer deload cae 4 semanas después**, sin sorpresas. De paso se retiró `getRunsThisWeek` (resto de abril que decía "Optional run" los domingos, contra el IDEAL) |
+| **D2** | Pec Deck pasa de `upperA` a `upperB`; Lat Pulldown entra en `upperA`. **Empuje horizontal 2×/sem** (7+3) y **tirón vertical 2×/sem** (3+4). Pecho sigue en 10 series. **Coste real: espalda 11 → 14 series/sem y total 80 → 83.** Sigue dentro de 10-14 (STR-003), pero es un aumento de volumen en déficit, que STR-001 desaconseja — queda dicho, no disimulado. El press vertical (OHP) se deja a propósito en 1×/sem |
+| **D3** | La variante de 5 días quita `upperB` en vez de `lowerB`: **lower/upper/lower**, con el sumo deadlift intacto. Gracias a D2 el tirón vertical sobrevive en `upperA`; sólo se pierde el press vertical. **Efecto secundario:** su budget sube de 5,5 a 6,5, por encima del tope de 6 → material para D5 |
 
-### D2 · Frecuencia por patrón en la variante 6 (A1)
+Para que los cambios lleguen al teléfono se añadió `PLAN_REV`: `applyIdealPlan()` era idempotente
+por etiqueta, así que una edición de sesiones nunca habría regenerado el plan en un dispositivo que
+ya tuviera `Ideal · 6 días`.
 
-| Opción | Qué implica |
-|---|---|
-| **Repartir el pecho** (recomendado) | Mover 3 series de pecho de `upperA` a `upperB`, y 1 slot de vertical a `upperA`. Empuje/press vertical/tirón vertical pasan a 2×/sem. **Mismo volumen total**, solo redistribuido — compatible con la restricción de no subir volumen en déficit |
-| Upper/Lower verdadero | Rediseñar `upperA`/`upperB` como sesiones espejo. Más limpio, más trabajo, cambia sesiones que ya conoces |
-| Dejarlo | 10 series de pecho 1×/sem es aceptable en volumen; corregir entonces la documentación, que afirma 2×/sem |
-
-### D3 · Variante 5 sin peso muerto (A2)
-
-Recomendado: al bajar de 6 a 5 días, quitar **`upperB`**, no `lowerB` (queda lower/upper/lower, con
-el sumo intacto). Alternativa: sustituir `upperB` por un `fullB` que conserve la bisagra.
+### Pendientes
 
 ### D4 · Sesión de calidad real (A8)
 
@@ -348,10 +371,11 @@ Lp(a) · glucosa + HbA1c + insulina · **testosterona total y libre + SHBG** · 
 ultrasensible + ESR · hepatograma · urea/creatinina/TFGe · TSH. En ayunas, sin entrenamiento fuerte
 48 h antes, bien hidratado.
 
-### D7 · Arreglar el sync (§3) — recomendado como siguiente tarea
+### ✅ D7 · Arreglar el sync (§3) — HECHO en v11.35
 
-Sin esto, el resto del sistema está ciego: no hay readiness, ni progresión, ni deload reactivo, ni
-revisiones semanales, ni forma de validar ninguna de las decisiones anteriores.
+Causa raíz encontrada y corregida (ver §3). Queda un paso que sólo puede hacer el usuario:
+**abrir la app en el iPhone** para que el backlog drene. Después, el backfill de W19–W32 con
+`/weekly-review-auto` ya es posible y merece su propia pasada.
 
 ---
 

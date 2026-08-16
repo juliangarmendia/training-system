@@ -84,9 +84,17 @@ This is the **authoritative current exercise selection** (live in the app's `PLA
 
 | Session | Exercises (sets × reps @ RPE) |
 |---|---|
-| **Upper A** | Bench 4×5-8@7-8 · Barbell Row 4×6-10@7-8 · Incline DB Press 3×8-12@7 (3s ecc) · **Pec Deck** 3×10-12@7 · Face Pull 3×12-15@7 · DB Lateral 3×12-15@7 · Rope Pushdown 2×10-15@7 |
+| **Upper A** | Bench 4×5-8@7-8 · Barbell Row 4×6-10@7-8 · Incline DB Press 3×8-12@7 (3s ecc) · **Lat Pulldown** 3×10-12@7 *(v11.35)* · Face Pull 3×12-15@7 · DB Lateral 3×12-15@7 · Rope Pushdown 2×10-15@7 |
 | **Lower A** | Back Squat 4×5-8@7-8 · RDL 3×8-10@7 (3s ecc) · **Hack Squat** 3×10-12@7-8 · **Seated Leg Curl** 3×10-12@7 (3s ecc) · Standing Calf 3×12-15@7 · Cable Crunch 3×10-15 |
-| **Upper B** | Chin-ups 4×5-8@7-8 · OHP 4×5-8@7-8 · **Chest-Supported Row** 3×10-12@7 · Incline DB Curl 3×10-12@7 (3s ecc) · **Lateral-Raise Machine** 3×12-15@7 · Hanging Leg Raise 3×8-12 |
+| **Upper B** | Chin-ups 4×5-8@7-8 · OHP 4×5-8@7-8 · **Pec Deck** 3×10-12@7 *(v11.35)* · **Chest-Supported Row** 3×10-12@7 · Incline DB Curl 3×10-12@7 (3s ecc) · **Lateral-Raise Machine** 3×12-15@7 · Hanging Leg Raise 3×8-12 |
+
+> **Cambio v11.35 (D2, 2026-08-16).** Pec Deck se muda de Upper A a Upper B y Lat Pulldown ocupa su
+> sitio, para que **empuje horizontal y tirón vertical se entrenen 2×/semana** (STR-002). Antes
+> Upper A concentraba 10 series de pecho y Upper B era el único día con dominadas. El pecho sigue
+> en 10 series semanales, sólo repartidas. **Coste: la espalda sube de 11 a 14 series/semana y el
+> total de 80 a 83** — dentro del rango de STR-003, pero es un aumento de volumen en déficit.
+> El press vertical (OHP) se deja a propósito en 1×/semana: es un ancla de fuerza donde la carga
+> pesa más que la frecuencia, y el deltoides anterior ya recibe trabajo indirecto los dos días.
 | **Lower B** | Sumo DL 4×3-6@7-8 (RPE-gated) · **Glute-Drive machine** 3×8-12@7 · BSS 3×8-10/side@7-8 · Leg Extension 3×10-15@7-8 · Lying Leg Curl 3×10-12@7 (3s ecc) · Cable Pallof 3×10-15 |
 
 ### Block B (activate at W29 via plan version — rotation for novel stimulus)

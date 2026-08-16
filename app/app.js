@@ -19,7 +19,10 @@ const PLAN = {
         { id: 'bench-press', name: 'Barbell Bench Press', muscle: 'Chest', sets: 4, reps: '5-8', rpe: '7-8', defaultRest: 150, notes: 'Main press. Full ROM, control the eccentric.', compound: true },
         { id: 'barbell-row', name: 'Barbell Row', muscle: 'Back', sets: 4, reps: '6-10', rpe: '7-8', defaultRest: 150, notes: 'Overhand grip. Strict form, no heaving.', compound: true },
         { id: 'incline-db-press', name: 'Incline DB Press', muscle: 'Chest', sets: 3, reps: '8-12', rpe: '7', defaultRest: 90, notes: '30-45° angle. 3s eccentric.', superset: 'A', db: true },
-        { id: 'pec-deck', name: 'Pec Deck', muscle: 'Chest', sets: 3, reps: '10-12', rpe: '7', defaultRest: 90, notes: 'Constant tension, deep stretch. Squeeze 1s.', superset: 'A' },
+        // v11.35 (D2): Pec Deck moved to Upper B and Lat Pulldown takes its place, so
+        // horizontal press and vertical pull are both trained 2x/week (STR-002). Chest
+        // stays at 10 weekly sets — redistributed, not increased.
+        { id: 'lat-pulldown', name: 'Lat Pulldown', muscle: 'Back', sets: 3, reps: '10-12', rpe: '7', defaultRest: 90, notes: '2º estímulo de tirón vertical. Control, sin balanceo.', superset: 'A' },
         { id: 'face-pull', name: 'Cable Face Pull', muscle: 'Rear Delt', sets: 3, reps: '12-15', rpe: '7', defaultRest: 60, notes: 'Shoulder health. Non-negotiable.', superset: 'B' },
         { id: 'lateral-raise', name: 'DB Lateral Raise', muscle: 'Shoulders', sets: 3, reps: '12-15', rpe: '7', defaultRest: 60, notes: 'Light, controlled, full ROM.', superset: 'B', db: true },
         { id: 'tricep-pushdown', name: 'Tricep Pushdown', muscle: 'Triceps', sets: 2, reps: '10-15', rpe: '7', defaultRest: 60, notes: 'Optional — skip if short on time.' },
@@ -58,6 +61,8 @@ const PLAN = {
       exercises: [
         { id: 'chinups', name: 'Chin-ups', muscle: 'Back', sets: 4, reps: '5-8', rpe: '7-8', defaultRest: 150, notes: 'Add weight at 4×8. Assisted pull-up machine if <5 reps.', bw: true, compound: true },
         { id: 'ohp', name: 'Overhead Press', muscle: 'Shoulders', sets: 4, reps: '5-8', rpe: '7-8', defaultRest: 150, notes: 'Standing. Strict form, no leg drive.', compound: true },
+        // v11.35 (D2): arrives from Upper A — the week's 2nd horizontal-press stimulus.
+        { id: 'pec-deck', name: 'Pec Deck', muscle: 'Chest', sets: 3, reps: '10-12', rpe: '7', defaultRest: 90, notes: '2º estímulo de pecho de la semana. Tensión constante, squeeze 1s.' },
         { id: 'chest-supported-row', name: 'Chest-Supported Row', muscle: 'Back', sets: 3, reps: '10-12', rpe: '7', defaultRest: 90, notes: 'Strict, no lower-back fatigue. Squeeze at the top.' },
         { id: 'incline-curl', name: 'Incline DB Curl', muscle: 'Biceps', sets: 3, reps: '10-12', rpe: '7', defaultRest: 60, notes: 'Stretch at bottom. 3s eccentric.', superset: 'A', db: true },
         { id: 'lateral-raise-machine', name: 'Lateral Raise Machine', muscle: 'Shoulders', sets: 3, reps: '12-15', rpe: '7', defaultRest: 60, notes: 'Constant tension. Controlled, full ROM.', superset: 'A' },
@@ -1192,14 +1197,48 @@ function getWeekNumber() {
   return Math.max(1, Math.floor(diffDays / 7) + 1);
 }
 
-function isDeloadWeek(weekNum) {
-  return weekNum === 5 || weekNum === 9;
+// Deload cadence — anchored to the IDEAL's 5-week block (4 build + 1 deload, LOAD-004).
+//
+// Until v11.35 this was `weekNum === 5 || weekNum === 9`, hardcoded to the April 2026
+// program. getWeekNumber() counts from settings.startDate, so once week 9 passed this
+// returned FALSE FOREVER — no programmed deload could fire from mid-May onward, across
+// the 5 places that call it. The reactive path (checkDeloadNeeded) needs logged workouts,
+// which stopped syncing on 2026-06-30, so there was no fallback either.
+//
+// The anchor is stored, not derived from startDate, so switching this on does NOT
+// retroactively make the current week a deload: the first one lands 4 weeks out.
+const DELOAD_BLOCK_WEEKS = 5;
+
+function deloadAnchorWeek() {
+  const a = state.settings && state.settings.deloadAnchorWeek;
+  return (typeof a === 'number' && a > 0) ? a : null;
 }
 
-function getRunsThisWeek(weekNum) {
-  if (weekNum <= 3) return 1;
-  if (weekNum <= 6) return 2;
-  return 3;
+function isDeloadWeek(weekNum) {
+  const anchor = deloadAnchorWeek();
+  if (!anchor) return false;              // not yet anchored → never a deload
+  const offset = weekNum - anchor;
+  if (offset < 0) return false;
+  return (offset % DELOAD_BLOCK_WEEKS) === DELOAD_BLOCK_WEEKS - 1;  // 4 build, then deload
+}
+
+// Set the anchor once, to the CURRENT week, so the first deload is 4 weeks away and the
+// user can see it coming instead of losing a week to a surprise 50% volume cut.
+async function ensureDeloadAnchor() {
+  if (deloadAnchorWeek()) return;
+  state.settings.deloadAnchorWeek = getWeekNumber();
+  try { await dbPut('settings', { key: 'userSettings', data: state.settings }); } catch (e) {}
+  console.log(`[Deload] Anchored to week ${state.settings.deloadAnchorWeek}; next deload in ${DELOAD_BLOCK_WEEKS - 1} weeks`);
+}
+
+// Which calendar week (from getWeekNumber) is the next deload?
+function nextDeloadWeek() {
+  const anchor = deloadAnchorWeek();
+  if (!anchor) return null;
+  const wk = getWeekNumber();
+  let w = anchor + DELOAD_BLOCK_WEEKS - 1;
+  while (w < wk) w += DELOAD_BLOCK_WEEKS;
+  return w;
 }
 
 function getWeekDates() {
@@ -1513,22 +1552,24 @@ async function showWelcomeScreen() {
       <div class="wh-meta">${numEx} exercises · ~${estMin} min · ${session.subtitle}</div>
     `;
   } else if (plan.type === 'run') {
-    const runsAllowed = getRunsThisWeek(wk);
-    if ((jsDay === 3 && runsAllowed < 2) || (jsDay === 0 && runsAllowed < 3)) {
-      todayText = 'Rest day — recover well.';
-    } else {
-      todayText = `Let's run`;
-      headsUpHTML = `
-        <div class="wh-title">Today</div>
-        <div class="wh-session">🏃 Zone 2 Run</div>
-        <div class="wh-meta">Conversational pace · easy effort</div>
-      `;
-    }
+    // v11.35: this used to be gated by getRunsThisWeek(wk) — a 1/2/3-runs-by-week-number
+    // ramp from the April plan that always returned 3 by now, and that contradicted the
+    // IDEAL (which decides the cardio days itself). Removed; the plan is the authority.
+    todayText = `Let's run`;
+    headsUpHTML = `
+      <div class="wh-title">Today</div>
+      <div class="wh-session">🏃 ${plan.label || 'Zone 2 Run'}</div>
+      <div class="wh-meta">${plan.durationMin ? `${plan.durationMin} min · ` : ''}Conversational pace · easy effort</div>
+    `;
+  } else if (plan.type === 'recovery') {
+    todayText = 'Recuperación activa';
+    headsUpHTML = `
+      <div class="wh-title">Today</div>
+      <div class="wh-session">🧘 ${plan.label || 'Recuperación activa'}</div>
+      <div class="wh-meta">Movilidad + core${plan.z2FinisherMin ? ` · ${plan.z2FinisherMin} min Z2 suave` : ''}</div>
+    `;
   } else {
     todayText = 'Rest day — recover well.';
-    if (jsDay === 0 && getRunsThisWeek(wk) >= 3) {
-      todayText = 'Optional run today — or rest.';
-    }
   }
 
   document.getElementById('welcome-greeting').textContent = `Hola, ${name}`;
@@ -3922,6 +3963,7 @@ async function renderStats() {
   await renderStreaks();
   await renderFatigueScore();
   await renderDeloadReminder();
+  try { await renderSyncWarning(); } catch (e) {}
   await renderWeeklySummary();
   await loadAndRenderWeeklyCoach();
   await renderWeekComparison();
@@ -7306,13 +7348,19 @@ const IDEAL_BLOCK_V1 = {
       ],
     },
     5: {
+      // v11.35 (D3): this used to be lower/upper/UPPER — dropping from 6 to 5 days removed
+      // `lowerB`, so the SUMO DEADLIFT (a "never rotate" anchor) vanished from the week
+      // entirely and the posterior chain lost its only dedicated day. Now it drops `upperB`
+      // instead, leaving lower/upper/lower. Cost: no OHP (vertical press) in this variant —
+      // acceptable, and cheaper than losing the hinge. Vertical PULL survives because D2 put
+      // Lat Pulldown into upperA. See assessments/2026-08-16_system-audit.md, A2/D3.
       label: 'Alta · 5 días',
-      note: '3 fuerza (lower/upper/upper) + 2 cardio + recuperación. Casi el ideal.',
+      note: '3 fuerza (lower/upper/lower) + 2 cardio + recuperación. Conserva sentadilla y peso muerto.',
       days: [
         { dow: 1, kind: 'strength', subtype: 'lower', bw: 2, planRef: 'lowerA', z2Finisher: 15, title: 'Lower A · Sentadilla', why: 'Pierna pesada al inicio, en fresco.', ruleIds: ['STR-005', 'INT-001'], alt: 'strength_lower' },
-        { dow: 2, kind: 'strength', subtype: 'upper', bw: 1, planRef: 'upperA', z2Finisher: 15, title: 'Upper A · Press/Remo', why: 'Tren superior horizontal; +Z2 corto.', ruleIds: ['STR-002'], alt: 'strength_upper' },
+        { dow: 2, kind: 'strength', subtype: 'upper', bw: 1, planRef: 'upperA', z2Finisher: 15, title: 'Upper A · Press/Remo/Dominada', why: 'Cubre empuje y tirón, horizontal y vertical; +Z2 corto.', ruleIds: ['STR-002'], alt: 'strength_upper' },
         { dow: 3, kind: 'cardio', subtype: 'zone2', bw: 0.5, durationMin: 35, title: 'Cardio Z2', summary: '30-40 min fácil + movilidad', why: 'Aeróbico de bajo impacto.', ruleIds: ['END-001', 'INT-002'], alt: 'hard_cardio' },
-        { dow: 5, kind: 'strength', subtype: 'upper', bw: 1, planRef: 'upperB', z2Finisher: 15, title: 'Upper B · Dominadas/OHP', why: 'Patrón vertical (lo que faltaba); +Z2 corto.', ruleIds: ['STR-002', 'STR-007'], alt: 'strength_upper' },
+        { dow: 5, kind: 'strength', subtype: 'lower', bw: 2, planRef: 'lowerB', z2Finisher: 15, title: 'Lower B · Bisagra', why: 'Peso muerto: el ancla de bisagra no se pierde al bajar de días.', ruleIds: ['STR-005', 'STR-007'], alt: 'strength_lower' },
         { dow: 6, kind: 'cardio', subtype: 'long_easy', bw: 1, durationMin: 45, title: 'Cardio calidad Z2', summary: 'Largo / progresivo Z2/Z3', why: 'Única sesión de calidad de la semana.', ruleIds: ['END-003', 'END-004'], alt: 'hard_cardio' },
         { dow: 0, kind: 'recovery', subtype: 'mobility', bw: 0, z2Finisher: 20, title: 'Recuperación activa', summary: 'Movilidad + core + Z2 suave 20 min', why: 'Recuperación activa con estímulo aeróbico.', ruleIds: ['ATH-003', 'READ-007'], alt: null },
       ],
@@ -7368,13 +7416,24 @@ function buildWeekTemplateFromIdeal(variantNum) {
 // T5: install the ideal plan as the LIVE default plan source (replaces the re-entry ramp).
 // Idempotent: only writes a new version when the target label differs (or force=true).
 // Never clobbers a manually-created custom plan unless forced (user taps the selector).
+// Bump when PLAN.sessions or the IDEAL day structure changes, so devices already running
+// the same label still regenerate. Without this, applyIdealPlan() returns early on label
+// match and a session edit shipped in an update would never reach the phone.
+// 2 = v11.35 (D2: Pec Deck A->B + Lat Pulldown into A; D3: variant 5 keeps lowerB).
+const PLAN_REV = 2;
+
 async function applyIdealPlan({ force = false } = {}) {
   const n = _idealVariant();
   const lbl = (activePlan && activePlan.label) || '';
   const managed = /^Ideal/.test(lbl) || lbl === 'Upper/Lower 4-Day Split' || lbl === 'Fallback' || /^Re-Entry/.test(lbl);
   if (!managed && !force) return; // respect a custom plan the user set themselves
   const targetLabel = `Ideal · ${n} días`;
-  if (lbl === targetLabel && !force) return; // already current → no version churn
+  const revStale = (state.settings && state.settings.planRev) !== PLAN_REV;
+  if (lbl === targetLabel && !force && !revStale) return; // already current → no version churn
+  if (revStale) {
+    state.settings.planRev = PLAN_REV;
+    try { await dbPut('settings', { key: 'userSettings', data: state.settings }); } catch (e) {}
+  }
   await createNewPlanVersion({
     label: targetLabel,
     weekNumber: getWeekNumber(),
@@ -9240,6 +9299,88 @@ async function renderDeloadReminder() {
   }
 }
 
+// v11.35: a sync failure must be visible the same day, not seven weeks later.
+// The queue silently froze on 2026-06-30 and nothing in the UI said a word — Settings
+// kept claiming "Data backed up automatically". See assessments/2026-08-16_system-audit.md.
+async function renderSyncWarning() {
+  const container = document.getElementById('sync-warning');
+  if (!container) return;
+  if (typeof getSyncStatus !== 'function') { container.classList.add('hidden'); return; }
+  let st;
+  try { st = await getSyncStatus(); } catch (e) { container.classList.add('hidden'); return; }
+
+  const pending = (st && st.total) || 0;
+  const quarantined = (st && st.quarantined) || 0;
+  const ageH = st && st.oldest ? Math.floor((Date.now() - st.oldest) / 3600000) : 0;
+
+  // Quiet unless it actually matters: something stuck, or a backlog older than a day.
+  if (quarantined === 0 && !(pending > 0 && ageH >= 24)) { container.classList.add('hidden'); return; }
+
+  const age = ageH >= 48 ? `${Math.floor(ageH / 24)} días` : `${ageH} h`;
+  const msg = quarantined > 0
+    ? `${quarantined} registro${quarantined === 1 ? '' : 's'} no se pudo subir. Tus datos siguen en el teléfono.`
+    : `${pending} cambio${pending === 1 ? '' : 's'} sin subir desde hace ${age}.`;
+  container.innerHTML = `
+    <div class="deload-banner" style="border-color:var(--red)">
+      <span class="deload-icon">☁️</span>
+      <div>
+        <div class="deload-text" style="font-weight:700">Copia en la nube pendiente</div>
+        <div style="font-size:11px;color:var(--text2);margin-top:2px">${msg} Tocá para reintentar.</div>
+      </div>
+    </div>`;
+  container.classList.remove('hidden');
+  container.onclick = async () => {
+    if (typeof syncAll === 'function') await syncAll();
+    await renderSyncWarning();
+    const after = await getSyncStatus();
+    toast(after.total > 0 ? `Quedan ${after.total} sin subir` : 'Sincronizado');
+  };
+}
+
+// ==================== FULL JSON BACKUP (v11.35) ====================
+// The CSV export only covers workouts/runs/nutrition/bodyweight — it silently omits
+// `sessions` (every cardio logged since v11.29) and `mobility_sessions`. That made the
+// one "backup" in the app an incomplete one at exactly the moment the cloud copy was
+// stale. This dumps every IndexedDB store verbatim, so it can be restored as-is.
+const BACKUP_STORES = [
+  'workouts', 'runs', 'sessions', 'nutrition', 'bodyweight', 'mobility_sessions',
+  'steps', 'wellness', 'plans', 'exercises', 'weekly_reviews', 'settings', 'sync_queue',
+];
+
+async function exportJSON() {
+  const data = {};
+  const counts = {};
+  for (const store of BACKUP_STORES) {
+    try {
+      const rows = await dbGetAll(store);
+      data[store] = rows || [];
+      counts[store] = (rows || []).length;
+    } catch (e) {
+      data[store] = [];
+      counts[store] = null; // store missing on this device
+    }
+  }
+  const backup = {
+    app: 'training-system',
+    version: '11.35',
+    exportedAt: new Date().toISOString(),
+    dbVersion: typeof DB_VERSION !== 'undefined' ? DB_VERSION : null,
+    counts,
+    data,
+  };
+  const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `training-backup-${today()}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  const total = Object.values(counts).reduce((n, c) => n + (c || 0), 0);
+  toast(`Backup: ${total} registros`);
+}
+
 // ==================== CSV EXPORT ====================
 async function exportCSV() {
   const workouts = (await dbGetAll('workouts')).sort((a, b) => a.date.localeCompare(b.date));
@@ -10035,6 +10176,8 @@ function bindEvents() {
   // Backup / Restore / CSV
   document.getElementById('btn-backup').addEventListener('click', exportBackup);
   document.getElementById('btn-export-csv').addEventListener('click', exportCSV);
+  const btnJson = document.getElementById('btn-export-json');
+  if (btnJson) btnJson.addEventListener('click', exportJSON);
   document.getElementById('file-restore').addEventListener('change', (e) => {
     if (e.target.files[0]) importBackup(e.target.files[0]);
   });
@@ -10269,8 +10412,22 @@ async function runMigrations() {
   }
 }
 
+// v11.35: IndexedDB is the ONLY complete copy of the training log — the cloud is a
+// mirror, and it was stale for seven weeks without anyone noticing. Ask the browser not
+// to evict it under storage pressure. It's a request, not a guarantee (iOS grants it
+// readily for home-screen PWAs), and it was never being asked for at all.
+async function requestPersistentStorage() {
+  try {
+    if (!navigator.storage || !navigator.storage.persist) return;
+    if (await navigator.storage.persisted()) return;
+    const granted = await navigator.storage.persist();
+    console.log(`[Storage] Persistent storage ${granted ? 'granted' : 'denied'}`);
+  } catch (e) { /* not supported — nothing to do */ }
+}
+
 async function init() {
   await openDB();
+  await requestPersistentStorage();
   await loadSettings();
   loadTheme();
 
@@ -10278,6 +10435,7 @@ async function init() {
   await ensurePlanSeeded();
   await ensureExerciseLibrarySeeded();
   await loadActivePlan();
+  await ensureDeloadAnchor(); // v11.35: D1 — anchor the 5-week deload block (first one 4 wks out)
   await applyIdealPlan();     // T5: install the ideal plan as the live default (replaces re-entry ramp)
   await loadExerciseLibrary();
   await loadExerciseOverrides(); // T5.2: persistent exercise swaps

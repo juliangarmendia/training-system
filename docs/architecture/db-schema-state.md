@@ -21,6 +21,28 @@ Estado vivo del esquema IndexedDB de la PWA y reglas de rollback seguro. Actuali
 Migración: `onupgradeneeded` es **aditivo** (crea cada store solo si no existe). No hay migraciones
 destructivas; ningún registro se reescribe.
 
+## v11.35 (2026-08-16) — `plans` y `exercises` existen por fin en Supabase
+
+Ambos stores llevaban desde v11.x en la lista de sync (`app/supabase-sync.js`) **sin tener tabla en
+Supabase**. Como `drainSyncQueue()` hacía `break` ante el primer fallo, el upsert de `plans` que
+`applyIdealPlan()` generó el **2026-06-30** (v11.28) congeló toda la cola de salida durante siete
+semanas. Ningún dato se perdió —IndexedDB es la copia completa— pero nada subió a la nube.
+
+Migración `add_plans_and_exercises_sync_tables`: mismo patrón que `sessions` —
+PK `(user_id, record_id)`, `data jsonb`, `updated_at`, FK a `auth.users` con `on delete cascade`,
+RLS con una política `for all using (auth.uid() = user_id)`.
+
+**Tablas Supabase (11):** `bodyweight` · `exercises` · `mobility_sessions` · `nutrition` ·
+**`plans`** · `runs` · `sessions` · `settings` · `steps` · `wellness` · `workouts`.
+
+Cambios de robustez en el mismo release: la cola ya no se bloquea ante un elemento roto (pasa a
+cuarentena tras 5 intentos o ante un error permanente), colapsa upserts superseded del mismo
+registro, y el estado real del sync es visible en Settings y en Home.
+
+> **Regla que se desprende:** añadir un store a la lista de sync de `supabase-sync.js` **exige**
+> crear su tabla en Supabase en el mismo cambio. `weekly_reviews`, `trash` y `sync_queue` siguen
+> siendo deliberadamente locales y **no** están en esa lista.
+
 ## Caveat de rollback (IMPORTANTE)
 
 **Revert de commit ≠ rollback limpio una vez que el browser subió la DB.**

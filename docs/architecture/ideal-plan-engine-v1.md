@@ -204,8 +204,52 @@ hoy toca pierna (INT-001), la semana pasó el tope (BUD-001) o la recuperación 
 **Decisión explícita del usuario: avisar, nunca bloquear.** Los 13 workouts siguen enviables
 cualquier día.
 
+## v11.35 — D1/D2/D3 aplicadas + el sync arreglado (2026-08-16)
+
+Tres de las afirmaciones falsas de la tabla de arriba dejan de serlo.
+
+**D1 · El deload vuelve a existir.** `isDeloadWeek(wk)` era `wk === 5 || wk === 9` del programa de
+abril y devolvía `false` para siempre desde mediados de mayo. Ahora se ancla al bloque de 5 semanas
+del IDEAL mediante `state.settings.deloadAnchorWeek`, que se fija **a la semana actual** la primera
+vez que corre `ensureDeloadAnchor()` en `init()`: el primer deload cae **4 semanas después de la
+actualización**, no de golpe. `isDeloadWeek` = `((wk - anchor) % 5) === 4`. Sin ancla devuelve
+`false`, que es el default seguro. Se retiró `getRunsThisWeek(wk)`, otro resto de abril que hacía
+que el domingo dijera *"Optional run today"* cuando el IDEAL prescribe recuperación activa.
+
+**D2 · Empuje horizontal y tirón vertical a 2×/semana.** Pec Deck pasa de `upperA` a `upperB`; Lat
+Pulldown ocupa su hueco en `upperA`. Recuento verificado tras el cambio:
+
+| Patrón | Series/sem | Días |
+|---|---|---|
+| Empuje horizontal | 10 | **2** ✓ |
+| Tirón horizontal | 7 | 2 ✓ |
+| Tirón vertical | 7 | **2** ✓ |
+| Bisagra | 7 | 2 ✓ |
+| Cuádriceps (sentadilla + unilateral + aislado) | 13 | 2 ✓ |
+| Press vertical (OHP) | 4 | 1 — aceptado a propósito |
+
+El pecho sigue en 10 series. **Coste real: espalda 11 → 14 series/sem, total 80 → 83.** Dentro de
+STR-003 (10-14) pero es un aumento de volumen en déficit, contra la preferencia de STR-001; queda
+dicho, no disimulado.
+
+**D3 · La variante de 5 días conserva el peso muerto.** Al bajar de 6 a 5 días ahora cae `upperB`,
+no `lowerB` → **lower/upper/lower** con el sumo intacto. El tirón vertical sobrevive porque D2 metió
+el Lat Pulldown en `upperA`; sólo se pierde el press vertical. **Efecto secundario honesto:** su
+budget sube de 5,5 a **6,5**, por encima del tope de 6 — material para D5, que sigue abierta.
+
+**`PLAN_REV`.** `applyIdealPlan()` era idempotente por etiqueta, así que una edición de sesiones
+nunca habría llegado a un dispositivo que ya tuviera `Ideal · 6 días`. Ahora regenera también
+cuando `settings.planRev` difiere de `PLAN_REV`. **Súbelo al cambiar `PLAN.sessions` o la estructura
+de días del IDEAL.**
+
+**El sync.** La cola de salida llevaba congelada desde el 2026-06-30 por un upsert de `plans` a una
+tabla inexistente, con `drainSyncQueue()` haciendo `break` ante el primer fallo. Detalle completo en
+[`../../assessments/2026-08-16_system-audit.md`](../../assessments/2026-08-16_system-audit.md) §3 y
+en [`db-schema-state.md`](./db-schema-state.md).
+
 ## Roadmap
 - **T4b:** generador algorítmico (arma bloque/semana desde reglas+perfil en runtime; hoy `IDEAL_BLOCK_V1` es data).
 - **T6:** loop de adaptación semanal + periodización multi-bloque + progression/modality engines.
-- **Antes que ambos:** arreglar el sync de Supabase (apagado desde ~2026-06-30) y decidir D1-D5. Sin
-  datos no hay adaptación posible, que es justo lo que T6 promete.
+- **Siguiente paso real:** con el backlog ya subiendo, hacer el backfill de W19-W32 con
+  `/weekly-review-auto` y recalibrar perfil y nutrición **con datos**, no con estimaciones.
+  Después, D4 (sesión de calidad) y D5 (budget), que necesitan ese histórico para decidirse bien.
