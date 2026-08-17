@@ -175,6 +175,36 @@ es defendible; lo que había que arreglar era la regla.** → Corregida en esta 
 
 ---
 
+### A10 · La app sólo importaba carreras (descubierto y corregido en v11.36)
+
+Este hallazgo **no estaba en la auditoría original** — apareció cuando Julian notó que su cardio no
+aparecía por ningún lado. Es el más consecuente de todos los de ingesta.
+
+Los dos caminos de entrada filtraban por tipo `Run` y **descartaban en silencio todo lo demás**:
+
+- `app/app.js` — `filter(a => a.type === 'Run' || …)`
+- `supabase/functions/strava-sync/index.ts` — `filter(a => a.type === "Run" …)`
+- `app/whoop.js` — importa **solo wellness**; nunca actividades
+
+Consecuencia: bici, remo, ski, elíptica, caminata y natación **no existían** para el sistema, aunque
+Whoop y Strava las registraran. El store `sessions` llevaba **0 filas** desde su creación. Y como el
+hard-day budget, el volumen semanal, la adherencia y el advisory diario leen de ahí, todos operaban
+sobre una imagen parcial de la carga real.
+
+Lo más incoherente: `CARDIO_LIBRARY` puede mandar 13 workouts de bici, remo y ski al COROS —
+y la app **no podía leer que se hubieran hecho**. El catálogo era de ida y no de vuelta, en un
+sistema cuyo `CLAUDE.md` declara el cardio *"cualidad co-igual, no una modalidad subordinada"*.
+
+**Corregido en v11.36:** `CARDIO_TYPE_MAP` mapea 23 tipos a 8 modalidades; carreras a `runs` y el
+resto a `sessions`; fuerza excluida a propósito para no duplicar el log de gym; backfill desde
+2026-04-01; dedup entre fuentes; y **diagnóstico visible de qué se importa y qué se descarta**.
+
+> **El patrón que se repite en las tres rondas: el descarte silencioso.** `drainSyncQueue` hacía
+> `break` sin decir nada; el filtro de actividades tiraba sin decir nada; Settings afirmaba "Data
+> backed up automatically" pasara lo que pasara. Cada vez, el fallo era invisible hasta que alguien
+> lo notó por casualidad. La lección de diseño no es "arreglar el filtro": es **que ningún camino
+> descarte datos sin dejar rastro**.
+
 ## 2 · ¿Se usan los documentos en los entrenamientos?
 
 **34 de 59 Rule IDs aparecen en `app.js` (58%)** — pero citar no es cumplir.
@@ -183,7 +213,7 @@ es defendible; lo que había que arreglar era la regla.** → Corregida en esta 
 |---|---|
 | **Fuerza (micro)** | ✅ De verdad. RPE 7-8 (STR-004), descansos 150-210 s en compuestos (STR-006), ROM completo y posición alargada (STR-007), core anti-rotación (ATH-003), gate lumbar del sumo, volumen 10-14 (STR-003) |
 | **Fuerza (macro)** | ❌ Frecuencia por patrón (A1/A2), deload (A4), progresión (A5) |
-| **Aeróbico** | ⚠️ El eslabón débil. END-005 *bloqueada por datos* (no se extraen zonas ni splits); el 80/20 de END-001 **no es medible** por lo mismo; END-004 no tiene nada que limitar; END-007 no se cita y no hay pliometría; el Z2 diario no estaba implementado (A3) |
+| **Aeróbico** | ⚠️ El eslabón débil. END-005 *bloqueada por datos* (no se extraen zonas ni splits); el 80/20 de END-001 **no es medible** por lo mismo; END-004 no tiene nada que limitar; END-007 no se cita y no hay pliometría; el Z2 diario no estaba implementado (A3). **Y había una causa más profunda que esta auditoría no vio: la app sólo importaba actividades de tipo `Run`**, así que bici, remo, ski y caminata no entraban nunca. No era sólo un problema de *prescripción*: era de **ingesta**. Corregido en v11.36 — ver A10 |
 | **Nutrición** | ❌ **Cero**. REC-001..005 no aparecen ni una vez en la app, siendo la pérdida de grasa el objetivo #1 |
 | **Readiness** | ⚠️ A medias. El score de WHOOP se usa como flag (READ-003 ✅, honesto), pero READ-001/004 (media móvil 7d, baseline individual) no están: `getWhoopContext()` toma el último día suelto |
 | **Selección** | ⚠️ SEL-001..004 no se citan pese a que `ALT_LIBRARY` y la elección de modalidad existen |

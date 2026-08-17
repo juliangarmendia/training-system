@@ -453,7 +453,9 @@ const SESSION_TYPES = {
   },
   cardio: {
     label: 'Cardio', tone: 'var(--accent)', icon: '🏃',
-    modalities: ['run_outdoor', 'treadmill', 'bike', 'row', 'ski'],
+    // v11.36: elliptical/swim/walk added — the importer can now bring in every modality
+    // Strava and Whoop record, not just runs (see CARDIO_TYPE_MAP).
+    modalities: ['run_outdoor', 'treadmill', 'bike', 'row', 'ski', 'elliptical', 'swim', 'walk'],
     subtypes: {
       zone2:     { label: 'Zone 2', budgetWeight: 0.5, evidenceTags: ['END-001', 'END-005', 'INT-002'] },
       zone3:     { label: 'Zone 3', budgetWeight: 1, evidenceTags: ['END-001'] },
@@ -4457,6 +4459,19 @@ async function renderSyncCard() {
   // Connected status view
   const wellnessRowCount = await dbGetAll('wellness').then(r => r.length).catch(() => 0);
   const runRowCount = await dbGetAll('runs').then(r => r.length).catch(() => 0);
+  const sessRowCount = await dbGetAll('sessions').then(r => r.length).catch(() => 0);
+
+  // v11.36: show what the last import actually kept and DROPPED. Silently discarding
+  // every non-Run activity is what hid this for months.
+  const imp = await dbGet('settings', 'lastImportSummary').then(r => r && r.data).catch(() => null);
+  let importLine = '';
+  if (imp) {
+    const keptStr = Object.entries(imp.kept || {}).map(([k, v]) => `${k} ${v}`).join(', ') || 'nada';
+    const skipStr = Object.entries(imp.skipped || {}).map(([k, v]) => `${k} ${v}`).join(', ');
+    importLine = `Última importación (${escapeHtml(imp.window || '')}): ${escapeHtml(String(imp.total || 0))} actividades → importadas: ${escapeHtml(keptStr)}`
+      + (skipStr ? `<br><span style="color:var(--text2)">Descartadas: ${escapeHtml(skipStr)}</span>` : '')
+      + '<br>';
+  }
 
   container.innerHTML = `
     <div class="form-row inline" style="margin-bottom:6px">
@@ -4467,9 +4482,9 @@ async function renderSyncCard() {
       Athlete <code>${escapeHtml(athleteId)}</code> · Key ${escapeHtml(_maskApiKey(apiKey))}
     </div>
     <div class="muted" style="font-size:11px;margin-bottom:12px;line-height:1.6">
-      Syncing: <strong>wellness</strong> (recovery, HRV, RHR, sleep, SpO2) · <strong>training load</strong> (CTL/ATL/Form) · <strong>body</strong> (weight, steps) · <strong>nutrition</strong> (kcal + macros) · <strong>activities</strong> (COROS runs)<br>
-      Local cache: ${wellnessRowCount} wellness rows · ${runRowCount} runs<br>
-      Last runs sync: ${escapeHtml(lastRunsDate)}
+      Syncing: <strong>wellness</strong> (recovery, HRV, RHR, sleep, SpO2) · <strong>training load</strong> (CTL/ATL/Form) · <strong>body</strong> (weight, steps) · <strong>nutrition</strong> (kcal + macros) · <strong>actividades</strong> (todo el cardio: correr, cinta, bici, remo, ski, elíptica, caminata, natación)<br>
+      Local cache: ${wellnessRowCount} wellness rows · ${runRowCount} runs · ${sessRowCount} sesiones de cardio<br>
+      ${importLine}Last runs sync: ${escapeHtml(lastRunsDate)}
     </div>
     <button id="sync-now" class="btn-primary btn-full">Sync now</button>
   `;
@@ -4573,16 +4588,54 @@ function _formatPaceFromSec(secondsPerKm) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-async function intervalsIcuSync() {
+// Activity type → app cardio modality. intervals.icu and Strava use the same type
+// names (both originate from Strava), so ONE map serves both import paths.
+//
+// Until v11.36 both paths filtered to `type === 'Run'` and silently dropped everything
+// else, so every bike / row / ski / walk session Whoop and Strava recorded was invisible
+// to the app. That contradicted the system's own premise — CLAUDE.md calls cardio a
+// co-equal quality across run/row/bike/ski/treadmill, and CARDIO_LIBRARY can push bike and
+// row workouts to the COROS that the app could then never see you complete. It also left
+// the hard-day budget, weekly volume and adherence blind to a whole block of training.
+// See assessments/2026-08-16_system-audit.md.
+const CARDIO_TYPE_MAP = {
+  Run: 'run_outdoor', TrailRun: 'run_outdoor',
+  VirtualRun: 'treadmill', Treadmill: 'treadmill',
+  Ride: 'bike', VirtualRide: 'bike', GravelRide: 'bike', MountainBikeRide: 'bike', EBikeRide: 'bike', Handcycle: 'bike',
+  Rowing: 'row', VirtualRow: 'row', Kayaking: 'row', Canoeing: 'row',
+  NordicSki: 'ski', BackcountrySki: 'ski', RollerSki: 'ski', AlpineSki: 'ski',
+  Elliptical: 'elliptical', StairStepper: 'elliptical',
+  Walk: 'walk', Hike: 'walk',
+  Swim: 'swim',
+};
+
+// Deliberately NOT imported: strength and mobility. They would duplicate the gym
+// sessions logged in-app and double-count in the hard-day budget (user decision).
+const NON_CARDIO_TYPES = new Set(['WeightTraining', 'Workout', 'Crossfit', 'Yoga', 'Pilates', 'StandUpPaddling']);
+
+const RUN_MODALITIES = new Set(['run_outdoor', 'treadmill']);
+
+function _activityModality(a) {
+  const t = String((a && (a.type || a.sport)) || '');
+  return CARDIO_TYPE_MAP[t] || null;
+}
+
+// Walks are recovery, not a cardio dose — consistent with logCardio().
+function _modalityFamily(modality) {
+  return modality === 'walk' ? 'recovery' : 'cardio';
+}
+
+async function intervalsIcuSync(opts = {}) {
   const apiKey = state.settings && state.settings.intervalsIcuApiKey;
   const athleteId = state.settings && state.settings.intervalsIcuAthleteId;
   if (!apiKey || !athleteId) return null;
 
-  // Sync window: 30 days back default, or since last sync minus 1 day for overlap
+  // Sync window: 30 days back default, or since last sync minus 1 day for overlap.
+  // opts.oldest/opts.newest override it (used by the one-shot backfill).
   const lastSync = parseInt(localStorage.getItem('intervalsicu_last_sync') || '0');
   const sinceMs = lastSync ? lastSync - 86400000 : Date.now() - 30 * 86400000;
-  const oldest = dateStr(new Date(sinceMs));
-  const newest = dateStr(new Date());
+  const oldest = opts.oldest || dateStr(new Date(sinceMs));
+  const newest = opts.newest || dateStr(new Date());
   const auth = 'Basic ' + btoa(`API_KEY:${apiKey}`);
   const url = `https://intervals.icu/api/v1/athlete/${encodeURIComponent(athleteId)}/activities?oldest=${oldest}&newest=${newest}`;
 
@@ -4606,21 +4659,61 @@ async function intervalsIcuSync() {
       intervalsIcuSync._keyLogDone = true;
     }
 
-    const runs = (activities || []).filter(a => (a.type === 'Run' || a.sport === 'Run' || a.icu_intensity === 'easy_run' || a.type === 'TrailRun'));
-    let pulled = 0;
+    // v11.36: import EVERY cardio modality, not just runs. Runs keep going to `runs`
+    // (that store owns distance/pace/GAP and the run history reads from it); everything
+    // else goes to `sessions`, the T1 envelope built for exactly this.
+    let pulled = 0, pulledSessions = 0;
+    const skipped = {};   // type -> count, so a discard is never silent again
+    const kept = {};      // modality -> count
     // Null-safe numeric coercion for the additive D1 fields.
     const num = (v) => (v != null && isFinite(Number(v))) ? Number(v) : null;
-    for (const a of runs) {
+
+    for (const a of (activities || [])) {
+      const rawType = String((a && (a.type || a.sport)) || 'unknown');
+      const modality = _activityModality(a);
+      if (!modality) { skipped[rawType] = (skipped[rawType] || 0) + 1; continue; }
+
       const stravaOrIcuId = a.id || a.external_id || `${a.start_date_local}_${a.distance}`;
       const recordId = `icu_${stravaOrIcuId}`;
       const startLocal = String(a.start_date_local || a.start_date || '');
       const date = startLocal.split('T')[0];
-      if (!date) continue;
+      if (!date) { skipped['sin fecha'] = (skipped['sin fecha'] || 0) + 1; continue; }
       const distanceKm = Number(a.distance || 0) / 1000;
       const movingSec = Number(a.moving_time || a.elapsed_time || 0);
       const durationMin = Math.round(movingSec / 60);
       const paceSecPerKm = distanceKm > 0 ? movingSec / distanceKm : 0;
       const gapSec = num(a.gap);
+      kept[modality] = (kept[modality] || 0) + 1;
+
+      // --- Non-run cardio → `sessions` (unified T1 envelope) ---
+      if (!RUN_MODALITIES.has(modality)) {
+        const family = _modalityFamily(modality);
+        const subtype = family === 'recovery' ? 'walk' : _subtypeFromIntensity(a.icu_intensity);
+        const meta = (typeof sessionSubtypeMeta === 'function' && sessionSubtypeMeta(family, subtype)) || {};
+        await smartPut('sessions', {
+          id: recordId, date, ts: Date.parse(startLocal) || Date.now(),
+          family, subtype, sessionType: `${family}.${subtype}`,
+          modality, title: String(a.name || `${modality} ${subtype}`),
+          durationMin: durationMin || null,
+          distance: distanceKm > 0 ? Math.round(distanceKm * 100) / 100 : null,
+          avgHR: a.average_heartrate ? Math.round(Number(a.average_heartrate)) : null,
+          maxHR: a.max_heartrate ? Math.round(Number(a.max_heartrate)) : null,
+          perceivedEffort: null,
+          evidenceTags: meta.evidenceTags || [],
+          budgetWeight: meta.budgetWeight != null ? meta.budgetWeight : 0.5,
+          trainingLoad: num(a.icu_training_load),
+          intensityLabel: (typeof a.icu_intensity === 'string' && a.icu_intensity) ? a.icu_intensity : null,
+          // The subtype is INFERRED when intervals.icu gives no intensity label — flagged
+          // so nothing downstream treats a guessed zone as a measured one (GEN-002).
+          subtypeInferred: !a.icu_intensity,
+          sport: rawType,
+          notes: '', source: 'intervals.icu', source_id: String(stravaOrIcuId),
+          week: getWeekNumber(), _updated_at: Date.now(),
+        });
+        pulledSessions++;
+        continue;
+      }
+
       const run = {
         id: recordId,
         date,
@@ -4649,15 +4742,79 @@ async function intervalsIcuSync() {
       await smartPut('runs', run);
       pulled++;
     }
-    localStorage.setItem('intervalsicu_last_sync', String(Date.now()));
-    console.log(`[intervals.icu] pulled ${pulled} runs (window ${oldest} → ${newest})`);
+
+    if (!opts.skipCursor) localStorage.setItem('intervalsicu_last_sync', String(Date.now()));
+
+    // Diagnostics. A silent discard is what let this go unnoticed for months; now every
+    // sync says what came in and what was dropped, by type.
+    const summary = {
+      window: `${oldest} → ${newest}`,
+      total: (activities || []).length,
+      runs: pulled, sessions: pulledSessions,
+      kept, skipped,
+    };
+    console.info('[intervals.icu] import:', summary);
+    try {
+      await dbPut('settings', { key: 'lastImportSummary', data: { ...summary, at: Date.now() } });
+    } catch (_) {}
+
     try { await validateRunDedup(); } catch (_) { /* validation log only */ }
     try { await fetchIntervalsIcuZones(); } catch (_) { /* zones are best-effort */ }
-    return { pulled, total: activities.length };
+
+    // Push what we just imported NOW. smartPut only ENQUEUES, and syncAll() runs ~500 ms
+    // after init while this pull is fired without await — so anything imported afterwards
+    // used to sit in the queue until the next app open.
+    if ((pulled + pulledSessions) > 0 && typeof window.drainSyncQueue === 'function') {
+      try { await window.drainSyncQueue(); } catch (_) {}
+    }
+
+    return { pulled, pulledSessions, total: (activities || []).length, kept, skipped };
   } catch (e) {
     console.warn('[intervals.icu] sync error:', e);
     return null;
   }
+}
+
+// One-shot backfill: every cardio modality since the program started. The normal sync
+// window is only [lastSync-1d, today], so months of bike/row/ski/walk sessions were never
+// imported and can't be recovered by it. Monthly windows keep each response small;
+// idempotent because every record is keyed by `icu_{id}`.
+const CARDIO_BACKFILL_FROM = '2026-04-01';
+
+async function backfillCardioFromIntervals({ force = false } = {}) {
+  const flag = (await dbGet('settings', 'cardioBackfillDone').catch(() => null));
+  if (flag && flag.data && !force) return null;
+  if (!(state.settings && state.settings.intervalsIcuApiKey && state.settings.intervalsIcuAthleteId)) return null;
+
+  const totals = { runs: 0, sessions: 0, total: 0, kept: {}, skipped: {}, windows: 0 };
+  const end = new Date();
+  let cursor = new Date(CARDIO_BACKFILL_FROM + 'T00:00:00');
+
+  while (cursor <= end) {
+    const winStart = new Date(cursor);
+    const winEnd = new Date(cursor);
+    winEnd.setMonth(winEnd.getMonth() + 1);
+    if (winEnd > end) winEnd.setTime(end.getTime());
+    const r = await intervalsIcuSync({
+      oldest: dateStr(winStart), newest: dateStr(winEnd), skipCursor: true,
+    });
+    if (r) {
+      totals.runs += r.pulled || 0;
+      totals.sessions += r.pulledSessions || 0;
+      totals.total += r.total || 0;
+      totals.windows++;
+      for (const [k, v] of Object.entries(r.kept || {})) totals.kept[k] = (totals.kept[k] || 0) + v;
+      for (const [k, v] of Object.entries(r.skipped || {})) totals.skipped[k] = (totals.skipped[k] || 0) + v;
+    }
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+
+  console.info('[backfill] cardio desde', CARDIO_BACKFILL_FROM, totals);
+  await dbPut('settings', { key: 'cardioBackfillDone', data: { at: Date.now(), from: CARDIO_BACKFILL_FROM, ...totals } });
+  if (typeof toast === 'function' && (totals.runs + totals.sessions) > 0) {
+    toast(`Recuperadas ${totals.sessions} sesiones de cardio`);
+  }
+  return totals;
 }
 
 // ==================== INTERVALS.ICU HR ZONES (T5.2) ====================
@@ -4780,6 +4937,38 @@ function dedupeRuns(runs) {
 // counted twice. Export/backup must stay raw (dbGetAll) to avoid data loss.
 async function getRunsDeduped() {
   return dedupeRuns(await dbGetAll('runs'));
+}
+
+// v11.36: the same activity can arrive twice — via Strava (`strava_{id}`) and via
+// intervals.icu (`icu_{id}`) — with different ids, so id-based dedup never catches it.
+// Match on (date + modality + duration ±2 min) and prefer intervals.icu as canonical,
+// the same rule dedupeRuns already applies to runs.
+function _sessionsAreSameActivity(a, b) {
+  if (!a || !b) return false;
+  if (a.date !== b.date) return false;
+  if ((a.modality || '') !== (b.modality || '')) return false;
+  const da = Number(a.durationMin), db = Number(b.durationMin);
+  if (!isFinite(da) || !isFinite(db)) return false;
+  return Math.abs(da - db) <= 2;
+}
+
+function dedupeSessions(sessions) {
+  const rank = (s) => ({ 'intervals.icu': 3, 'strava': 2 })[s && s.source] || 1; // manual = 1
+  const kept = [];
+  for (const s of (sessions || [])) {
+    const i = kept.findIndex(k => _sessionsAreSameActivity(k, s));
+    if (i === -1) { kept.push(s); continue; }
+    if (rank(s) > rank(kept[i])) {
+      // Keep a manually-entered perceived effort — the import can't supply it.
+      if (s.perceivedEffort == null && kept[i].perceivedEffort != null) s.perceivedEffort = kept[i].perceivedEffort;
+      kept[i] = s;
+    }
+  }
+  return kept;
+}
+
+async function getSessionsDeduped() {
+  return dedupeSessions(await dbGetAll('sessions').catch(() => []));
 }
 
 // Non-destructive validation: counts duplicate run pairs against real data, so we
@@ -7105,7 +7294,8 @@ async function computeHardDayBudget() {
   const [workouts, runs, sessions] = await Promise.all([
     dbGetAll('workouts').catch(() => []),
     (typeof getRunsDeduped === 'function' ? getRunsDeduped() : dbGetAll('runs')).catch(() => []),
-    dbGetAll('sessions').catch(() => []),
+    // Deduped since v11.36: imported cardio can arrive via both Strava and intervals.icu.
+    (typeof getSessionsDeduped === 'function' ? getSessionsDeduped() : dbGetAll('sessions')).catch(() => []),
   ]);
   const items = [];
   const add = (rec, store) => {
@@ -9362,7 +9552,7 @@ async function exportJSON() {
   }
   const backup = {
     app: 'training-system',
-    version: '11.35',
+    version: '11.36',
     exportedAt: new Date().toISOString(),
     dbVersion: typeof DB_VERSION !== 'undefined' ? DB_VERSION : null,
     counts,
@@ -10496,9 +10686,17 @@ async function init() {
   // Background sync on app open: runs (so Recent Runs is fresh) + wellness
   // (so the recovery card is current). Both swallowed errors — never block UI.
   intervalsIcuSync().then(result => {
-    if (result && result.pulled > 0 && state.currentTab === 'home') {
+    if (result && ((result.pulled || 0) + (result.pulledSessions || 0)) > 0 && state.currentTab === 'home') {
       renderRecentWorkouts();
     }
+    // v11.36: one-shot recovery of every non-run cardio session since April, which the
+    // Run-only filter discarded. Runs after the normal sync so it never delays startup.
+    return backfillCardioFromIntervals().then(t => {
+      if (t && (t.runs + t.sessions) > 0) {
+        try { renderRecentWorkouts(); } catch (_) {}
+        try { renderSessionHistory(); } catch (_) {}
+      }
+    });
   }).catch(() => {});
   if (typeof whoopSyncData === 'function') {
     whoopSyncData().then(() => {

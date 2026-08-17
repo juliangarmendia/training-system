@@ -41,7 +41,28 @@ companion de Apple Health falla, el peso se degrada a forward-fills (ver caveats
 | `skinTemp` | unavailable | Solo legacy |
 | rolling averages / trends | derived_possible | No se computan en cliente (salvo CTL/ATL que vienen ya hechos) |
 
-## 2. Coros (vía Strava) y 3. intervals.icu activities — store IDB `runs`
+## 2. Coros (vía Strava) y 3. intervals.icu activities — stores IDB `runs` + `sessions`
+
+> ### ⚠️ Corregido en v11.36 (2026-08-16): sólo se importaban carreras
+>
+> Hasta v11.36 **ambos** caminos de entrada filtraban `type === 'Run'` y **descartaban en silencio
+> todo lo demás**: bici, remo, ski, elíptica, caminata y natación no entraban nunca, aunque Whoop y
+> Strava sí las registraran. `app/whoop.js` además importa **solo wellness**, nunca actividades, así
+> que el cardio visible en Whoop no tenía ninguna vía de entrada.
+>
+> Contradecía la premisa del sistema (`CLAUDE.md`: cardio co-igual entre run/row/bike/ski/treadmill)
+> y dejaba ciegos al hard-day budget, al volumen semanal y a la adherencia. `CARDIO_LIBRARY` podía
+> mandar workouts de bici y remo al COROS que la app luego **no podía leer**.
+>
+> Ahora `CARDIO_TYPE_MAP` (en `app/app.js`, replicado en `supabase/functions/strava-sync/index.ts`)
+> mapea 23 tipos a 8 modalidades. **Carreras → `runs`** (mantiene distancia/ritmo/GAP);
+> **el resto → `sessions`** con `family: 'cardio'` (o `recovery` para caminatas). La fuerza
+> (`WeightTraining`, `Workout`, `Crossfit`, `Yoga`) queda **fuera a propósito**: duplicaría las
+> sesiones de gym registradas a mano e inflaría el budget.
+>
+> **Nota de despliegue:** el cambio en la Edge Function de Strava es defensivo — hoy los 10 runs de
+> Supabase vienen de intervals.icu y **ninguno** de Strava. Requiere `supabase functions deploy` para
+> tener efecto si algún día se usa esa ruta.
 
 | Campo | Clasificación | Nota |
 |---|---|---|
@@ -223,6 +244,15 @@ pero **threshold/interval e híbrido requieren** o bien extraer `icu_intensity`/
 bien un nuevo input manual de tipo de sesión. Clasificación gruesa: viable hoy. Fina: bloqueada.
 
 ---
+
+## Bloqueos resueltos (2026-08-16)
+
+- ✅ **Ingesta limitada a carreras** → `CARDIO_TYPE_MAP` en v11.36. Era el bloqueo mayor y no estaba
+  identificado en esta auditoría: se daba por hecho que "activities" significaba todas las
+  actividades, cuando el filtro dejaba pasar sólo `Run`.
+- ✅ **Cola de sync congelada** desde 2026-06-30 (v11.35). Ver `db-schema-state.md`.
+- ✅ **Dedup Coros/Strava/intervals** → `dedupeSessions()` casa por (fecha + modalidad + duración
+  ±2 min) y prefiere intervals.icu, igual que `dedupeRuns` ya hacía para carreras.
 
 ## Resumen de bloqueos para implementación
 - **Decoupling / pace-to-HR / zonas** (END-005, END-001 fino): bloqueado — no se extrae de runs.
