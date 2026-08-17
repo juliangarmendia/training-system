@@ -205,6 +205,38 @@ resto a `sessions`; fuerza excluida a propósito para no duplicar el log de gym;
 > lo notó por casualidad. La lección de diseño no es "arreglar el filtro": es **que ningún camino
 > descarte datos sin dejar rastro**.
 
+### A11 · Auditoría de Full Body A (2026-08-17, corregido en v11.37)
+
+Julian pidió auditar `fullA` con criterio crítico. `fullA` y `fullB` son las **únicas** sesiones de
+fuerza de las variantes de 3 y 4 días, así que lo que falle ahí falla cuando menos margen hay.
+
+**Lo que estaba bien:** selección de compuestos, orden (compuestos primero, alternando
+inferior/superior), RPE 7-8 = 1-3 RIR (STR-004), descansos 180/150/120 s (STR-006), y 5 de 6
+compuestos tocando el rango 3-6 por abajo (STR-005). **El volumen bajo tampoco era un error:**
+25 series/semana es dosis de mantenimiento deliberada, y ACSM 2026 reconoce explícitamente que
+dosis mínimas producen resultados sustanciales. El problema era la **composición**, no la cantidad.
+
+| # | Hallazgo | Estado |
+|---|---|---|
+| 1 | **ATH-003 incumplida y estructuralmente indetectable.** `fullA` cerraba con Cable Crunch (flexión espinal cargada) y `fullB` con Hanging Leg Raise (flexión de cadera): **cero** anti-rotación o anti-extensión, con dos contracturas lumbares en el historial. Y `MOVEMENT_PATTERNS` metía todo el core en un bucket `'core'`, así que cualquier chequeo de "core 2×/semana" daba la sesión por buena. **La regla estaba bien escrita y era inaplicable** | ✅ Taxonomía partida en `core-anti-rotation` / `core-anti-extension` / `core-flexion`; Pallof a `fullA`, Ab Wheel a `fullB` |
+| 2 | **Cero series directas de isquios en toda la semana de 3/4 días.** Lo único posterior eran las 3 series de sumo — que lleva gate lumbar, así que en un mal día la cadena posterior entera podía quedar en nada | ✅ RDL 2×8-10 @RPE 7 en `fullA`; de paso la bisagra pasa a 2×/semana |
+| 3 | **La variante de 4 días no añadía nada de fuerza:** mismas 2 sesiones y las mismas 25 series que la de 3 días; el cuarto día es cardio. Su nota decía "sin perder cobertura" y la cobertura era idéntica | ⏸ Acoplado a **D5** — arreglarlo sube el budget a 6,5 sobre un tope de 6. Mejor con carga real medida |
+| 4 | **La variante 3 decía "Viaje / sin gym"** y `fullA` prescribe rack, barra, banco y máquina de cables: 4 de 4 ejercicios necesitan gimnasio completo | ✅ Etiqueta corregida. **No existe** una variante sin gimnasio de verdad — hueco abierto |
+| 5 | **`EQUIP_SUBS` es decoración.** `renderIdealPreview` afirma "cada día tiene alternativas si falta equipo"; la constante aparece en exactamente dos sitios del código y no está conectada a ninguna sesión | ⏸ Documentado, no arreglado |
+
+**Y lo que encontró el test, que la auditoría no vio:** al ejecutar el chequeo de ATH-003 sobre
+**las cuatro** variantes y no solo sobre `fullA`, saltó que la variante 6 —**la que está viva**—
+tenía el mismo fallo: solo el Pallof de `lowerB`, con `lowerA` y `upperB` en flexión. Cero
+anti-extensión en la semana real. Corregido cambiando el Cable Crunch de `lowerA` por Ab Wheel
+(donde estaba antes de que v6.0 lo sustituyera). El core del plan vivo queda 3/3/3 entre
+anti-extensión, anti-rotación y flexión, con el volumen total intacto en 83 series.
+
+> **Tercera lección del mismo tipo.** Los tres fallos grandes de esta auditoría —cola de sync,
+> filtro de actividades, y ahora ATH-003— comparten forma: **el sistema no podía ver su propio
+> incumplimiento.** No fue falta de evidencia ni de reglas; fue que el código descartaba en
+> silencio o el modelo de datos no sabía expresar la distinción. Escribir el chequeo fue lo que
+> encontró el problema en la variante viva, no leer el código.
+
 ## 2 · ¿Se usan los documentos en los entrenamientos?
 
 **34 de 59 Rule IDs aparecen en `app.js` (58%)** — pero citar no es cumplir.

@@ -627,8 +627,8 @@ reescriben la regla.
     "sources": ["McGill (spine-sparing core)"],
     "applicabilityToUser": "high",
     "confidence": "high",
-    "caveats": ["Especially relevant given the user's lumbar history."],
-    "programmingAction": "Exercise Selection Engine favors anti-rotation/anti-extension core."
+    "caveats": ["Especially relevant given the user's lumbar history.", "IMPLEMENTATION NOTE (2026-08-17, v11.37): this rule was UNENFORCEABLE for months, not for lack of evidence but because the taxonomy could not express it. MOVEMENT_PATTERNS tagged every core movement as 'core', so a week of loaded spinal FLEXION (cable crunch + hanging leg raise) passed any 'core 2x/week' check while containing zero of what this rule actually asks for. Split into core-anti-rotation / core-anti-extension / core-flexion; a rule graded strong is worthless if the data model cannot represent its distinction."],
+    "programmingAction": "Exercise Selection Engine favors anti-rotation/anti-extension core. Every strength week must contain >=1 core-anti-rotation AND >=1 core-anti-extension; flexion work is optional extra, never the whole allocation."
   },
   {
     "id": "ATH-004",

@@ -247,6 +247,38 @@ tabla inexistente, con `drainSyncQueue()` haciendo `break` ante el primer fallo.
 [`../../assessments/2026-08-16_system-audit.md`](../../assessments/2026-08-16_system-audit.md) §3 y
 en [`db-schema-state.md`](./db-schema-state.md).
 
+## v11.37 — Auditoría de fullA: composición del core y de la cadena posterior (2026-08-17)
+
+Auditoría completa en
+[`../../assessments/2026-08-16_system-audit.md`](../../assessments/2026-08-16_system-audit.md) (A11).
+
+- **ATH-003 era inaplicable por la taxonomía, no por la evidencia.** `MOVEMENT_PATTERNS` metía todo
+  el core en un bucket `'core'`, así que una semana entera de flexión espinal cargada pasaba
+  cualquier chequeo de "core 2×/semana". Partido en `core-anti-rotation` /
+  `core-anti-extension` / `core-flexion` + helper `isCorePattern()`. **Una regla `strong` no vale
+  nada si el modelo de datos no puede expresar su distinción.**
+- **`fullA`:** Cable Crunch → **Pallof Press**; añadido **RDL 2×8-10 @RPE 7** (eran 0 series
+  directas de isquios en toda la semana de 3/4 días, con el sumo bajo gate lumbar como único
+  trabajo posterior). 13 → 15 series, ~44 min.
+- **`fullB`:** Hanging Leg Raise → **Ab Wheel** (anti-extensión).
+- **`lowerA`:** Cable Crunch → **Ab Wheel**. Esto no lo vio la auditoría: lo encontró el test al
+  correrse sobre las 4 variantes, revelando que la de 6 días —la viva— tenía el mismo fallo. El
+  core del plan vivo queda 3/3/3 y el volumen total intacto en 83 series.
+- **Variante 3:** su nota decía *"Viaje / sin gym"* mientras `fullA` exige rack, barra, banco y
+  cables — 4 de 4 ejercicios. Corregida a "semana comprimida, con gimnasio".
+- **`PLAN_REV` → 3**, o el cambio no llega a un teléfono que ya tenga la misma etiqueta de plan.
+
+### Huecos abiertos que esta auditoría deja documentados
+
+- **No existe variante sin gimnasio.** Ninguna de las 4 funciona sin rack y barra. Para viajes de
+  verdad haría falta una sesión de peso corporal / bandas; es un diseño nuevo, no un parche.
+- **`EQUIP_SUBS` es decorativo.** `renderIdealPreview` afirma que "cada día tiene alternativas si
+  falta equipo"; la constante solo se usa para imprimir esa frase y no está conectada a ninguna
+  sesión ni al selector de ejercicios. **La afirmación de la UI es falsa.**
+- **La variante 4 no aporta fuerza** sobre la de 3 días (mismas 2 sesiones, mismas 25 series).
+  Arreglarlo sube su budget a 6,5 sobre un tope de 6 → acoplado a **D5**, pendiente de tener carga
+  real medida ahora que entra el cardio de Concept2 y Wattbike.
+
 ## Roadmap
 - **T4b:** generador algorítmico (arma bloque/semana desde reglas+perfil en runtime; hoy `IDEAL_BLOCK_V1` es data).
 - **T6:** loop de adaptación semanal + periodización multi-bloque + progression/modality engines.

@@ -45,7 +45,12 @@ const PLAN = {
         { id: 'hack-squat', name: 'Hack Squat', muscle: 'Quads', sets: 3, reps: '10-12', rpe: '7-8', defaultRest: 120, notes: 'Quad volume, no spinal load. Controlled depth.' },
         { id: 'seated-leg-curl', name: 'Seated Leg Curl', muscle: 'Hamstrings', sets: 3, reps: '10-12', rpe: '7', defaultRest: 90, notes: '3s eccentric, squeeze 1s.', superset: 'A' },
         { id: 'calf-raise', name: 'Standing Calf Raise', muscle: 'Calves', sets: 3, reps: '12-15', rpe: '7', defaultRest: 60, notes: 'Full ROM, pause at stretch.', superset: 'A' },
-        { id: 'cable-crunch', name: 'Cable Crunch', muscle: 'Core', sets: 3, reps: '10-15', rpe: '-', defaultRest: 60, notes: 'Controlled flexion, no hip movement.' },
+        // v11.37: Cable Crunch (flexión cargada) -> Ab Wheel (anti-extensión). Lo encontró el test
+        // de ATH-003 al correrlo sobre TODAS las variantes: la de 6 días —la que está viva— tenía
+        // solo el Pallof de lowerB como trabajo de la regla, y las otras dos sesiones de core eran
+        // flexión. Cero anti-extensión en la semana, con dos contracturas lumbares en el historial.
+        // El Ab Wheel estaba aquí hasta que v6.0 lo cambió por el Cable Crunch.
+        { id: 'ab-wheel', name: 'Ab Wheel Rollout', muscle: 'Core', sets: 3, reps: '8-12', rpe: '-', defaultRest: 60, notes: 'Anti-extensión. De rodillas; que la lumbar no se arquee. Escala el recorrido, no el número.', bw: true },
       ]
     },
     upperB: {
@@ -106,7 +111,16 @@ const PLAN = {
         { id: 'back-squat', name: 'Barbell Back Squat', muscle: 'Quads', sets: 4, reps: '5-8', rpe: '7-8', defaultRest: 180, notes: 'Objetivo ~97.5 kg. Prioridad #1, usa safeties. Rampa lumbar conservadora.', compound: true },
         { id: 'bench-press', name: 'Barbell Bench Press', muscle: 'Chest', sets: 3, reps: '6-8', rpe: '7-8', defaultRest: 150, notes: 'Objetivo ~92.5 kg. Full ROM, control eccentric.', compound: true },
         { id: 'barbell-row', name: 'Barbell Row', muscle: 'Back', sets: 3, reps: '8-10', rpe: '7-8', defaultRest: 120, notes: 'Objetivo ~67.5 kg. Strict, no heaving.', compound: true },
-        { id: 'cable-crunch', name: 'Cable Crunch', muscle: 'Core', sets: 3, reps: '10-15', rpe: '-', defaultRest: 60, notes: 'Controlled flexion, no hip movement.' },
+        // v11.37 (auditoría de fullA): en las variantes de 3/4 días estas dos sesiones son las
+        // ÚNICAS de fuerza, y entre ambas no había NI UNA serie de isquios. Lo único posterior
+        // eran las 3 series de sumo de fullB — y el sumo lleva gate lumbar, así que en un mal día
+        // la cadena posterior de la semana entera quedaba en casi nada. 2 series a RPE 7 son
+        // dosis de mantenimiento, y de paso ponen la bisagra a 2x/semana (STR-002).
+        { id: 'rdl', name: 'Barbell RDL', muscle: 'Hamstrings', sets: 2, reps: '8-10', rpe: '7', defaultRest: 120, notes: 'Isquios + glúteo. 3s excéntrico, para a media espinilla. No es un peso muerto: cadera, no rodilla.' },
+        // Cable Crunch (flexión espinal cargada) -> Pallof (anti-rotación). ATH-003 es `strong` y
+        // pide explícitamente anti-rotación/anti-extensión POR el historial lumbar; la sesión
+        // hacía justo lo contrario. fullB cubre la anti-extensión con el Ab Wheel.
+        { id: 'pallof-press', name: 'Cable Pallof Press', muscle: 'Core', sets: 3, reps: '10-15', rpe: '-', defaultRest: 60, notes: 'Anti-rotación. Lento y controlado, sin girar el tronco.' },
       ]
     },
     fullB: {
@@ -122,7 +136,10 @@ const PLAN = {
         { id: 'sumo-dl', name: 'Sumo Deadlift', muscle: 'Posterior', sets: 3, reps: '3-6', rpe: '7-8', defaultRest: 210, notes: 'Objetivo ~110 kg. Reset cada rep. Primer set decide: si sale ≥RPE 8, no subir. Historial lumbar.', compound: true },
         { id: 'ohp', name: 'Overhead Press', muscle: 'Shoulders', sets: 3, reps: '5-8', rpe: '7-8', defaultRest: 150, notes: 'Objetivo ~52.5 kg. De pie, estricto, sin leg drive.', compound: true },
         { id: 'chinups', name: 'Chin-ups', muscle: 'Back', sets: 3, reps: '6-8', rpe: '7-8', defaultRest: 150, notes: 'Objetivo BW +10 kg. Assisted machine si <5 reps.', bw: true, compound: true },
-        { id: 'hanging-leg-raise', name: 'Hanging Leg Raise', muscle: 'Core', sets: 3, reps: '8-12', rpe: '-', defaultRest: 60, notes: 'Scale to knee raises if needed.', bw: true },
+        // v11.37: Hanging Leg Raise (flexión de cadera) -> Ab Wheel (anti-extensión). Con el
+        // Pallof de fullA, las dos cualidades que pide ATH-003 quedan cubiertas en la semana,
+        // ambas con ejercicios que la propia regla nombra.
+        { id: 'ab-wheel', name: 'Ab Wheel Rollout', muscle: 'Core', sets: 3, reps: '8-12', rpe: '-', defaultRest: 60, notes: 'Anti-extensión. De rodillas; no dejes que la lumbar se arquee. Escala el recorrido, no el número.', bw: true },
       ]
     }
   }
@@ -666,10 +683,24 @@ const MOVEMENT_PATTERNS = {
   'incline-curl': 'isolation-bicep', 'barbell-curl': 'isolation-bicep',
   'hammer-curl': 'isolation-bicep', 'cable-curl': 'isolation-bicep',
   'preacher-curl': 'isolation-bicep',
-  // Core
-  'ab-wheel': 'core', 'hanging-leg-raise': 'core', 'pallof-press': 'core',
-  'cable-crunch': 'core', 'plank': 'core', 'dead-bug': 'core',
+  // Core — split by FUNCTION in v11.37, not lumped as 'core'.
+  //
+  // ATH-003 (`strong`, ready_to_govern_code) prescribes anti-rotation / anti-extension work
+  // specifically BECAUSE of the lumbar history, and names Pallof / dead bug / carries / ab
+  // wheel. With every core movement tagged `'core'`, a session could satisfy a "core 2x/week"
+  // check with two loaded-flexion exercises and nothing would notice — which is exactly what
+  // fullA (Cable Crunch) + fullB (Hanging Leg Raise) did. The rule was well written and
+  // structurally unenforceable: the taxonomy could not express it.
+  //
+  // Anything downstream that wants "any core" should test the `core-` prefix.
+  'pallof-press': 'core-anti-rotation',
+  'ab-wheel': 'core-anti-extension', 'plank': 'core-anti-extension', 'dead-bug': 'core-anti-extension',
+  'cable-crunch': 'core-flexion', 'hanging-leg-raise': 'core-flexion',
 };
+
+// Does a movement pattern count as core work? Use this instead of `=== 'core'`, which no
+// longer matches anything since the split above.
+function isCorePattern(p) { return typeof p === 'string' && p.startsWith('core'); }
 
 // Seed the plans store with the hardcoded PLAN if empty
 async function ensurePlanSeeded() {
@@ -7519,8 +7550,12 @@ const IDEAL_BLOCK_V1 = {
   ],
   variants: {
     3: {
+      // v11.37: la nota decía "Viaje / sin gym" mientras fullA prescribe rack, barra, banco y
+      // máquina de cables — 4 de 4 ejercicios necesitan gimnasio completo. Corregida a lo que
+      // realmente es. NO existe una variante sin gimnasio de verdad; es un hueco abierto, no algo
+      // que se arregle con una frase. Ver assessments/2026-08-16_system-audit.md (A11).
       label: 'Mínima · 3 días',
-      note: 'Viaje / sin gym: preserva fuerza con 2 full-body + 1 cardio. Continuidad.',
+      note: 'Semana comprimida, con gimnasio: 2 full-body + 1 cardio. Mantiene, no progresa.',
       days: [
         { dow: 1, kind: 'strength', subtype: 'full', bw: 2, planRef: 'fullA', title: 'Full Body A', summary: 'Sentadilla + press banca + remo + core', why: 'Cubre piernas/empuje/tirón en una sesión.', ruleIds: ['STR-002', 'STR-005'], alt: 'strength_lower' },
         { dow: 3, kind: 'strength', subtype: 'full', bw: 2, planRef: 'fullB', title: 'Full Body B', summary: 'Peso muerto + press militar + dominadas + core', why: 'Bisagra + patrón vertical.', ruleIds: ['STR-002', 'STR-007'], alt: 'strength_lower' },
@@ -7610,7 +7645,8 @@ function buildWeekTemplateFromIdeal(variantNum) {
 // the same label still regenerate. Without this, applyIdealPlan() returns early on label
 // match and a session edit shipped in an update would never reach the phone.
 // 2 = v11.35 (D2: Pec Deck A->B + Lat Pulldown into A; D3: variant 5 keeps lowerB).
-const PLAN_REV = 2;
+// 3 = v11.37 (fullA: Cable Crunch->Pallof + RDL; fullB: Hanging Leg Raise->Ab Wheel).
+const PLAN_REV = 3;
 
 async function applyIdealPlan({ force = false } = {}) {
   const n = _idealVariant();
@@ -9552,7 +9588,7 @@ async function exportJSON() {
   }
   const backup = {
     app: 'training-system',
-    version: '11.36',
+    version: '11.37',
     exportedAt: new Date().toISOString(),
     dbVersion: typeof DB_VERSION !== 'undefined' ? DB_VERSION : null,
     counts,

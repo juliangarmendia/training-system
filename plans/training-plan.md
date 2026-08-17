@@ -85,8 +85,28 @@ This is the **authoritative current exercise selection** (live in the app's `PLA
 | Session | Exercises (sets × reps @ RPE) |
 |---|---|
 | **Upper A** | Bench 4×5-8@7-8 · Barbell Row 4×6-10@7-8 · Incline DB Press 3×8-12@7 (3s ecc) · **Lat Pulldown** 3×10-12@7 *(v11.35)* · Face Pull 3×12-15@7 · DB Lateral 3×12-15@7 · Rope Pushdown 2×10-15@7 |
-| **Lower A** | Back Squat 4×5-8@7-8 · RDL 3×8-10@7 (3s ecc) · **Hack Squat** 3×10-12@7-8 · **Seated Leg Curl** 3×10-12@7 (3s ecc) · Standing Calf 3×12-15@7 · Cable Crunch 3×10-15 |
+| **Lower A** | Back Squat 4×5-8@7-8 · RDL 3×8-10@7 (3s ecc) · **Hack Squat** 3×10-12@7-8 · **Seated Leg Curl** 3×10-12@7 (3s ecc) · Standing Calf 3×12-15@7 · **Ab Wheel** 3×8-12 *(v11.37)* |
 | **Upper B** | Chin-ups 4×5-8@7-8 · OHP 4×5-8@7-8 · **Pec Deck** 3×10-12@7 *(v11.35)* · **Chest-Supported Row** 3×10-12@7 · Incline DB Curl 3×10-12@7 (3s ecc) · **Lateral-Raise Machine** 3×12-15@7 · Hanging Leg Raise 3×8-12 |
+
+### Full Body A / B — variantes de 3 y 4 días
+
+| Sesión | Ejercicios |
+|---|---|
+| **Full Body A** | Back Squat 4×5-8@7-8 · Bench Press 3×6-8@7-8 · Barbell Row 3×8-10@7-8 · **RDL 2×8-10@7** *(v11.37)* · **Pallof Press 3×10-15** *(v11.37)* |
+| **Full Body B** | Sumo DL 3×3-6@7-8 (RPE-gated) · OHP 3×5-8@7-8 · Chin-ups 3×6-8@7-8 · **Ab Wheel 3×8-12** *(v11.37)* |
+
+> **Cambio v11.37 (auditoría de fullA, 2026-08-17).** Dos huecos reales en las únicas sesiones de
+> fuerza de las semanas comprimidas:
+> - **Cero series directas de isquios.** Lo único posterior eran las 3 series de sumo, que lleva
+>   gate lumbar — en un mal día la cadena posterior de la semana quedaba en casi nada. El RDL a
+>   RPE 7 y 2 series es mantenimiento, y de paso pone la bisagra a 2×/semana.
+> - **Cero anti-rotación / anti-extensión**, con dos contracturas lumbares detrás. Cable Crunch y
+>   Hanging Leg Raise son ambos flexión: exactamente lo contrario de lo que pide **ATH-003**, que
+>   es `strong` y nombra Pallof y ab wheel *por* ese historial. Ahora Pallof en A y Ab Wheel en B.
+>   El mismo fallo estaba en **Lower A** del plan de 6 días (Cable Crunch → Ab Wheel).
+>
+> `fullA` pasa de 13 a 15 series (~44 min con warm-up). El plan de 6 días mantiene sus 83 series;
+> solo cambia qué tipo de core se hace.
 
 > **Cambio v11.35 (D2, 2026-08-16).** Pec Deck se muda de Upper A a Upper B y Lat Pulldown ocupa su
 > sitio, para que **empuje horizontal y tirón vertical se entrenen 2×/semana** (STR-002). Antes
