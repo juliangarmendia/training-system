@@ -268,16 +268,37 @@ Auditoría completa en
   cables — 4 de 4 ejercicios. Corregida a "semana comprimida, con gimnasio".
 - **`PLAN_REV` → 3**, o el cambio no llega a un teléfono que ya tenga la misma etiqueta de plan.
 
+## v11.38 — Corrección del RDL + cuádriceps en fullB + limpieza de mentiras de UI (2026-08-18)
+
+Julian rechazó el `fullA` de v11.37: cuatro compuestos de barra seguidos. Tenía razón.
+
+- **`fullA`: RDL → Seated Leg Curl.** El RDL de v11.37 tapaba un hueco real (cero isquios directos)
+  creando uno peor: bisagra justo después de 4 series de sentadilla pesada, cuarto compuesto de
+  barra, carga axial apilada sobre un historial de dos contracturas lumbares. El leg curl da el
+  mismo estímulo con **cero** carga espinal; la extensión de cadera ya la cubre el sumo de `fullB`.
+- **`fullB`: + Leg Extension.** `fullB` no tenía **nada** de cuádriceps: dependía entero de la
+  sentadilla de `fullA`, un solo día. Ahora 7 series en 2 días (STR-002). v11.37 no lo vio.
+- **Chequeo automático de carga axial:** las sesiones full-body admiten **1** lift de carga espinal
+  pesada y **3** compuestos de barra; los días de pierna dedicados admiten 2 (sentadilla + RDL en
+  `lowerA` es estándar — 48 h hasta el siguiente día de pierna, y el resto no compite).
+- **`EQUIP_SUBS` retirado.** Ver abajo.
+- **Nota de la variante 4** corregida: añade un día aeróbico, no fuerza.
+- `PLAN_REV` → 4. Volumen de la semana de 3/4 días: 25 → 31 series.
+
 ### Huecos abiertos que esta auditoría deja documentados
 
 - **No existe variante sin gimnasio.** Ninguna de las 4 funciona sin rack y barra. Para viajes de
-  verdad haría falta una sesión de peso corporal / bandas; es un diseño nuevo, no un parche.
-- **`EQUIP_SUBS` es decorativo.** `renderIdealPreview` afirma que "cada día tiene alternativas si
-  falta equipo"; la constante solo se usa para imprimir esa frase y no está conectada a ninguna
-  sesión ni al selector de ejercicios. **La afirmación de la UI es falsa.**
-- **La variante 4 no aporta fuerza** sobre la de 3 días (mismas 2 sesiones, mismas 25 series).
-  Arreglarlo sube su budget a 6,5 sobre un tope de 6 → acoplado a **D5**, pendiente de tener carga
-  real medida ahora que entra el cardio de Concept2 y Wattbike.
+  verdad haría falta una sesión de peso corporal / bandas. La librería ya tiene `pushup`, `dips`,
+  `pullups`, `bss`, `glute-bridge`, `nordic-curl`, `plank` y `dead-bug` con patrón asignado, así que
+  el material está; faltan un empuje vertical y un tirón horizontal sin equipo, y una quinta opción
+  en el selector. **Es un diseño nuevo, no un parche** — pendiente.
+- ~~**`EQUIP_SUBS` es decorativo**~~ → **retirado en v11.38.** Sus únicos dos usos eran su
+  definición y una frase del preview que afirmaba que cada día tenía alternativas: no había
+  mecanismo. La capacidad real es `showSwapUI` (T5.2), que persiste el cambio en
+  `settings.exerciseOverrides` y es reversible; el preview ahora apunta ahí.
+- **La variante 4 no aporta fuerza** sobre la de 3 días (mismas 2 sesiones). Añadir un tercer día
+  subiría su budget a 7 sobre un tope de 6 (BUD-001) y contradiría el propósito de la variante.
+  Sigue siendo **D5**, con carga real medida ahora que entra el cardio de Concept2 y Wattbike.
 
 ## Roadmap
 - **T4b:** generador algorítmico (arma bloque/semana desde reglas+perfil en runtime; hoy `IDEAL_BLOCK_V1` es data).

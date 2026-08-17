@@ -90,23 +90,31 @@ This is the **authoritative current exercise selection** (live in the app's `PLA
 
 ### Full Body A / B — variantes de 3 y 4 días
 
-| Sesión | Ejercicios |
-|---|---|
-| **Full Body A** | Back Squat 4×5-8@7-8 · Bench Press 3×6-8@7-8 · Barbell Row 3×8-10@7-8 · **RDL 2×8-10@7** *(v11.37)* · **Pallof Press 3×10-15** *(v11.37)* |
-| **Full Body B** | Sumo DL 3×3-6@7-8 (RPE-gated) · OHP 3×5-8@7-8 · Chin-ups 3×6-8@7-8 · **Ab Wheel 3×8-12** *(v11.37)* |
+| Sesión | Ejercicios | Series |
+|---|---|---|
+| **Full Body A** | Back Squat 4×5-8@7-8 · Bench Press 3×6-8@7-8 · Barbell Row 3×8-10@7-8 · **Seated Leg Curl 3×10-12@7** · **Pallof Press 3×10-15** | 16 |
+| **Full Body B** | Sumo DL 3×3-6@7-8 (RPE-gated) · OHP 3×5-8@7-8 · Chin-ups 3×6-8@7-8 · **Leg Extension 3×10-15@7-8** · **Ab Wheel 3×8-12** | 15 |
 
-> **Cambio v11.37 (auditoría de fullA, 2026-08-17).** Dos huecos reales en las únicas sesiones de
-> fuerza de las semanas comprimidas:
-> - **Cero series directas de isquios.** Lo único posterior eran las 3 series de sumo, que lleva
->   gate lumbar — en un mal día la cadena posterior de la semana quedaba en casi nada. El RDL a
->   RPE 7 y 2 series es mantenimiento, y de paso pone la bisagra a 2×/semana.
-> - **Cero anti-rotación / anti-extensión**, con dos contracturas lumbares detrás. Cable Crunch y
->   Hanging Leg Raise son ambos flexión: exactamente lo contrario de lo que pide **ATH-003**, que
->   es `strong` y nombra Pallof y ab wheel *por* ese historial. Ahora Pallof en A y Ab Wheel en B.
->   El mismo fallo estaba en **Lower A** del plan de 6 días (Cable Crunch → Ab Wheel).
+Estructura: **3 compuestos de barra + 1 máquina + 1 core** en A; **2 de barra + dominadas + 1
+máquina + 1 core** en B. Un solo lift de carga espinal pesada por sesión (squat en A, sumo en B).
+
+> **Cambio v11.38 (2026-08-18) — corrige un error de v11.37.** v11.37 metió un RDL en `fullA` para
+> tapar el hueco de isquios. El hueco era real; la solución no: dejaba **cuatro compuestos de barra
+> seguidos** y ponía una bisagra justo después de 4 series de sentadilla pesada, apilando carga
+> axial sobre un historial de dos contracturas lumbares.
+> - **RDL → Seated Leg Curl.** Mismo estímulo de isquios, **cero** carga espinal. La extensión de
+>   cadera ya la cubre el sumo de `fullB`; lo que faltaba aquí era flexión de rodilla.
+> - **`fullB` no tenía NADA de cuádriceps.** El cuádriceps dependía entero de las 4 series de
+>   sentadilla de `fullA`, un solo día. Con la extensión pasa a **7 series en 2 días** (STR-002).
 >
-> `fullA` pasa de 13 a 15 series (~44 min con warm-up). El plan de 6 días mantiene sus 83 series;
-> solo cambia qué tipo de core se hace.
+> **Cambio v11.37 (2026-08-17).** Cero anti-rotación / anti-extensión en toda la semana, con dos
+> contracturas lumbares detrás. Cable Crunch y Hanging Leg Raise son ambos flexión: lo contrario de
+> lo que pide **ATH-003**, que es `strong` y nombra Pallof y ab wheel *por* ese historial. Ahora
+> Pallof en A y Ab Wheel en B. El mismo fallo estaba en **Lower A** del plan de 6 días
+> (Cable Crunch → Ab Wheel).
+>
+> Volumen de la semana de 3/4 días: 25 → **31 series**. Sigue siendo dosis de mantenimiento
+> deliberada; el aumento viene de dar cuádriceps a `fullB` e isquios a `fullA`, que eran ceros.
 
 > **Cambio v11.35 (D2, 2026-08-16).** Pec Deck se muda de Upper A a Upper B y Lat Pulldown ocupa su
 > sitio, para que **empuje horizontal y tirón vertical se entrenen 2×/semana** (STR-002). Antes

@@ -111,12 +111,13 @@ const PLAN = {
         { id: 'back-squat', name: 'Barbell Back Squat', muscle: 'Quads', sets: 4, reps: '5-8', rpe: '7-8', defaultRest: 180, notes: 'Objetivo ~97.5 kg. Prioridad #1, usa safeties. Rampa lumbar conservadora.', compound: true },
         { id: 'bench-press', name: 'Barbell Bench Press', muscle: 'Chest', sets: 3, reps: '6-8', rpe: '7-8', defaultRest: 150, notes: 'Objetivo ~92.5 kg. Full ROM, control eccentric.', compound: true },
         { id: 'barbell-row', name: 'Barbell Row', muscle: 'Back', sets: 3, reps: '8-10', rpe: '7-8', defaultRest: 120, notes: 'Objetivo ~67.5 kg. Strict, no heaving.', compound: true },
-        // v11.37 (auditoría de fullA): en las variantes de 3/4 días estas dos sesiones son las
-        // ÚNICAS de fuerza, y entre ambas no había NI UNA serie de isquios. Lo único posterior
-        // eran las 3 series de sumo de fullB — y el sumo lleva gate lumbar, así que en un mal día
-        // la cadena posterior de la semana entera quedaba en casi nada. 2 series a RPE 7 son
-        // dosis de mantenimiento, y de paso ponen la bisagra a 2x/semana (STR-002).
-        { id: 'rdl', name: 'Barbell RDL', muscle: 'Hamstrings', sets: 2, reps: '8-10', rpe: '7', defaultRest: 120, notes: 'Isquios + glúteo. 3s excéntrico, para a media espinilla. No es un peso muerto: cadera, no rodilla.' },
+        // Isquios. v11.37 puso aquí un RDL y fue un error: dejaba CUATRO compuestos de barra
+        // seguidos y metía una bisagra justo después de 4 series de sentadilla pesada, apilando
+        // carga axial sobre un historial de dos contracturas lumbares. El hueco que arreglaba
+        // (cero isquios directos en la semana de 3/4 días) era real; la solución, no.
+        // v11.38: leg curl en máquina — mismo estímulo de isquios, CERO carga axial. La extensión
+        // de cadera ya la cubre el sumo de fullB, así que lo que falta aquí es flexión de rodilla.
+        { id: 'seated-leg-curl', name: 'Seated Leg Curl', muscle: 'Hamstrings', sets: 3, reps: '10-12', rpe: '7', defaultRest: 90, notes: 'Isquios sin cargar la columna. 3s excéntrico, aprieta 1s arriba.' },
         // Cable Crunch (flexión espinal cargada) -> Pallof (anti-rotación). ATH-003 es `strong` y
         // pide explícitamente anti-rotación/anti-extensión POR el historial lumbar; la sesión
         // hacía justo lo contrario. fullB cubre la anti-extensión con el Ab Wheel.
@@ -136,6 +137,11 @@ const PLAN = {
         { id: 'sumo-dl', name: 'Sumo Deadlift', muscle: 'Posterior', sets: 3, reps: '3-6', rpe: '7-8', defaultRest: 210, notes: 'Objetivo ~110 kg. Reset cada rep. Primer set decide: si sale ≥RPE 8, no subir. Historial lumbar.', compound: true },
         { id: 'ohp', name: 'Overhead Press', muscle: 'Shoulders', sets: 3, reps: '5-8', rpe: '7-8', defaultRest: 150, notes: 'Objetivo ~52.5 kg. De pie, estricto, sin leg drive.', compound: true },
         { id: 'chinups', name: 'Chin-ups', muscle: 'Back', sets: 3, reps: '6-8', rpe: '7-8', defaultRest: 150, notes: 'Objetivo BW +10 kg. Assisted machine si <5 reps.', bw: true, compound: true },
+        // v11.38: fullB no tenía NADA de cuádriceps. En la semana de 3/4 días el cuádriceps
+        // dependía enteramente de las 4 series de sentadilla de fullA, un solo día. La extensión
+        // da volumen de cuádriceps sin carga espinal, justo después del sumo — y pone el
+        // cuádriceps a 2 días/semana (STR-002).
+        { id: 'leg-extension', name: 'Leg Extension', muscle: 'Quads', sets: 3, reps: '10-15', rpe: '7-8', defaultRest: 90, notes: 'Cuádriceps sin cargar la columna. Excéntrico controlado 2-3s, aprieta arriba.' },
         // v11.37: Hanging Leg Raise (flexión de cadera) -> Ab Wheel (anti-extensión). Con el
         // Pallof de fullA, las dos cualidades que pide ATH-003 quedan cubiertas en la semana,
         // ambas con ejercicios que la propia regla nombra.
@@ -7563,8 +7569,13 @@ const IDEAL_BLOCK_V1 = {
       ],
     },
     4: {
+      // v11.38: la nota decía "sin perder cobertura", pero la cobertura de FUERZA es idéntica a
+      // la variante 3 — las mismas 2 sesiones y las mismas series. El 4º día es aeróbico.
+      // Añadir un 3er día de fuerza subiría el budget a 7 sobre un tope de 6 (BUD-001), y esta
+      // variante existe precisamente para semanas con MENOS margen: meterle otra sesión dura
+      // contradice su propósito. Queda como decisión D5, con carga real medida.
       label: 'Reducida · 4 días',
-      note: '2 full-body + 2 cardio. Para semanas con menos margen, sin perder cobertura.',
+      note: 'Añade un día aeróbico sobre la de 3 días; la fuerza es la misma (2 full-body). Mantiene.',
       days: [
         { dow: 1, kind: 'strength', subtype: 'full', bw: 2, planRef: 'fullA', z2Finisher: 15, title: 'Full Body A', summary: 'Sentadilla + press + remo + core', why: 'Full-body cubre todo; +Z2 corto al final.', ruleIds: ['STR-002', 'STR-005'], alt: 'strength_lower' },
         { dow: 2, kind: 'cardio', subtype: 'zone2', bw: 0.5, durationMin: 35, title: 'Cardio Z2', summary: '30-40 min fácil', why: 'Aeróbico de bajo impacto.', ruleIds: ['END-001', 'INT-002'], alt: 'hard_cardio' },
@@ -7606,13 +7617,17 @@ const IDEAL_BLOCK_V1 = {
   },
 };
 
-// Equipment substitutions (gym lleno / equipo no disponible) — shown per session.
-const EQUIP_SUBS = {
-  skierg: ['Row', 'Bici', 'Caminata en cinta con incline'],
-  sled: ['Farmer carries pesados', 'Push en cinta con incline', 'Walking lunges', 'Leg press conditioning', 'Intervals en bici'],
-  rack: ['Máquinas', 'Mancuernas', 'Smith machine', 'Leg press'],
-  gym_full: ['Versión solo-mancuernas', 'Versión solo-máquinas', 'Fallback de cardio (bici/cinta)'],
-};
+// RETIRADO en v11.38. `EQUIP_SUBS` existió desde T4 y NUNCA estuvo conectado a nada: sus
+// únicos dos usos en todo el código eran su propia definición y una frase del preview que
+// afirmaba "cada día tiene alternativas si el gym está lleno o falta equipo". No había
+// mecanismo alguno detrás — la afirmación era falsa.
+//
+// La capacidad real sí existe y es mejor: `showSwapUI` (T5.2, v11.31) permite cambiar cualquier
+// ejercicio desde la pantalla de la sesión, el cambio PERSISTE en `settings.exerciseOverrides`,
+// es reversible, y no lo pisa el cambio de variante del ideal. Los sustitutos salen de
+// `EXERCISE_ALTERNATIVES`, que sí está poblado. El preview ahora apunta ahí.
+//
+// Ver assessments/2026-08-16_system-audit.md (A11, punto 5).
 
 // T5: the chosen day-count (3/4/5/6) and per-session duration persist in settings (synced).
 // T5.1: default to the full IDEAL (variant 6 "Completa"). Selector flexes down to 3/4/5.
@@ -7646,7 +7661,8 @@ function buildWeekTemplateFromIdeal(variantNum) {
 // match and a session edit shipped in an update would never reach the phone.
 // 2 = v11.35 (D2: Pec Deck A->B + Lat Pulldown into A; D3: variant 5 keeps lowerB).
 // 3 = v11.37 (fullA: Cable Crunch->Pallof + RDL; fullB: Hanging Leg Raise->Ab Wheel).
-const PLAN_REV = 3;
+// 4 = v11.38 (fullA: RDL->Seated Leg Curl; fullB: +Leg Extension).
+const PLAN_REV = 4;
 
 async function applyIdealPlan({ force = false } = {}) {
   const n = _idealVariant();
@@ -7781,7 +7797,7 @@ function renderIdealPreview() {
     <div class="ip-current card">${currentRows}</div>
     <div class="section-label" style="margin-top:16px">Cuidados que respeta</div>
     <ul class="ip-cautions">${IDEAL_BLOCK_V1.cautions.map(c => `<li>${c}</li>`).join('')}</ul>
-    <div class="ip-equip">Cada día tiene alternativas si el gym está lleno o falta equipo. Sin SkiErg → ${EQUIP_SUBS.skierg.join(' / ')}. Sin rack → ${EQUIP_SUBS.rack.join(' / ')}.</div>
+    <div class="ip-equip">¿Máquina ocupada o te falta equipo? Toca el ejercicio dentro de la sesión y elegí un sustituto: el cambio se guarda y se mantiene, y podés volver al original cuando quieras.</div>
     <div class="t3-foot">Este es tu plan vivo. <b>Ideal</b> = semana completa (estímulo los 7 días). Bajá los días en semanas de viaje — solo cambia hacia adelante; tus sesiones registradas quedan intactas.</div>
   `;
   host.querySelectorAll('[data-ip-variant]').forEach(b => b.addEventListener('click', () => { setIdealVariant(parseInt(b.dataset.ipVariant, 10)); }));
@@ -9588,7 +9604,7 @@ async function exportJSON() {
   }
   const backup = {
     app: 'training-system',
-    version: '11.37',
+    version: '11.38',
     exportedAt: new Date().toISOString(),
     dbVersion: typeof DB_VERSION !== 'undefined' ? DB_VERSION : null,
     counts,

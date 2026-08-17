@@ -237,6 +237,53 @@ anti-extensión, anti-rotación y flexión, con el volumen total intacto en 83 s
 > silencio o el modelo de datos no sabía expresar la distinción. Escribir el chequeo fue lo que
 > encontró el problema en la variante viva, no leer el código.
 
+### A12 · Corrección de A11: el RDL fue un error (v11.38, 2026-08-18)
+
+Julian rechazó el resultado de A11: *"Full body A es muy malo... barbell back squat y barbell bench
+press y luego barbell row y barbell rdl terminando con cable pallof press"*. Tenía razón.
+
+**El hueco de isquios que A11 detectó era real. La solución que aplicó no.** Meter un RDL dejaba
+`fullA` con **cuatro compuestos de barra seguidos** y ponía una bisagra justo después de 4 series de
+sentadilla pesada — apilando carga axial en la sesión, sobre un historial de dos contracturas
+lumbares. Se arregló un hueco creando un riesgo mayor.
+
+| Corrección | Por qué |
+|---|---|
+| `fullA`: **RDL → Seated Leg Curl** | Mismo estímulo de isquios, **cero** carga espinal. La extensión de cadera ya la cubre el sumo de `fullB`; lo que faltaba era flexión de rodilla. Baja de 4 a 3 compuestos de barra |
+| `fullB`: **+ Leg Extension** | `fullB` **no tenía nada de cuádriceps**. El cuádriceps dependía entero de la sentadilla de `fullA`, un solo día → ahora 7 series en 2 días (STR-002). A11 no lo vio |
+
+Volumen de la semana de 3/4 días: 25 → 31 series. Sigue siendo dosis de mantenimiento; el aumento
+son dos ceros que se rellenan (cuádriceps en B, isquios en A).
+
+**Nuevo chequeo automático de carga axial**, para que este error no se repita: ninguna sesión
+full-body puede llevar más de **un** lift de carga espinal pesada ni más de **tres** compuestos de
+barra. Los días de pierna dedicados admiten dos (sentadilla + RDL en `lowerA` es programación
+estándar: hay 48 h hasta el siguiente día de pierna y el resto de la sesión no compite).
+
+> **Y una nota sobre el propio chequeo.** La primera versión aplicaba el tope de 1 a *todas* las
+> sesiones y marcaba `lowerA` como fallo. `lowerA` no es un fallo: la regla estaba mal calibrada.
+> Un test demasiado estricto también miente — igual que la UI que decía "backed up automatically".
+
+### A13 · `EQUIP_SUBS` retirado (v11.38)
+
+`EQUIP_SUBS` existía desde T4 y sus **únicos dos usos en todo el código** eran su definición y una
+frase del preview: *"Cada día tiene alternativas si el gym está lleno o falta equipo"*. No había
+mecanismo detrás. Afirmación falsa, retirada.
+
+La capacidad real existe y es mejor: `showSwapUI` (T5.2, v11.31) cambia cualquier ejercicio desde
+la pantalla de la sesión, persiste en `settings.exerciseOverrides`, es reversible, y no lo pisa el
+cambio de variante. El preview ahora apunta ahí.
+
+### A14 · Variante 4: nota honesta (v11.38)
+
+Decía *"2 full-body + 2 cardio. Para semanas con menos margen, **sin perder cobertura**"* cuando la
+cobertura de fuerza es **idéntica** a la de 3 días. Ahora dice lo que hace: añade un día aeróbico,
+la fuerza es la misma.
+
+**No se le añadió un tercer día de fuerza**, y la razón es la misma que en A11: subiría el budget a
+7 sobre un tope de 6 (BUD-001), y esta variante existe justamente para semanas con menos margen —
+meterle otra sesión dura contradice su propósito. Sigue siendo **D5**, con carga real medida.
+
 ## 2 · ¿Se usan los documentos en los entrenamientos?
 
 **34 de 59 Rule IDs aparecen en `app.js` (58%)** — pero citar no es cumplir.
