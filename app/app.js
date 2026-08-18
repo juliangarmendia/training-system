@@ -4805,7 +4805,10 @@ async function intervalsIcuSync(opts = {}) {
     };
     console.info('[intervals.icu] import:', summary);
     try {
-      await dbPut('settings', { key: 'lastImportSummary', data: { ...summary, at: Date.now() } });
+      // smartPut, no dbPut: v11.36 lo guardaba solo en el teléfono, así que el diagnóstico de qué
+      // se descartaba no se podía revisar en remoto — justo la información que hacía falta para
+      // encontrar el fallo de `VirtualSki`. Ahora sube.
+      await smartPut('settings', { key: 'lastImportSummary', data: { ...summary, at: Date.now() } });
     } catch (_) {}
 
     try { await validateRunDedup(); } catch (_) { /* validation log only */ }
@@ -4831,9 +4834,19 @@ async function intervalsIcuSync(opts = {}) {
 // idempotent because every record is keyed by `icu_{id}`.
 const CARDIO_BACKFILL_FROM = '2026-04-01';
 
+// VERSIONADO desde v11.40, y por una razón concreta: en v11.36 el marcador era un booleano, así que
+// el backfill se ejecutó UNA vez — antes de que existiera el mapeo de `VirtualSki` (v11.39). Como la
+// ventana de sync normal solo mira de ayer a hoy, todo el histórico de SkiErg habría quedado fuera
+// para siempre. Subir esta constante fuerza una nueva pasada.
+//   1 = v11.36 (primer backfill; sin VirtualSki)
+//   2 = v11.40 (con VirtualSki + lookup normalizado)
+// Súbela cada vez que cambie CARDIO_TYPE_MAP o el rutado de actividades.
+const CARDIO_BACKFILL_REV = 2;
+
 async function backfillCardioFromIntervals({ force = false } = {}) {
   const flag = (await dbGet('settings', 'cardioBackfillDone').catch(() => null));
-  if (flag && flag.data && !force) return null;
+  const doneRev = (flag && flag.data && flag.data.rev) || (flag && flag.data ? 1 : 0);
+  if (doneRev >= CARDIO_BACKFILL_REV && !force) return null;
   if (!(state.settings && state.settings.intervalsIcuApiKey && state.settings.intervalsIcuAthleteId)) return null;
 
   const totals = { runs: 0, sessions: 0, total: 0, kept: {}, skipped: {}, windows: 0 };
@@ -4860,7 +4873,9 @@ async function backfillCardioFromIntervals({ force = false } = {}) {
   }
 
   console.info('[backfill] cardio desde', CARDIO_BACKFILL_FROM, totals);
-  await dbPut('settings', { key: 'cardioBackfillDone', data: { at: Date.now(), from: CARDIO_BACKFILL_FROM, ...totals } });
+  // smartPut (no dbPut): el resultado del backfill debe SUBIR, para poder verificar en remoto qué
+  // recuperó y qué descartó sin pedir capturas de pantalla.
+  await smartPut('settings', { key: 'cardioBackfillDone', data: { at: Date.now(), rev: CARDIO_BACKFILL_REV, from: CARDIO_BACKFILL_FROM, ...totals } });
   if (typeof toast === 'function' && (totals.runs + totals.sessions) > 0) {
     toast(`Recuperadas ${totals.sessions} sesiones de cardio`);
   }
@@ -9626,7 +9641,7 @@ async function exportJSON() {
   }
   const backup = {
     app: 'training-system',
-    version: '11.39',
+    version: '11.40',
     exportedAt: new Date().toISOString(),
     dbVersion: typeof DB_VERSION !== 'undefined' ? DB_VERSION : null,
     counts,

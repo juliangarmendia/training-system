@@ -220,7 +220,7 @@ dosis mínimas producen resultados sustanciales. El problema era la **composici�
 |---|---|---|
 | 1 | **ATH-003 incumplida y estructuralmente indetectable.** `fullA` cerraba con Cable Crunch (flexión espinal cargada) y `fullB` con Hanging Leg Raise (flexión de cadera): **cero** anti-rotación o anti-extensión, con dos contracturas lumbares en el historial. Y `MOVEMENT_PATTERNS` metía todo el core en un bucket `'core'`, así que cualquier chequeo de "core 2×/semana" daba la sesión por buena. **La regla estaba bien escrita y era inaplicable** | ✅ Taxonomía partida en `core-anti-rotation` / `core-anti-extension` / `core-flexion`; Pallof a `fullA`, Ab Wheel a `fullB` |
 | 2 | **Cero series directas de isquios en toda la semana de 3/4 días.** Lo único posterior eran las 3 series de sumo — que lleva gate lumbar, así que en un mal día la cadena posterior entera podía quedar en nada | ✅ RDL 2×8-10 @RPE 7 en `fullA`; de paso la bisagra pasa a 2×/semana |
-| 3 | **La variante de 4 días no añadía nada de fuerza:** mismas 2 sesiones y las mismas 25 series que la de 3 días; el cuarto día es cardio. Su nota decía "sin perder cobertura" y la cobertura era idéntica | ⏸ Acoplado a **D5** — arreglarlo sube el budget a 6,5 sobre un tope de 6. Mejor con carga real medida |
+| 3 | **La variante de 4 días no añadía nada de fuerza:** mismas 2 sesiones y las mismas 25 series que la de 3 días; el cuarto día es cardio. Su nota decía "sin perder cobertura" y la cobertura era idéntica | ⏸ Acoplado al **presupuesto de dureza** (`pendientes.md` punto 3b) — arreglarlo sube la suma a 6,5 sobre un objetivo de 6. Mejor con carga real medida |
 | 4 | **La variante 3 decía "Viaje / sin gym"** y `fullA` prescribe rack, barra, banco y máquina de cables: 4 de 4 ejercicios necesitan gimnasio completo | ✅ Etiqueta corregida. **No existe** una variante sin gimnasio de verdad — hueco abierto |
 | 5 | **`EQUIP_SUBS` es decoración.** `renderIdealPreview` afirma "cada día tiene alternativas si falta equipo"; la constante aparece en exactamente dos sitios del código y no está conectada a ninguna sesión | ⏸ Documentado, no arreglado |
 
@@ -282,7 +282,7 @@ la fuerza es la misma.
 
 **No se le añadió un tercer día de fuerza**, y la razón es la misma que en A11: subiría el budget a
 7 sobre un tope de 6 (BUD-001), y esta variante existe justamente para semanas con menos margen —
-meterle otra sesión dura contradice su propósito. Sigue siendo **D5**, con carga real medida.
+meterle otra sesión dura contradice su propósito. Sigue abierto en `pendientes.md` punto 3b, con carga real medida.
 
 ## 2 · ¿Se usan los documentos en los entrenamientos?
 
@@ -443,44 +443,61 @@ Solo de **superficie**. No se tocó qué prescribe el plan.
 
 ## 7 · Decisiones para Julian
 
-> **Actualización 2026-08-16 (v11.35):** D1, D2 y D3 **aplicadas** a petición del usuario, junto con
-> el arreglo del sync (§3). D4-D7 siguen abiertas.
+> ## ⚠️ LAS ETIQUETAS D1-D7 ESTÁN RETIRADAS (2026-08-18)
+>
+> **La lista viva de pendientes es [`../docs/pendientes.md`](../docs/pendientes.md).**
+>
+> Numerar las decisiones fue un error de comunicación: acabé citándolas por número —"eso es D5"—
+> como si el usuario las tuviera memorizadas, cuando vivían enterradas en un informe de 500 líneas.
+> Lo mismo con "el tope de 6", jerga que nunca traduje.
+>
+> Esta sección se conserva como **registro de qué se decidió y por qué**. Para saber **qué sigue**,
+> ir a `docs/pendientes.md`, que está en castellano, ordenado y con un dueño por línea.
+>
+> Equivalencias, por si aparecen citadas en commits antiguos:
+>
+> | Etiqueta vieja | Dónde está ahora |
+> |---|---|
+> | D1, D2, D3, D7 | Cerradas — ver la tabla "Cerrado" de `pendientes.md` |
+> | D4 (sesión de calidad del sábado) | `pendientes.md` punto **3a** |
+> | D5 (la semana suma 7,5 sobre 6) | `pendientes.md` punto **3b** |
+> | D6 (analítica nueva) | `pendientes.md` punto **5** |
 
 ### ✅ Aplicadas en v11.35
 
 | # | Qué se hizo |
 |---|---|
-| **D1** | `isDeloadWeek` se ancla al bloque de 5 semanas del IDEAL (`deloadAnchorWeek` en settings) en vez de a `wk===5\|\|wk===9` de abril. El ancla se fija a la semana actual, así que **el primer deload cae 4 semanas después**, sin sorpresas. De paso se retiró `getRunsThisWeek` (resto de abril que decía "Optional run" los domingos, contra el IDEAL) |
-| **D2** | Pec Deck pasa de `upperA` a `upperB`; Lat Pulldown entra en `upperA`. **Empuje horizontal 2×/sem** (7+3) y **tirón vertical 2×/sem** (3+4). Pecho sigue en 10 series. **Coste real: espalda 11 → 14 series/sem y total 80 → 83.** Sigue dentro de 10-14 (STR-003), pero es un aumento de volumen en déficit, que STR-001 desaconseja — queda dicho, no disimulado. El press vertical (OHP) se deja a propósito en 1×/sem |
-| **D3** | La variante de 5 días quita `upperB` en vez de `lowerB`: **lower/upper/lower**, con el sumo deadlift intacto. Gracias a D2 el tirón vertical sobrevive en `upperA`; sólo se pierde el press vertical. **Efecto secundario:** su budget sube de 5,5 a 6,5, por encima del tope de 6 → material para D5 |
+| **Deload** | `isDeloadWeek` se ancla al bloque de 5 semanas del IDEAL (`deloadAnchorWeek` en settings) en vez de a `wk===5\|\|wk===9` de abril. El ancla se fija a la semana actual, así que **el primer deload cae 4 semanas después**, sin sorpresas. De paso se retiró `getRunsThisWeek` (resto de abril que decía "Optional run" los domingos, contra el IDEAL) |
+| **Frecuencia por patrón** | Pec Deck pasa de `upperA` a `upperB`; Lat Pulldown entra en `upperA`. **Empuje horizontal 2×/sem** (7+3) y **tirón vertical 2×/sem** (3+4). Pecho sigue en 10 series. **Coste real: espalda 11 → 14 series/sem y total 80 → 83.** Sigue dentro de 10-14 (STR-003), pero es un aumento de volumen en déficit, que STR-001 desaconseja — queda dicho, no disimulado. El press vertical (OHP) se deja a propósito en 1×/sem |
+| **Variante de 5 días** | La variante de 5 días quita `upperB` en vez de `lowerB`: **lower/upper/lower**, con el sumo deadlift intacto. Gracias a D2 el tirón vertical sobrevive en `upperA`; sólo se pierde el press vertical. **Efecto secundario:** su budget sube de 5,5 a 6,5, por encima del objetivo de 6 → ver `pendientes.md` punto 3b |
 
 Para que los cambios lleguen al teléfono se añadió `PLAN_REV`: `applyIdealPlan()` era idempotente
 por etiqueta, así que una edición de sesiones nunca habría regenerado el plan en un dispositivo que
 ya tuviera `Ideal · 6 días`.
 
-### Pendientes
+### Abiertas → seguidas ahora en [`../docs/pendientes.md`](../docs/pendientes.md)
 
-### D4 · Sesión de calidad real (A8)
+### Sesión de calidad real (A8) — *`pendientes.md` punto 3a*
 
 Si quieres que el sábado sea de verdad una sesión de calidad, su `subtype` debe ser `zone3` o
 `threshold`, no `long_easy` — eso lo hace contar en el budget y compilar correctamente al COROS. Si
 prefieres mantener todo fácil (defendible en déficit), hay que quitar "calidad" y el 80/20 de la
 documentación. **Hoy dice una cosa y hace otra; cualquiera de las dos es coherente.**
 
-### D5 · Budget 7,5 vs tope 6 (A7)
+### El presupuesto de dureza suma 7,5 contra un objetivo de 6 (A7) — *`pendientes.md` punto 3b*
 
 Contrastar el plan contra BUD-001 al generarlo, no solo a posteriori. Con el reparto actual, o sube
 el `cap` a 7,5 con justificación, o baja el peso de un día. **Antes de tocar nada, conviene tener
 datos reales** (§3) para saber si 7,5 es demasiado *para ti* o solo sobre el papel.
 
-### D6 · Analítica nueva (5.1) — recomendado
+### Analítica de sangre nueva (5.1) — *`pendientes.md` punto 5*
 
 Es el requisito para que el módulo de longevidad sirva de algo. Lo mínimo: perfil lipídico + ApoB +
 Lp(a) · glucosa + HbA1c + insulina · **testosterona total y libre + SHBG** · 25-OH vitamina D · PCR
 ultrasensible + ESR · hepatograma · urea/creatinina/TFGe · TSH. En ayunas, sin entrenamiento fuerte
 48 h antes, bien hidratado.
 
-### ✅ D7 · Arreglar el sync (§3) — HECHO en v11.35
+### ✅ Arreglar el sync (§3) — HECHO en v11.35
 
 Causa raíz encontrada y corregida (ver §3). Queda un paso que sólo puede hacer el usuario:
 **abrir la app en el iPhone** para que el backlog drene. Después, el backfill de W19–W32 con

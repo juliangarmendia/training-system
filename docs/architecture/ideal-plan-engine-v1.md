@@ -170,7 +170,7 @@ Afirmaciones de este documento que **eran falsas** y quedan corregidas aquí:
 | Variante 5 = *"3 fuerza (lower/upper/upper)"* | Correcto pero es la elección equivocada: al bajar de 6 a 5 días se cae **`lowerB`**, así que el **sumo deadlift desaparece de la semana** entera |
 | `progressing: ['Fuerza/hipertrofia', 'Base aeróbica']` vs GEN-001 | **No es una violación.** GEN-001 fue reatribuida y degradada a `expert` en la ronda 4: sus fuentes (Huiberts 2024, Soligard 2016) no sostenían el claim. Dos cualidades en progresión son defendibles para este perfil |
 
-Ninguno de estos puntos se arregló en el código: son decisiones D1-D5 del informe, pendientes de
+Ninguno de estos puntos se arregló en el código: son decisiones del informe, pendientes de
 que el usuario elija. Lo que **sí** se corrigió es la visibilidad (abajo).
 
 ## v11.34 — El Z2 finisher pasa a existir (2026-08-16)
@@ -204,11 +204,11 @@ hoy toca pierna (INT-001), la semana pasó el tope (BUD-001) o la recuperación 
 **Decisión explícita del usuario: avisar, nunca bloquear.** Los 13 workouts siguen enviables
 cualquier día.
 
-## v11.35 — D1/D2/D3 aplicadas + el sync arreglado (2026-08-16)
+## v11.35 — Deload, frecuencia por patrón y variante de 5 días + el sync arreglado (2026-08-16)
 
 Tres de las afirmaciones falsas de la tabla de arriba dejan de serlo.
 
-**D1 · El deload vuelve a existir.** `isDeloadWeek(wk)` era `wk === 5 || wk === 9` del programa de
+**El deload vuelve a existir.** `isDeloadWeek(wk)` era `wk === 5 || wk === 9` del programa de
 abril y devolvía `false` para siempre desde mediados de mayo. Ahora se ancla al bloque de 5 semanas
 del IDEAL mediante `state.settings.deloadAnchorWeek`, que se fija **a la semana actual** la primera
 vez que corre `ensureDeloadAnchor()` en `init()`: el primer deload cae **4 semanas después de la
@@ -216,7 +216,7 @@ actualización**, no de golpe. `isDeloadWeek` = `((wk - anchor) % 5) === 4`. Sin
 `false`, que es el default seguro. Se retiró `getRunsThisWeek(wk)`, otro resto de abril que hacía
 que el domingo dijera *"Optional run today"* cuando el IDEAL prescribe recuperación activa.
 
-**D2 · Empuje horizontal y tirón vertical a 2×/semana.** Pec Deck pasa de `upperA` a `upperB`; Lat
+**Empuje horizontal y tirón vertical a 2×/semana.** Pec Deck pasa de `upperA` a `upperB`; Lat
 Pulldown ocupa su hueco en `upperA`. Recuento verificado tras el cambio:
 
 | Patrón | Series/sem | Días |
@@ -232,10 +232,10 @@ El pecho sigue en 10 series. **Coste real: espalda 11 → 14 series/sem, total 8
 STR-003 (10-14) pero es un aumento de volumen en déficit, contra la preferencia de STR-001; queda
 dicho, no disimulado.
 
-**D3 · La variante de 5 días conserva el peso muerto.** Al bajar de 6 a 5 días ahora cae `upperB`,
-no `lowerB` → **lower/upper/lower** con el sumo intacto. El tirón vertical sobrevive porque D2 metió
+**La variante de 5 días conserva el peso muerto.** Al bajar de 6 a 5 días ahora cae `upperB`,
+no `lowerB` → **lower/upper/lower** con el sumo intacto. El tirón vertical sobrevive porque el cambio anterior metió
 el Lat Pulldown en `upperA`; sólo se pierde el press vertical. **Efecto secundario honesto:** su
-budget sube de 5,5 a **6,5**, por encima del tope de 6 — material para D5, que sigue abierta.
+budget sube de 5,5 a **6,5**, por encima del tope de 6 — material para el punto 3b de `../pendientes.md`, que sigue abierto.
 
 **`PLAN_REV`.** `applyIdealPlan()` era idempotente por etiqueta, así que una edición de sesiones
 nunca habría llegado a un dispositivo que ya tuviera `Ideal · 6 días`. Ahora regenera también
@@ -298,11 +298,13 @@ Julian rechazó el `fullA` de v11.37: cuatro compuestos de barra seguidos. Tení
   `settings.exerciseOverrides` y es reversible; el preview ahora apunta ahí.
 - **La variante 4 no aporta fuerza** sobre la de 3 días (mismas 2 sesiones). Añadir un tercer día
   subiría su budget a 7 sobre un tope de 6 (BUD-001) y contradiría el propósito de la variante.
-  Sigue siendo **D5**, con carga real medida ahora que entra el cardio de Concept2 y Wattbike.
+  Sigue abierto en [`../pendientes.md`](../pendientes.md) punto 3b, con carga real medida ahora que
+  entra el cardio de Concept2 y Wattbike.
 
 ## Roadmap
 - **T4b:** generador algorítmico (arma bloque/semana desde reglas+perfil en runtime; hoy `IDEAL_BLOCK_V1` es data).
 - **T6:** loop de adaptación semanal + periodización multi-bloque + progression/modality engines.
 - **Siguiente paso real:** con el backlog ya subiendo, hacer el backfill de W19-W32 con
   `/weekly-review-auto` y recalibrar perfil y nutrición **con datos**, no con estimaciones.
-  Después, D4 (sesión de calidad) y D5 (budget), que necesitan ese histórico para decidirse bien.
+  Después, la sesión de calidad del sábado y el presupuesto de dureza (puntos 3a y 3b de
+  [`../pendientes.md`](../pendientes.md)), que necesitan ese histórico para decidirse bien.
