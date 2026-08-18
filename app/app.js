@@ -4640,7 +4640,11 @@ const CARDIO_TYPE_MAP = {
   VirtualRun: 'treadmill', Treadmill: 'treadmill',
   Ride: 'bike', VirtualRide: 'bike', GravelRide: 'bike', MountainBikeRide: 'bike', EBikeRide: 'bike', Handcycle: 'bike',
   Rowing: 'row', VirtualRow: 'row', Kayaking: 'row', Canoeing: 'row',
-  NordicSki: 'ski', BackcountrySki: 'ski', RollerSki: 'ski', AlpineSki: 'ski',
+  // VirtualSki es el tipo que intervals.icu creó para el SkiErg de Concept2 (anuncio del
+  // 2025-10-10: "RowErg -> Virtual Row, SkiErg -> Virtual Ski, a newly added activity type").
+  // FALTABA en v11.36 —el mapa se escribió antes de conocer la integración— así que cada sesión
+  // de SkiErg se descartaba en silencio. VirtualRow y VirtualRide (BikeErg) ya estaban por suerte.
+  NordicSki: 'ski', BackcountrySki: 'ski', RollerSki: 'ski', AlpineSki: 'ski', VirtualSki: 'ski',
   Elliptical: 'elliptical', StairStepper: 'elliptical',
   Walk: 'walk', Hike: 'walk',
   Swim: 'swim',
@@ -4652,9 +4656,18 @@ const NON_CARDIO_TYPES = new Set(['WeightTraining', 'Workout', 'Crossfit', 'Yoga
 
 const RUN_MODALITIES = new Set(['run_outdoor', 'treadmill']);
 
+// El lookup NORMALIZA la clave: intervals.icu muestra "Virtual Ski" con espacio en la interfaz
+// mientras la API devuelve `VirtualSki`, y no quiero que un espacio o un guion bajo nos cueste otra
+// ronda de sesiones descartadas en silencio. "Virtual Ski", "VirtualSki", "virtual_ski" y
+// "VIRTUAL-SKI" resuelven todas igual.
+const _CARDIO_TYPE_MAP_NORM = Object.fromEntries(
+  Object.entries(CARDIO_TYPE_MAP).map(([k, v]) => [k.toLowerCase().replace(/[\s_-]/g, ''), v])
+);
+
 function _activityModality(a) {
-  const t = String((a && (a.type || a.sport)) || '');
-  return CARDIO_TYPE_MAP[t] || null;
+  const raw = String((a && (a.type || a.sport)) || '');
+  if (!raw) return null;
+  return CARDIO_TYPE_MAP[raw] || _CARDIO_TYPE_MAP_NORM[raw.toLowerCase().replace(/[\s_-]/g, '')] || null;
 }
 
 // Walks are recovery, not a cardio dose — consistent with logCardio().
@@ -5176,7 +5189,10 @@ async function pushRunningPlanToIntervalsIcu() {
 
 // ==================== PUSH TODAY'S CARDIO → intervals.icu → COROS (T5.2) ====================
 // intervals.icu event `type` per modality (drives which COROS activity it maps to).
-const _ICU_TYPE_BY_MODALITY = { bike: 'Ride', run_outdoor: 'Run', treadmill: 'Run', row: 'Rowing', ski: 'Workout', walk: 'Walk' };
+// v11.39: `ski` mandaba 'Workout' — un tipo genérico que además está en la lista de exclusión de
+// importación, así que el workout enviado no casaba con la actividad que vuelve de Concept2.
+// intervals.icu ya tiene tipos propios para los ergs: VirtualSki y VirtualRow.
+const _ICU_TYPE_BY_MODALITY = { bike: 'Ride', run_outdoor: 'Run', treadmill: 'Run', row: 'Rowing', ski: 'VirtualSki', walk: 'Walk', elliptical: 'Elliptical', swim: 'Swim' };
 const _ICU_ZONE_BY_SUBTYPE = { zone2: 'Z2', long_easy: 'Z2', zone3: 'Z3', threshold: 'Z4', intervals: 'Z5', recovery: 'Z1' };
 
 // Build a one-step intervals.icu DSL for a planned cardio session. The target is
@@ -5324,12 +5340,18 @@ const CARDIO_LIBRARY = [
   { group: 'Base aeróbica (Z2)', id: 'bike_z2_40', modality: 'bike', label: 'Bici Z2 · 40 min', note: 'Bajo impacto', dsl: () => `- 40m ${_icuZoneToken('z2')}` },
   { group: 'Base aeróbica (Z2)', id: 'bike_z2_60', modality: 'bike', label: 'Bici Z2 · 60 min', note: 'Volumen aeróbico barato', dsl: () => `- 60m ${_icuZoneToken('z2')}` },
   { group: 'Base aeróbica (Z2)', id: 'row_z2_30',  modality: 'row',  label: 'Remo Z2 · 30 min', note: 'Cuerpo completo, suave', dsl: () => `- 30m ${_icuZoneToken('z2')}` },
+  // v11.39: el catálogo tenía 13 workouts y CERO de ski, pese a que `ski` es una modalidad
+  // declarada, hay un SkiErg en el gimnasio y la integración Concept2 ya trae "Virtual Ski".
+  // El SkiErg es la mejor opción cuando las piernas están cargadas: tren superior y core,
+  // impacto nulo (HYB-005, INT-002).
+  { group: 'Base aeróbica (Z2)', id: 'ski_z2_25',  modality: 'ski',  label: 'SkiErg Z2 · 25 min', note: 'Piernas cargadas, impacto cero', dsl: () => `- 25m ${_icuZoneToken('z2')}` },
 
   { group: 'Calidad (1×/sem)', id: 'run_prog', modality: 'run_outdoor', label: 'Progresivo Z2→Z3 · 35 min', note: 'Termina algo más rápido', dsl: () => _icuDsl(`- 15m ${_icuZoneToken('z2')}`, `- 15m ${_icuZoneToken('z3')}`, `- 5m ${_icuZoneToken('z2')}`) },
   { group: 'Calidad (1×/sem)', id: 'run_tempo', modality: 'run_outdoor', label: 'Umbral · 3×8 min Z4', note: 'Tempo sostenido', dsl: () => _icuDsl(`- 10m ${_icuZoneToken('z2')}`, _icuRepeat(3, `- 8m ${_icuZoneToken('z4')}`, `- 2m ${_icuZoneToken('z1')}`), `- 5m ${_icuZoneToken('z2')}`) },
   { group: 'Calidad (1×/sem)', id: 'run_vo2', modality: 'run_outdoor', label: 'VO2 · 5×3 min Z5', note: 'Intervalos duros', dsl: () => _icuDsl(`- 12m ${_icuZoneToken('z2')}`, _icuRepeat(5, `- 3m ${_icuZoneToken('z5')}`, `- 3m ${_icuZoneToken('z1')}`), `- 8m ${_icuZoneToken('z2')}`) },
   { group: 'Calidad (1×/sem)', id: 'bike_intervals', modality: 'bike', label: 'Bici · 4×4 min Z4', note: 'Intervalos bajo impacto', dsl: () => _icuDsl(`- 10m ${_icuZoneToken('z2')}`, _icuRepeat(4, `- 4m ${_icuZoneToken('z4')}`, `- 3m ${_icuZoneToken('z1')}`), `- 5m ${_icuZoneToken('z2')}`) },
   { group: 'Calidad (1×/sem)', id: 'row_intervals', modality: 'row', label: 'Remo · 6×2 min Z4', note: 'Potencia aeróbica', dsl: () => _icuDsl(`- 8m ${_icuZoneToken('z2')}`, _icuRepeat(6, `- 2m ${_icuZoneToken('z4')}`, `- 2m ${_icuZoneToken('z1')}`), `- 5m ${_icuZoneToken('z2')}`) },
+  { group: 'Calidad (1×/sem)', id: 'ski_intervals', modality: 'ski', label: 'SkiErg · 8×1 min Z4', note: 'Duro sin castigar las piernas', dsl: () => _icuDsl(`- 8m ${_icuZoneToken('z2')}`, _icuRepeat(8, `- 1m ${_icuZoneToken('z4')}`, `- 1m ${_icuZoneToken('z1')}`), `- 5m ${_icuZoneToken('z2')}`) },
 
   { group: 'Recuperación', id: 'walk_30', modality: 'walk', label: 'Caminata Z1 · 30 min', note: 'Recuperación activa', dsl: () => `- 30m ${_icuZoneToken('z1')}` },
   { group: 'Recuperación', id: 'bike_recov', modality: 'bike', label: 'Bici recuperación Z1 · 30 min', note: 'Piernas cargadas', dsl: () => `- 30m ${_icuZoneToken('z1')}` },
@@ -9604,7 +9626,7 @@ async function exportJSON() {
   }
   const backup = {
     app: 'training-system',
-    version: '11.38',
+    version: '11.39',
     exportedAt: new Date().toISOString(),
     dbVersion: typeof DB_VERSION !== 'undefined' ? DB_VERSION : null,
     counts,

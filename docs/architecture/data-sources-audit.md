@@ -60,6 +60,20 @@ companion de Apple Health falla, el peso se degrada a forward-fills (ver caveats
 > (`WeightTraining`, `Workout`, `Crossfit`, `Yoga`) queda **fuera a propósito**: duplicaría las
 > sesiones de gym registradas a mano e inflaría el budget.
 >
+
+> ### ⚠️ v11.39 (2026-08-18): `VirtualSki` faltaba en el mapa
+>
+> El mapa de tipos de v11.36 se escribió **antes** de conocer la integración Concept2 de
+> intervals.icu (anuncio del 2025-10-10). Esa integración trae **RowErg → `VirtualRow`**,
+> **SkiErg → `VirtualSki`** (tipo nuevo que crearon para esto) y **BikeErg → `VirtualRide`**.
+> `VirtualRow` y `VirtualRide` ya estaban por casualidad; **`VirtualSki` no**, así que cada
+> sesión de SkiErg se descartaba en silencio justo después de conectar Concept2.
+>
+> Corregido, y el lookup ahora **normaliza** la clave (espacios, guiones, case): la API devuelve
+> `VirtualSki` pero la interfaz muestra "Virtual Ski", y no vale la pena perder sesiones por un
+> espacio. Además `_ICU_TYPE_BY_MODALITY` mandaba `ski: 'Workout'` —tipo genérico y encima en la
+> lista de exclusión de importación— ahora manda `VirtualSki`.
+
 > **Nota de despliegue:** el cambio en la Edge Function de Strava es defensivo — hoy los 10 runs de
 > Supabase vienen de intervals.icu y **ninguno** de Strava. Requiere `supabase functions deploy` para
 > tener efecto si algún día se usa esa ruta.
