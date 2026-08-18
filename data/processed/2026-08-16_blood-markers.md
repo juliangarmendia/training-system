@@ -3,11 +3,41 @@
 > Procesado: 2026-08-16. Fuente: los 5 PDF de `data/raw/Blood Tests/` (laboratorio IACA, Bahía
 > Blanca / Buenos Aires, Argentina). Extraídos con `pdftotext -layout`.
 
+## 🔴 CORRECCIÓN 2026-08-18: había un panel más nuevo que no vi
+
+Este archivo se escribió el 16-ago sobre los 5 PDF de `data/raw/Blood Tests/`. Existe una **segunda
+carpeta**, `data/00. Blood Tests/`, con un archivo que no está en la primera:
+**`Garmendia Julian - Lipid Panel 2025.pdf`** — un perfil lipídico del **2025-02-04** (LabCorp).
+
+**Eso desmiente lo que dije.** Afirmé que el LDL venía subiendo (149 → 170). Con el panel de 2025 la
+serie completa es:
+
+| | 2021-05-14 | 2024-09-20 | **2025-02-04** |
+|---|---|---|---|
+| Colesterol total | 226 | 260 | **230** |
+| **LDL** | 149 | **170** | **143** ← el más bajo de los tres |
+| HDL | 66 | 68 | 65 |
+| Triglicéridos | 54 | 101 | 126 |
+| LDL/HDL | — | — | **2,2** (rango 0,0-3,6) |
+
+**El 170 de sep-2024 era un pico, no una tendencia.** El valor más reciente es el más bajo de la
+serie, y la ratio LDL/HDL de 2,2 está cómodamente en la banda de riesgo bajo. Sigue siendo cierto que
+143 está por encima de la referencia del laboratorio (<100) y merece conversación médica — pero
+"subiendo" era incorrecto, y lo dije con más seguridad de la que los datos permitían.
+
+**Lección de proceso:** auditar una carpeta no es auditar los datos. Debí buscar PDF de sangre en
+todo el repositorio, no solo en la carpeta que conocía.
+
+*(El panel de 2025 incluía además cribado infeccioso de rutina —sífilis, VIH, hepatitis C— todo no
+reactivo. Sin relevancia para el entrenamiento; se anota solo para que conste que el panel se leyó
+completo.)*
+
 ## ⚠️ Estos datos NO describen tu estado actual
 
-La analítica más reciente es del **2024-09-20**: hace ~23 meses. Desde entonces hubo un cut
-completo, ~6 semanas de parón, una mudanza a España y un cambio de dieta y de volumen de
-entrenamiento. **Sirve como baseline histórico, no como estado presente.**
+Lo más reciente es el **perfil lipídico del 2025-02-04**: hace ~18 meses. El resto de marcadores
+(vitamina D, insulina, HOMA, tiroides, hepatograma) son de **sep-2024 o antes**, ~23 meses. Desde
+entonces hubo un cut, ~6 semanas de parón, una mudanza a España y cambios de dieta y volumen.
+**Sirve como baseline histórico, no como estado presente.**
 
 Ninguna regla del sistema debe dispararse sobre estos valores. Su único uso legítimo hoy es
 (a) señalar qué conviene volver a medir y (b) dar un punto de partida contra el que comparar la
@@ -17,6 +47,7 @@ próxima analítica.
 
 | Fecha | Informe | Alcance |
 |---|---|---|
+| **2025-02-04** | **LabCorp L867055-23** | **Perfil lipídico con ratio LDL/HDL** + cribado infeccioso de rutina. `data/00. Blood Tests/` |
 | 2021-05-14 | 013-63849-1194 | Hemograma, glucemia, **perfil lipídico**, ionograma, hepatograma, TSH, orina |
 | 2023-06-28 | — | Hemograma, ESR, glucemia, urea, PCR, ionograma, Ca/Mg, hepatograma, CK, LDH, TSH, T4L, β2-microglobulina |
 | 2023-08-04 | 002-66690-1817 | **El más completo**: HbA1c, ApoA/ApoB, PCR, ferritina, B12, folato, vit. D, cortisol salival, insulina, HOMA, homocisteína, selenio, zinc, B6, gases en sangre |
@@ -27,25 +58,35 @@ próxima analítica.
 
 ## Lípidos y riesgo cardiovascular
 
-| Marcador | 2021-05-14 | 2023-08-04 | 2024-09-20 | Referencia | Lectura |
-|---|---|---|---|---|---|
-| Colesterol total (mg/dL) | 226 | — | **260** | deseable <200 · elevado ≥240 | ⚠️ elevado y subiendo |
-| Colesterol LDL (mg/dL) | 149 | — | **170** | deseable <130 | ⚠️ elevado y subiendo |
-| Colesterol HDL (mg/dL) | 66 | — | 68 | elevado ≥60 | ✅ bueno y estable |
-| Triglicéridos (mg/dL) | 54 | — | 101 | deseable <175 | ✅ dentro de rango |
-| Colesterol no-HDL (mg/dL) | 160 | — | *(no informado)* | — | — |
-| **Apolipoproteína B** (mg/dL) | — | **110** | — | 66-133 (rango del lab) | ⚠️ ver nota |
-| Apolipoproteína A (mg/dL) | — | 141 | — | 104-202 | ✅ |
+| Marcador | 2021-05-14 | 2023-08-04 | 2024-09-20 | **2025-02-04** | Referencia | Lectura |
+|---|---|---|---|---|---|---|
+| Colesterol total (mg/dL) | 226 | — | 260 | **230** | deseable <200 | ⚠️ elevado, **sin tendencia clara** |
+| Colesterol LDL (mg/dL) | 149 | — | 170 | **143** | <100 (LabCorp) · <130 (lab arg.) | ⚠️ elevado, **el más bajo de la serie** |
+| Colesterol HDL (mg/dL) | 66 | — | 68 | **65** | >39 · elevado ≥60 | ✅ bueno y muy estable |
+| Triglicéridos (mg/dL) | 54 | — | 101 | **126** | <150 | ✅ en rango, subiendo dentro de él |
+| VLDL (mg/dL) | — | — | — | **22** | 5-40 | ✅ |
+| **Ratio LDL/HDL** | — | — | — | **2,2** | 0,0-3,6 | ✅ **banda de riesgo bajo** |
+| Colesterol no-HDL (mg/dL) | 160 | — | *(no informado)* | 165 (calc.) | — | — |
+| **Apolipoproteína B** (mg/dL) | — | **110** | — | — | 66-133 (rango del lab) | ⚠️ ver nota · sin repetir desde 2023 |
+| Apolipoproteína A (mg/dL) | — | 141 | — | — | 104-202 | ✅ |
 
 **Nota sobre ApoB.** El rango del laboratorio (66-133) es un intervalo poblacional, no un objetivo
 de riesgo. Las guías de prevención cardiovascular manejan umbrales bastante más bajos para riesgo
 óptimo. 110 mg/dL no es una alarma, pero tampoco es "normal, todo bien": es el marcador aterogénico
 más informativo del panel y conviene volver a medirlo junto a Lp(a).
 
-**Este es el hallazgo más relevante de las 5 analíticas.** LDL +21 mg/dL y colesterol total
-+34 mg/dL en 3,4 años, con HDL y triglicéridos intactos. El patrón (HDL alto, TG bajos, LDL alto)
-no es el del síndrome metabólico — la glucemia y el HOMA lo confirman. Merece una analítica nueva
-y conversación médica, no un cambio de entrenamiento.
+**Reescrito el 2026-08-18 con el panel de 2025.** Lo que la serie completa muestra no es una
+tendencia ascendente, sino **oscilación alrededor de un LDL persistentemente alto**: 149 → 170 → 143.
+El pico de 2024 no se sostuvo.
+
+Lo que sí es consistente en los cuatro años: **LDL por encima de la referencia en todas las
+mediciones**, con HDL alto y estable (65-68) y triglicéridos en rango. Ese patrón —HDL alto, TG
+normales, LDL alto— **no es el del síndrome metabólico**; el HOMA de 1,3 y la HbA1c de 5,3% lo
+confirman. Y la ratio LDL/HDL de 2,2 está en la banda de riesgo bajo.
+
+Traducción práctica: es un tema para el médico, con **ApoB y Lp(a)** —que estratifican el riesgo
+mucho mejor que el LDL calculado— y no un motivo para cambiar el entrenamiento. La Lp(a) se mide
+una sola vez en la vida y nunca se ha medido.
 
 ## Glucemia e insulina
 

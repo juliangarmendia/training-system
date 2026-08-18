@@ -6,7 +6,7 @@
 > El *por qué* de cada cosa vive en [`../assessments/2026-08-16_system-audit.md`](../assessments/2026-08-16_system-audit.md).
 > Aquí está el *qué sigue*.
 >
-> Última actualización: **2026-08-18**
+> Última actualización: **2026-08-18** (v11.41)
 
 ## Regla de trabajo
 
@@ -21,49 +21,95 @@ Antes de cada tanda de trabajo: leer esta lista. Al cerrar un punto: actualizarl
 
 | Dato | Cantidad | Último | |
 |---|---|---|---|
-| Entrenamientos de gimnasio | 23 | 2026-08-17 | ✅ |
+| Entrenamientos de gimnasio | 23 | 2026-08-17 | ✅ entra bien |
 | Carreras | 13 | 2026-08-16 | ✅ |
 | Sueño / HRV / recuperación | 105 | 2026-08-18 | ✅ |
+| **Composición corporal** | Tanita | **2026-08-11** | ✅ **nueva referencia** |
+| **Perfil lipídico** | LabCorp | **2025-02-04** | ✅ 18 meses |
 | Cardio no-carrera (bici, remo, SkiErg) | **0** | — | ❌ punto 1 |
-| Peso corporal | 15 | **2026-05-27** | ❌ punto 2 |
 | Nutrición | 11 | 2026-05-28 | ❌ punto 2 |
 | Movilidad | 2 | 2026-04-27 | ❌ punto 7 |
 
 Reproducir: consultar Supabase (proyecto `ycfodifvpvosukepcxie`), tabla por tabla, filtrando por el
 `user_id` de Julian. No fiarse de la memoria de nadie.
 
+## 🔴 El hallazgo que domina todo lo demás: adherencia ~30%
+
+Sesiones registradas entre el **2026-06-20 y el 2026-08-17** (9 semanas): **11**. El plan prescribe 4
+por semana → **~1,2/semana medidas**.
+
+| Sesión | Veces |
+|---|---|
+| `upperA` (press/remo) | 5 |
+| `lowerA` (sentadilla) | 4 |
+| `upperB` (dominadas/OHP) | 2 |
+| **`lowerB` (bisagra / peso muerto)** | **0** |
+
+Huecos de 11, 12 y 14 días. **El sumo deadlift —uno de los cinco anchors "never rotate"— lleva más
+de dos meses sin tocarse**, y con él toda la cadena posterior.
+
+**Por qué esto reordena la lista:** las cinco últimas jornadas se fueron en optimizar la
+*composición* del plan (frecuencia por patrón, tipo de core, isquios, pliometría). Eso tiene un techo
+bajo mientras el plan se ejecuta al 30%. **Afinar el motor de un coche que arranca una vez por
+semana rinde poco.**
+
+Caveat honesto: esto mide adherencia **de registro**. Puede haber entrenado sin registrar. Pero sin
+registro el sistema no puede progresar cargas ni adaptar nada, así que el efecto es el mismo — y es
+justo lo que Julian pide que el sistema haga.
+
+**No sé por qué la adherencia es baja, y no lo voy a suponer.** Falta de tiempo, sesiones demasiado
+largas, el gimnasio lejos, el plan poco atractivo, o simplemente no registrar lo que sí se hace son
+explicaciones muy distintas y llevan a soluciones opuestas. Es la conversación que más valor tiene
+ahora mismo.
+
 ---
 
-## 1 · Que el cardio no-carrera entre de verdad — **Claude**
+## 1 · Que el cardio no-carrera entre de verdad — **esperando a que Julian abra la app**
 
-**Estado: en curso (v11.40).**
+Todo el código está desplegado. Tres arreglos encadenados: el filtro que descartaba lo que no fuera
+correr (16-ago), el tipo `VirtualSki` del SkiErg de Concept2 (18-ago), y la recuperación del
+histórico, que se marcaba "hecha" con un booleano puesto *antes* del arreglo de `VirtualSki` y por
+tanto no habría vuelto a ejecutarse (18-ago, ahora versionada).
 
-`sessions` sigue en 0. El filtro que descartaba todo lo que no fuera correr se arregló el 16-ago, y
-el tipo `VirtualSki` (SkiErg de Concept2) el 18-ago. Pero queda un problema de raíz: **la
-recuperación del histórico no volverá a ejecutarse**. Se marca "hecha" con un booleano que ya está
-puesto desde antes del arreglo de `VirtualSki`, y la ventana de sync normal solo mira de ayer a hoy.
-Sin versionar ese marcador, todo tu histórico de SkiErg y bici queda fuera para siempre.
+**Cambio de v11.41:** las **caminatas ya no se importan**. Caminar 15 minutos al trabajo no es
+entrenamiento y ensuciaba el historial con desplazamientos. Los pasos siguen entrando por su propia
+vía, donde sí tienen sentido como contexto de actividad diaria.
 
-También: el diagnóstico de importación (qué se importó y qué se descartó) se guarda solo en el
-teléfono, así que no se puede revisar en remoto sin pedir capturas.
+**Cómo se comprueba:** abrir la app y verificar en Supabase que `sessions` pasa de 0 a más de 0. El
+diagnóstico de importación ahora sube a la nube, así que si algo se descarta se puede ver en remoto
+sin pedir capturas.
 
-**Cómo se comprueba:** abrir la app y verificar en Supabase que `sessions` pasa de 0 a más de 0.
+## 2 · ✅ Composición medida — y el objetivo de peso ya no cuadra
 
-## 2 · Pesarte — **Julian**
+**Resuelto el 2026-08-18** con la Tanita MC-780MA-N: **87,1 kg · 16,4% de grasa · 72,8 kg de masa
+libre de grasa**. Detalle en
+[`../data/processed/2026-08-18_body-composition-tanita.md`](../data/processed/2026-08-18_body-composition-tanita.md).
 
-**Es lo de mayor impacto de toda la lista, y no depende de código.**
+Lo importante que salió de ahí: **el ~21% que arrastraba el perfil desde abril estaba mal**, no es
+que hubiera una recomp espectacular. Y con 72,8 kg de masa libre de grasa, el objetivo escrito
+—"80-83 kg **y** 15-17% de grasa"— es internamente contradictorio:
 
-Último peso fiable: **27 de mayo**, hace casi tres meses. Sin peso reciente no se puede:
+| Peso | Grasa | % |
+|---|---|---|
+| **87,1 kg (hoy)** | 14,3 kg | **16,4%** ← ya dentro del objetivo de % |
+| 85,6 kg | 12,8 kg | 15,0% |
+| 83 kg | 10,2 kg | **12,3%** |
+| 80 kg | 7,2 kg | **9,0%** |
 
-- recalibrar tu gasto calórico — el cálculo actual asume 88,6 kg y una semana de "4 gimnasio + 2
-  carreras", que ya no es tu plan;
-- saber si el déficit funciona ni a qué ritmo;
-- actualizar los kg objetivo de las sesiones, congelados en el baseline del 30 de junio.
+### ⏸ Decisión pendiente — **Julian**
 
-**Qué hace falta:** 2 semanas de pesajes diarios, por la mañana, en ayunas, después del baño. Una
-medición aislada no sirve — el peso oscila 1-2 kg por agua y sodio. Lo que se usa es la media móvil.
+**¿El objetivo es el porcentaje de grasa o el número de la báscula?** Ya estás dentro del rango de
+grasa que el documento pedía. Bajar a 80-83 kg significa llegar a 9-12%: legítimo, pero es un
+objetivo mucho más agresivo del que está escrito, con un coste de adherencia y rendimiento distinto.
+Y con la adherencia actual al 30%, perseguir 9% sería contraproducente.
 
-Lo mismo con la nutrición: sin registro no hay forma de ajustar calorías con criterio.
+Hasta que se decida, `goals.md` queda marcado como contradictorio y no se recalibran calorías.
+
+### Sigue pendiente: pesarse con regularidad
+
+Una medición de composición cada 8-12 semanas, pero **el peso en media móvil de 7 días** es lo que
+permite ver si el déficit funciona. Sin eso no se puede ajustar nada con criterio. Ídem la nutrición:
+último registro del 28 de mayo.
 
 ## 3 · Dos decisiones de entrenamiento abiertas — **Julian decide**
 
@@ -77,23 +123,24 @@ El plan la llama sesión de calidad y lo que manda al reloj es Z2 fácil. Dos sa
 
 Lo único que no vale es que diga una cosa y haga otra.
 
-### 3b. La semana suma 7,5 puntos de dureza contra un objetivo de 6
+### 3b. ✅ El presupuesto de dureza deja de limitar — resuelto
 
-Cada sesión lleva una puntuación de dureza (recuperación 0 · cardio fácil 0,5 · tren superior 1 ·
-**tren inferior 2** · umbral o intervalos 2 · benchmark 3). La suma semanal debería quedar en 5-6.
-Equivale a la regla de siempre: **no más de 2-3 sesiones verdaderamente duras por semana, contándolo
-todo** — no solo las carreras.
+**Decisión de Julian (2026-08-18):** *"olvidate de ese ranking de dureza de 6. Lo importante es
+entrenar bien, de última pondré menos peso, menos repeticiones, o te avisaré que es mucho. O haré
+descanso."* Y: *"podemos mantener el valor mostrando cuánto vengo haciendo, pero no limites las
+planificaciones con eso."*
 
-Tu semana: pierna 2 + upper 1 + Z2 0,5 + pierna 2 + upper 1 + cardio largo 1 = **7,5**.
+Aplicado en v11.41:
 
-Dos matices importantes: los pesos son **estimaciones, no medidas**, y hoy la suma solo cuenta lo que
-**ya registraste** — el plan nunca se contrasta contra su propio objetivo antes de proponerte la
-semana.
+- **La carga acumulada sigue visible** en su tarjeta, como información. Sin barra roja ni avisos.
+- **Ya no decide nada.** Se retiró del consejo diario, que ahora se apoya solo en señales
+  fisiológicas reales: recuperación e interferencia (no correr fuerte antes de pierna).
+- El aviso del catálogo de cardio se mantiene solo por razones físicas —pierna hoy, recuperación en
+  rojo—, no por un número heurístico.
 
-**Recomendación: esperar.** Con el cardio real entrando (punto 1), en pocos días habrá un número
-medido en vez de estimado. Decidirlo ahora sería a ojo.
-
-Detalle en [`architecture/hard-day-budget.md`](architecture/hard-day-budget.md).
+**Y era la decisión correcta**, por una razón que los datos respaldan: la adherencia real es de ~1,2
+sesiones por semana. Un sistema que rechaza planes por exceso de carga mientras el problema real es
+que no se entrena estaba resolviendo el problema equivocado.
 
 ## 4 · Pliometría y trineo — **Julian decide**
 
@@ -104,16 +151,37 @@ Detalle en [`architecture/hard-day-budget.md`](architecture/hard-day-budget.md).
 - **Trineo: sí, pero sustituyendo un día de cardio, no añadiéndolo** — es literalmente lo que dice
   la regla. Concéntrico puro, pocas agujetas, impacto bajo: de todo lo que falta, es lo que mejor
   encaja con tu historial lumbar.
-- **Circuitos híbridos completos: esperar.** La regla permite 0-1 por semana en déficit, así que
-  cero está dentro. Y la semana ya va por encima de su objetivo de dureza.
+- **Circuitos híbridos completos:** con el presupuesto de dureza ya retirado como límite (punto 3b),
+  el argumento de "no cabe en la semana" desaparece. Lo que queda es que la evidencia de programación
+  HYROX es la más débil del corpus (no hay ensayos), así que se diseña con dosis conservadora.
+
+**Decisión de Julian (2026-08-18): sí, y añadir todo lo que tenga sentido.** Pendiente de diseñar e
+implementar — es el siguiente punto de trabajo.
 
 ## 5 · Analítica de sangre — **Julian**
 
-La última es de **septiembre de 2024**: 23 meses. Tres cosas concretas:
+**Actualizado el 2026-08-18.** Apareció una segunda carpeta, `data/00. Blood Tests/`, con un
+**perfil lipídico del 2025-02-04** que no estaba en la que audité. Eso corrige algo que dije mal:
 
-- **Vitamina D en 11,2 ng/mL** = deficiencia franca (el corte está en 20), medida en 2023 y **nunca
-  re-controlada**. El plan de nutrición sugiere una dosis de mantenimiento, no de corrección.
-- **Colesterol LDL de 149 → 170 mg/dL** entre 2021 y 2024, con ApoB en 110.
+| | 2021 | 2024-09 | **2025-02** |
+|---|---|---|---|
+| LDL | 149 | 170 | **143** |
+| HDL | 66 | 68 | 65 |
+| Total | 226 | 260 | 230 |
+| Ratio LDL/HDL | — | — | **2,2** (rango 0-3,6) |
+
+**Dije que el LDL venía subiendo. No es cierto:** el valor más reciente es el más bajo de la serie, y
+el 170 de 2024 era un pico. Sigue estando por encima de la referencia (<100) y merece conversación
+médica, pero con la ratio LDL/HDL en 2,2 —banda de riesgo bajo— y triglicéridos normales, el patrón
+no es alarmante.
+
+Lo que sigue faltando, y es lo que de verdad importa:
+
+- **Vitamina D en 11,2 ng/mL** = deficiencia franca (el corte está en 20), medida en **2023** y nunca
+  re-controlada. El plan de nutrición sugiere una dosis de mantenimiento, no de corrección. **Es el
+  punto más accionable de toda la analítica.**
+- **ApoB y Lp(a)**: estratifican el riesgo cardiovascular mucho mejor que el LDL calculado. La ApoB
+  se midió una vez (110, en 2023); la Lp(a) **nunca**, y se mide una sola vez en la vida.
 - **Testosterona nunca medida**, en alguien con déficit prolongado.
 
 El sistema registra y deriva; **no interpreta ni trata**. Esto es conversación médica.

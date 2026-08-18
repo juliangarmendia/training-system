@@ -4646,13 +4646,15 @@ const CARDIO_TYPE_MAP = {
   // de SkiErg se descartaba en silencio. VirtualRow y VirtualRide (BikeErg) ya estaban por suerte.
   NordicSki: 'ski', BackcountrySki: 'ski', RollerSki: 'ski', AlpineSki: 'ski', VirtualSki: 'ski',
   Elliptical: 'elliptical', StairStepper: 'elliptical',
-  Walk: 'walk', Hike: 'walk',
   Swim: 'swim',
 };
 
-// Deliberately NOT imported: strength and mobility. They would duplicate the gym
-// sessions logged in-app and double-count in the hard-day budget (user decision).
-const NON_CARDIO_TYPES = new Set(['WeightTraining', 'Workout', 'Crossfit', 'Yoga', 'Pilates', 'StandUpPaddling']);
+// NO se importan, por decisión del usuario (2026-08-18):
+//  - `Walk` / `Hike`: caminar 15 min al trabajo no es entrenamiento. Ensuciaba el historial con
+//    desplazamientos cotidianos. (Los pasos siguen entrando por su propia vía, `steps`, donde
+//    tienen sentido como contexto de actividad diaria.)
+//  - Fuerza y movilidad: duplicarían las sesiones de gimnasio registradas a mano.
+const NON_CARDIO_TYPES = new Set(['WeightTraining', 'Workout', 'Crossfit', 'Yoga', 'Pilates', 'StandUpPaddling', 'Walk', 'Hike']);
 
 const RUN_MODALITIES = new Set(['run_outdoor', 'treadmill']);
 
@@ -5413,9 +5415,10 @@ async function renderCardioLibrary() {
   // A hard cardio session is discouraged when the day already carries heavy legs
   // (INT-001), the week is over its hard-day cap (BUD-001), or recovery is red.
   const legsToday = planned && planned.type === 'gym' && /lower|pierna|squat|bisagra/i.test(`${planned.sessionId} ${planned.subtitle || ''}`);
-  const overCap = !!(budget && budget.overCap);
-  const hardDiscouraged = legsToday || overCap || whoopRed;
-  const hardWhy = legsToday ? 'hoy toca pierna' : overCap ? 'la semana ya viene cargada' : whoopRed ? 'recuperación en rojo' : '';
+  // v11.41: el aviso se apoya solo en razones físicas reales —pierna hoy (interferencia) y
+  // recuperación en rojo—, no en la carga acumulada, que ya no condiciona nada.
+  const hardDiscouraged = legsToday || whoopRed;
+  const hardWhy = legsToday ? 'hoy toca pierna' : whoopRed ? 'recuperación en rojo' : '';
   const wantSubtype = planned && planned.type === 'run' ? (planned.subtype || 'zone2') : null;
 
   let header = '';
@@ -7392,9 +7395,8 @@ async function computeHardDayBudget() {
 function detectInterference(planned, ctx) {
   const flags = [];
   const st = ctx.stress;
-  if (st.level === 'hard' && ctx.budget && ctx.budget.overCap) {
-    flags.push({ type: 'budget', ruleId: 'BUD-001', note: 'La semana ya viene muy cargada de días exigentes.' });
-  }
+  // v11.41: el flag de presupuesto se retiró. La carga acumulada se muestra pero no genera avisos
+  // ni influye en la recomendación (decisión del usuario, 2026-08-18).
   if (st.level === 'hard' && ctx.whoop && ctx.whoop.color === 'red') {
     flags.push({ type: 'recovery', ruleId: 'READ-003', note: 'Recuperación en rojo para una sesión exigente.' });
   }
@@ -7433,17 +7435,18 @@ async function computeTrainingAdvisory() {
     recommendation = 'keep'; confidence = 'low';
     reason.push('Todavía no hay dato de recuperación de WHOOP hoy — mantengo el plan.');
   } else if (stress.level === 'hard') {
-    const signals = (whoop.color === 'red' ? 1 : 0) + (budget.overCap ? 1 : 0) + (nFlags >= 1 ? 1 : 0);
+    // v11.41: la carga acumulada YA NO decide nada. Antes `budget.overCap` contaba como señal y
+    // podía degradar o reemplazar la sesión por un número heurístico. Ahora el consejo se apoya solo
+    // en señales fisiológicas —recuperación e interferencia real— y la autorregulación del volumen
+    // la hace el usuario. La carga sigue visible en su tarjeta, como información.
+    const signals = (whoop.color === 'red' ? 1 : 0) + (nFlags >= 1 ? 1 : 0);
     if (signals >= 2) { recommendation = 'replace'; }
     else if (whoop.color === 'red') { recommendation = 'recovery'; }
-    else if (whoop.color === 'yellow' && budget.used >= budget.cap - 1) { recommendation = 'modify'; }
     else { recommendation = 'keep'; }
     if (whoop.color === 'red') reason.push('Tu recuperación (WHOOP) está en rojo.');
-    if (budget.overCap) reason.push('La semana ya viene muy cargada de días exigentes.');
-    else if (whoop.color === 'yellow' && budget.used >= budget.cap - 1) reason.push('Recuperación media y la semana ya viene cargada.');
     const hybFlag = interference.flags.find(f => f.type === 'hybrid');
     if (hybFlag) reason.push(hybFlag.note);
-    if (recommendation === 'keep') reason.push('Recuperación y carga ok — mantené.');
+    if (recommendation === 'keep') reason.push('Recuperación ok — mantené.');
   } else if (stress.level === 'moderate' && whoop.color === 'yellow') {
     recommendation = 'modify';
     reason.push('Recuperación media — mantené, pero sin llegar al fallo y recortá 1-2 accesorios.');
@@ -7545,25 +7548,32 @@ async function renderTrainingAdvisory() {
   });
 }
 
-// Card 2 — Weekly Hard-Day Budget (read-only guardrail)
+// Card 2 — Carga acumulada de la semana. INFORMATIVO, no un límite.
+//
+// v11.41 (decisión del usuario, 2026-08-18): "olvidate de ese ranking de dureza de 6. Lo importante
+// es entrenar bien, de última pondré menos peso, menos repeticiones, o te avisaré que es mucho.
+// O haré descanso." Y: "podemos mantener el valor mostrando cuánto vengo haciendo, pero no limites
+// las planificaciones con eso."
+//
+// Así que la tarjeta se queda —ver la carga acumulada es útil— pero deja de comportarse como un
+// tope: sin barra roja, sin avisos de "no sumes otro día", y sobre todo el número YA NO ENTRA en
+// computeTrainingAdvisory(). La autorregulación la hace él, que además tiene información que el
+// sistema no tiene.
 async function renderHardDayBudget() {
   const container = document.getElementById('hard-day-budget');
   if (!container) return;
   let b;
-  try { b = await computeHardDayBudget(); } catch (e) { console.warn('[T3] budget failed', e); container.innerHTML = ''; return; }
-  const pct = Math.min(100, Math.round((b.used / b.cap) * 100));
-  const barColor = b.overCap ? 'var(--red)' : b.used >= b.cap - 1 ? 'var(--yellow)' : 'var(--accent)';
-  const levelWord = _t3BudgetWord(b.used, b.cap);
+  try { b = await computeHardDayBudget(); } catch (e) { console.warn('[carga] falló', e); container.innerHTML = ''; return; }
+  // Referencia visual sobre 8 puntos, no sobre un tope de 6: es una escala para ver la tendencia,
+  // no una línea que no haya que cruzar.
+  const pct = Math.min(100, Math.round((b.used / 8) * 100));
   const top = (b.items || []).slice(0, 3).map(it => `${it.label} (${_t3WeightWord(it.weight)})`).join(' · ');
-  const warn = b.overCap ? 'Semana muy cargada. Evitá sumar otro día exigente salvo que sea a propósito.'
-             : b.used >= b.cap - 1 ? 'Semana cargada. Cuidá el próximo día exigente.' : '';
   container.innerHTML = `
     <section class="card t3-card">
-      <div class="t3-head"><span class="t3-eyebrow">Carga de la semana</span><span class="t3-budget-num" style="text-transform:capitalize">${levelWord}</span></div>
-      <div class="t3-bar"><div class="t3-bar-fill" style="width:${pct}%;background:${barColor}"></div></div>
-      <div class="t3-context">Suma cuánto esfuerzo exigente acumulaste esta semana. Cuanto más llena la barra, más cargada viene — conviene no encadenar muchos días duros seguidos.</div>
+      <div class="t3-head"><span class="t3-eyebrow">Carga de la semana</span><span class="t3-budget-num">${b.used}</span></div>
+      <div class="t3-bar"><div class="t3-bar-fill" style="width:${pct}%;background:var(--accent)"></div></div>
+      <div class="t3-context">Cuánto esfuerzo exigente acumulaste esta semana, para que lo veas. <b>No es un límite</b>: si una sesión es mucho, baja el peso o las reps, o descansa.</div>
       ${top ? `<div class="t3-context">Lo que más sumó: ${top}</div>` : '<div class="t3-context">Sin entrenamientos esta semana aún.</div>'}
-      ${warn ? `<div class="t3-warn">${warn}</div>` : ''}
     </section>`;
 }
 
@@ -9641,7 +9651,7 @@ async function exportJSON() {
   }
   const backup = {
     app: 'training-system',
-    version: '11.40',
+    version: '11.41',
     exportedAt: new Date().toISOString(),
     dbVersion: typeof DB_VERSION !== 'undefined' ? DB_VERSION : null,
     counts,

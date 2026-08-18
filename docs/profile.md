@@ -1,30 +1,69 @@
 # User Profile
 
-> Last updated: 2026-06-20 · **Estado revisado: 2026-08-16** (auditoría del sistema)
->
-> ⚠️ **Los datos de estado están caducados y no se pueden refrescar.** El espejo de datos en
-> Supabase lleva apagado desde ~2026-06-30 y no hay workouts registrados desde el 2026-06-25, así
-> que cualquier peso o carga "actual" que se escribiera aquí sería inventado. Los campos afectados
-> van marcados **`STALE`**. → [`../assessments/2026-08-16_system-audit.md`](../assessments/2026-08-16_system-audit.md)
+> Last updated: **2026-08-18** — composición corporal medida con Tanita MC-780MA-N.
+> Antes de esta fecha los datos de composición llevaban ~3,5 meses caducados.
 
 ## Basic info
 
 - **Age:** 33 (born 1993-03-10)
 - **Sex:** Male
 - **Height:** 182 cm
-- **Current weight:** **`STALE`** — última medición fiable **86,7 kg el 2026-05-04** (hace ~3,5 meses). Cualquier estimación posterior no tiene respaldo. Requiere pesarse 4-7×/sem durante 2 semanas para reconstruir la tendencia
-- **Estimated body fat %:** ~21% **`STALE`** (bioimpedancia de abril de 2026 — direccional, no precisa)
-- **BMI:** 26.7 **`STALE`** (derivado del peso caducado)
-- **Estimated lean mass:** ~69.8 kg **`STALE`** (derivado)
-- **Target weight:** 80-83 kg
+- **Current weight:** **87,1 kg** (Tanita MC-780MA-N, semana del 2026-08-11)
+- **Body fat:** **14,3 kg · 16,4%** — medición segmental multifrecuencia, **sustituye al ~21% de abril**, que estaba sobreestimado (ver abajo)
+- **BMI:** 26,3 kg/m²
+- **Masa libre de grasa (FFM):** **72,8 kg** · masa muscular esquelética 39,9 kg
+- **Grasa visceral:** 5 (la escala marca riesgo desde 12) · **Phase Angle:** 7,5°
+- **BMR:** 2.126 kcal/día estimado por el aparato desde FFM; rango razonable **1.850-2.130** cruzando con Katch-McArdle y Mifflin
+- **Simetría:** brazos 4,5 / 4,6 kg · **piernas 12,0 / 12,0 kg** — sin desequilibrio que corregir
+- **Target weight:** 80-83 kg ⚠️ **incoherente con el objetivo de grasa declarado** — ver nota
+
+> ### ⚠️ El objetivo de peso ya no cuadra con la composición real
+>
+> `goals.md` pide 80-83 kg **y** 15-17% de grasa. Con 72,8 kg de masa libre de grasa son
+> incompatibles: **ya estás en 16,4%**, dentro del rango declarado. 85,6 kg serían el 15%; 83 kg
+> serían el **12,3%**; 80 kg el **9,0%** — territorio de atleta de competición.
+>
+> Requiere una decisión: ¿el objetivo es el porcentaje (prácticamente cumplido) o el número de la
+> báscula (mucho más agresivo de lo que el documento cree)? Está en [`pendientes.md`](pendientes.md).
+
+> ### Por qué el 21% de abril se retira
+>
+> Pasar de 21% (88,6 kg) a 16,4% (87,1 kg) implicaría perder 4,3 kg de grasa **y ganar 2,8 kg de masa
+> libre de grasa** en 4,5 meses que incluyeron un parón de 6 semanas y ~1,2 sesiones/semana de
+> adherencia. No es plausible. **La cifra de abril estaba mal**, no es que haya habido una recomp
+> espectacular. El MC-780MA-N es el mejor instrumento de los dos y es la nueva línea base.
+>
+> Detalle completo en [`../data/processed/2026-08-18_body-composition-tanita.md`](../data/processed/2026-08-18_body-composition-tanita.md).
 
 ## Training background
 
 - **Years training consistently:** At least ~9+ months documented with a trainer. Training has been on-and-off — consistency in showing up but not in frequency
 - **Primary style:** Gym (compound lifts + CrossFit-influenced conditioning). Some running
-- **Current status:** **`STALE`** — el ramp de reentrada W26-W28 terminó el 2026-07-12 y el plan IDEAL lo reemplazó el 2026-06-30 (v11.28). Desde entonces **no hay sesiones registradas**, así que el estado de entrenamiento real es desconocido
-- **Current frequency:** Desconocida desde el 2026-06-25. El plan prescribe 4 sesiones de fuerza + Z2 casi diario (variante 6 del IDEAL)
-- **Current running volume:** **`STALE`** — última carrera registrada 2026-05-24
+- **Current status:** entrenando de forma intermitente. El plan IDEAL es el default desde el 2026-06-30 (v11.28)
+- **Current frequency:** **~1,2 sesiones de fuerza/semana medidas** (11 sesiones entre el 20-jun y el 17-ago). El plan prescribe 4. **Adherencia ~30%** — es el dato dominante del perfil, ver abajo
+- **Current running volume:** ~1 carrera cada 2-4 semanas; 13 carreras registradas en total, última 2026-08-16 (5,06 km / 35 min)
+
+> ### ⚠️ El dato que domina todo lo demás: adherencia ~30%
+>
+> Sesiones registradas entre el 2026-06-20 y el 2026-08-17 (9 semanas):
+>
+> | Sesión | Veces | |
+> |---|---|---|
+> | `upperA` (press/remo) | 5 | la que se hace por defecto |
+> | `lowerA` (sentadilla) | 4 | |
+> | `upperB` (dominadas/OHP) | 2 | |
+> | **`lowerB` (bisagra / peso muerto)** | **0** | **no se entrena desde antes de junio** |
+>
+> Huecos de 11, 12 y 14 días entre sesiones. Duraciones entre 32 y 95 minutos.
+>
+> **El sumo deadlift —uno de los cinco anchors "never rotate"— lleva más de dos meses sin tocarse.**
+> Y toda la cadena posterior con él.
+>
+> Implicación para el sistema: optimizar la *composición* del plan (frecuencia por patrón, tipo de
+> core, pliometría) tiene un techo bajo mientras se ejecuta el 30%. **La adherencia es la palanca
+> grande.** Caveat honesto: esto mide adherencia *de registro*; puede haber entrenado sin registrar.
+> Pero sin registro el sistema no puede progresar cargas ni adaptar nada, así que el efecto práctico
+> es el mismo.
 - **Injuries or limitations:** **Historial lumbar** — dos contracturas (W2 y W16 de 2026), ambas precedidas por semanas con **cero movilidad**. Consecuencias vigentes: sumo deadlift con gate de RPE (el primer working set decide si se progresa, máx +2,5 kg/semana), movilidad obligatoria 2-3×/sem (**ATH-006**), y variantes lumbar-friendly disponibles (trap bar) por **LOAD-003**. *(Corregido el 2026-08-16: este campo decía "None", en contradicción con las reglas que el propio sistema aplica por ese historial.)*
 - **Availability:** Can train almost every day
 
