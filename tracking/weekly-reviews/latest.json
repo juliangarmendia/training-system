@@ -1,107 +1,96 @@
 {
-  "weekKey": "2026-W18",
-  "generatedAt": 1778025600000,
-  "source": "interactive",
+  "weekKey": "2026-W33",
+  "generatedAt": 1786838400000,
+  "source": "auto",
   "coachVoice": {
-    "lastWeek": "**4/4 gym, three lifts progressed cleanly, body weight on target — but the wellness data is the headline this week.**\n\nRow +5 lb hit (150 × 10 × 4 RPE 8 across), Squat +1 rep at SAME RPE on all 4 sets (215 × 9 × 4 RPE 7.5 — textbook double-progression, you've earned the +5 lb), OHP all 4 sets done at 115 finally (3-week streak broken), Sumo DL +20 lb landed (245 × 4/5/5/6 with the conservative first-set ramp, no back symptoms). Bench RPE crept to 9 on the last set of 205 × 8 × 4 — at the ceiling, hold load.\n\n**The big signal: wellness data flagged over-reaching.** Readiness average 56 (vs baseline ~65), HRV down ~14% vs baseline, RHR up ~5 bpm sustained. Two crash days: Wed 4/29 readiness 21 / HRV 38 / RHR 60 (post Lower A), Sat 5/02 readiness 37 (Sumo DL day). Sleep average 6.3h excluding the 16.6h Sunday outlier — below the 7h floor.\n\n**The W19 deload was already programmed (plan v4.0). The wellness data ratifies the timing independently — you're at the edge of overreaching, not over the cliff.** Don't skip the deload. Don't \"deload light.\" The plan calls for −50% volume, RPE 6, diet break to maintenance — that's the prescription.\n\n**Nutrition: 3/7 days logged, avg 116g protein.** Under 50% adherence triggers the rule: no nutrition adjustments until logging gets to 5/7. The bottleneck is the spreadsheet, not the macros.\n\n**Bodyweight: trend on target (-0.59%/wk over 22 days, 88.3 → 86.7), but W18 sampling collapsed.** All 7 days of intervals.icu pull were forward-fills (Apple Health didn't capture weigh-ins). Manual scale entry needed — the trend is good but we're flying with one eye closed if the data isn't there.\n\n**Hip Thrust + Pallof Press: skipped 2 weeks in a row** on Lower B. The W17 reorder was prescribed but not enforced. This week we move Hip Thrust to position #1 in Lower B, even on the deload. Pallof: drop, replace with extra Ab Wheel work on Lower A (which is getting done).",
-    "nextWeek": "**Week 19 is the deload + diet break. Lock it in.** The plan v4.0 has it programmed in detail — follow it, don't improvise.\n\n**Loads:** Bench 195 × 6 × 2 RPE 6 · Squat 195 × 6 × 2 RPE 6 · Sumo DL 200 × 4 × 2 RPE 6 (DOWN from 245 — conservative per the W16 contracture protocol) · OHP 105 × 6 × 2 RPE 6 · Row 140 × 8 × 2 RPE 6. Two working sets per exercise. Walk out in 30-40 min. If anything feels hard, you're doing it wrong.\n\n**Three structural changes activate this week** (per plan v4.0): (1) Cable Fly added to Upper A — empezar liviano (15-25 lb por mano) para encontrar working load para W20. (2) 3-sec eccentric en Incline DB Press, RDL, Incline Curl, Leg Curl — practicar tempo a peso liviano. (3) Hip Thrust moves to position #1 in Lower B (before BSS).\n\n**Running: 1 run only this week — Sat Z2 3 km, HR < 135.** The 5/01 run last week pushed HR 146 (above the new 143 ceiling). Keep this one strict.\n\n**Diet break: ~2,900 kcal vs baseline 2,500.** +400 kcal (mostly carbs to ~385g, hold protein 170g, hold fat 75g). MATADOR-style — reduces adaptive thermogenesis, restores recovery hormones, preps you for W20 build.\n\n**Mobility: 3 sessions mandatory** — Wed Hip Reset / Sat Lumbar / Sun Hip Reset. Pin them.\n\n**The single biggest lever this week: sleep ≥ 7h every night.** That's what fixes the wellness signals. Deload + diet break + sleep is the trifecta — getting 2 of 3 wastes the week.\n\n**Open ask:** weigh in manually 4-7×/week (AM, fasted, post-bathroom). Apple Health forward-fill is noise; we need real data points. And log nutrition 5/7 days minimum — or admit we're guessing on the deficit calibration."
+    "lastWeek": "**W33: 2/4 sesiones, y las dos buenas.** OHP sube a 55 kg × 8 @RPE 6,9 (+5 desde junio) y las dominadas por fin salen a 4×8 completas. La sentadilla mantiene 100 kg × 8 @7,0.\n\nAcabo de analizar las **15 semanas** que estaban sin revisar (W19 a W33). Tres cosas salen de ahí, y las tres importan más que cualquier ajuste de programa:\n\n**1. Lo que sí entrenaste, progresó.** Banca 80 → 90 kg. Sentadilla 90 → 100 kg. OHP 50 → 55 kg. Todo con el RPE prácticamente clavado en 7,0-7,4. Con 10 sesiones en 15 semanas eso no debería pasar — es margen que llevabas encima desde antes del parón, y ya está casi agotado.\n\n**2. El peso muerto no se ha tocado desde el 3 de mayo.** Cero sesiones de `lowerB` en 15 semanas. Es uno de los cinco anchors y con él se va toda la cadena posterior. Es el hueco más grande del historial, con diferencia.\n\n**3. La semana 29 es la demostración de por qué el sueño manda.** Readiness 48,3, sueño 6,04 h — los dos mínimos del periodo. Y es exactamente la semana en que **el remo retrocedió de 60 a 50 kg**, la única regresión de carga de todo el tramo. La sentadilla del día siguiente aguantó. Bajo fatiga cae primero lo accesorio.\n\nY el contraste que lo remata: tu **mejor** semana fisiológica fue la W30 (readiness 83,5, frecuencia en reposo 43,5, la más baja del año) — con **cero** entrenamientos. Estar descansado y estar en forma no son lo mismo.\n\n**Carreras: tres de las últimas cuatro por encima del techo de Z2** (HR 147-149 contra 143). Aunque hay una señal buena escondida ahí: a la misma frecuencia cardíaca corres 19 s/km más rápido que en mayo. La base aeróbica mejoró, pero llevas semanas corriendo en Z3 pensando que es Z2.\n\n**Movilidad: 0 sesiones en 15 semanas.** Con dos contracturas lumbares detrás.",
+    "nextWeek": "W34 ya está en marcha, así que esto es para **W35 (24-30 ago)**. Cuatro prioridades, en orden:\n\n**1. El peso muerto vuelve, y vuelve conservador.** Es lo único no negociable de la semana. Llevas 15 semanas sin hacerlo, así que no se retoma en 110 kg: arranca en **90 kg** y deja que la primera serie decida. Si sale a RPE 8 o más, te quedas ahí toda la semana. Tu historial lumbar manda sobre las ganas.\n\n**2. Sube donde el RPE te lo está pidiendo.** Sentadilla **102,5 kg** (tres mediciones seguidas a RPE 7,0 con 8 repes es margen sin usar). OHP **57,5**. Dominadas **BW +2,5 kg** (llegaste a 4×8). Remo de vuelta a **60 kg** — lo hacías en junio y sigues en 55.\n\n**3. La banca se queda en 90.** RPE 7,4 y una sola sesión de banca en cinco semanas. Consolida antes de subir.\n\n**4. Las carreras, en Z2 de verdad: HR por debajo de 143.** Vas a tener que ir más lento de lo que te apetece. Si no puedes mantenerte bajo 143, camina las cuestas. El cardio fácil solo sirve si es fácil.\n\nY dos cosas que no son entrenamiento pero deciden más que él: **pésate a diario** (el último registro es del 27 de mayo, y sin la media móvil de 7 días el ajuste de calorías es a ciegas) y **la vitamina D** — 11,2 ng/mL en 2023 es deficiencia franca y nunca se re-controló.\n\nCalorías nuevas, con tu composición medida: **2.700 los días de entreno, 2.400 los de descanso**, proteína **185 g** todos los días."
   },
   "nextWeekPlan": {
-    "weekNumber": 19,
-    "weekLabel": "Block A · Week 5 (DELOAD + diet break + ACSM structural changes)",
-    "phase": "deload",
-    "summary": "−50% volume, RPE 6, diet break to maintenance. Sumo DL 200 × 4 × 2 (DOWN from 245). Activate Cable Fly + 3s eccentric tempo. Mobility 3×. Sleep ≥ 7h every night.",
+    "weekNumber": 35,
+    "weekLabel": "W35 (24-30 ago) · vuelve el peso muerto",
+    "phase": "build",
+    "summary": "Peso muerto de vuelta a 90 kg con gate de RPE. Sentadilla 102,5. OHP 57,5. Dominadas +2,5. Remo a 60. Banca mantiene 90. Carreras en Z2 estricto (<143).",
     "sessions": [
       {
-        "id": "upperA",
-        "label": "Upper A — Mon",
-        "focus": "Deload — practice Cable Fly + 3s eccentric Incline DB",
-        "exercises": [
-          {"id": "bench-press", "name": "Bench Press", "target": "195 lb × 6 × 2", "rpe": "6", "note": "−5% load, half volume. Walk out — nothing should feel hard"},
-          {"id": "barbell-row", "name": "Barbell Row", "target": "140 lb × 8 × 2", "rpe": "6"},
-          {"id": "incline-db-press", "name": "Incline DB Press (3s eccentric — practice)", "target": "40 lb/DB × 10 × 2", "rpe": "6", "note": "Practice 3-sec eccentric controlado. If 3s isn't smooth, drop 5-10 lb"},
-          {"id": "cable-fly", "name": "Cable Fly (NEW)", "target": "Light × 12 × 2", "rpe": "6", "note": "First time — find working weight (start 15-25 lb/hand). Stretch profundo abajo. This becomes permanent in W20"},
-          {"id": "face-pull", "name": "Face Pull", "target": "40 lb × 12 × 2", "rpe": "6"},
-          {"id": "lateral-raise", "name": "DB Lateral Raise", "target": "12 lb × 12 × 2", "rpe": "6"}
-        ]
-      },
-      {
         "id": "lowerA",
-        "label": "Lower A — Tue",
-        "focus": "Deload — practice 3s eccentric on RDL",
+        "label": "Lower A — Lun 24",
+        "focus": "Sentadilla +2,5 kg. Primera semana con pliometría.",
         "exercises": [
-          {"id": "back-squat", "name": "Back Squat", "target": "195 lb × 6 × 2", "rpe": "6", "note": "−10% from working weight 215"},
-          {"id": "rdl", "name": "RDL (3s eccentric — formal from now)", "target": "165 lb × 8 × 2", "rpe": "6", "note": "3s eccentric is now permanent. Practice tempo, do not chase load"},
-          {"id": "leg-press", "name": "Leg Press", "target": "180 lb × 10 × 2", "rpe": "6"},
-          {"id": "leg-curl-a", "name": "Leg Curl (machine)", "target": "80 lb × 10 × 2", "rpe": "6"},
-          {"id": "calf-raise", "name": "Standing Calf Raise", "target": "100 lb × 12 × 2", "rpe": "6"},
-          {"id": "ab-wheel", "name": "Ab Wheel Rollout", "target": "BW × 8 × 2", "rpe": "—"}
+          {"id": "pogo-hops", "name": "Pogo Hops", "target": "2 × 20", "rpe": "-", "note": "Nuevo. Solo tobillo, contacto corto y rígido. Prepara el tendón"},
+          {"id": "box-jump", "name": "Box Jump", "target": "3 × 5", "rpe": "-", "note": "Cajón medio. BAJA CAMINANDO, nunca saltando"},
+          {"id": "back-squat", "name": "Back Squat", "target": "102,5 kg × 5-8", "rpe": "7-8", "note": "+2,5 kg. Tres semanas a RPE 7,0 con 8 repes = margen sin usar"},
+          {"id": "rdl", "name": "Barbell RDL", "target": "70 kg × 8-10", "rpe": "7", "note": "3s de bajada, para a media espinilla"},
+          {"id": "hack-squat", "name": "Hack Squat", "target": "80 kg × 10-12", "rpe": "7-8"},
+          {"id": "seated-leg-curl", "name": "Seated Leg Curl", "target": "45 kg × 10-12", "rpe": "7"},
+          {"id": "calf-raise", "name": "Standing Calf Raise", "target": "60 kg × 12-15", "rpe": "7"},
+          {"id": "ab-wheel", "name": "Ab Wheel Rollout", "target": "3 × 8-12", "rpe": "-", "note": "Anti-extensión. Que la lumbar no se arquee"}
         ]
       },
       {
-        "id": "upperB",
-        "label": "Upper B — Thu",
-        "focus": "Deload — practice 3s eccentric Incline Curl",
+        "id": "upperA",
+        "label": "Upper A — Mar 25",
+        "focus": "Banca mantiene. Remo recupera los 60 kg.",
         "exercises": [
-          {"id": "chinups", "name": "Chin-ups", "target": "BW × 5 × 2", "rpe": "6", "note": "No added weight this week"},
-          {"id": "ohp", "name": "Overhead Press", "target": "105 lb × 6 × 2", "rpe": "6", "note": "−5% from working 115"},
-          {"id": "landmine-row", "name": "Landmine Row", "target": "100 lb × 10 × 2", "rpe": "6"},
-          {"id": "incline-curl", "name": "Incline DB Curl (3s eccentric — formal)", "target": "20 lb/DB × 10 × 2", "rpe": "6", "note": "3s eccentric permanent. Stretch profundo abajo"},
-          {"id": "cable-lateral", "name": "Cable Lateral Raise", "target": "5 lb × 12 × 2", "rpe": "6"},
-          {"id": "hanging-leg-raise", "name": "Hanging Leg Raise", "target": "BW × 8 × 2", "rpe": "—"}
+          {"id": "bench-press", "name": "Bench Press", "target": "90 kg × 5-8", "rpe": "7-8", "note": "Mantener. RPE 7,4 y una sola sesión en 5 semanas: consolida"},
+          {"id": "barbell-row", "name": "Barbell Row", "target": "60 kg × 6-10", "rpe": "7-8", "note": "Vuelta a los 60 de junio. Llevas en 55 desde el bache de la semana 29"},
+          {"id": "incline-db-press", "name": "Incline DB Press", "target": "24 kg/mano × 8-12", "rpe": "7", "note": "3s de bajada"},
+          {"id": "lat-pulldown", "name": "Lat Pulldown", "target": "60 kg × 10-12", "rpe": "7"},
+          {"id": "face-pull", "name": "Cable Face Pull", "target": "25 kg × 12-15", "rpe": "7", "note": "Salud del hombro. No lo saltes"},
+          {"id": "lateral-raise", "name": "DB Lateral Raise", "target": "8 kg/mano × 12-15", "rpe": "7"},
+          {"id": "tricep-pushdown", "name": "Tricep Pushdown", "target": "25 kg × 10-15", "rpe": "7"}
         ]
       },
       {
         "id": "lowerB",
-        "label": "Lower B — Fri",
-        "focus": "Deload — Sumo DL conservative, Hip Thrust moved to position #1",
+        "label": "Lower B — Jue 27 · LA SESIÓN DE LA SEMANA",
+        "focus": "Peso muerto tras 15 semanas. Conservador y con gate de RPE.",
         "exercises": [
-          {"id": "hip-thrust", "name": "Hip Thrust (MOVED TO #1)", "target": "165 lb × 8 × 2", "rpe": "6", "note": "Was being skipped 2 wks running — now goes FIRST. Highest glute EMG. Don't skip again"},
-          {"id": "sumo-dl", "name": "Sumo Deadlift", "target": "200 lb × 4 × 2", "rpe": "6", "note": "MANTENER LOAD CONSERVADORA — DOWN from 245 (W18). Post-contractura W16 protocol — full deload, no progression this week"},
-          {"id": "bss", "name": "Bulgarian Split Squat (DB)", "target": "75 lb × 6/leg × 2", "rpe": "6"},
-          {"id": "leg-extension", "name": "Leg Extension", "target": "85 lb × 10 × 2", "rpe": "6"},
-          {"id": "leg-curl-b", "name": "Leg Curl (3s eccentric — formal)", "target": "70 lb × 10 × 2", "rpe": "6", "note": "3s eccentric permanent. Squeeze 1s arriba"}
+          {"id": "sumo-dl", "name": "Sumo Deadlift", "target": "90 kg × 3-6", "rpe": "≤8", "note": "PRIMERA vez desde el 3 de mayo. NO empieces en 110. La primera serie decide: si sale ≥RPE 8, te quedas ahí toda la semana. Reset cada repetición desde el suelo"},
+          {"id": "glute-drive", "name": "Glute Drive", "target": "80 kg × 8-12", "rpe": "7"},
+          {"id": "bss", "name": "Bulgarian Split Squat", "target": "16 kg/mano × 8-10/pierna", "rpe": "7-8"},
+          {"id": "leg-extension", "name": "Leg Extension", "target": "50 kg × 10-15", "rpe": "7-8"},
+          {"id": "leg-curl-b", "name": "Lying Leg Curl", "target": "40 kg × 10-12", "rpe": "7"},
+          {"id": "pallof-press", "name": "Cable Pallof Press", "target": "3 × 10-15", "rpe": "-", "note": "Anti-rotación"}
+        ]
+      },
+      {
+        "id": "upperB",
+        "label": "Upper B — Vie 28",
+        "focus": "OHP +2,5. Dominadas con peso por primera vez.",
+        "exercises": [
+          {"id": "chinups", "name": "Dominadas", "target": "BW +2,5 kg × 5-8", "rpe": "7-8", "note": "Llegaste a 4×8 con peso corporal: toca añadir"},
+          {"id": "ohp", "name": "Overhead Press", "target": "57,5 kg × 5-8", "rpe": "7-8", "note": "+2,5 kg. RPE 6,9 la semana pasada"},
+          {"id": "pec-deck", "name": "Pec Deck", "target": "50 kg × 10-12", "rpe": "7", "note": "2º estímulo de pecho de la semana"},
+          {"id": "chest-supported-row", "name": "Chest-Supported Row", "target": "45 kg × 10-12", "rpe": "7"},
+          {"id": "incline-curl", "name": "Incline DB Curl", "target": "12 kg/mano × 10-12", "rpe": "7"},
+          {"id": "lateral-raise-machine", "name": "Lateral Raise Machine", "target": "30 kg × 12-15", "rpe": "7"}
         ]
       }
     ],
-    "mobility": "3 sessions MANDATORY: Wed Hip Reset (7 min) · Sat Lumbar Decompression (10 min) · Sun Hip Reset (7 min). Pin them on calendar.",
-    "running": "3 runs Z2 (user override × 2: first added volume in deload, then chose Z2 over Z1 citing 'Z2 burns most fat'). Coach explained the myth — Z2 has peak fat OXIDATION rate but total fat LOSS depends on 24h caloric balance, not exercise fuel mix. User proceeded. Tue PM after Lower A (lift first) · Thu AM · Sat AM. 3km each = 9km total = -38% vs W18 14.5km. HR strict 131-143, NO creep into Z3.",
+    "mobility": "2 sesiones mínimo, agendadas: Mié 26 y Dom 30. Cero en 15 semanas, con dos contracturas lumbares detrás. Es el punto con peor relación esfuerzo/riesgo de todo el plan.",
+    "running": "2 carreras en Z2 ESTRICTO, HR < 143. Tres de las últimas cuatro fueron a 147-149.",
     "runningPlan": [
       {
-        "id": "tue-z2",
-        "date": "2026-05-05",
+        "id": "mie-z2",
+        "date": "2026-08-26",
         "type": "Z2",
-        "distance_km": 3.0,
+        "distance_km": 5.0,
         "target_hr_max": 143,
-        "label": "Tue Z2 deload",
-        "note": "Z2 strict (131-143 bpm, NO Z3 creep). Run AFTER Lower A — lift first rule."
+        "label": "Mié Z2 estricto",
+        "note": "HR por debajo de 143 aunque toque ir muy lento. Camina las cuestas si hace falta"
       },
       {
-        "id": "thu-z2",
-        "date": "2026-05-07",
+        "id": "sab-z2",
+        "date": "2026-08-29",
         "type": "Z2",
-        "distance_km": 3.0,
+        "distance_km": 6.0,
         "target_hr_max": 143,
-        "label": "Thu Z2 deload",
-        "note": "Z2 strict. Upper B day, no leg conflict."
-      },
-      {
-        "id": "sat-z2",
-        "date": "2026-05-09",
-        "type": "Z2",
-        "distance_km": 3.0,
-        "target_hr_max": 143,
-        "label": "Sat Z2 deload",
-        "note": "Z2 strict. Standalone day. Total weekly: 9km."
+        "label": "Sáb Z2 largo",
+        "note": "+1 km sobre el miércoles. Mismo techo de HR. Alternativa: híbrido de trineo + SkiErg"
       }
-    ],
-    "nutrition": "DIET BREAK: ~2,900 kcal (vs 2,500 baseline). Protein 170g hold · Carbs ~385g (+100 vs baseline) · Fat 75g hold. Hidratación pre-sesión 500 mL within 2h. Manual weigh-in 4-7×/wk (AM, fasted, post-bathroom).",
-    "wellnessTargets": {
-      "sleep_hrs_min": 7,
-      "readiness_avg_target": 70,
-      "logging_adherence_target": "5/7 nutrition days, 4-7 weight measurements"
-    }
+    ]
   },
-  "observed": "**4/4 gym, three lifts progressed cleanly, body weight on target — but the wellness data is the headline this week.**\n\nRow +5 lb hit (150 × 10 × 4 RPE 8 across), Squat +1 rep at SAME RPE on all 4 sets (215 × 9 × 4 RPE 7.5 — textbook double-progression, you've earned the +5 lb), OHP all 4 sets done at 115 finally (3-week streak broken), Sumo DL +20 lb landed (245 × 4/5/5/6 with the conservative first-set ramp, no back symptoms). Bench RPE crept to 9 on the last set of 205 × 8 × 4 — at the ceiling, hold load.\n\n**The big signal: wellness data flagged over-reaching.** Readiness average 56 (vs baseline ~65), HRV down ~14% vs baseline, RHR up ~5 bpm sustained. Two crash days: Wed 4/29 readiness 21 / HRV 38 / RHR 60 (post Lower A), Sat 5/02 readiness 37 (Sumo DL day). Sleep average 6.3h excluding the 16.6h Sunday outlier — below the 7h floor.\n\n**The W19 deload was already programmed (plan v4.0). The wellness data ratifies the timing independently — you're at the edge of overreaching, not over the cliff.** Don't skip the deload. Don't \"deload light.\" The plan calls for −50% volume, RPE 6, diet break to maintenance — that's the prescription.\n\n**Nutrition: 3/7 days logged, avg 116g protein.** Under 50% adherence triggers the rule: no nutrition adjustments until logging gets to 5/7.\n\n**Bodyweight trend on target** (-0.59%/wk over 22 days, 88.3 → 86.7), but W18 sampling collapsed — all intervals.icu pulls were forward-fills. Manual scale entry needed.\n\n**Hip Thrust + Pallof Press: skipped 2 weeks in a row.** Hip Thrust moves to position #1 on Lower B even during deload. Pallof: drop.",
-  "planNext": "**Week 19 is the deload + diet break. Lock it in.** Plan v4.0 has it programmed — follow it, don't improvise.\n\n**Loads:** Bench 195 × 6 × 2 RPE 6 · Squat 195 × 6 × 2 RPE 6 · Sumo DL 200 × 4 × 2 RPE 6 (DOWN from 245) · OHP 105 × 6 × 2 RPE 6 · Row 140 × 8 × 2 RPE 6. Two working sets per exercise.\n\n**Three structural changes activate this week**: (1) Cable Fly added to Upper A — find working weight light. (2) 3-sec eccentric en Incline DB Press, RDL, Incline Curl, Leg Curl. (3) Hip Thrust moves to position #1 in Lower B.\n\n**Running:** 1 run only — Sat Z2 3 km, HR < 135. **Diet break:** ~2,900 kcal. **Mobility:** 3 sessions mandatory.\n\n**Single biggest lever: sleep ≥ 7h every night.** Deload + diet break + sleep is the trifecta. **Open asks:** manual weigh-in 4-7×/wk, nutrition 5/7 days."
+  "observed": "**W33: 2/4 sesiones, y las dos buenas.** OHP sube a 55 kg × 8 @RPE 6,9 y las dominadas salen a 4×8. Analizadas las 15 semanas sin revisar (W19-W33): lo que entrenaste progresó (banca 80→90, sentadilla 90→100, OHP 50→55, todo con RPE clavado en 7,0-7,4), pero **el peso muerto no se toca desde el 3 de mayo** — cero sesiones de lowerB en 15 semanas. La semana 29 es la lección: readiness 48,3 y sueño 6,04 h, los dos mínimos del periodo, y es exactamente la semana en que el remo retrocedió de 60 a 50 kg. Tu mejor semana fisiológica (W30, frecuencia en reposo 43,5) fue de cero entrenamientos. Tres de las últimas cuatro carreras por encima del techo de Z2. Movilidad: 0 en 15 semanas.",
+  "planNext": "W35 (24-30 ago). **1.** El peso muerto vuelve a 90 kg con gate de RPE — 15 semanas sin hacerlo, la primera serie decide. **2.** Sube donde el RPE lo pide: sentadilla 102,5, OHP 57,5, dominadas BW+2,5, remo de vuelta a 60. **3.** Banca se queda en 90. **4.** Carreras en Z2 de verdad, HR <143. Más: pésate a diario (último registro del 27 de mayo) y mira la vitamina D. Calorías nuevas: 2.700 días de entreno / 2.400 de descanso, proteína 185 g."
 }

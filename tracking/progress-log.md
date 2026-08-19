@@ -2,6 +2,73 @@
 
 > Key metrics over time. Updated after each check-in.
 
+## Backfill W19-W33 (analizado el 2026-08-19)
+
+15 semanas sin revisar, reconstruidas con datos reales de Supabase. Detalle por semana en
+[`weekly-reviews/`](weekly-reviews/).
+
+### Fuerza — progresion real pese a 10 sesiones en 15 semanas
+
+| Ejercicio | W25-W26 | Ultimo | Delta | RPE |
+|---|---|---|---|---|
+| Bench Press | 80 kg x 8 | **90 kg x 8** (W31) | **+10 kg** | 7,0 -> 7,4 |
+| Back Squat | 90 kg x 8 | **100 kg x 8** (W33) | **+10 kg** | 7,0 -> 7,0 |
+| OHP | 50 kg x 8 | **55 kg x 8** (W33) | **+5 kg** | 6,8 -> 6,9 |
+| Barbell Row | 60 kg x 10 | 55 kg x 10 (W31) | **-5 kg** | 6,8 -> 6,8 |
+| Dominadas | BW x 8 (3 series) | BW x 8 (4 series) | +1 serie | 6,5 -> 7,1 |
+| **Sumo Deadlift** | **sin datos** | **sin datos** | **0 sesiones en 15 semanas** | - |
+
+El RPE se mantiene entre 7,0 y 7,4 mientras las cargas suben: margen que venia de antes del paron.
+La sentadilla lleva **tres mediciones seguidas a RPE 7,0 con 8 repeticiones** = margen sin usar.
+
+### Recuperacion — mejoro porque la carga fue casi nula
+
+| | W18-W22 (inicio) | W30-W33 (final) | Delta |
+|---|---|---|---|
+| Readiness | 62,8 | **77,3** | +14,5 |
+| HRV | 58,3 ms | **65,3 ms** | +7,0 |
+| Frecuencia en reposo | 49,5 bpm | **47,2 bpm** | -2,3 |
+| Sueno | 6,89 h | **7,29 h** | **+0,40 h** |
+
+**El sueno subio ~24 min/noche de media** entre el primer y el ultimo tramo: la mejora mas solida de
+todo el periodo. Pero la carga cronica (CTL) se mantuvo entre 1 y 6 — practicamente cero. Recuperacion
+excelente sin entrenar no es fitness, es descanso.
+
+**Extremos:** W29 la peor (readiness 48,3, sueno 6,04 h) y **es la semana del unico retroceso de carga
+del periodo** (remo 60 -> 50 kg). W30 la mejor (readiness 83,5, frecuencia en reposo 43,5) con **cero**
+entrenamientos.
+
+### Carreras — 8 registros, 6 reales
+
+| Semana | km | Ritmo | HR | Z2 (<143)? |
+|---|---|---|---|---|
+| W19 | 4,04 | 7:58 | 134 | si |
+| W20 | 5,13 | 7:30 | 142 | si (al limite) |
+| W21 | 5,07 | 7:17 | 149 | no |
+| W27 | 2,48 | 8:03 | 138 | si |
+| W29 | 5,63 | **6:24** | 147 | no |
+| W33 | 5,06 | 6:58 | 148 | no |
+
+**Cumplimiento de Z2: 3 de 6 (50%), y las tres ultimas fuera.** Se corre mas duro de lo prescrito.
+
+**Senal aerobica positiva, con la muestra que hay:** W21 a 7:17/km con HR 149 frente a W33 a 6:58/km
+con HR 148. **19 s/km mas rapido a la misma frecuencia cardiaca** en 12 semanas. Es una mejora real de
+base aerobica, aunque con n=2 hay que tomarla como indicio, no como hecho.
+
+*(Otros 2 registros del 2026-07-03 son basura del reloj: 0,14 km y 0,01 km.)*
+
+### Adherencia
+
+- **Gimnasio: 10 sesiones en 15 semanas** = 0,67/semana contra 4 planificadas (**17%**)
+- **Carreras: 6 reales** en 15 semanas
+- **Movilidad: 0 sesiones en 15 semanas** (el plan pide 2-3/semana)
+- **Peso: 2 registros** (W19, W22); **nutricion: 1** (W22)
+- Semanas completamente vacias: W22, W23, W24, W28, W30
+- **Causa confirmada por Julian: viajes.** Ninguna variante del plan funcionaba sin gimnasio hasta
+  v11.42, asi que un viaje equivalia a no entrenar.
+
+
+
 ## Body weight
 
 | Date | Weight (kg) | Method | Week | Delta |

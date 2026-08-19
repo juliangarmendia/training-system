@@ -13,6 +13,39 @@
 
 ---
 
+### Backfill W19-W33 — analizado el 2026-08-19
+
+**Peso:** sin serie. Dos registros en 15 semanas (W19, W22). La referencia valida es la Tanita del
+11-ago: **87,1 kg, 16,4% de grasa, 72,8 kg de masa magra**.
+
+**Entrenamiento:** 10 sesiones de gimnasio en 15 semanas (0,67/semana contra 4 planificadas). Y aun
+asi **la fuerza subio**: banca 80 -> 90 kg, sentadilla 90 -> 100, OHP 50 -> 55, con el RPE clavado
+entre 7,0 y 7,4. **El peso muerto no se ha tocado desde el 3 de mayo**: cero sesiones de lowerB en 15
+semanas, y con el toda la cadena posterior.
+
+**Recuperacion:** mejoro en todo (readiness 62,8 -> 77,3; sueno 6,89 -> 7,29 h; frecuencia en reposo
+49,5 -> 47,2) porque la carga fue casi nula. **W29 fue la peor semana** (readiness 48,3, sueno 6,04 h)
+y es exactamente la semana en que el remo retrocedio de 60 a 50 kg. **W30 fue la mejor** — con cero
+entrenamientos.
+
+**Adherencia:** movilidad **0/15 semanas**, con dos contracturas lumbares en el historial. Nutricion: 1
+registro. Cinco semanas completamente vacias.
+
+**Carreras:** 6 reales. Cumplimiento de Z2 3 de 6, y **las tres ultimas por encima del techo** (HR
+147-149 contra 143). Senal buena: 19 s/km mas rapido a la misma frecuencia cardiaca que en mayo.
+
+**Causa de los huecos, confirmada por Julian: viajes.** Ninguna variante del plan funcionaba sin
+gimnasio hasta v11.42.
+
+**Notas del coach:** el margen de progresion que venia de antes del paron esta casi agotado — con
+0,67 sesiones/semana no se sostiene. Prioridad de W35, en orden: (1) **el peso muerto vuelve, a 90 kg
+con gate de RPE**, no a 110; (2) subir donde el RPE lo pide (sentadilla 102,5, OHP 57,5, dominadas
++2,5, remo de vuelta a 60); (3) banca mantiene 90; (4) **carreras en Z2 de verdad, HR <143**. Y lo
+que no es entrenamiento pero decide mas: pesarse a diario y mirar la vitamina D (11,2 ng/mL en 2023,
+nunca re-controlada).
+
+---
+
 ### ⚠️ HUECO W19–W32 (2026-05-04 → 2026-08-09) — sin registro
 
 Documentado el **2026-08-16** durante la auditoría del sistema. **14 semanas completas sin revisión.**

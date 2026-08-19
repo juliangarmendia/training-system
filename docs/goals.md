@@ -16,7 +16,8 @@ vez). Con **72,8 kg de masa libre de grasa** medidos por Tanita el 11-ago:
 | **87,1 kg (hoy)** | 14,3 kg | 16,4% |
 | 85 kg | 12,2 kg | 14,4% |
 | 83 kg | 10,2 kg | 12,3% |
-| **80 kg (objetivo)** | 7,2 kg | **9,0%** ← si la masa magra se mantuviera intacta |
+| **80 kg (objetivo)** | 7,2 kg | 9,0% ← *sólo si la masa magra no se moviera nada* |
+| **80 kg (realista)** | ~8,5 kg | **~10,5-11%** ← lo esperable |
 
 **Realista, no aritmético.** Bajar 7 kg no es perder 7 kg de grasa: incluso con proteína alta y
 entrenamiento de fuerza, entre el 15% y el 20% de la pérdida suele ser masa magra. Lo esperable en
@@ -24,9 +25,13 @@ entrenamiento de fuerza, entre el 15% y el 20% de la pérdida suele ser masa mag
 sensación subjetiva de estar atlético y rápido a ese peso es un dato válido, y menos peso además
 ayuda a correr, que es otro objetivo.
 
-**El ritmo importa más que el número.** 7,1 kg a 0,5-0,7%/semana = **12-16 semanas**. Ir más rápido
-no acelera el resultado: acelera la pérdida de masa magra, que es exactamente lo que no se quiere
-cuando el objetivo es *verse atlético* y no *pesar menos*.
+**El ritmo importa más que el número.** 7,1 kg a **~0,45 kg/semana (0,5%) = 16 semanas**, con un
+déficit de ~500 kcal/día.
+
+> Corregido el 2026-08-19: aquí decía 12-16 semanas. **Las 12 exigirían ~650 kcal/día de déficit**,
+> por encima de la banda de 300-500 que fija `CLAUDE.md`. Lo honesto es **16-18 semanas**. Ir más
+> rápido no acelera el resultado: acelera la pérdida de masa magra, que es justo lo que no se quiere
+> cuando el objetivo es *verse atlético* y no *pesar menos*. Cálculo en `plans/nutrition-notes.md`.
 
 **Y lo que de verdad decide si funciona: entrenar.** Lo que protege la masa magra en déficit es el
 estímulo de fuerza, no la dieta. Con 1-2 sesiones por semana se llega a 80 kg más blando; con 4 se
@@ -34,7 +39,7 @@ llega a 80 kg atlético. **La adherencia no es un objetivo aparte: es el mecanis
 
 ### Objetivos, en orden
 
-1. **Peso 79-81 kg**, a 0,5-0,7%/semana, sin prisa
+1. **Peso 79-81 kg**, a ~0,5%/semana (~0,45 kg), sin prisa
 2. **Masa magra**: mantener los 72,8 kg lo máximo posible — es lo que separa "80 kg atlético" de
    "80 kg flaco". Medido por rendimiento en los compuestos, no por la báscula
 3. **Fuerza**: mantener o subir en banca, sentadilla, peso muerto, press militar, remo, dominadas
@@ -66,8 +71,11 @@ llega a 80 kg atlético. **La adherencia no es un objetivo aparte: es el mecanis
 
 ## Timeline
 
-- **7,1 kg a 0,44-0,61 kg/semana → 12-16 semanas** desde el 2026-08-19
-- Deload cada 5 semanas (anclado a la semana en curso desde v11.35), con diet break encima
+- **7,1 kg a ~0,45 kg/semana → 16-18 semanas** desde el 2026-08-19 (déficit ~500 kcal/día)
+- Deload cada 5 semanas (anclado desde v11.35), con diet break a mantenimiento encima
+- **Calorías cicladas:** ~2.700 en días de entreno, ~2.400 en descanso (media ~2.570). Mantiene la
+  disponibilidad energética por encima de 30 kcal/kg de masa magra los dos tipos de día — con la
+  pauta plana de 2.500 caía a 27,5 en días de entreno. Detalle en `../plans/nutrition-notes.md`
 - No es una dieta agresiva. Ante un estancamiento: primero paciencia, después ajustes pequeños
 - Re-medir composición con la **misma** Tanita cada 8-12 semanas; el peso, en media móvil de 7 días
 
@@ -84,14 +92,14 @@ llega a 80 kg atlético. **La adherencia no es un objetivo aparte: es el mecanis
 
 ## Non-negotiables
 
-- Protein ≥170 g/day — **con 72,8 kg de masa magra medidos hay argumento para 180-190 g**, que es el
-  borde inferior de los dos rangos de referencia (por peso y por masa magra). Cuanto más magro, más
-  protege la proteína alta
+- **Proteína 185 g/día** (subido de 170 el 2026-08-19). Con 72,8 kg de masa magra medidos: 2,12 g/kg
+  de peso y 2,54 g/kg de masa magra, dentro de los dos rangos de referencia. El suelo de 170 se había
+  calculado con una masa magra *estimada* de 69,8 kg
 - Compound lifts stay in the program
 - At least one full rest day per week
 - Sleep is a recovery tool, not optional
 - Back squat gets programmed as a main lift (correcting previous gap)
-- Deload every 4-5 weeks, combined with a diet break at maintenance
+- Deload cada 5 semanas, con diet break a mantenimiento
 
 ## What success looks like *(actualizado 2026-08-19)*
 

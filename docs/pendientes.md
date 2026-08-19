@@ -6,7 +6,7 @@
 > El *por qué* de cada cosa vive en [`../assessments/2026-08-16_system-audit.md`](../assessments/2026-08-16_system-audit.md).
 > Aquí está el *qué sigue*.
 >
-> Última actualización: **2026-08-18** (v11.41)
+> Última actualización: **2026-08-19** (v11.42 + backfill de revisiones)
 
 ## Regla de trabajo
 
@@ -135,7 +135,8 @@ grasa** — parte de los 7,1 kg será masa magra incluso haciéndolo bien, así 
 **~10,5-11%**. Sigue siendo magro y es un objetivo legítimo; la sensación subjetiva a ese peso es un
 dato válido y además pesar menos ayuda a correr.
 
-**7,1 kg a 0,5-0,7%/semana = 12-16 semanas.** Y lo que decide si se llega *atlético* o *flaco* no es
+**7,1 kg a ~0,5%/semana = 16-18 semanas** (corregido el 19-ago: 12 semanas exigirían ~650 kcal/día de
+déficit, por encima de la banda del sistema). Y lo que decide si se llega *atlético* o *flaco* no es
 la dieta: es el estímulo de fuerza. Con 1-2 sesiones/semana se llega blando; con 4, atlético. Por eso
 la variante Viaje importa tanto como el déficit.
 
@@ -245,13 +246,36 @@ El sistema registra y deriva; **no interpreta ni trata**. Esto es conversación 
 
 Lista de qué pedir en [`../data/processed/2026-08-16_blood-markers.md`](../data/processed/2026-08-16_blood-markers.md).
 
-## 6 · Las 14 revisiones semanales que faltan — **Claude, cuando haya datos**
+## 6 · Las revisiones semanales que faltaban — HECHO (2026-08-19)
 
-Sin registro desde la semana 18 (4 de mayo). **Ya es posible**: hay entrenamientos, carreras y sueño
-reales de julio y agosto. Merece su propia pasada con `/weekly-review-auto`, no colarla dentro de
-otra tarea.
+**15 revisiones escritas (W19 a W33)** con datos reales de Supabase, en
+[`../tracking/weekly-reviews/`](../tracking/weekly-reviews/). Lo que salio del analisis:
 
-Depende del punto 1 (para que el cardio esté dentro) y mejora mucho con el punto 2 (peso).
+1. **La fuerza progreso pese a 10 sesiones en 15 semanas.** Banca 80 -> 90 kg, sentadilla 90 -> 100,
+   OHP 50 -> 55, con el RPE clavado entre 7,0 y 7,4. Era margen que venia de antes del paron, y ya
+   esta casi agotado: con 0,67 sesiones por semana no se sostiene.
+2. **El peso muerto lleva sin tocarse desde el 3 de mayo** — cero sesiones de `lowerB` en 15 semanas.
+   El hueco mas grande del historial.
+3. **La semana 29 conecta sueno y rendimiento.** Readiness 48,3 y sueno 6,04 h (los dos minimos del
+   periodo) es exactamente la semana del **unico retroceso de carga** de todo el tramo: el remo cayo
+   de 60 a 50 kg. La sentadilla del dia siguiente aguanto — bajo fatiga cae antes lo accesorio.
+4. **La mejor semana fisiologica fue de cero entrenamientos** (W30: frecuencia en reposo 43,5, la
+   minima del ano). Estar descansado y estar en forma no son lo mismo.
+5. **El sueno subio ~24 min por noche** entre el primer y el ultimo tramo. La mejora mas solida del
+   periodo, y la unica que no depende de entrenar.
+6. **Carreras: Z2 cumplido 3 de 6, y las tres ultimas fuera** (HR 147-149 contra un techo de 143).
+   Pero **19 s/km mas rapido a la misma frecuencia cardiaca** que en mayo: la base aerobica mejoro.
+
+`latest.json` programa **W35** (24-30 ago): el peso muerto vuelve **a 90 kg con gate de RPE**, no a
+110; sentadilla 102,5; OHP 57,5; dominadas BW+2,5; remo de vuelta a 60; banca mantiene 90; y carreras
+en Z2 estricto por debajo de 143.
+
+<details>
+<summary>Descripcion original del punto</summary>
+
+Sin registro desde la semana 18 (4 de mayo). Merece su propia pasada con `/weekly-review-auto`.
+
+</details>
 
 ## 7 · Deuda que no bloquea nada — **Claude, al final**
 
@@ -262,8 +286,15 @@ Depende del punto 1 (para que el cardio esté dentro) y mejora mucho con el punt
 - **Movilidad: 2 registros en total, el último del 27 de abril.** Con dos contracturas lumbares
   detrás y una regla que pide 2-3 sesiones por semana. O la haces y no la registras, o no la haces:
   las dos cosas importan y ninguna se ve desde aquí.
-- **Perfil y plan de nutrición con números de mayo.** Se reescriben cuando llegue el peso (punto 2).
-  Hacerlo antes sería inventar.
+- ✅ **Perfil y plan de nutrición recalibrados** (19-ago, con la Tanita del 11-ago): metabolismo basal
+  por tres métodos (Katch-McArdle 1.942 como referencia, que es el único que usa la masa magra
+  medida), **calorías cicladas 2.700 entreno / 2.400 descanso** para que la disponibilidad energética
+  no caiga por debajo de 30 los días de entreno, **proteína 170 → 185 g**, y la periodización de
+  carbohidrato con los días corregidos (estaban invertidos: Lower es Lun/Jue, no Mar/Vie).
+  **Corregido también el plazo: 16-18 semanas, no 12-16** — las 12 exigían un déficit por encima de
+  la banda que fija el propio sistema.
+  **Lo único que no se puede calibrar sin ti: pesarte.** Los números son de fórmula; la media móvil
+  de 7 días es el único árbitro. Último registro: 27 de mayo.
 
 ---
 

@@ -1,5 +1,105 @@
 # Nutrition Plan — Cut Phase 1
 
+## ✅ RECALIBRADO con datos medidos — 2026-08-19
+
+Base: **87,1 kg · 14,3 kg de grasa (16,4%) · 72,8 kg de masa libre de grasa**, Tanita MC-780MA-N del
+11-ago. Objetivo: **79-81 kg**. Todo lo de más abajo queda superado por esta sección.
+
+### Metabolismo basal: tres estimaciones, no una
+
+| Método | kcal/día | |
+|---|---|---|
+| Mifflin-St Jeor | 1.849 | Solo usa peso, altura y edad |
+| **Katch-McArdle** | **1.942** | **Usa la masa magra medida — la más defendible ahora que la tenemos** |
+| Tanita (el aparato) | 2.126 | Estimación propia del dispositivo |
+
+Tomo **1.942** como referencia. Es la única fórmula que aprovecha que tienes la composición medida.
+
+> Corrección: la versión anterior calculaba Mifflin con `− 5` al final. La constante para hombres es
+> **+5**; `−5` no corresponde a ninguna de las dos. Error pequeño (10 kcal), pero estaba mal.
+
+### Gasto total: depende de lo que entrenes de verdad
+
+| Escenario | Multiplicador | TDEE |
+|---|---|---|
+| Adherencia medida (~1,2 sesiones/sem + caminar) | 1,40 | **~2.720 kcal** |
+| Plan completo (4 fuerza + Z2 casi diario) | 1,60 | **~3.110 kcal** |
+
+**390 kcal de diferencia según entrenes o no.** Esto no es un detalle: es la razón por la que el
+número de calorías y la frecuencia de entrenamiento no se pueden decidir por separado.
+
+### Objetivo diario: calorías cicladas
+
+Con la masa magra medida, la **disponibilidad energética** —(ingesta − gasto del ejercicio) / masa
+magra— sale por debajo del umbral de 30 kcal/kg en los días de entreno con la pauta plana de 2.500:
+
+| | Ingesta | Disponibilidad energética | |
+|---|---|---|---|
+| Día de entreno | 2.500 | 27,5 | ⚠️ por debajo de 30 |
+| Día de entreno | **2.700** | **30,2** | ✅ |
+| Día de descanso | 2.300 | 29,5 | ⚠️ justo por debajo |
+| Día de descanso | **2.400** | **30,9** | ✅ |
+
+**Pauta nueva:**
+
+| Día | Calorías | Proteína | Grasa | Carbohidrato |
+|---|---|---|---|---|
+| **Entreno** (4/sem) | **2.700** | 185 g | 80 g | ~310 g |
+| **Descanso o suave** (3/sem) | **2.400** | 185 g | 80 g | ~235 g |
+| **Media semanal** | **~2.570** | | | |
+
+Misma media que antes en la práctica, pero repartida donde hace falta. La proteína **no se cicla**.
+
+### Proteína: sube de 170 a 185 g
+
+| Referencia | Rango |
+|---|---|
+| 2,0-2,2 g/kg de peso | 174-192 g |
+| 2,3-3,1 g/kg de masa magra (Helms, atletas magros en restricción) | 167-226 g |
+
+**185 g/día** cae dentro de ambos (2,12 g/kg de peso · 2,54 g/kg de masa magra). El suelo de 170 se
+calculó con una masa magra *estimada* de 69,8 kg; con 72,8 kg medidos, sube. Cuanto más magro estés,
+más protege la proteína alta — y proteger la masa magra es exactamente lo que separa "80 kg
+atlético" de "80 kg flaco".
+
+### Ritmo real, y una corrección al plazo
+
+| Déficit | kg/semana | %/semana | Semanas hasta 80 kg |
+|---|---|---|---|
+| 300 kcal | 0,27 | 0,31% | 26 |
+| 400 kcal | 0,36 | 0,42% | 20 |
+| **500 kcal** | **0,45** | **0,52%** | **16** |
+| 650 kcal | 0,59 | 0,68% | 12 ⚠️ |
+
+**`goals.md` dice 12-16 semanas. Las 12 requieren un déficit de ~650 kcal/día, por encima de la banda
+de 300-500 que fija `CLAUDE.md`.** Lo honesto es **16-18 semanas**. Corrijo `goals.md` en
+consecuencia: prometer 12 obligaría a ir más agresivo de lo que el propio sistema recomienda.
+
+### La conclusión que importa
+
+Con 2.570 de media y el plan entrenado 4×/semana (TDEE ~3.110) el déficit es de ~540 kcal → **~0,5
+kg/semana**. Cuadra.
+
+Con las mismas 2.570 pero entrenando 1×/semana (TDEE ~2.720) el déficit es de ~150 kcal → **casi no
+bajas**.
+
+Y la salida tentadora —entrenar poco *y* comer menos— es la peor de las tres: con 2.250-2.300 en días
+de entreno la disponibilidad energética cae a 25-27 y lo que se pierde es masa magra. **Entrena el
+plan y come esto; o entrena menos y acepta ir más lento. Lo que no funciona es entrenar menos y
+recortar más.**
+
+### Qué sigue sin poder calibrarse
+
+Estos números son estimaciones de fórmula. **La báscula es el único árbitro:** pesarse por la mañana,
+en ayunas, y mirar la **media móvil de 7 días** a las 2-3 semanas. Si baja 0,4-0,5 kg/semana, el
+número es correcto; si no se mueve, se recorta 100-200 kcal. Último registro de peso en el sistema:
+**27 de mayo**. Sin esa serie, lo de arriba es la mejor hipótesis disponible, no un hecho.
+
+---
+
+<details>
+<summary>⚠️ Aviso anterior (2026-08-16) y plan original — superados por la sección de arriba</summary>
+
 > ## ⚠️ Revisar antes de usar los números (2026-08-16)
 >
 > Los **principios** siguen vigentes y ahora tienen Rule ID. Los **números** están calculados sobre
@@ -228,8 +328,8 @@ This is a *template*, not a prescription. Eat what you like. Hit protein.
 
 | Tipo de día | Sesión | CHO target | Fat target | Calorías | Notas |
 |-------------|--------|-----------|-----------|----------|-------|
-| **Lower (Mar/Vie)** | Squat o Deadlift pesado | **350 g (~4 g/kg)** | 65 g | ~2,500 | Subir CHO ~+65 g, bajar fat ~10 g. Mejor performance en glycolytic work |
-| **Upper (Lun/Jue)** | Bench/Row o OHP/Chin | **285 g (baseline)** | 75 g | ~2,500 | Mantener |
+| **Lower (Lun/Jue)** | Squat o Deadlift pesado | **350 g (~4 g/kg)** | 65 g | ~2,500 | Subir CHO ~+65 g, bajar fat ~10 g. Mejor performance en glycolytic work |
+| **Upper (Mar/Vie)** | Bench/Row o OHP/Chin | **285 g (baseline)** | 75 g | ~2,500 | Mantener |
 | **Long-run day (Sat)** | Z2 ≥ 5 km | **310 g** | 70 g | ~2,500 | Subir CHO modesto si la corrida es ≥40 min |
 | **Rest day (Mié/Dom)** | Sin gym, sin run | **250 g (~2.8 g/kg)** | 85 g | ~2,500 | Bajar CHO, subir fat (saciedad + hormonal headroom) |
 
@@ -420,3 +520,5 @@ ACSM/Burke 2021 RED-S markers. Energy availability marginal en días de entreno 
 | 2026-04-06 | v1.0 created | Initial assessment |
 | 2026-04-06 | v2.0 rewrite | Full evidence-based review. Added research citations for every target, macro breakdown, meal timing evidence, MATADOR diet break protocol, calibration protocol, alcohol quantification, supplement tiers with 2024 evidence, hunger management strategies, metabolic adaptation section, tracking phases |
 | 2026-05-02 | v3.0 — ACSM 2026 refinements | Cross-check vs. Thomas 2016, Jakicic 2024, Burke 2021. Cambios: (1) Hidratación pre-sesión 500 mL dentro de las 2 h (Thomas 2016: 5-10 mL/kg). (2) Carb periodization por tipo de día — Lower 350 g, Upper 285 g, Long-run 310 g, Rest 250 g (Thomas 2016 Tabla 2 banda moderate = 5-7 g/kg/d; baseline ~3.2 g/kg estaba debajo). (3) LEA monitoring semanal añadido (libido, sleep, illness, mood) — EA en días de entreno calcula ~27 kcal/kg FFM/d, marginalmente bajo del threshold ACSM 30. Trigger de diet break adelantado si 2 markers empeoran ≥2 puntos por 2 semanas |
+
+</details>
