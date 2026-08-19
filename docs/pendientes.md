@@ -33,7 +33,18 @@ Antes de cada tanda de trabajo: leer esta lista. Al cerrar un punto: actualizarl
 Reproducir: consultar Supabase (proyecto `ycfodifvpvosukepcxie`), tabla por tabla, filtrando por el
 `user_id` de Julian. No fiarse de la memoria de nadie.
 
-## 🔴 El hallazgo que domina todo lo demás: adherencia ~30%
+## ✅ RESUELTO: la adherencia baja era por viajes
+
+**Julian (2026-08-19):** *"NO estuve entrenando porque estaba de viaje."*
+
+Explicación benigna, y señala el arreglo real: **ninguna de las variantes funcionaba sin gimnasio**,
+así que un viaje equivalía a no entrenar. Los huecos de 11, 12 y 14 días eran viajes, no desidia.
+
+Arreglado en v11.42 con la variante **Viaje** (abajo, punto 1b). El análisis original se conserva
+como referencia de la magnitud del problema:
+
+<details>
+<summary>Análisis original: adherencia ~30%</summary>
 
 Sesiones registradas entre el **2026-06-20 y el 2026-08-17** (9 semanas): **11**. El plan prescribe 4
 por semana → **~1,2/semana medidas**.
@@ -57,10 +68,7 @@ Caveat honesto: esto mide adherencia **de registro**. Puede haber entrenado sin 
 registro el sistema no puede progresar cargas ni adaptar nada, así que el efecto es el mismo — y es
 justo lo que Julian pide que el sistema haga.
 
-**No sé por qué la adherencia es baja, y no lo voy a suponer.** Falta de tiempo, sesiones demasiado
-largas, el gimnasio lejos, el plan poco atractivo, o simplemente no registrar lo que sí se hace son
-explicaciones muy distintas y llevan a soluciones opuestas. Es la conversación que más valor tiene
-ahora mismo.
+</details>
 
 ---
 
@@ -79,7 +87,29 @@ vía, donde sí tienen sentido como contexto de actividad diaria.
 diagnóstico de importación ahora sube a la nube, así que si algo se descarta se puede ver en remoto
 sin pedir capturas.
 
-## 2 · ✅ Composición medida — y el objetivo de peso ya no cuadra
+## 1b · ✅ Variante VIAJE — HECHO (v11.42)
+
+El arreglo del problema de adherencia. **Dos sesiones de peso corporal, cero gimnasio, banda opcional:**
+
+| | Viaje A | Viaje B |
+|---|---|---|
+| Pierna | Búlgaras 3×10-15/pierna | Rumano a 1 pierna 3×10-12/pierna |
+| Empuje | Flexiones 3×10-20 | Pike push-up 3×6-12 |
+| Tirón | Dominadas AMRAP *(o remo con banda)* | Remo con banda 3×15-20 |
+| Extra | Puente de glúteo a 1 pierna | Nordic curl asistido |
+| Core | Bird dog (anti-rotación) | Dead bug (anti-extensión) |
+
+**Principio de diseño clave: cada sesión es completa por sí sola** — pierna, empuje, tirón y core. En
+viaje no sabes si vas a hacer una o cuatro, así que ninguna puede dejar un hueco. A y B se
+diferencian en el énfasis, no en la cobertura.
+
+La intensidad sale de la **dificultad y la proximidad al fallo**, no de la carga: sin peso externo,
+RPE 8 en rangos altos es lo que da estímulo real. Cada ejercicio lleva su progresión escrita (pies
+elevados, pausas, tempo lento) para que no se convierta en repeticiones infinitas.
+
+En el selector de la app aparece como **🧳**, antes del 3.
+
+## 2 · ✅ Composición medida — y el objetivo, aclarado
 
 **Resuelto el 2026-08-18** con la Tanita MC-780MA-N: **87,1 kg · 16,4% de grasa · 72,8 kg de masa
 libre de grasa**. Detalle en
@@ -96,14 +126,18 @@ que hubiera una recomp espectacular. Y con 72,8 kg de masa libre de grasa, el ob
 | 83 kg | 10,2 kg | **12,3%** |
 | 80 kg | 7,2 kg | **9,0%** |
 
-### ⏸ Decisión pendiente — **Julian**
+### ✅ Decidido (2026-08-19): el objetivo es la báscula, 79-81 kg
 
-**¿El objetivo es el porcentaje de grasa o el número de la báscula?** Ya estás dentro del rango de
-grasa que el documento pedía. Bajar a 80-83 kg significa llegar a 9-12%: legítimo, pero es un
-objetivo mucho más agresivo del que está escrito, con un coste de adherencia y rendimiento distinto.
-Y con la adherencia actual al 30%, perseguir 9% sería contraproducente.
+*"Siempre que peso entre 79-81 kg me siento muy bien atlético, rápido, en buena forma física."*
 
-Hasta que se decida, `goals.md` queda marcado como contradictorio y no se recalibran calorías.
+`goals.md` reescrito con eso. Lo importante de la traducción: **llegar a 80 kg no es llegar al 9% de
+grasa** — parte de los 7,1 kg será masa magra incluso haciéndolo bien, así que lo esperable es
+**~10,5-11%**. Sigue siendo magro y es un objetivo legítimo; la sensación subjetiva a ese peso es un
+dato válido y además pesar menos ayuda a correr.
+
+**7,1 kg a 0,5-0,7%/semana = 12-16 semanas.** Y lo que decide si se llega *atlético* o *flaco* no es
+la dieta: es el estímulo de fuerza. Con 1-2 sesiones/semana se llega blando; con 4, atlético. Por eso
+la variante Viaje importa tanto como el déficit.
 
 ### Sigue pendiente: pesarse con regularidad
 
@@ -142,7 +176,31 @@ Aplicado en v11.41:
 sesiones por semana. Un sistema que rechaza planes por exceso de carga mientras el problema real es
 que no se entrena estaba resolviendo el problema equivocado.
 
-## 4 · Pliometría y trineo — **Julian decide**
+## 4 · ✅ Pliometría, trineo y SkiErg — HECHO (v11.42)
+
+**Decisión de Julian:** *"agregar pliometría + trineo + skierg o lo que consideres que es bueno para
+entrenar y mezclar."*
+
+**Pliometría — en `lowerA`, al principio, en fresco.** Pogo hops 2×20 + box jump 3×5 = **55
+contactos**, dentro del rango 40-80 que marca la regla. Sólo en ese día para empezar: el tendón
+adapta despacio y se introduce tras la base, no de golpe. Del cajón **se baja caminando** — la caída
+es donde está la lesión. Era el hueco con mejor evidencia de todo el plan (fuerza pesada +
+pliometría mejoran la economía de carrera, graduado `strong`).
+
+**Híbrido trineo + SkiErg — sustituye el cardio del sábado, no lo suma.** Trineo 6×20 m + SkiErg
+5×250 m + farmer carry 4×40 m. Aparece como alternativa del día de cardio, que es literalmente lo
+que dice la regla ("en lugar de un cardio, no además"). El trineo es **concéntrico puro**: sin fase
+excéntrica no hay daño muscular apreciable, así que da mucho estímulo con pocas agujetas y casi no
+interfiere con la sentadilla ni con correr — probablemente la mejor herramienta de acondicionamiento
+para un historial lumbar. Todo de baja skill a propósito: bajo fatiga no se hacen ejercicios técnicos.
+
+**SkiErg** ya tiene sus dos workouts en el catálogo desde v11.39 (Z2 25 min y 8×1 min Z4).
+
+Honestidad sobre la evidencia: la programación híbrida es lo más débil del corpus (no hay ensayos de
+HYROX). Por eso la dosis es conservadora y va como alternativa, no como obligación.
+
+<details>
+<summary>Recomendación original</summary>
 
 - **Pliometría: recomiendo hacerlo.** La evidencia de que fuerza pesada + pliometría de baja dosis
   mejoran la economía de carrera es de las más sólidas del corpus, y la base aeróbica es una de tus
@@ -155,8 +213,7 @@ que no se entrena estaba resolviendo el problema equivocado.
   el argumento de "no cabe en la semana" desaparece. Lo que queda es que la evidencia de programación
   HYROX es la más débil del corpus (no hay ensayos), así que se diseña con dosis conservadora.
 
-**Decisión de Julian (2026-08-18): sí, y añadir todo lo que tenga sentido.** Pendiente de diseñar e
-implementar — es el siguiente punto de trabajo.
+</details>
 
 ## 5 · Analítica de sangre — **Julian**
 

@@ -40,6 +40,19 @@ const PLAN = {
         'Squat: bar × 10, 50% × 6, 70% × 4, 85% × 2',
       ],
       exercises: [
+        // PLIOMETRÍA (v11.42) — al principio, en fresco, antes de cargar nada.
+        //
+        // Era el hueco con mejor evidencia de todo el plan: END-007 está graduada `strong` (fuerza
+        // pesada + pliometría de baja dosis mejoran la economía de carrera) y la base aeróbica es
+        // una de las dos cualidades en progresión. No había NADA de esto en ninguna sesión.
+        //
+        // Dosis deliberadamente conservadora: ~55 contactos, dentro del rango 40-80 de ATH-001, y
+        // sólo en este día para empezar (ATH-004: el tendón adapta despacio; se introduce tras la
+        // base, no de golpe). INT-004: la potencia va en fresco y nunca después de aeróbico.
+        // Los pogos primero porque son de baja amplitud y bajo riesgo: preparan el tendón para el
+        // salto al cajón. Del cajón se BAJA caminando — la caída es donde está la lesión.
+        { id: 'pogo-hops', name: 'Pogo Hops', muscle: 'Quads', sets: 2, reps: '20', rpe: '-', defaultRest: 60, notes: 'Saltitos en el sitio, sólo tobillo, rodilla casi recta. Contacto corto y rígido, como un muelle. Baja amplitud: prepara el tendón.', bw: true },
+        { id: 'box-jump', name: 'Box Jump', muscle: 'Quads', sets: 3, reps: '5', rpe: '-', defaultRest: 90, notes: 'Cajón medio (~40-50 cm). Salta con intención máxima y **BAJA CAMINANDO**, nunca saltando: la caída es donde se lesiona. Si la técnica se ensucia, para la serie.', bw: true },
         { id: 'back-squat', name: 'Barbell Back Squat', muscle: 'Quads', sets: 4, reps: '5-8', rpe: '7-8', defaultRest: 180, notes: 'Priority #1. Use rack safeties.', compound: true },
         { id: 'rdl', name: 'Barbell RDL', muscle: 'Hamstrings', sets: 3, reps: '8-10', rpe: '7', defaultRest: 150, notes: '3 sec eccentric. Stop at mid-shin.' },
         { id: 'hack-squat', name: 'Hack Squat', muscle: 'Quads', sets: 3, reps: '10-12', rpe: '7-8', defaultRest: 120, notes: 'Quad volume, no spinal load. Controlled depth.' },
@@ -146,6 +159,82 @@ const PLAN = {
         // Pallof de fullA, las dos cualidades que pide ATH-003 quedan cubiertas en la semana,
         // ambas con ejercicios que la propia regla nombra.
         { id: 'ab-wheel', name: 'Ab Wheel Rollout', muscle: 'Core', sets: 3, reps: '8-12', rpe: '-', defaultRest: 60, notes: 'Anti-extensión. De rodillas; no dejes que la lumbar se arquee. Escala el recorrido, no el número.', bw: true },
+      ]
+    },
+
+    // ---- v11.42: ACONDICIONAMIENTO HÍBRIDO — trineo + SkiErg ----
+    //
+    // SUSTITUYE un día de cardio, no se añade (HYB-001 lo dice literalmente: "0-1/sem, en lugar de
+    // un cardio, no además"). Va en el hueco del sábado como alternativa al cardio largo.
+    //
+    // Por qué estas herramientas y no un metcon: el trineo es **concéntrico puro** — sin fase
+    // excéntrica no hay daño muscular apreciable, así que da mucho estímulo cardiovascular y de
+    // piernas con pocas agujetas y mínima interferencia con la sentadilla y con correr. Es
+    // probablemente la mejor herramienta de acondicionamiento para un historial lumbar. El SkiErg
+    // añade tren superior y core con impacto cero (HYB-005).
+    //
+    // Todos los movimientos son de BAJA SKILL a propósito (HYB-003): bajo fatiga no se hacen
+    // ejercicios técnicos. Nada de olímpicos, nada de gimnásticos.
+    //
+    // Honestidad sobre la evidencia: la programación híbrida es lo más débil del corpus
+    // (`weak_extrapolated`, no hay ensayos de HYROX). La dosis es conservadora por eso.
+    hybrid1: {
+      id: 'hybrid1', name: 'Híbrido · Trineo + SkiErg', subtitle: 'Acondicionamiento', icon: '🛷',
+      warmup: [
+        '5 min bici o remo suave',
+        'Movilidad de cadera y tobillo — 2 min',
+        'Trineo vacío o muy ligero — 2 × 20 m para coger el patrón',
+        'SkiErg 1 min suave',
+      ],
+      exercises: [
+        { id: 'sled-push', name: 'Sled Push', muscle: 'Quads', sets: 6, reps: '20 m', rpe: '8', defaultRest: 90, notes: 'Empuje continuo, tronco inclinado, pasos cortos y potentes. Concéntrico puro: casi no deja agujetas, así que no interfiere con la pierna ni con correr. Descanso = volver caminando.', compound: true },
+        { id: 'ski-erg', name: 'SkiErg', muscle: 'Back', sets: 5, reps: '250 m', rpe: '7-8', defaultRest: 60, notes: 'Tira desde el core y la cadera, no sólo con los brazos. Impacto cero: es lo que puedes hacer duro con las piernas cargadas.', compound: true },
+        { id: 'farmer-carry', name: 'Farmer Carry', muscle: 'Core', sets: 4, reps: '40 m', rpe: '8', defaultRest: 90, notes: 'Pesado, tronco firme, sin inclinarse a un lado. Es anti-lateral: core y agarre. Si la lumbar protesta, baja el peso — no la distancia.' },
+      ]
+    },
+
+    // ---- v11.42: SESIONES DE VIAJE — peso corporal, banda opcional, cero gimnasio ----
+    //
+    // Hasta ahora ninguna de las 4 variantes funcionaba sin rack y barra, aunque la de 3 días se
+    // llamó "viaje / sin gym" hasta el 17-ago. Y resultó ser la causa real de la adherencia baja:
+    // 11 sesiones en 9 semanas porque estuvo de viaje. Esto es el arreglo del problema de verdad.
+    //
+    // Principio de diseño clave: **cada sesión es completa por sí sola** (pierna + empuje + tirón +
+    // core). En viaje no sabes si vas a hacer una o cuatro, así que ninguna puede dejar un hueco.
+    // A y B se diferencian en el énfasis, no en la cobertura — misma lógica que fullA/fullB.
+    //
+    // La intensidad se consigue con progresión de dificultad y proximidad al fallo, no con carga:
+    // sin peso externo, RPE 8 en rangos altos es lo que da estímulo real (STR-004 sigue aplicando).
+    travelA: {
+      id: 'travelA', name: 'Viaje A', subtitle: 'Sentadilla · Empuje · Tirón vertical', icon: '🧳',
+      warmup: [
+        '3-5 min: saltar en el sitio, círculos de brazos, rodillas al pecho',
+        'Sentadillas sin peso — 1 × 15',
+        'Band pull-aparts (o brazos en cruz) — 2 × 15',
+        'Plancha 20 s + puente de glúteo 10 reps',
+      ],
+      exercises: [
+        { id: 'bss', name: 'Bulgarian Split Squat', muscle: 'Quads', sets: 3, reps: '10-15/pierna', rpe: '8', defaultRest: 90, notes: 'Pie trasero en una silla o el borde de la cama. Sin peso ya es duro: baja lento (3s) y llega cerca del fallo. Si sobran reps, pausa 2s abajo.', bw: true },
+        { id: 'pushup', name: 'Push-ups', muscle: 'Chest', sets: 3, reps: '10-20', rpe: '8', defaultRest: 90, notes: 'Si haces >20, sube los pies a la cama (declinadas) o baja 3s. Progresión antes que repeticiones infinitas.', bw: true, compound: true },
+        { id: 'pullups', name: 'Dominadas', muscle: 'Back', sets: 3, reps: 'AMRAP', rpe: '8-9', defaultRest: 120, notes: 'Si no hay barra: Band Row anclada a una puerta, 3×15-20. Es el patrón más difícil de replicar en viaje — busca barra si puedes (parque, puerta con barra).', bw: true, compound: true },
+        { id: 'sl-glute-bridge', name: 'Puente de glúteo a una pierna', muscle: 'Glutes', sets: 3, reps: '12-15/pierna', rpe: '8', defaultRest: 60, notes: 'Extensión de cadera. Talón apoyado, sube empujando con el glúteo, pausa 1s arriba. Hombros en el suelo o en la cama para más recorrido.', bw: true },
+        { id: 'bird-dog', name: 'Bird Dog', muscle: 'Core', sets: 3, reps: '8-10/lado', rpe: '-', defaultRest: 45, notes: 'Anti-rotación: brazo y pierna opuestos, sin que la cadera se abra ni la lumbar se arquee. Uno de los Big 3 de McGill — la fuente de la que sale la regla del core en este sistema. Lento, 2s arriba.', bw: true },
+      ]
+    },
+    travelB: {
+      id: 'travelB', name: 'Viaje B', subtitle: 'Bisagra · Press vertical · Tirón horizontal', icon: '🧳',
+      warmup: [
+        '3-5 min: saltar en el sitio, círculos de cadera, zancadas caminando',
+        'Puente de glúteo — 2 × 12',
+        'Peso muerto rumano sin peso — 1 × 12 lento',
+        'Band pull-aparts (o brazos en cruz) — 2 × 15',
+      ],
+      exercises: [
+        { id: 'sl-rdl', name: 'Peso muerto rumano a una pierna', muscle: 'Hamstrings', sets: 3, reps: '10-12/pierna', rpe: '8', defaultRest: 90, notes: 'Bisagra de cadera, no de rodilla. Baja lento hasta notar el isquio, espalda recta. Con una mochila cargada si la tienes. El equilibrio es parte del ejercicio.', bw: true, compound: true },
+        { id: 'pike-pushup', name: 'Pike Push-up', muscle: 'Shoulders', sets: 3, reps: '6-12', rpe: '8', defaultRest: 90, notes: 'Empuje vertical: cadera alta en V, cabeza hacia el suelo entre las manos. Cuanto más verticales las caderas, más difícil. Pies en la cama para progresar.', bw: true, compound: true },
+        { id: 'band-row', name: 'Remo con banda', muscle: 'Back', sets: 3, reps: '15-20', rpe: '8', defaultRest: 90, notes: 'Banda anclada a una puerta o pilar. Aprieta las escápulas, sin encoger los hombros. Sin banda: Inverted Row bajo una mesa firme.', compound: true },
+        { id: 'nordic-curl', name: 'Nordic Curl (asistido)', muscle: 'Hamstrings', sets: 3, reps: '5-8', rpe: '8', defaultRest: 90, notes: 'Flexión de rodilla, lo que el rumano NO cubre. Pies enganchados bajo un sofá o cama pesada; baja lo más lento que puedas y empuja con las manos para volver. Muy exigente: 3-5 reps ya valen.', bw: true },
+        { id: 'dead-bug', name: 'Dead Bug', muscle: 'Core', sets: 3, reps: '8-10/lado', rpe: '-', defaultRest: 45, notes: 'Anti-extensión. Lumbar pegada al suelo todo el rato — si se despega, acorta el recorrido. Lento, exhalando al extender.', bw: true },
       ]
     }
   }
@@ -358,6 +447,8 @@ const EXERCISE_ALTERNATIVES = {
   'Back': [
     { id: 'barbell-row', name: 'Barbell Row' },
     { id: 'pendlay-row', name: 'Pendlay Row' },
+    { id: 'band-row', name: 'Band Row' },
+    { id: 'inverted-row', name: 'Inverted Row' },
     { id: 'chinups', name: 'Chin-ups' },
     { id: 'lat-pulldown', name: 'Lat Pulldown' },
     { id: 'chest-supported-row', name: 'Chest-Supported Row' },
@@ -376,6 +467,7 @@ const EXERCISE_ALTERNATIVES = {
     { id: 'db-shoulder-press', name: 'DB Shoulder Press' },
     { id: 'machine-shoulder-press', name: 'Machine Shoulder Press' },
     { id: 'arnold-press', name: 'Arnold Press' },
+    { id: 'pike-pushup', name: 'Pike Push-up' },
   ],
   'Rear Delt': [
     { id: 'face-pull', name: 'Cable Face Pull' },
@@ -391,6 +483,10 @@ const EXERCISE_ALTERNATIVES = {
     { id: 'bss', name: 'Bulgarian Split Squat' },
     { id: 'goblet-squat', name: 'Goblet Squat' },
     { id: 'hack-squat', name: 'Hack Squat' },
+    { id: 'split-squat', name: 'Split Squat (peso corporal)' },
+    { id: 'pogo-hops', name: 'Pogo Hops' },
+    { id: 'box-jump', name: 'Box Jump' },
+    { id: 'broad-jump', name: 'Broad Jump' },
   ],
   'Hamstrings': [
     { id: 'rdl', name: 'Barbell RDL' },
@@ -401,6 +497,7 @@ const EXERCISE_ALTERNATIVES = {
     { id: 'db-rdl', name: 'DB RDL' },
     { id: 'good-morning', name: 'Good Morning' },
     { id: 'nordic-curl', name: 'Nordic Curl' },
+    { id: 'sl-rdl', name: 'Single-Leg RDL' },
   ],
   'Posterior': [
     { id: 'sumo-dl', name: 'Sumo Deadlift' },
@@ -413,6 +510,7 @@ const EXERCISE_ALTERNATIVES = {
     { id: 'glute-drive', name: 'Glute Drive (machine)' },
     { id: 'cable-kickback', name: 'Cable Kickback' },
     { id: 'glute-bridge', name: 'Glute Bridge' },
+    { id: 'sl-glute-bridge', name: 'Single-Leg Glute Bridge' },
   ],
   'Triceps': [
     { id: 'tricep-pushdown', name: 'Tricep Pushdown' },
@@ -434,6 +532,8 @@ const EXERCISE_ALTERNATIVES = {
     { id: 'cable-crunch', name: 'Cable Crunch' },
     { id: 'plank', name: 'Plank' },
     { id: 'dead-bug', name: 'Dead Bug' },
+    { id: 'bird-dog', name: 'Bird Dog' },
+    { id: 'side-plank', name: 'Side Plank' },
   ],
   'Calves': [
     { id: 'calf-raise', name: 'Standing Calf Raise' },
@@ -647,6 +747,14 @@ const MOVEMENT_PATTERNS = {
   'bench-press': 'horizontal-press', 'incline-db-press': 'horizontal-press',
   'db-bench': 'horizontal-press', 'machine-chest-press': 'horizontal-press',
   'cable-fly': 'horizontal-press', 'pushup': 'horizontal-press',
+  'inverted-row': 'horizontal-pull', 'band-row': 'horizontal-pull',
+  'pike-pushup': 'vertical-press',
+  'sl-rdl': 'hinge', 'sl-glute-bridge': 'glute', 'split-squat': 'single-leg',
+  // Pliometría (v11.42): patrón propio para poder auditar el volumen de contactos.
+  'pogo-hops': 'plyometric', 'box-jump': 'plyometric', 'broad-jump': 'plyometric',
+  // Acondicionamiento híbrido: concéntrico dominante, bajo DOMS, baja skill.
+  'sled-push': 'conditioning', 'sled-drag': 'conditioning',
+  'ski-erg': 'conditioning', 'farmer-carry': 'carry',
   'dips': 'horizontal-press', 'close-grip-bench': 'horizontal-press',
   'floor-press': 'horizontal-press', 'pec-deck': 'horizontal-press',
   'cable-crossover': 'horizontal-press', 'hammer-chest-press': 'horizontal-press',
@@ -702,6 +810,10 @@ const MOVEMENT_PATTERNS = {
   'pallof-press': 'core-anti-rotation',
   'ab-wheel': 'core-anti-extension', 'plank': 'core-anti-extension', 'dead-bug': 'core-anti-extension',
   'cable-crunch': 'core-flexion', 'hanging-leg-raise': 'core-flexion',
+  // Bird dog y side plank (v11.42): las opciones sin equipo de los "Big 3" de McGill, que es
+  // justamente la fuente de ATH-003. El bird dog resiste rotación; la plancha lateral, flexión
+  // lateral — la agrupo con anti-rotación porque su función es la misma: no dejar que el tronco ceda.
+  'bird-dog': 'core-anti-rotation', 'side-plank': 'core-anti-rotation',
 };
 
 // Does a movement pattern count as core work? Use this instead of `=== 'core'`, which no
@@ -7245,6 +7357,9 @@ const ALT_LIBRARY = {
     { label: 'Recovery walk 30-40 min', family: 'recovery', subtype: 'walk', modality: 'walk', durationMin: 35, intensity: 'easy', reason: 'Bajo impacto / NEAT', ruleIds: ['READ-007'] },
   ],
   hard_cardio: [
+    // v11.42: el híbrido de trineo + SkiErg entra AQUÍ, como alternativa del cardio del sábado —
+    // no como un día extra. HYB-001 lo dice literal: "0-1/sem, en lugar de un cardio, no además".
+    { label: 'Híbrido: trineo + SkiErg (~40 min)', family: 'hybrid', subtype: 'strength_endurance', planRef: 'hybrid1', durationMin: 40, intensity: 'RPE 8', reason: 'Trineo concéntrico puro: mucho estímulo, pocas agujetas, casi no interfiere con pierna ni con correr', ruleIds: ['HYB-001', 'HYB-003', 'HYB-005'] },
     { label: 'Bike Zone 2 35-45 min', family: 'cardio', subtype: 'zone2', modality: 'bike', durationMin: 40, intensity: 'Z2', reason: 'Bajo impacto, baja interferencia', ruleIds: ['INT-002'] },
     { label: 'Row moderado 25-30 min', family: 'cardio', subtype: 'zone2', modality: 'row', durationMin: 28, intensity: 'Z2', reason: 'Bajo impacto', ruleIds: ['INT-002'] },
     { label: 'Easy run/walk 30 min', family: 'cardio', subtype: 'zone2', modality: 'run', durationMin: 30, intensity: 'easy', reason: 'Reduce carga de piernas', ruleIds: ['END-006'] },
@@ -7602,6 +7717,19 @@ const IDEAL_BLOCK_V1 = {
     'En déficit: mantener intensidad, no subir volumen agresivo; quick-mode si hay fatiga (LOAD).',
   ],
   variants: {
+    // v11.42 — VIAJE. La causa real de la adherencia baja (11 sesiones en 9 semanas) era que
+    // estaba de viaje y NINGUNA variante funcionaba sin rack y barra. Cero equipo, banda opcional.
+    // Dos sesiones de fuerza completas + caminata/carrera libre; sin días duros que exijan gimnasio.
+    0: {
+      label: 'Viaje · sin gimnasio',
+      note: 'Peso corporal (banda si hay). Cada sesión es completa: pierna + empuje + tirón + core.',
+      days: [
+        { dow: 1, kind: 'strength', subtype: 'full', bw: 1.5, planRef: 'travelA', title: 'Viaje A', summary: 'Búlgaras + flexiones + dominadas + glúteo + plancha', why: 'Sesión completa sin equipo; mantiene los patrones.', ruleIds: ['STR-002', 'STR-004'], alt: 'strength_upper' },
+        { dow: 3, kind: 'cardio', subtype: 'zone2', bw: 0.5, durationMin: 30, title: 'Cardio Z2 libre', summary: '30 min fácil: correr, caminar rápido, o el gimnasio del hotel', why: 'Mínimo aeróbico sin depender de material.', ruleIds: ['END-001'], alt: 'hard_cardio' },
+        { dow: 5, kind: 'strength', subtype: 'full', bw: 1.5, planRef: 'travelB', title: 'Viaje B', summary: 'Rumano a 1 pierna + pike + remo banda + nordic + dead bug', why: 'Bisagra y patrón vertical, lo que A no cubre.', ruleIds: ['STR-002', 'STR-007'], alt: 'strength_upper' },
+        { dow: 0, kind: 'recovery', subtype: 'mobility', bw: 0, z2Finisher: 20, title: 'Recuperación activa', summary: 'Movilidad + caminata', why: 'Viajar acumula horas sentado; movilidad importa más, no menos.', ruleIds: ['ATH-003', 'ATH-006'], alt: null },
+      ],
+    },
     3: {
       // v11.37: la nota decía "Viaje / sin gym" mientras fullA prescribe rack, barra, banco y
       // máquina de cables — 4 de 4 ejercicios necesitan gimnasio completo. Corregida a lo que
@@ -7657,7 +7785,7 @@ const IDEAL_BLOCK_V1 = {
         { dow: 3, kind: 'cardio', subtype: 'zone2', bw: 0.5, durationMin: 40, title: 'Cardio Z2 + movilidad', summary: '35-45 min fácil (bici/remo/cinta) + movilidad/core', why: 'Día aeróbico dedicado entre estímulos de fuerza.', ruleIds: ['END-001', 'END-003'], alt: 'hard_cardio' },
         { dow: 4, kind: 'strength', subtype: 'lower', bw: 2, planRef: 'lowerB', z2Finisher: 20, title: 'Lower B · Bisagra', why: 'Bisagra (peso muerto) — 2º estímulo de pierna. +20 min Z2.', ruleIds: ['STR-005', 'STR-007'], alt: 'strength_lower' },
         { dow: 5, kind: 'strength', subtype: 'upper', bw: 1, planRef: 'upperB', z2Finisher: 20, title: 'Upper B · Dominadas/OHP', why: 'Patrón vertical (dominadas + press militar). +20 min Z2.', ruleIds: ['STR-002', 'STR-007'], alt: 'strength_upper' },
-        { dow: 6, kind: 'cardio', subtype: 'long_easy', bw: 1, durationMin: 50, title: 'Cardio calidad Z2', summary: 'Largo fácil o progresivo Z2/Z3 — única sesión de calidad', why: 'Construye el motor aeróbico para la grasa; lejos de pierna.', ruleIds: ['END-003', 'END-005'], alt: 'hard_cardio' },
+        { dow: 6, kind: 'cardio', subtype: 'long_easy', bw: 1, durationMin: 50, title: 'Cardio calidad Z2', summary: 'Largo fácil, o cámbialo por el híbrido de trineo + SkiErg', why: 'Construye el motor aeróbico; lejos de pierna. El híbrido está como alternativa, no como día extra.', ruleIds: ['END-003', 'END-005'], alt: 'hard_cardio' },
         { dow: 0, kind: 'recovery', subtype: 'mobility', bw: 0, z2Finisher: 20, title: 'Recuperación activa', summary: 'Movilidad + core + caminata/Z2 suave 20 min', why: 'Recuperación activa; estímulo suave los 7 días.', ruleIds: ['ATH-003', 'READ-007'], alt: null },
       ],
     },
@@ -7678,7 +7806,7 @@ const IDEAL_BLOCK_V1 = {
 
 // T5: the chosen day-count (3/4/5/6) and per-session duration persist in settings (synced).
 // T5.1: default to the full IDEAL (variant 6 "Completa"). Selector flexes down to 3/4/5.
-function _idealVariant() { const v = state.settings && state.settings.idealVariant; return (v === 3 || v === 4 || v === 5 || v === 6) ? v : 6; }
+function _idealVariant() { const v = state.settings && state.settings.idealVariant; return (v === 0 || v === 3 || v === 4 || v === 5 || v === 6) ? v : 6; }
 
 // T5.1: derive a week template ({0..6: slot}) from the chosen ideal variant.
 // strength → gym (+z2FinisherMin) · cardio → run (subtype + durationMin) · recovery → recovery (+z2FinisherMin) · gap → rest.
@@ -7709,7 +7837,8 @@ function buildWeekTemplateFromIdeal(variantNum) {
 // 2 = v11.35 (D2: Pec Deck A->B + Lat Pulldown into A; D3: variant 5 keeps lowerB).
 // 3 = v11.37 (fullA: Cable Crunch->Pallof + RDL; fullB: Hanging Leg Raise->Ab Wheel).
 // 4 = v11.38 (fullA: RDL->Seated Leg Curl; fullB: +Leg Extension).
-const PLAN_REV = 4;
+// 5 = v11.42 (pliometría en lowerA; sesiones de viaje; híbrido trineo+SkiErg).
+const PLAN_REV = 5;
 
 async function applyIdealPlan({ force = false } = {}) {
   const n = _idealVariant();
@@ -7752,7 +7881,7 @@ async function clearFutureScheduleOverrides() {
 // regenerates the plan FORWARD, clears future overrides so the change is visible immediately,
 // and preserves past/done days. Logs (workouts/runs/sessions) are never touched.
 async function setIdealVariant(n) {
-  if (![3, 4, 5, 6].includes(n)) return;
+  if (![0, 3, 4, 5, 6].includes(n)) return;
   const changed = n !== _idealVariant() || !/^Ideal/.test((activePlan && activePlan.label) || '');
   state.settings.idealVariant = n;
   await smartPut('settings', { key: 'userSettings', data: state.settings });
@@ -7806,8 +7935,8 @@ function renderIdealPreview() {
   const byDow = {};
   variant.days.forEach(d => { byDow[d.dow] = d; });
 
-  const variantToggle = [3, 4, 5, 6].map(n => {
-    const lab = n === 6 ? 'Ideal' : `${n}d`;
+  const variantToggle = [0, 3, 4, 5, 6].map(n => {
+    const lab = n === 0 ? 'Viaje' : n === 6 ? 'Ideal' : `${n}d`;
     return `<button class="ip-tog ${n === v ? 'active' : ''}" data-ip-variant="${n}">${lab}</button>`;
   }).join('');
 
@@ -7865,8 +7994,8 @@ async function renderPlanSelector() {
   const strengthN = days.filter(d => d.kind === 'strength').length;
   const cardioN = days.filter(d => d.kind === 'cardio').length;
   const z2N = days.filter(d => d.z2Finisher).length;
-  const toggles = [3, 4, 5, 6].map(n => {
-    const lab = n === 6 ? 'Ideal' : `${n}`;
+  const toggles = [0, 3, 4, 5, 6].map(n => {
+    const lab = n === 0 ? '🧳' : n === 6 ? 'Ideal' : `${n}`;
     return `<button class="ip-tog ${n === v ? 'active' : ''}" data-ps-variant="${n}">${lab}</button>`;
   }).join('');
   container.innerHTML = `
@@ -9651,7 +9780,7 @@ async function exportJSON() {
   }
   const backup = {
     app: 'training-system',
-    version: '11.41',
+    version: '11.42',
     exportedAt: new Date().toISOString(),
     dbVersion: typeof DB_VERSION !== 'undefined' ? DB_VERSION : null,
     counts,
