@@ -7984,6 +7984,192 @@ function openIdealPreview() {
   renderIdealPreview();
 }
 
+// ==================== ANALÍTICA DE SANGRE (v11.43) ====================
+//
+// Los datos y la rúbrica viven en bloodwork.js. Esto solo pinta.
+//
+// Dos decisiones de diseño que importan:
+//  1. Puntaje y ANTIGÜEDAD son ejes SEPARADOS y se pintan separados. Un 5 de hace tres años no
+//     es un 5 de hoy, y una sola insignia mezclada haría exactamente esa lectura falsa.
+//  2. Los marcadores sin puntaje NO se esconden. "No se puntúa, y este es el motivo" es
+//     información; borrarlos daría la impresión de que la tabla está completa.
+//
+// LONG-003: nada de esto dispara ninguna regla de programación. Es lectura.
+
+function _anScoreDots(score) {
+  if (score == null) return '<span class="an-noscore">no se puntúa</span>';
+  const dots = [1, 2, 3, 4, 5].map(i => `<span class="an-dot${i <= score ? ' on' : ''}"></span>`).join('');
+  return `<span class="an-score s${score}">${dots}<b>${score}/5</b></span>`;
+}
+
+function _anFmt(v, unit) {
+  if (v == null) return '—';
+  // Coma decimal: el resto de la app y los informes del laboratorio están en español.
+  const s = (Math.round(v * 100) / 100).toString().replace('.', ',');
+  return unit ? `${s} ${unit}` : s;
+}
+
+function _anMonthYear(iso) {
+  const M = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+  const d = new Date(iso + 'T00:00:00');
+  return `${M[d.getMonth()]}-${d.getFullYear()}`;
+}
+
+// Serie inline en texto, sin librería de gráficos: 149 → 170 → 143. Con la etiqueta del
+// laboratorio cuando cambia, porque comparar entre laboratorios no es comparar lo mismo.
+function _anSeriesLine(series, unit) {
+  if (!series || series.length < 2) return '';
+  const labs = new Set(series.map(s => s.lab));
+  const parts = series.map(s => {
+    const lab = labs.size > 1 ? ` <i>${s.lab}</i>` : '';
+    return `<span class="an-pt">${_anFmt(s.value)}<em>${_anMonthYear(s.date)}${lab}</em></span>`;
+  });
+  return `<div class="an-series">${parts.join('<span class="an-arrow">→</span>')}</div>`;
+}
+
+function _anMarkerRow(latest) {
+  const d = latest.def;
+  const stale = latest.stale;
+  const state = d.states ? bloodMarkerState(d.key, latest.value) : null;
+  const bits = [];
+  if (d.labRange) bits.push(`<div class="an-meta"><span>Laboratorio</span> ${d.labRange}</div>`);
+  if (d.target) bits.push(`<div class="an-meta"><span>Guías</span> ${d.target}</div>`);
+  if (d.source) bits.push(`<div class="an-meta"><span>Fuente</span> ${d.source}</div>`);
+  if (d.noScore) bits.push(`<div class="an-why">${d.noScore}</div>`);
+  if (d.note) bits.push(`<div class="an-why">${d.note}</div>`);
+  if (d.confounder) bits.push(`<div class="an-warn">⚠️ Confusor: ${d.confounder}</div>`);
+  if (d.caution) bits.push(`<div class="an-warn">⚠️ ${d.caution}</div>`);
+  return `
+    <details class="an-marker">
+      <summary>
+        <div class="an-head">
+          <div class="an-name">${d.label}${d.uncertain ? ' <span class="an-unc">no legible</span>' : ''}</div>
+          ${_anScoreDots(latest.score)}
+        </div>
+        <div class="an-sub">
+          <b>${_anFmt(latest.value, d.unit)}</b>
+          <span class="an-date">${_anMonthYear(latest.date)}</span>
+          <span class="an-stale ${stale.level}">${stale.label}</span>
+          ${state ? `<span class="an-state">${state}</span>` : ''}
+        </div>
+      </summary>
+      <div class="an-detail">
+        ${_anSeriesLine(latest.series, d.unit)}
+        ${bits.join('')}
+      </div>
+    </details>`;
+}
+
+function renderAnalytics() {
+  const host = document.getElementById('analytics-body');
+  if (!host) return;
+  if (typeof BLOOD_MARKERS === 'undefined') {
+    host.innerHTML = '<p class="muted">bloodwork.js no cargó.</p>';
+    return;
+  }
+
+  const fresh = bloodFreshnessSummary();
+  const groups = BLOOD_FAMILIES.map(f => {
+    const rows = BLOOD_MARKERS
+      .filter(m => m.family === f.key)
+      .map(m => bloodMarkerLatest(m.key))
+      .filter(Boolean)
+      // Peor puntaje primero: lo que hay que mirar va arriba. Los sin puntaje, al final.
+      .sort((a, b) => (a.score == null ? 99 : a.score) - (b.score == null ? 99 : b.score));
+    if (!rows.length) return '';
+    return `<div class="clib-group">${f.label}</div>${rows.map(_anMarkerRow).join('')}`;
+  }).join('');
+
+  const supps = BLOOD_SUPPLEMENTS.worth.map(s => `
+    <details class="an-marker">
+      <summary>
+        <div class="an-head"><div class="an-name">${s.name}</div><span class="clib-badge">${s.tier}</span></div>
+        <div class="an-sub"><b>${s.dose}</b></div>
+      </summary>
+      <div class="an-detail">
+        <div class="an-meta"><span>Efecto</span> ${s.effect}</div>
+        <div class="an-meta"><span>Fuente</span> ${s.source}</div>
+        <div class="an-warn">⚠️ ${s.caveat}</div>
+      </div>
+    </details>`).join('');
+
+  host.innerHTML = `
+    <div class="ip-goal">
+      <div class="ip-goal-title">Analítica</div>
+      <div class="ip-goal-sub">6 paneles · 2021-2025 · ${fresh.total} marcadores medidos, ${fresh.scored} puntuados</div>
+    </div>
+
+    <div class="an-disclaimer">
+      <b>Esto es contexto histórico, no un diagnóstico.</b> El puntaje describe dónde cae tu valor
+      frente a objetivos <i>publicados</i> — no frente al rango del laboratorio, que es otra cosa.
+      No sustituye a un médico y <b>no cambia ningún entrenamiento</b>.
+    </div>
+
+    ${fresh.overdue ? `
+    <div class="an-overdue">
+      <b>Toca repetir la analítica.</b> El panel más nuevo es de ${_anMonthYear(fresh.newestDate)}:
+      hace <b>${fresh.newestMonths} meses</b>. ${fresh.historic} marcadores pasan de 24 meses y
+      ${fresh.neverMeasured} nunca se midieron. <b>Ningún valor de aquí describe tu estado de hoy.</b>
+    </div>` : ''}
+
+    ${groups}
+
+    <div class="clib-group">Nunca medido</div>
+    ${BLOOD_NEVER_MEASURED.map(n => `
+      <details class="an-marker an-never">
+        <summary>
+          <div class="an-head"><div class="an-name">${n.label}</div><span class="an-noscore">sin dato</span></div>
+        </summary>
+        <div class="an-detail"><div class="an-why">${n.why}</div></div>
+      </details>`).join('')}
+
+    <div class="clib-group">Qué pedir en la próxima</div>
+    <div class="card" style="padding:14px 16px">
+      <ul class="an-list">${BLOOD_REQUEST_LIST.map(r => `<li>${r}</li>`).join('')}</ul>
+      <div class="an-cond">${BLOOD_REQUEST_CONDITIONS}</div>
+      <button id="an-copy" class="btn-secondary btn-full" style="text-align:center;margin-top:12px">Copiar la lista</button>
+    </div>
+
+    <div class="clib-group">Suplementación con evidencia</div>
+    ${supps}
+    <details class="an-marker">
+      <summary>
+        <div class="an-head"><div class="an-name">Lo que no vale la pena</div><span class="an-noscore">${BLOOD_SUPPLEMENTS.notWorth.length}</span></div>
+      </summary>
+      <div class="an-detail">
+        ${BLOOD_SUPPLEMENTS.notWorth.map(s => `<div class="an-meta"><span>${s.name}</span> ${s.why}</div>`).join('')}
+        <div class="an-warn">⚠️ ${BLOOD_SUPPLEMENTS.risk}</div>
+      </div>
+    </details>
+
+    <div class="t3-foot">
+      Nada de esta sección corrige una deficiencia: eso lleva pauta, duración y control posterior, y
+      es de tu médico. El análisis completo, con la rúbrica y las fuentes, está en
+      <b>data/processed/2026-08-20_analitica-puntuada.md</b>.
+    </div>
+  `;
+
+  const copy = document.getElementById('an-copy');
+  if (copy) copy.addEventListener('click', async () => {
+    const txt = 'Analítica a pedir:\n' + BLOOD_REQUEST_LIST.map(r => `- ${r}`).join('\n')
+      + `\n\nCondiciones: ${BLOOD_REQUEST_CONDITIONS}`;
+    try {
+      await navigator.clipboard.writeText(txt);
+      copy.textContent = '✓ Copiada';
+      setTimeout(() => { copy.textContent = 'Copiar la lista'; }, 1800);
+    } catch (e) {
+      // iOS niega el portapapeles fuera de un gesto directo en algunos casos. Mostrar el
+      // texto es mejor que un fallo silencioso: se puede seleccionar a mano.
+      copy.textContent = 'No se pudo copiar — mantené pulsado el texto';
+    }
+  });
+}
+
+function openAnalytics() {
+  showView('analytics');
+  renderAnalytics();
+}
+
 // T5.1: compact day-count selector on Home. Default 6 = the full ideal; flex down for busy weeks.
 async function renderPlanSelector() {
   const container = document.getElementById('plan-selector');
@@ -10344,6 +10530,8 @@ function bindEvents() {
   // T4: Ideal Plan Preview open/back (read-only view)
   { const b = document.getElementById('btn-ideal-preview'); if (b) b.addEventListener('click', openIdealPreview); }
   { const b = document.getElementById('ip-back'); if (b) b.addEventListener('click', () => { showView('settings'); updateHeader('settings'); }); }
+  { const b = document.getElementById('btn-analytics'); if (b) b.addEventListener('click', openAnalytics); }
+  { const b = document.getElementById('an-back'); if (b) b.addEventListener('click', () => { showView('settings'); updateHeader('settings'); }); }
 
   // Unit toggle in workout header (segmented control)
   document.getElementById('unit-toggle').addEventListener('click', async (e) => {

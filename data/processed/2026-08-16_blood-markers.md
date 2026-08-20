@@ -2,6 +2,10 @@
 
 > Procesado: 2026-08-16. Fuente: los 5 PDF de `data/raw/Blood Tests/` (laboratorio IACA, Bahía
 > Blanca / Buenos Aires, Argentina). Extraídos con `pdftotext -layout`.
+>
+> **Este archivo es el registro de la extracción.** El análisis con rangos de guía, puntajes y
+> suplementación está en [`2026-08-20_analitica-puntuada.md`](2026-08-20_analitica-puntuada.md), que
+> **corrige tres lecturas de aquí** (marcadas más abajo con 🔴 CORRECCIÓN 2026-08-20).
 
 ## 🔴 CORRECCIÓN 2026-08-18: había un panel más nuevo que no vi
 
@@ -62,7 +66,7 @@ próxima analítica.
 |---|---|---|---|---|---|---|
 | Colesterol total (mg/dL) | 226 | — | 260 | **230** | deseable <200 | ⚠️ elevado, **sin tendencia clara** |
 | Colesterol LDL (mg/dL) | 149 | — | 170 | **143** | <100 (LabCorp) · <130 (lab arg.) | ⚠️ elevado, **el más bajo de la serie** |
-| Colesterol HDL (mg/dL) | 66 | — | 68 | **65** | >39 · elevado ≥60 | ✅ bueno y muy estable |
+| Colesterol HDL (mg/dL) | 66 | — | 68 | **65** | >39 · elevado ≥60 | muy estable · **ver corrección** |
 | Triglicéridos (mg/dL) | 54 | — | 101 | **126** | <150 | ✅ en rango, subiendo dentro de él |
 | VLDL (mg/dL) | — | — | — | **22** | 5-40 | ✅ |
 | **Ratio LDL/HDL** | — | — | — | **2,2** | 0,0-3,6 | ✅ **banda de riesgo bajo** |
@@ -80,13 +84,41 @@ tendencia ascendente, sino **oscilación alrededor de un LDL persistentemente al
 El pico de 2024 no se sostuvo.
 
 Lo que sí es consistente en los cuatro años: **LDL por encima de la referencia en todas las
-mediciones**, con HDL alto y estable (65-68) y triglicéridos en rango. Ese patrón —HDL alto, TG
-normales, LDL alto— **no es el del síndrome metabólico**; el HOMA de 1,3 y la HbA1c de 5,3% lo
-confirman. Y la ratio LDL/HDL de 2,2 está en la banda de riesgo bajo.
+mediciones**, con HDL alto y estable (65-68) y triglicéridos en rango.
 
 Traducción práctica: es un tema para el médico, con **ApoB y Lp(a)** —que estratifican el riesgo
 mucho mejor que el LDL calculado— y no un motivo para cambiar el entrenamiento. La Lp(a) se mide
 una sola vez en la vida y nunca se ha medido.
+
+### 🔴 CORRECCIÓN 2026-08-20 — tres cosas de esta sección estaban mal
+
+**1. El HDL de 65 no es un "✅ bueno".** El `elevado ≥60` que imprime el laboratorio es la
+convención del **NCEP ATP III**, que trataba el HDL alto como protector. Esa convención **no
+sobrevivió a la evidencia** (randomización mendeliana), y ninguna guía vigente —ESC/EAS 2019, su
+Focused Update 2025, ACC/AHA— fija un objetivo de HDL hacia arriba. Un 65 no es un logro: es "sin
+señal". Poner un ✅ ahí era heredar un criterio retirado.
+
+**2. "No es el del síndrome metabólico" es un diagnóstico negativo y no me corresponde.** El HOMA de
+1,3 y la HbA1c de 5,3 % son buenos datos y valen por sí mismos; usarlos para descartar una entidad
+clínica es otra cosa. Los hechos se quedan, la conclusión se retira.
+
+**3. La lectura de "oscilación" 149 → 170 → 143 compara peras con manzanas.** Los tres valores son
+**LDL calculado**, no medido, y **no salen del mismo laboratorio ni de la misma ecuación**:
+2021 y 2024 son de IACA, 2025 de LabCorp. Se reprodujo la aritmética:
+
+| | Total | HDL | TG | Reportado | Friedewald | Sampson/NIH |
+|---|---|---|---|---|---|---|
+| 2024-09 (IACA) | 260 | 68 | 101 | **170** | 172 | 175 |
+| 2025-02 (LabCorp) | 230 | 65 | 126 | **143** | 140 | 142,8 |
+
+**Ninguna ecuación publicada reproduce el 170 de IACA** — ni Friedewald ni Sampson-NIH 2020 dan ese
+número, así que su método no está identificado (probablemente un ensayo directo). En LabCorp, en
+cambio, Sampson da 142,8 ≈ 143: encaja.
+
+Y el cambio de ecuación explica como mucho 5 de los 27 mg/dL de diferencia. **El resto está en el
+colesterol total medido, que bajó 30 mg/dL (260 → 230).** O sea: el descenso es real y está en un
+valor medido directamente, no un artefacto de fórmula — pero la serie de tres puntos no soporta una
+narrativa de "oscilación", porque dos de sus puntos vienen de métodos distintos.
 
 ## Glucemia e insulina
 

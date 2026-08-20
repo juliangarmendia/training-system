@@ -6,7 +6,7 @@
 > El *por qué* de cada cosa vive en [`../assessments/2026-08-16_system-audit.md`](../assessments/2026-08-16_system-audit.md).
 > Aquí está el *qué sigue*.
 >
-> Última actualización: **2026-08-19** (v11.42 + backfill de revisiones)
+> Última actualización: **2026-08-20** (v11.43 · sección de analítica)
 
 ## Regla de trabajo
 
@@ -216,7 +216,32 @@ HYROX). Por eso la dosis es conservadora y va como alternativa, no como obligaci
 
 </details>
 
-## 5 · Analítica de sangre — **Julian**
+## 5 · Analítica de sangre — ✅ analizada y en la app (v11.43) · **pedir la nueva sigue siendo tuyo**
+
+**Hecho el 2026-08-20.** Las 6 analíticas están puntuadas contra **objetivos de guía**, no contra el
+rango del laboratorio, en
+[`../data/processed/2026-08-20_analitica-puntuada.md`](../data/processed/2026-08-20_analitica-puntuada.md)
+y en la app (**Ajustes → Mis marcadores**).
+
+Los tres hallazgos que el rango del laboratorio escondía:
+
+| | |
+|---|---|
+| **ApoB 110 "dentro de rango" es un 2 de 5** | El `66-133` que imprime IACA es un intervalo **poblacional**, no un umbral de riesgo. Todo su tramo alto queda por encima de cualquier objetivo de guía |
+| **Ferritina 191 está a 9 unidades de un flag** | La OMS marca >200 µg/L en hombres sanos como riesgo de sobrecarga de hierro. El rango `30-400` del laboratorio lo tapa |
+| **El "óptimo" de vitamina D no existe** | El 40-60 ng/mL que se repite en todas partes es de la guía de 2011 de la Endocrine Society; **la vigente (2024) dice que no hay evidencia que defina el nivel óptimo**. Que 11,2 sea deficiencia sigue siendo cierto por todas las definiciones |
+
+Y dos cosas que dije mal y quedan corregidas: el HDL de 65 **no** es un "✅ bueno" (esa convención,
+NCEP ATP III, no sobrevivió a la evidencia y ninguna guía vigente fija diana de HDL hacia arriba), y
+la serie de LDL 149 → 170 → 143 **mezcla dos laboratorios y dos ecuaciones** — el descenso es real y
+está en el colesterol total medido (−30 mg/dL), pero no soporta una narrativa de "oscilación".
+
+**Lo que sigue siendo tuyo: pedir la analítica nueva.** La app tiene la lista lista para copiar, con
+las condiciones (en ayunas, 48 h sin sesión dura, bien hidratado). Prioridad: **vitamina D**, que
+lleva 36 meses sin re-control.
+
+<details>
+<summary>Estado anterior del punto (18-ago)</summary>
 
 **Actualizado el 2026-08-18.** Apareció una segunda carpeta, `data/00. Blood Tests/`, con un
 **perfil lipídico del 2025-02-04** que no estaba en la que audité. Eso corrige algo que dije mal:
@@ -245,6 +270,8 @@ Lo que sigue faltando, y es lo que de verdad importa:
 El sistema registra y deriva; **no interpreta ni trata**. Esto es conversación médica.
 
 Lista de qué pedir en [`../data/processed/2026-08-16_blood-markers.md`](../data/processed/2026-08-16_blood-markers.md).
+
+</details>
 
 ## 6 · Las revisiones semanales que faltaban — HECHO (2026-08-19)
 
@@ -310,6 +337,8 @@ Sin registro desde la semana 18 (4 de mayo). Merece su propia pasada con `/weekl
 | 2026-08-17 | Sin trabajo anti-rotación ni anti-extensión en ninguna sesión, con historial lumbar — y la taxonomía era incapaz de detectarlo | v11.37 |
 | 2026-08-18 | Corregido un error propio: el RDL añadido el día anterior dejaba cuatro compuestos de barra seguidos y una bisagra tras sentadilla pesada. `fullB` no tenía nada de cuádriceps | v11.38 |
 | 2026-08-18 | **`VirtualSki` faltaba en el mapa**: cada sesión de SkiErg se descartaba justo después de conectar Concept2. El catálogo tampoco tenía workouts de ski | v11.39 |
+| 2026-08-19 | Ninguna variante funcionaba sin gimnasio, así que un viaje equivalía a no entrenar. Variante Viaje + pliometría + híbrido trineo/SkiErg | v11.42 |
+| 2026-08-20 | **Los rangos del laboratorio escondían tres cosas** (ApoB, ferritina, vitamina D). Analítica puntuada contra objetivos de guía, documento + sección en la app, y los tests que impiden que documento y código divergan | v11.43 |
 
 ### El patrón que se repite
 

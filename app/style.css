@@ -2217,3 +2217,61 @@ body[data-tab="home"] .home-scroll-v2 { padding-top: calc(var(--safe-top) + 10px
 .welcome-v2 .welcome-streak-text strong { color: var(--orange); }
 .welcome-v2 .login-cta { margin-top: 26px; }
 
+
+/* ========== Analítica de sangre (v11.43) ==========
+   Puntaje y antigüedad son ejes SEPARADOS y se pintan separados a propósito: un 5 de hace tres
+   años no es un 5 de hoy, y una sola insignia mezclada haría justo esa lectura falsa. */
+.an-disclaimer { font-size: 12.5px; line-height: 1.5; color: var(--text2); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; margin-bottom: 10px; }
+.an-disclaimer b { color: var(--text); }
+.an-overdue { font-size: 12.5px; line-height: 1.5; color: var(--text2); background: rgba(251,161,0,0.09); border: 1px solid rgba(251,161,0,0.28); border-radius: var(--radius); padding: 12px 14px; margin-bottom: 4px; }
+.an-overdue b { color: var(--orange); }
+
+.an-marker { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 11px 14px; margin-bottom: 8px; }
+.an-marker > summary { list-style: none; cursor: pointer; }
+.an-marker > summary::-webkit-details-marker { display: none; }
+.an-marker[open] { background: var(--surface2); }
+.an-never { opacity: 0.72; }
+
+.an-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.an-name { font-size: 14px; font-weight: 600; color: var(--text); }
+.an-unc { font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--text3); }
+.an-sub { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 4px; font-size: 12px; color: var(--text2); }
+.an-sub b { font-family: var(--font-mono); font-size: 13px; color: var(--text); font-weight: 600; }
+.an-date { color: var(--text3); }
+
+/* Puntaje: puntos + cifra. El color va del rojo al verde de la marca. */
+.an-score { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.an-score b { font-family: var(--font-mono); font-size: 11px; font-weight: 700; }
+.an-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--surface3); }
+/* Un solo token por puntaje: los puntos encendidos lo usan como relleno, la cifra como color. */
+.an-score.s1 { --an-c: var(--red); }
+.an-score.s2 { --an-c: var(--orange); }
+.an-score.s3 { --an-c: var(--yellow); }
+.an-score.s4 { --an-c: var(--accent2); }
+.an-score.s5 { --an-c: var(--accent); }
+.an-score .an-dot.on { background: var(--an-c); }
+.an-score b { color: var(--an-c); }
+.an-noscore { font-size: 11px; color: var(--text3); white-space: nowrap; }
+
+/* Antigüedad: eje aparte, chip propio. */
+.an-stale { font-size: 10px; font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase; padding: 2px 7px; border-radius: 999px; }
+.an-stale.fresco { color: var(--accent); background: rgba(104,227,113,0.16); }
+.an-stale.caducado { color: var(--orange); background: rgba(251,161,0,0.16); }
+.an-stale.historico { color: var(--red); background: rgba(238,52,59,0.16); }
+.an-state { font-size: 11px; color: var(--text2); font-style: italic; }
+
+.an-detail { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+.an-meta { font-size: 12px; line-height: 1.5; color: var(--text2); margin-bottom: 6px; }
+.an-meta span { display: inline-block; min-width: 78px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em; color: var(--text3); }
+.an-why { font-size: 12px; line-height: 1.55; color: var(--text2); margin-top: 6px; }
+.an-warn { font-size: 12px; line-height: 1.55; color: var(--text2); margin-top: 8px; padding: 8px 10px; border-radius: 10px; background: rgba(251,161,0,0.08); border: 1px solid rgba(251,161,0,0.2); }
+
+/* Serie inline, sin librería de gráficos. Scroll propio: no empuja el ancho de la página. */
+.an-series { display: flex; align-items: flex-start; gap: 4px; overflow-x: auto; padding-bottom: 6px; margin-bottom: 8px; }
+.an-pt { display: flex; flex-direction: column; align-items: center; font-family: var(--font-mono); font-size: 12px; color: var(--text); flex-shrink: 0; }
+.an-pt em { font-family: var(--font-sans); font-style: normal; font-size: 9.5px; color: var(--text3); margin-top: 2px; white-space: nowrap; }
+.an-pt em i { font-style: normal; opacity: 0.75; }
+.an-arrow { color: var(--text3); font-size: 11px; flex-shrink: 0; padding-top: 1px; }
+
+.an-list { margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.6; color: var(--text); }
+.an-cond { font-size: 11.5px; line-height: 1.5; color: var(--text2); margin-top: 10px; }
