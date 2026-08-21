@@ -434,7 +434,9 @@ function mobilityColorVars(color) {
 const EXERCISE_ALTERNATIVES = {
   'Chest': [
     { id: 'bench-press', name: 'Barbell Bench Press' },
+    { id: 'incline-press', name: 'Press Inclinado' },
     { id: 'incline-db-press', name: 'Incline DB Press' },
+    { id: 'incline-db-fly', name: 'Apertura Inclinada con Mancuerna' },
     { id: 'db-bench', name: 'DB Bench Press' },
     { id: 'machine-chest-press', name: 'Machine Chest Press' },
     { id: 'hammer-chest-press', name: 'Hammer Strength Chest Press' },
@@ -451,6 +453,7 @@ const EXERCISE_ALTERNATIVES = {
     { id: 'inverted-row', name: 'Inverted Row' },
     { id: 'chinups', name: 'Chin-ups' },
     { id: 'lat-pulldown', name: 'Lat Pulldown' },
+    { id: 'straight-arm-pulldown', name: 'Pullover en Polea (brazos extendidos)' },
     { id: 'chest-supported-row', name: 'Chest-Supported Row' },
     { id: 'high-row', name: 'High Row (machine)' },
     { id: 'landmine-row', name: 'Landmine Row' },
@@ -462,6 +465,7 @@ const EXERCISE_ALTERNATIVES = {
   'Shoulders': [
     { id: 'ohp', name: 'Overhead Press' },
     { id: 'lateral-raise', name: 'DB Lateral Raise' },
+    { id: 'front-raise', name: 'Elevación Frontal' },
     { id: 'cable-lateral', name: 'Cable Lateral Raise' },
     { id: 'lateral-raise-machine', name: 'Lateral Raise Machine' },
     { id: 'db-shoulder-press', name: 'DB Shoulder Press' },
@@ -747,6 +751,7 @@ const MOVEMENT_PATTERNS = {
   'bench-press': 'horizontal-press', 'incline-db-press': 'horizontal-press',
   'db-bench': 'horizontal-press', 'machine-chest-press': 'horizontal-press',
   'cable-fly': 'horizontal-press', 'pushup': 'horizontal-press',
+  'incline-press': 'horizontal-press', 'incline-db-fly': 'horizontal-press',
   'inverted-row': 'horizontal-pull', 'band-row': 'horizontal-pull',
   'pike-pushup': 'vertical-press',
   'sl-rdl': 'hinge', 'sl-glute-bridge': 'glute', 'split-squat': 'single-leg',
@@ -769,6 +774,10 @@ const MOVEMENT_PATTERNS = {
   // Vertical pull
   'chinups': 'vertical-pull', 'pullups': 'vertical-pull',
   'lat-pulldown': 'vertical-pull',
+  // Aislamiento de dorsal (v11.44): el pullover en polea con brazos extendidos es EXTENSIÓN DE
+  // HOMBRO, no un tirón vertical — no hay flexión de codo. Etiquetarlo 'vertical-pull' le diría al
+  // sistema que se cubrió ese patrón, y no se cubre. Patrón propio, como pliometría en v11.42.
+  'straight-arm-pulldown': 'isolation-lat',
   // Squat pattern
   'back-squat': 'squat', 'front-squat': 'squat', 'leg-press': 'squat',
   'goblet-squat': 'squat', 'hack-squat': 'squat', 'bss': 'single-leg',
@@ -788,7 +797,7 @@ const MOVEMENT_PATTERNS = {
   'glute-drive': 'glute',
   // Isolation shoulder
   'lateral-raise': 'isolation-shoulder', 'cable-lateral': 'isolation-shoulder',
-  'lateral-raise-machine': 'isolation-shoulder',
+  'lateral-raise-machine': 'isolation-shoulder', 'front-raise': 'isolation-shoulder',
   'face-pull': 'isolation-rear-delt', 'rear-delt-fly': 'isolation-rear-delt',
   'band-pull-apart': 'isolation-rear-delt', 'reverse-pec-deck': 'isolation-rear-delt',
   // Isolation arms
@@ -1155,6 +1164,9 @@ const state = {
   currentTab: 'home',
   currentView: 'home',
   activeSession: null,
+  // Definición de la sesión libre en curso (v11.44). Efímera; su instantánea vive en
+  // settings.activeWorkout.adHoc. Nunca se escribe en el store `plans`.
+  adHocSession: null,
   viewingCompleted: false,
   workoutStartTime: null,
   workoutTimerInterval: null,
@@ -1692,9 +1704,10 @@ async function showWelcomeScreen() {
   let todayText = '';
   let headsUpHTML = '';
   if (plan.type === 'gym') {
-    const session = activePlan.sessions[plan.session];
+    // Sin la guarda, un id de sesión desconocido en weekTemplate reventaba la pantalla de bienvenida.
+    const session = activePlan.sessions[plan.session] || null;
     const deload = isDeloadWeek(wk);
-    const numEx = session.exercises ? session.exercises.length : 0;
+    const numEx = session && session.exercises ? session.exercises.length : 0;
     const estMin = Math.max(35, numEx * 9);
     todayText = `Let's train`;
     headsUpHTML = `
@@ -2193,7 +2206,7 @@ async function renderRecentWorkouts() {
       <div class="history-item" data-edit-workout="${w.id}">
         <div class="hi-icon" style="background:var(--tint-orange);color:var(--orange)">${iconBarbell}</div>
         <div class="hi-left">
-          <div class="hi-title">${session ? session.name : w.session}</div>
+          <div class="hi-title">${session ? session.name : (w.sessionName || w.session)}</div>
           <div class="hi-sub">${formatDate(w.date)} · ${totalSets} sets · ${w.duration || ''}</div>
         </div>
         <div class="hi-right">
@@ -2816,9 +2829,15 @@ async function showSessionPicker(defaultSession, dateOverride) {
   const options = sessions.map(([id, s]) => ({
     value: id, label: s.name + ' — ' + s.subtitle, icon: s.icon, selected: id === defaultSession
   }));
+  // La sesión libre no vive en el plan, así que se añade a mano al final.
+  options.push({ value: FREE_SESSION_ID, label: 'Sesión libre — vas eligiendo sobre la marcha', icon: '🎛️' });
 
   const choice = await showActionSheet('Start workout', options);
   if (choice === null) return;
+
+  // La libre NO se fija en weekSchedule: no es un día planificado, y dejarla ahí escrita haría que
+  // el calendario intentase arrancar una sesión vacía en el futuro.
+  if (choice === FREE_SESSION_ID) { await startFreeWorkout(); return; }
 
   // Persist the day swap in weekSchedule so the strip updates
   if (choice !== defaultSession) {
@@ -2835,7 +2854,7 @@ async function showSessionPicker(defaultSession, dateOverride) {
 function viewCompletedWorkout(workout) {
   state.viewingCompleted = true;
   const session = activePlan.sessions[workout.session];
-  const sessionName = session ? session.name : workout.session;
+  const sessionName = session ? session.name : (workout.sessionName || workout.session);
 
   document.getElementById('workout-timer').textContent = workout.duration || '--:--';
   document.getElementById('sp-fill').style.width = '100%';
@@ -2926,11 +2945,239 @@ function syncQuickModeUI() {
     : '~40 min · keep compounds, trim accessories';
 }
 
+// ==================== SESIÓN LIBRE (v11.44) ====================
+//
+// El problema que resuelve: hasta ahora la única forma de registrar un entrenamiento era seguir una
+// plantilla del plan. Entrenar la rutina de otro obligaba a secuestrar los huecos de una sesión y
+// anotar el ejercicio real en el comentario — que es exactamente lo que pasó el 20-ago y lo que la
+// migración `fix-aug20-mislabeled` tuvo que deshacer.
+//
+// Decisión de arquitectura: la sesión libre vive en `state.adHocSession`, NO en `PLAN.sessions`.
+// Registrarla en el plan habría exigido subir PLAN_REV, lo que escribe una versión de plan nueva y
+// sincronizada sólo para declarar una sesión vacía — y encima no ahorraría nada, porque la lista de
+// ejercicios hay que persistirla igual para que el resume funcione. Con el resolutor de abajo sólo
+// cambian las 5 lecturas que de verdad importan.
+//
+// Nada de esto escribe en el store `plans`.
+
+const FREE_SESSION_ID = 'free';
+
+function makeFreeSession() {
+  return {
+    id: FREE_SESSION_ID, name: 'Sesión libre', subtitle: 'Vas eligiendo sobre la marcha',
+    icon: '🎛️', adHoc: true,
+    warmup: [
+      '5-10 min de cardio suave',
+      'Movilidad de lo que vayas a entrenar',
+      'Series de aproximación en el primer ejercicio pesado',
+    ],
+    exercises: [],
+  };
+}
+
+// El resolutor. Único punto que sabe que existen sesiones fuera del plan.
+function getSessionDef(id) {
+  if (state.adHocSession && state.adHocSession.id === id) return state.adHocSession;
+  return (activePlan && activePlan.sessions) ? activePlan.sessions[id] : null;
+}
+
+function isAdHocSession(id) {
+  const d = getSessionDef(id);
+  return !!(d && d.adHoc);
+}
+
+// Catálogo para el selector: UNIÓN de las tres fuentes, no sólo el store.
+// Motivo: `ensureExerciseLibrarySeeded` sale si ya hay filas, así que el store del teléfono se
+// sembró una vez y le faltan todos los ejercicios añadidos desde v11.37 (trineo, SkiErg, farmer
+// carry, pliometría, bird dog…). La unión da el catálogo completo sin escribir nada.
+function libraryOptionsByMuscle() {
+  const byMuscle = {};
+  // Un ejercicio, UN músculo. `rdl` aparece en EXERCISE_ALTERNATIVES bajo Hamstrings y bajo
+  // Posterior; sin esto saldría dos veces en el selector. Gana la primera fuente que lo declare
+  // (librería → plan → alternativas), que es el orden de mayor a menor autoridad.
+  const claimed = new Set();
+  const add = (id, name, muscle) => {
+    if (!id || !name || !muscle || claimed.has(id)) return;
+    claimed.add(id);
+    if (!byMuscle[muscle]) byMuscle[muscle] = new Map();
+    byMuscle[muscle].set(id, name);
+  };
+  for (const e of Object.values(exerciseLibrary || {})) add(e.id, e.name, e.muscle);
+  if (activePlan && activePlan.sessions) {
+    for (const s of Object.values(activePlan.sessions)) {
+      for (const ex of (s.exercises || [])) add(ex.id, ex.name, ex.muscle);
+    }
+  }
+  for (const [muscle, alts] of Object.entries(EXERCISE_ALTERNATIVES)) {
+    for (const a of alts) add(a.id, a.name, muscle);
+  }
+  return byMuscle;
+}
+
+// El store `exercises` NO guarda `db` (mira `ensureExerciseLibrarySeeded`: sólo persiste id, name,
+// muscle, movementPattern, bw, defaultNotes, custom). Y `volumeForExercise` lee `ex.db` del propio
+// registro para aplicar el factor ×2. Así que las flags se derivan aquí.
+// Deliberadamente imperfecto: si falla, el único efecto es un factor ×2 en un accesorio.
+const _DB_EXERCISE_IDS = new Set([
+  'incline-db-press', 'db-bench', 'db-row', 'db-rdl', 'db-shoulder-press', 'lateral-raise',
+  'incline-curl', 'hammer-curl', 'bss', 'arnold-press', 'incline-db-fly', 'front-raise',
+]);
+const _COMPOUND_PATTERNS = new Set([
+  'squat', 'hinge', 'horizontal-press', 'vertical-press', 'horizontal-pull', 'vertical-pull',
+  'single-leg',
+]);
+
+function deriveExerciseFlags(exId) {
+  // 1) Si el ejercicio existe en alguna sesión del plan, esas flags son la verdad.
+  if (activePlan && activePlan.sessions) {
+    for (const s of Object.values(activePlan.sessions)) {
+      const hit = (s.exercises || []).find(e => e.id === exId);
+      if (hit) return { db: !!hit.db, bw: !!hit.bw, compound: !!hit.compound };
+    }
+  }
+  const lib = exerciseLibrary[exId] || {};
+  const pattern = MOVEMENT_PATTERNS[exId] || null;
+  const name = (lib.name || '').toLowerCase();
+  const db = _DB_EXERCISE_IDS.has(exId) || /\bdb\b|mancuerna|dumbbell/.test(exId + ' ' + name);
+  return { db, bw: !!lib.bw, compound: !!(pattern && _COMPOUND_PATTERNS.has(pattern)) };
+}
+
+// Series/reps/RPE por defecto para un ejercicio elegido a mano, según su patrón. `notes` SIEMPRE
+// string: `generateCoachNote` devuelve `ex.notes` cuando no hay historial y la tarjeta lo interpola
+// crudo, así que un undefined pintaría literalmente "undefined". `reps` siempre string porque
+// `generateCoachNote` hace `.toString()` sobre él.
+function defaultsForPattern(exId) {
+  const p = MOVEMENT_PATTERNS[exId] || 'other';
+  if (_COMPOUND_PATTERNS.has(p)) return { reps: '6-10', rpe: '7-8', defaultRest: 150 };
+  if (p === 'conditioning') return { reps: '30-40 s', rpe: '7-8', defaultRest: 90 };
+  if (p === 'plyometric') return { reps: '3-5', rpe: '6', defaultRest: 90 };
+  if (p === 'carry') return { reps: '40 m', rpe: '8', defaultRest: 90 };
+  if (p.startsWith('core')) return { reps: '10-15', rpe: '7', defaultRest: 45 };
+  if (p === 'glute') return { reps: '10-12', rpe: '7-8', defaultRest: 90 };
+  if (p.startsWith('isolation')) return { reps: '10-15', rpe: '7', defaultRest: 60 };
+  return { reps: '8-12', rpe: '7', defaultRest: 90 };
+}
+
+async function startFreeWorkout() {
+  // No pisar un entrenamiento en curso sin avisar.
+  const pending = await dbGet('settings', 'activeWorkout');
+  if (pending && pending.sessionId) {
+    const def = getSessionDef(pending.sessionId);
+    const label = (pending.adHoc && pending.adHoc.name) || (def && def.name) || pending.sessionId;
+    if (!confirm(`Tenés "${label}" sin terminar. ¿Descartarlo y empezar una sesión libre?`)) return;
+    await clearActiveWorkout();
+  }
+  state.adHocSession = makeFreeSession();
+  state.workoutStartTime = null;   // startWorkout lo pone a ahora
+  state.quickMode = false;
+  await startWorkout(FREE_SESSION_ID);
+  await saveActiveWorkout();
+  await addAdHocExercise();        // arranca pidiendo el primer ejercicio
+}
+
+// Añade un ejercicio a la sesión libre en caliente. Reutiliza `showActionSheet`, que ya es un
+// bottom-sheet genérico basado en promesas (lo usan `changeGymDay` y `logPastWorkout`).
+async function addAdHocExercise() {
+  if (!state.adHocSession) return;
+  const catalog = libraryOptionsByMuscle();
+  const already = new Set(state.adHocSession.exercises.map(e => e.id));
+
+  const muscles = Object.keys(catalog)
+    .filter(m => [...catalog[m].keys()].some(id => !already.has(id)))
+    .sort();
+  if (!muscles.length) { toast('No quedan ejercicios por añadir'); return; }
+
+  const muscle = await showActionSheet('¿Qué trabajás?', muscles.map(m => ({
+    value: m, label: _MUSCLE_ES[m] || m,
+  })));
+  if (!muscle || !catalog[muscle]) return;
+
+  const opts = [...catalog[muscle].entries()]
+    .filter(([id]) => !already.has(id))
+    .map(([id, name]) => ({ value: id, label: name }));
+  const exId = await showActionSheet(_MUSCLE_ES[muscle] || muscle, opts);
+  if (!exId) return;
+
+  const nSets = await showActionSheet('¿Cuántas series?',
+    [2, 3, 4, 5, 6].map(n => ({ value: String(n), label: `${n} series`, selected: n === 3 })));
+  if (!nSets) return;
+
+  const name = catalog[muscle].get(exId);
+  const flags = deriveExerciseFlags(exId);
+  const d = defaultsForPattern(exId);
+  state.adHocSession.exercises.push({
+    id: exId, name, muscle,
+    sets: parseInt(nSets, 10) || 3,
+    reps: d.reps, rpe: d.rpe, defaultRest: d.defaultRest,
+    notes: '',
+    ...(flags.db ? { db: true } : {}),
+    ...(flags.bw ? { bw: true } : {}),
+    ...(flags.compound ? { compound: true } : {}),
+  });
+
+  // Si el ejercicio no está en el store, registrarlo para que `getExerciseName` lo resuelva en el
+  // historial futuro. Se auto-cura sin migración de sembrado.
+  if (!exerciseLibrary[exId]) {
+    await smartPut('exercises', {
+      id: exId, name, muscle,
+      movementPattern: MOVEMENT_PATTERNS[exId] || 'other',
+      bw: !!flags.bw, defaultNotes: '', custom: false,
+    });
+    exerciseLibrary[exId] = { id: exId, name, muscle, movementPattern: MOVEMENT_PATTERNS[exId] || 'other', bw: !!flags.bw };
+  }
+
+  await _rerenderAdHoc(exId);
+}
+
+async function removeAdHocExercise(exId) {
+  if (!state.adHocSession) return;
+  const i = state.adHocSession.exercises.findIndex(e => e.id === exId);
+  if (i < 0) return;
+  state.adHocSession.exercises.splice(i, 1);
+  // El orden importa: la instantánea se toma del DOM (que todavía tiene la tarjeta) y al restaurar
+  // la entrada huérfana se descarta sola, porque `restoreActiveWorkout` ignora lo que no tiene
+  // tarjeta. Aquí ese descarte silencioso es justo lo que queremos.
+  await _rerenderAdHoc(null);
+}
+
+// Re-render por round-trip guardar→restaurar. Es el mismo camino que ya usa el toggle de Quick mode,
+// y hace de una vez todo lo que hace falta: recalcula state.activeBlocks (que si no se calcularía
+// una sola vez), reconstruye el DOM, re-liga los eventos sin duplicarlos, y repone pesos, reps, RPE,
+// notas y los bloques ya cronometrados.
+async function _rerenderAdHoc(focusExId) {
+  const scroller = document.querySelector('#view-workout .view-scroll');
+  const scrollTop = scroller ? scroller.scrollTop : 0;
+  await saveActiveWorkout();
+  await restoreActiveWorkout();
+  if (scroller) scroller.scrollTop = scrollTop;
+  if (focusExId) {
+    const card = document.querySelector(`#workout-exercises .exercise-card[data-exercise-id="${focusExId}"]`);
+    if (card) {
+      card.classList.add('expanded');
+      card.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
+  }
+  // Si ya estaban todas las series cerradas, el bloque anterior seguiría corriendo: esto lo cierra
+  // y arranca el del ejercicio nuevo.
+  advanceBlockIfNeeded();
+}
+
+// ==================== FIN SESIÓN LIBRE ====================
+
 async function startWorkout(sessionId) {
-  const baseSession = activePlan.sessions[sessionId];
-  if (!baseSession) return;
-  // Apply persistent exercise swaps (T5.2). id is preserved so session.id works for the swap UI.
-  const session = { ...baseSession, exercises: resolveSessionExercises(sessionId, baseSession.exercises) };
+  const baseSession = getSessionDef(sessionId);
+  if (!baseSession) {
+    // Antes fallaba en silencio. Este proyecto ya ha pagado cuatro veces el precio de no dejar
+    // rastro al fallar, así que aquí se avisa.
+    console.warn('[startWorkout] sesión desconocida:', sessionId);
+    toast(`No encuentro la sesión "${sessionId}"`);
+    return;
+  }
+  // Una sesión libre es de un solo uso: no lee ni escribe `exerciseOverrides`.
+  const session = baseSession.adHoc
+    ? { ...baseSession, exercises: baseSession.exercises.map(e => ({ ...e })) }
+    // Apply persistent exercise swaps (T5.2). id is preserved so session.id works for the swap UI.
+    : { ...baseSession, exercises: resolveSessionExercises(sessionId, baseSession.exercises) };
 
   state.activeSession = sessionId;
   // Preserve workoutStartTime if user is just toggling Quick mode on the same
@@ -2943,6 +3190,10 @@ async function startWorkout(sessionId) {
   state.activeBlockStartedAt = null;
   state.suggestionsShown = new Set();
   if (state.blockTimerInterval) { clearInterval(state.blockTimerInterval); state.blockTimerInterval = null; }
+  // Quick mode recorta accesorios y aislamientos a 1 serie. En una sesión libre los ejercicios se
+  // eligieron a mano uno por uno, así que recortarlos sería absurdo: se desactiva y se oculta.
+  if (baseSession.adHoc) state.quickMode = false;
+  { const qb = document.getElementById('quick-mode-bar'); if (qb) qb.classList.toggle('hidden', !!baseSession.adHoc); }
   // Sync Quick toggle pill with current state.quickMode (handles re-renders).
   syncQuickModeUI();
   // Unlock audio with this gesture so the rest-timer cue is audible on iOS PWA.
@@ -2950,10 +3201,38 @@ async function startWorkout(sessionId) {
   prepareBeepAudio();
 
   const wk = getWeekNumber();
-  const deload = isDeloadWeek(wk);
+  // En deload, `buildExerciseCard` recorta series y fuerza RPE 5-6. Aplicarlo a una sesión libre
+  // partiría a la mitad las series que acabás de elegir a mano. No se aplica.
+  const deload = baseSession.adHoc ? false : isDeloadWeek(wk);
 
-  const workouts = (await dbGetAll('workouts')).filter(w => w.session === sessionId).sort((a, b) => b.date.localeCompare(a.date));
-  const previous = workouts[0] || null;
+  const allWorkoutsDesc = (await dbGetAll('workouts')).sort((a, b) => b.date.localeCompare(a.date));
+  // `workouts` alimenta el 1RM estimado de cada tarjeta. Para las sesiones del plan se mantiene
+  // exactamente el comportamiento de antes (filtrado por sesión); una libre ve todo el historial.
+  const workouts = baseSession.adHoc ? allWorkoutsDesc : allWorkoutsDesc.filter(w => w.session === sessionId);
+  let previous;
+  if (baseSession.adHoc) {
+    // `previous` normalmente es "el último workout de ESTA misma sesión". Para una sesión libre eso
+    // no sirve: la anterior tenía otros ejercicios, así que el "Last: …", el 1RM estimado y la rampa
+    // de calentamiento saldrían vacíos — justo lo que te dice qué peso poner.
+    // Se construye un `previous` sintético buscando, POR EJERCICIO, el último workout en que se hizo,
+    // venga de la sesión que venga. `buildExerciseCard` sólo usa `previous.exercises.find(...)` y
+    // `previous.unit`, así que encaja sin cambiar firmas.
+    const u = state.settings.unit || 'kg';
+    const picked = [];
+    for (const ex of session.exercises) {
+      const src = allWorkoutsDesc.find(w =>
+        (w.exercises || []).some(e => e.exerciseId === ex.id && e.sets.some(s => s.done)));
+      if (!src) continue;
+      const se = src.exercises.find(e => e.exerciseId === ex.id);
+      picked.push({
+        exerciseId: ex.id,
+        sets: se.sets.map(s => ({ ...s, weight: convertWeight(s.weight || 0, src.unit, u) })),
+      });
+    }
+    previous = picked.length ? { unit: u, exercises: picked } : null;
+  } else {
+    previous = workouts[0] || null;
+  }
 
   const restSettings = await dbGet('settings', 'restTimes') || { key: 'restTimes', data: {} };
   const exerciseNotes = await dbGet('settings', 'exerciseNotes') || { key: 'exerciseNotes', data: {} };
@@ -3192,8 +3471,9 @@ async function startWorkout(sessionId) {
     });
   });
 
-  // Event: swap buttons
-  container.querySelectorAll('.btn-swap').forEach(btn => {
+  // Event: swap buttons. El :not() importa — el botón de quitar reutiliza la clase .btn-swap por
+  // estilo, y sin excluirlo caería aquí con un exId undefined.
+  container.querySelectorAll('.btn-swap:not(.btn-remove-ex)').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       const card = btn.closest('.exercise-card');
@@ -3201,6 +3481,14 @@ async function startWorkout(sessionId) {
       const exId = btn.dataset.swapExId;
       const ex = session.exercises.find(e => e.id === exId) || { id: exId, name: getExerciseName(exId), muscle };
       showSwapUI(card, ex, session);
+    });
+  });
+
+  // Event: quitar un ejercicio de la sesión libre
+  container.querySelectorAll('.btn-remove-ex').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      await removeAdHocExercise(btn.dataset.removeExId);
     });
   });
 
@@ -3217,6 +3505,7 @@ async function startWorkout(sessionId) {
   updateNowNext();
   startWorkoutTimer();
   showView('workout');
+  { const b = document.getElementById('btn-add-exercise'); if (b) b.classList.toggle('hidden', !session.adHoc); }
   document.getElementById('header-title').textContent = session.name;
   document.getElementById('header-subtitle').textContent = session.subtitle + (deload ? ' (Deload)' : '');
   // Start the warmup block timer immediately (workoutStartTime is reference)
@@ -3394,6 +3683,7 @@ function buildExerciseCard(ex, exIdx, previous, restSettings, exerciseNotes, del
         <div class="exercise-notes">${coachNote}</div>
         <textarea class="ex-note" data-ex-note="${ex.id}" placeholder="Notes for this exercise..." rows="1"></textarea>
         <button class="btn-swap" data-swap-muscle="${ex.muscle}" data-swap-ex-id="${ex.id}">↔ Swap exercise</button>
+        ${session && session.adHoc ? `<button class="btn-swap btn-remove-ex" data-remove-ex-id="${ex.id}">✕ Quitar de la sesión</button>` : ''}
       </div>
     </div>
   `;
@@ -3506,6 +3796,11 @@ function captureWorkoutState() {
     activeBlockId: state.activeBlockId || null,
     activeBlockStartedAt: state.activeBlockStartedAt || null,
     quickMode: !!state.quickMode,
+    // La definición de la sesión libre viaja CON la instantánea. Sin esto, al reabrir la app no hay
+    // forma de saber qué ejercicios habías elegido: `startWorkout` pintaría cero tarjetas y el
+    // emparejamiento por exerciseId descartaría en silencio todas las series. Es exactamente el
+    // fallo que tenía el código de plantillas que se acaba de retirar.
+    adHoc: state.adHocSession ? JSON.parse(JSON.stringify(state.adHocSession)) : null,
   };
 }
 
@@ -3528,6 +3823,8 @@ async function clearActiveWorkout() {
   state.blockTimings = [];
   state.quickMode = false;
   state.workoutStartTime = null;
+  state.adHocSession = null;
+  { const qb = document.getElementById('quick-mode-bar'); if (qb) qb.classList.remove('hidden'); }
   syncQuickModeUI();
 }
 
@@ -3544,7 +3841,9 @@ async function showResumeBanner() {
     if (weekBanner) weekBanner.classList.remove('hidden');
     return;
   }
-  const session = activePlan.sessions[saved.sessionId];
+  // `saved.adHoc` primero: si no, una sesión libre en curso caería en el clearActiveWorkout de
+  // abajo y se BORRARÍA sola al reabrir la app.
+  const session = saved.adHoc || activePlan.sessions[saved.sessionId];
   if (!session) { await clearActiveWorkout(); return; }
   if (weekBanner) weekBanner.classList.add('hidden');
 
@@ -3622,7 +3921,10 @@ async function showResumeMobilityBanner() {
 async function restoreActiveWorkout() {
   const saved = await dbGet('settings', 'activeWorkout');
   if (!saved || !saved.sessionId) return false;
-  const session = activePlan.sessions[saved.sessionId];
+  // La definición ad-hoc se repone ANTES de resolver, para que getSessionDef la encuentre. Sin esto
+  // una sesión libre entraría por el clearActiveWorkout de abajo y se perdería entera.
+  state.adHocSession = saved.adHoc || null;
+  const session = getSessionDef(saved.sessionId);
   if (!session) { await clearActiveWorkout(); return false; }
 
   // Restore state
@@ -3633,6 +3935,10 @@ async function restoreActiveWorkout() {
 
   // Rebuild the workout UI (reuse startWorkout rendering)
   await startWorkout(saved.sessionId);
+  // startWorkout resetea sessionQuality a 3 (bug de orden preexistente: la línea de arriba lo fija
+  // y startWorkout lo pisa antes de que se repinten las estrellas). Con el round-trip de "añadir
+  // ejercicio" esto pasaría en CADA añadido, así que se repone aquí.
+  state.sessionQuality = saved.quality || 3;
 
   // Now restore the saved input values on top of the freshly rendered UI
   const cards = document.querySelectorAll('#workout-exercises .exercise-card');
@@ -3720,7 +4026,7 @@ async function finishWorkout() {
   const duration = formatDuration(elapsed);
 
   const exercises = [];
-  const sessionDef = activePlan.sessions[state.activeSession];
+  const sessionDef = getSessionDef(state.activeSession);
   document.querySelectorAll('#workout-exercises .exercise-card').forEach(card => {
     const exId = card.dataset.exerciseId;
     const sets = [];
@@ -3735,7 +4041,11 @@ async function finishWorkout() {
     const note = noteEl ? noteEl.value.trim() : '';
     // Snapshot exercise meta flags so volume/calorie calc doesn't depend on
     // the plan still containing this exercise definition later.
-    const planEx = sessionDef ? sessionDef.exercises.find(e => e.id === exId) : null;
+    // `sessionDef` es la sesión BASE, así que un ejercicio intercambiado con el swap no aparece en
+    // ella y hasta ahora perdía sus flags — con lo que `volumeForExercise` le quitaba el factor ×2
+    // de mancuerna. El fallback lo arregla, y es lo que hace funcionar la sesión libre.
+    const planEx = (sessionDef ? sessionDef.exercises.find(e => e.id === exId) : null)
+      || deriveExerciseFlags(exId);
     const meta = {};
     if (planEx?.db) meta.db = true;
     if (planEx?.bw) meta.bw = true;
@@ -3752,7 +4062,9 @@ async function finishWorkout() {
     id: uid(),
     date: startDate,
     session: state.activeSession,
-    sessionName: activePlan.sessions[state.activeSession]?.name || state.activeSession,
+    // Se guarda en el registro para que el histórico no dependa de que la sesión siga existiendo en
+    // el plan — imprescindible para 'free', que nunca estará en `activePlan.sessions`.
+    sessionName: sessionDef?.name || state.activeSession,
     planVersion: activePlan.version || 1,
     week: getWeekNumber(),
     startTime: new Date(state.workoutStartTime).toTimeString().slice(0, 5),
@@ -6034,147 +6346,6 @@ function renderMacroCalculator() {
       </div>
     `;
   });
-}
-
-// ==================== WORKOUT TEMPLATES ====================
-async function renderTemplateUI() {
-  const container = document.getElementById('template-section');
-  if (!container) return;
-
-  const templates = (await dbGet('settings', 'workoutTemplates')) || { key: 'workoutTemplates', data: [] };
-  const list = templates.data || [];
-
-  container.innerHTML = `
-    <div id="template-list">
-      ${list.length === 0 ? '<div class="muted" style="font-size:12px;padding:8px 0">No saved templates yet. Finish a workout and save it as a template.</div>' : ''}
-      ${list.map((t, i) => `
-        <div class="template-item">
-          <div class="template-info">
-            <span class="template-name">${t.name}</span>
-            <span class="template-detail">${t.exercises.length} exercises · ${t.exercises.reduce((s, e) => s + e.sets, 0)} sets</span>
-          </div>
-          <div class="template-actions">
-            <button class="btn-template-load" data-template-idx="${i}">Load</button>
-            <button class="btn-template-delete" data-template-idx="${i}">✕</button>
-          </div>
-        </div>
-      `).join('')}
-    </div>
-  `;
-
-  container.querySelectorAll('.btn-template-delete').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const idx = parseInt(btn.dataset.templateIdx);
-      const templates = (await dbGet('settings', 'workoutTemplates')) || { key: 'workoutTemplates', data: [] };
-      templates.data.splice(idx, 1);
-      await dbPut('settings', templates);
-      toast('Template deleted');
-      renderTemplateUI();
-    });
-  });
-
-  container.querySelectorAll('.btn-template-load').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const idx = parseInt(btn.dataset.templateIdx);
-      const templates = (await dbGet('settings', 'workoutTemplates')) || { key: 'workoutTemplates', data: [] };
-      const t = templates.data[idx];
-      if (t) {
-        toast(`Loaded template: ${t.name}`);
-        startCustomWorkout(t);
-      }
-    });
-  });
-}
-
-async function saveWorkoutAsTemplate(workout) {
-  const name = prompt('Template name:', workout.session || 'Custom Workout');
-  if (!name) return;
-
-  const exercises = workout.exercises.map(ex => ({
-    exerciseId: ex.exerciseId,
-    sets: ex.sets.length,
-    lastWeight: ex.sets.filter(s => s.done && s.weight > 0).map(s => s.weight).pop() || 0,
-    lastReps: ex.sets.filter(s => s.done && s.reps > 0).map(s => s.reps).pop() || 0,
-  }));
-
-  const templates = (await dbGet('settings', 'workoutTemplates')) || { key: 'workoutTemplates', data: [] };
-  if (!templates.data) templates.data = [];
-  templates.data.push({ name, exercises, createdAt: today() });
-  await dbPut('settings', templates);
-  toast('Template saved!');
-}
-
-async function startCustomWorkout(template) {
-  state.activeSession = 'custom';
-  state.workoutStartTime = Date.now();
-  state.sessionQuality = 3;
-
-  const warmupBody = document.getElementById('warmup-body');
-  warmupBody.innerHTML = '<ul class="warmup-list"><li>5 min general warm-up</li><li>Dynamic stretches</li><li>Warm-up sets for first exercise</li></ul>';
-
-  const container = document.getElementById('workout-exercises');
-  container.innerHTML = '';
-
-  const restSettings = await dbGet('settings', 'restTimes') || { key: 'restTimes', data: {} };
-  const exerciseNotes = await dbGet('settings', 'exerciseNotes') || { key: 'exerciseNotes', data: {} };
-  const workouts = await dbGetAll('workouts');
-
-  template.exercises.forEach((tex, idx) => {
-    // Find exercise in PLAN
-    let exDef = null;
-    Object.values(activePlan.sessions).forEach(s => {
-      const found = s.exercises.find(e => e.id === tex.exerciseId);
-      if (found) exDef = found;
-    });
-    // Also check EXERCISE_ALTERNATIVES
-    if (!exDef) {
-      Object.values(EXERCISE_ALTERNATIVES).forEach(alts => {
-        const found = alts.find(a => a.id === tex.exerciseId);
-        if (found) exDef = { ...found, sets: tex.sets, reps: '6-12', rpe: '7-8', defaultRest: 90, notes: '' };
-      });
-    }
-    if (!exDef) return;
-
-    const ex = { ...exDef, sets: tex.sets };
-    const card = buildExerciseCard(ex, idx, null, restSettings, exerciseNotes, false, { exercises: template.exercises.map(t => exDef) }, workouts);
-    container.appendChild(card);
-  });
-
-  // Re-bind events
-  container.querySelectorAll('.exercise-header').forEach(h => {
-    h.addEventListener('click', (e) => {
-      if (e.target.classList.contains('tappable')) return;
-      h.closest('.exercise-card').classList.toggle('expanded');
-    });
-  });
-
-  container.querySelectorAll('.set-check').forEach(btn => {
-    btn.addEventListener('click', () => {
-      btn.classList.toggle('checked');
-      const card = btn.closest('.exercise-card');
-      updateExerciseStatus(card);
-      if (btn.classList.contains('checked')) {
-        const exId = card.dataset.exerciseId;
-        const restInput = card.querySelector(`[data-rest-config="${exId}"]`);
-        const fullRest = restInput ? parseInt(restInput.value) || 90 : 90;
-        startRestTimer(fullRest);
-      }
-    });
-  });
-
-  container.querySelectorAll('.btn-rest').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const seconds = parseInt(btn.dataset.restStart) || 90;
-      startRestTimer(seconds);
-    });
-  });
-
-  container.querySelectorAll('.exercise-name.tappable').forEach(el => {
-    el.addEventListener('click', () => openExerciseHistory(el.dataset.exId));
-  });
-
-  switchTab('workout');
-  startWorkoutTimer();
 }
 
 function getExerciseMuscle(exId) {
@@ -8651,7 +8822,7 @@ async function renderRecentActivity() {
       date: w.date,
       ts: w.startTime ? new Date(`${w.date}T${w.startTime}:00`).getTime() : new Date(`${w.date}T12:00:00`).getTime(),
       kind: 'workout',
-      title: session ? session.name : w.session,
+      title: session ? session.name : (w.sessionName || w.session),
       subtitle: `${totalSets} sets · ${w.duration || ''}`,
       icon: iconBarbell, tint: 'var(--tint-orange)', color: 'var(--orange)',
       onTap: () => openEditWorkout(w.id),
@@ -9165,7 +9336,10 @@ function showSwapUI(card, ex, session) {
   const existing = card.querySelector('.swap-panel');
   if (existing) { existing.remove(); return; }
 
-  const sessionId = session && session.id;
+  // En una sesión libre NO se persiste override: `exerciseOverrides['free']` haría que un cambio de
+  // una sola sesión contaminase todas las libres futuras. El swap sigue cambiando la tarjeta, pero
+  // no deja rastro en los ajustes.
+  const sessionId = session && !session.adHoc && session.id;
   const origId = card.dataset.origId || ex.id;
   const origName = card.dataset.origName || ex.name;
   const currentId = card.dataset.exerciseId;
@@ -10001,7 +10175,7 @@ async function exportCSV() {
     const session = activePlan.sessions[w.session];
     w.exercises.forEach(ex => {
       ex.sets.forEach((s, i) => {
-        csv += `${w.date},${session ? session.name : w.session},${getExerciseName(ex.exerciseId)},${i + 1},${s.weight},${w.unit || 'kg'},${s.reps},${s.rpe || ''},${s.done},${w.quality || ''},${w.duration || ''}\n`;
+        csv += `${w.date},${session ? session.name : (w.sessionName || w.session)},${getExerciseName(ex.exerciseId)},${i + 1},${s.weight},${w.unit || 'kg'},${s.reps},${s.rpe || ''},${s.done},${w.quality || ''},${w.duration || ''}\n`;
       });
     });
   });
@@ -10119,6 +10293,10 @@ async function renderMuscleVolume() {
         const found = s.exercises.find(e => e.id === ex.exerciseId);
         if (found) { muscle = found.muscle; break; }
       }
+      // Era el único agregador por músculo que NO consultaba la librería: todo lo registrado en una
+      // sesión libre (y los ejercicios nuevos como el pullover en polea) caía en 'Other'. Va aquí, en
+      // medio, para no alterar la resolución de nada que ya funcionase.
+      if (!muscle && exerciseLibrary[ex.exerciseId]) muscle = exerciseLibrary[ex.exerciseId].muscle;
       if (!muscle) {
         for (const [m, alts] of Object.entries(EXERCISE_ALTERNATIVES)) {
           if (alts.some(a => a.id === ex.exerciseId)) { muscle = m; break; }
@@ -10602,8 +10780,20 @@ function bindEvents() {
   });
 
   // Finish workout
-  document.getElementById('btn-finish-workout').addEventListener('click', () => {
+  document.getElementById('btn-finish-workout').addEventListener('click', async () => {
     if (!state.activeSession) return;
+    // Una sesión libre se abre vacía: si se termina sin marcar ninguna serie, guardaría un registro
+    // sin contenido que luego ensucia el historial y el volumen. Mejor ofrecer descartarla.
+    const anyDone = !!document.querySelector('#workout-exercises .set-check.checked');
+    if (isAdHocSession(state.activeSession) && !anyDone) {
+      if (confirm('No registraste ninguna serie. ¿Descartar la sesión?')) {
+        if (state.workoutTimerInterval) clearInterval(state.workoutTimerInterval);
+        state.activeSession = null;
+        await clearActiveWorkout();
+        switchTab('home');
+      }
+      return;
+    }
     if (confirm('Finish workout? It will be saved to your history.')) {
       finishWorkout();
     }
@@ -10799,6 +10989,8 @@ function bindEvents() {
 
   // Log past workout
   document.getElementById('btn-log-past').addEventListener('click', logPastWorkout);
+  { const b = document.getElementById('btn-free-session'); if (b) b.addEventListener('click', startFreeWorkout); }
+  { const b = document.getElementById('btn-add-exercise'); if (b) b.addEventListener('click', addAdHocExercise); }
 
   // Data recovery buttons (Settings)
   const recoveryOut = document.getElementById('recovery-output');
@@ -10919,7 +11111,9 @@ async function checkAndNotify() {
 
   // Morning training reminder (7-10 AM)
   if (hour >= 7 && hour <= 10 && plan.type !== 'rest') {
-    const label = plan.type === 'gym' ? activePlan.sessions[plan.session].name : 'Zone 2 Run';
+    const label = plan.type === 'gym'
+      ? (activePlan.sessions[plan.session]?.name || 'Gym')
+      : 'Zone 2 Run';
     new Notification('Training Day', { body: `Today: ${label}. Let's go!`, tag: 'training-day' });
     localStorage.setItem('training_last_notif', todayStr);
     return;
@@ -10971,6 +11165,67 @@ function registerServiceWorker() {
 }
 
 // ==================== INIT ====================
+
+// Ejercicios que la corrección del 20-ago necesita registrar en el store. Mismo shape que produce
+// `ensureExerciseLibrarySeeded` — ojo: ese shape NO incluye `db`, así que el factor de mancuerna del
+// cálculo de volumen se resuelve por `deriveExerciseFlags`, no desde aquí.
+const NEW_EXERCISES_V1144 = [
+  { id: 'incline-press', name: 'Press Inclinado', muscle: 'Chest', movementPattern: 'horizontal-press', bw: false, defaultNotes: '', custom: false },
+  { id: 'incline-db-fly', name: 'Apertura Inclinada con Mancuerna', muscle: 'Chest', movementPattern: 'horizontal-press', bw: false, defaultNotes: '', custom: false },
+  { id: 'straight-arm-pulldown', name: 'Pullover en Polea (brazos extendidos)', muscle: 'Back', movementPattern: 'isolation-lat', bw: false, defaultNotes: '', custom: false },
+  { id: 'front-raise', name: 'Elevación Frontal', muscle: 'Shoulders', movementPattern: 'isolation-shoulder', bw: false, defaultNotes: '', custom: false },
+];
+
+const AUG20_WORKOUT_ID = 'mt1mjjrhqlx740';
+
+// Reasigna cada hueco al ejercicio que se hizo de verdad, según las notas del propio registro.
+// PURA a propósito: recibe el registro y devuelve uno nuevo sin mutar la entrada, para poder
+// probarla contra el registro real en tests/verify-aug20-fix.mjs.
+// Idempotente por sí misma (no sólo por el flag de migración): si ya está corregido, devuelve la
+// MISMA referencia, que es lo que el llamador usa para decidir si escribe.
+function fixAug20Mislabeled(w) {
+  if (w.exercises.some(e => e.exerciseId === 'incline-press')) return w;
+  const origen = (hueco) => `Reasignado el 2026-08-21 · registrado en el hueco "${hueco}"`;
+  const out = { ...w, exercises: [] };
+
+  for (const ex of w.exercises) {
+    const sets = ex.sets.map(s => ({ ...s }));
+    switch (ex.exerciseId) {
+      case 'cable-row':
+        // El remo sí era remo. Pero su nota decía "Combine con press de hombro con barra (40kg)
+        // 4x10": eso es un ejercicio propio y merece su entrada. Los números salen literalmente de
+        // la nota; el RPE va null porque ése no lo registró.
+        out.exercises.push({ ...ex, sets, note: 'Superserie con press de hombro con barra.' });
+        out.exercises.push({
+          exerciseId: 'ohp', compound: true,
+          note: 'Superserie con el remo. Pesos y repeticiones tomados de la nota original.',
+          sets: [0, 1, 2, 3].map(() => ({ weight: 40, reps: 10, rpe: null, done: true })),
+        });
+        break;
+      case 'incline-db-press':
+        out.exercises.push({ ...ex, exerciseId: 'incline-db-fly', db: true, sets, note: origen('incline-db-press') });
+        break;
+      case 'lat-pulldown':
+        // De pie, agarre amplio, brazos extendidos hasta la cadera: extensión de hombro, no tirón
+        // vertical. Por eso `isolation-lat` y no `vertical-pull`.
+        out.exercises.push({ ...ex, exerciseId: 'straight-arm-pulldown', sets, note: origen('lat-pulldown') });
+        break;
+      case 'face-pull':
+        out.exercises.push({ ...ex, exerciseId: 'incline-press', sets, note: origen('face-pull') });
+        break;
+      case 'lateral-raise':
+        // Eran laterales + frontales encadenadas, anotadas como una serie de 16 (8+8). Se parten en
+        // dos ejercicios de 8, que es lo que ocurrió.
+        out.exercises.push({ ...ex, db: true, sets: sets.map(s => ({ ...s, reps: 8 })), note: 'Encadenado con elevación frontal (8+8).' });
+        out.exercises.push({ ...ex, exerciseId: 'front-raise', db: true, sets: sets.map(s => ({ ...s, reps: 8 })), note: 'Encadenado con la elevación lateral (8+8).' });
+        break;
+      default:
+        out.exercises.push({ ...ex, sets });
+    }
+  }
+  return out;
+}
+
 // One-time data migrations
 async function runMigrations() {
   const migKey = 'migrations_done';
@@ -11014,6 +11269,39 @@ async function runMigrations() {
       }
     }
     done.data.push('fix-apr8-dup');
+    await dbPut('settings', done);
+  }
+
+  // Migration (v11.44): reasignar los ejercicios del 2026-08-20.
+  //
+  // Julian entrenó siguiendo la rutina de un amigo. Como no existía forma de registrar una sesión
+  // que no fuera una plantilla del plan, usó los huecos de Upper A y escribió el ejercicio real en
+  // el campo de nota. Los pesos son reales; las ETIQUETAS no lo son.
+  //
+  // No es cosmético: toda la progresión se resuelve por `exerciseId` sin ningún fallback. Un face
+  // pull de 60 kg hace que `generateCoachNote` sugiera "bajar a 57,5 kg", que la rampa automática
+  // genere calentamientos de face pull a 47,5 kg, y que el 1RM estimado quede en ~80 kg.
+  if (!done.data.includes('fix-aug20-mislabeled')) {
+    // El store `exercises` se sembró UNA vez (`ensureExerciseLibrarySeeded` sale si ya hay filas),
+    // así que añadir los ejercicios a las constantes no basta: sin este upsert `getExerciseName`
+    // devolvería el id crudo en todo el historial.
+    let seeded = 0;
+    for (const nx of NEW_EXERCISES_V1144) {
+      if (!(await dbGet('exercises', nx.id))) { await smartPut('exercises', nx); seeded++; }
+    }
+    if (seeded) await loadExerciseLibrary();
+
+    const w = await dbGet('workouts', AUG20_WORKOUT_ID);
+    if (w && Array.isArray(w.exercises)) {
+      const fixed = fixAug20Mislabeled(w);
+      if (fixed !== w) {
+        await smartPut('workouts', fixed);
+        console.log('[Migration] 2026-08-20: ejercicios reasignados a lo que realmente se hizo');
+      } else {
+        console.log('[Migration] 2026-08-20: ya estaba corregido, no se toca');
+      }
+    }
+    done.data.push('fix-aug20-mislabeled');
     await dbPut('settings', done);
   }
 }

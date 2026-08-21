@@ -761,14 +761,6 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
 .mc-label { font-size: 10px; color: var(--text3); text-transform: uppercase; }
 
 /* ========== Workout Templates ========== */
-.template-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border); }
-.template-item:last-child { border-bottom: none; }
-.template-info { display: flex; flex-direction: column; gap: 2px; }
-.template-name { font-size: 14px; font-weight: 700; }
-.template-detail { font-size: 11px; color: var(--text3); }
-.template-actions { display: flex; gap: 6px; }
-.btn-template-load { padding: 6px 12px; font-size: 12px; font-weight: 600; background: var(--accent); color: var(--bg); border: none; border-radius: var(--radius-xs); cursor: pointer; }
-.btn-template-delete { padding: 6px 10px; font-size: 12px; background: transparent; color: var(--text3); border: 1px solid var(--border); border-radius: var(--radius-xs); cursor: pointer; }
 
 /* Action Sheet */
 .action-sheet { position: fixed; inset: 0; z-index: 3000; display: flex; align-items: flex-end; justify-content: center; }
@@ -779,7 +771,9 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
   .action-sheet-panel { padding-bottom: calc(var(--safe-bottom) + 4px); }
 }
 .action-sheet-title { font-size: 14px; font-weight: 700; color: var(--text2); text-align: center; margin-bottom: 12px; }
-.action-sheet-options { display: flex; flex-direction: column; gap: 6px; }
+/* El panel no tiene tope de altura: el selector de ejercicios de la sesión libre lista 13 opciones
+   de espalda y se salía de pantalla sin poder llegar a las últimas. */
+.action-sheet-options { display: flex; flex-direction: column; gap: 6px; max-height: 60vh; overflow-y: auto; }
 .action-sheet-btn { padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg); color: var(--text); font-size: 15px; font-weight: 600; text-align: left; cursor: pointer; display: flex; align-items: center; gap: 10px; transition: background 0.1s; }
 .action-sheet-btn:active { background: var(--surface2); }
 .action-sheet-btn.selected { border-color: var(--accent); background: var(--accent-dim); }
