@@ -227,6 +227,110 @@ for (const dead of ['startCustomWorkout', 'saveWorkoutAsTemplate', 'renderTempla
 }
 ok(!SRC.includes("activeSession = 'custom'"), "ya nadie pone activeSession = 'custom'");
 
+// ============================================================
+// NOMBRES DE EJERCICIO (v11.45)
+//
+// La librería estaba entera en inglés; v11.42 metió cinco nombres en castellano en las sesiones de
+// viaje y v11.44 otros cuatro. El efecto no era cosmético: un mismo id acababa con DOS nombres
+// —"Dominadas" en la tarjeta de la sesión, que lee `ex.name`, y "Pull-ups" en el historial, que
+// resuelve por getExerciseName— y dos ids distintos podían compartir nombre, que es la vía por la
+// que un historial se parte en dos.
+// ============================================================
+
+// Todos los pares {id, name} del fichero: PLAN.sessions, EXERCISE_ALTERNATIVES y EXERCISE_NAMES_EN.
+const PAIRS = {};
+for (const m of SRC.matchAll(/\{\s*id:\s*'([a-z0-9-]+)',\s*name:\s*'([^']+)'/g)) {
+  (PAIRS[m[1]] ||= new Set()).add(m[2]);
+}
+
+sec('11. Un id, un nombre — y un nombre, un id');
+const multiName = Object.entries(PAIRS).filter(([, n]) => n.size > 1);
+ok(multiName.length === 0,
+  `ningún id con dos nombres${multiName.length ? ' — ' + multiName.map(([i, n]) => `${i}: ${[...n].join('/')}`).join('; ') : ''}`);
+const byName = {};
+for (const [id, names] of Object.entries(PAIRS)) for (const n of names) (byName[n] ||= new Set()).add(id);
+const sharedName = Object.entries(byName).filter(([, ids]) => ids.size > 1);
+// Dos ids con el MISMO nombre es el duplicado semántico que parte historiales: era el caso de
+// leg-curl-a y leg-curl-b, los dos "Lying Leg Curl", ofrecidos juntos en el swap sheet.
+ok(sharedName.length === 0,
+  `ningún nombre compartido por dos ids${sharedName.length ? ' — ' + sharedName.map(([n, i]) => `"${n}": ${[...i].join(', ')}`).join('; ') : ''}`);
+
+sec('12. Nombres de ejercicio en inglés');
+const ES_RE = /[áéíóúñÁÉÍÓÚÑ]|peso corporal|asistido|Elevaci|Apertura|Dominadas|Pullover en|Remo con|Puente de/;
+const spanish = [];
+for (const [id, names] of Object.entries(PAIRS)) for (const n of names) if (ES_RE.test(n)) spanish.push(`${id} → ${n}`);
+// `hybrid1` es un nombre de SESIÓN, no de ejercicio, y por decisión se queda en castellano.
+const spanishEx = spanish.filter(s => !s.startsWith('hybrid1'));
+ok(spanishEx.length === 0, `ningún nombre de ejercicio en castellano${spanishEx.length ? ' — ' + spanishEx.join('; ') : ''}`);
+
+const EXPECTED_NAMES = {
+  // v11.44 — los cuatro que introduje mal
+  'incline-press': 'Incline Chest Press',
+  'incline-db-fly': 'Incline DB Fly',
+  'straight-arm-pulldown': 'Cable Straight-Arm Pulldown',
+  'front-raise': 'DB Front Raise',
+  // v11.42 — los cinco que tenían nombre doble
+  'pullups': 'Pull-ups',
+  'sl-rdl': 'Single-Leg RDL',
+  'sl-glute-bridge': 'Single-Leg Glute Bridge',
+  'band-row': 'Band Row',
+  'nordic-curl': 'Nordic Curl',
+  // el que se me pasó en el primer barrido
+  'split-squat': 'Bodyweight Split Squat',
+};
+for (const [id, expected] of Object.entries(EXPECTED_NAMES)) {
+  ok(PAIRS[id] && PAIRS[id].has(expected) && PAIRS[id].size === 1,
+    `${id} = "${expected}"${PAIRS[id] ? '' : ' (AUSENTE)'}`);
+}
+// Y que "Incline Chest Press" no se confunda con "Incline DB Press": el problema del nombre viejo
+// era que se diferenciaban en dos letras.
+ok(PAIRS['incline-db-press'] && [...PAIRS['incline-db-press']][0] === 'Incline DB Press',
+  'incline-db-press sigue siendo "Incline DB Press" y ahora se distingue de un vistazo');
+
+sec('13. Ningún id se movió — renombrar no debe partir un historial');
+// Los 62 ids del store del backup del 2026-08-21, que son los que tienen historial detrás.
+const IDS_CON_HISTORIAL = `ab-wheel arnold-press back-squat band-pull-apart barbell-curl barbell-row
+bench-press bss cable-crunch cable-curl cable-fly cable-kickback cable-lateral cable-row calf-raise
+chinups close-grip-bench conv-dl db-bench db-rdl db-row db-shoulder-press dead-bug dips face-pull
+front-squat glute-bridge goblet-squat good-morning hack-squat hammer-curl hanging-leg-raise
+hip-thrust incline-curl incline-db-press landmine-row lat-pulldown lateral-raise leg-curl-a
+leg-curl-b leg-extension leg-press leg-press-calf machine-chest-press machine-shoulder-press
+nordic-curl ohp overhead-ext pallof-press plank preacher-curl pullups pushup rdl rear-delt-fly
+reverse-pec-deck seated-calf-raise skull-crusher sumo-dl t-bar-row trap-bar-dl tricep-pushdown`
+  .split(/\s+/).filter(Boolean);
+ok(IDS_CON_HISTORIAL.length === 62, `62 ids del backup en la lista (${IDS_CON_HISTORIAL.length})`);
+const missing = IDS_CON_HISTORIAL.filter(id => !PAIRS[id] && !SRC.includes(`'${id}':`));
+ok(missing.length === 0,
+  `los 62 ids con historial siguen existiendo${missing.length ? ' — FALTAN: ' + missing.join(', ') : ''}`);
+
+sec('14. El selector: dos pasos y grupos en inglés');
+const ADHOC_SRC = SRC.slice(SRC.indexOf('async function addAdHocExercise'), SRC.indexOf('async function addAdHocSet'));
+const sheets = (ADHOC_SRC.match(/showActionSheet\(/g) || []).length;
+ok(sheets === 2, `dos showActionSheet: músculo → ejercicio (hay ${sheets})`);
+ok(!/¿Cuántas series\?/.test(ADHOC_SRC), 'ya no pregunta el número de series');
+ok(!/_MUSCLE_ES/.test(ADHOC_SRC), 'no traduce los grupos: salen en inglés como la insignia de cada tarjeta');
+ok(/label: m\b/.test(ADHOC_SRC), 'el grupo se etiqueta con el nombre del músculo tal cual');
+ok(/sets: 3,/.test(ADHOC_SRC), 'entra con 3 series por defecto');
+
+sec('15. "+ Serie" incrementa la DEFINICIÓN, no sólo el DOM');
+const ADDSET_SRC = SRC.slice(SRC.indexOf('async function addAdHocSet'), SRC.indexOf('async function removeAdHocExercise'));
+ok(/ex\.sets = \(ex\.sets \|\| 3\) \+ 1/.test(ADDSET_SRC),
+  'incrementa ex.sets en state.adHocSession — si no, la fila desaparecería al reabrir la app');
+ok(/_rerenderAdHoc/.test(ADDSET_SRC), 're-renderiza por el round-trip guardar→restaurar');
+ok(SRC.includes('btn-add-set'), 'el botón existe en la tarjeta');
+ok(/\.btn-swap:not\(\.btn-remove-ex\):not\(\.btn-add-set\)/.test(SRC),
+  'el handler de swap EXCLUYE los dos botones nuevos, que reutilizan su clase por estilo');
+
+// Simulación del ciclo completo: añadir serie → instantánea → restaurar.
+const s2 = makeFreeSession();
+s2.exercises.push({ id: 'bench-press', name: 'B', muscle: 'Chest', sets: 3, reps: '6-10', rpe: '7-8', defaultRest: 150, notes: '' });
+ok(computeBlocks(s2, false).length === 2, 'un ejercicio → 2 bloques');
+s2.exercises[0].sets += 1;                       // lo que hace addAdHocSet
+const snap2 = { sessionId: 'free', adHoc: JSON.parse(JSON.stringify(s2)), exercises: [], quality: 3 };
+ctx._setState({ adHocSession: snap2.adHoc });
+ok(getSessionDef('free').exercises[0].sets === 4,
+  'tras el round-trip la 4ª serie sigue en la definición, así que se vuelve a pintar');
+
 console.log(fail === 0
   ? '\nPASS — la sesión libre funciona y las sesiones del plan no se tocan\n'
   : `\nFAIL — ${fail} problema(s)\n`);

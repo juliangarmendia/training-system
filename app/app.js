@@ -216,8 +216,8 @@ const PLAN = {
       exercises: [
         { id: 'bss', name: 'Bulgarian Split Squat', muscle: 'Quads', sets: 3, reps: '10-15/pierna', rpe: '8', defaultRest: 90, notes: 'Pie trasero en una silla o el borde de la cama. Sin peso ya es duro: baja lento (3s) y llega cerca del fallo. Si sobran reps, pausa 2s abajo.', bw: true },
         { id: 'pushup', name: 'Push-ups', muscle: 'Chest', sets: 3, reps: '10-20', rpe: '8', defaultRest: 90, notes: 'Si haces >20, sube los pies a la cama (declinadas) o baja 3s. Progresión antes que repeticiones infinitas.', bw: true, compound: true },
-        { id: 'pullups', name: 'Dominadas', muscle: 'Back', sets: 3, reps: 'AMRAP', rpe: '8-9', defaultRest: 120, notes: 'Si no hay barra: Band Row anclada a una puerta, 3×15-20. Es el patrón más difícil de replicar en viaje — busca barra si puedes (parque, puerta con barra).', bw: true, compound: true },
-        { id: 'sl-glute-bridge', name: 'Puente de glúteo a una pierna', muscle: 'Glutes', sets: 3, reps: '12-15/pierna', rpe: '8', defaultRest: 60, notes: 'Extensión de cadera. Talón apoyado, sube empujando con el glúteo, pausa 1s arriba. Hombros en el suelo o en la cama para más recorrido.', bw: true },
+        { id: 'pullups', name: 'Pull-ups', muscle: 'Back', sets: 3, reps: 'AMRAP', rpe: '8-9', defaultRest: 120, notes: 'Si no hay barra: Band Row anclada a una puerta, 3×15-20. Es el patrón más difícil de replicar en viaje — busca barra si puedes (parque, puerta con barra).', bw: true, compound: true },
+        { id: 'sl-glute-bridge', name: 'Single-Leg Glute Bridge', muscle: 'Glutes', sets: 3, reps: '12-15/pierna', rpe: '8', defaultRest: 60, notes: 'Extensión de cadera. Talón apoyado, sube empujando con el glúteo, pausa 1s arriba. Hombros en el suelo o en la cama para más recorrido.', bw: true },
         { id: 'bird-dog', name: 'Bird Dog', muscle: 'Core', sets: 3, reps: '8-10/lado', rpe: '-', defaultRest: 45, notes: 'Anti-rotación: brazo y pierna opuestos, sin que la cadera se abra ni la lumbar se arquee. Uno de los Big 3 de McGill — la fuente de la que sale la regla del core en este sistema. Lento, 2s arriba.', bw: true },
       ]
     },
@@ -230,10 +230,10 @@ const PLAN = {
         'Band pull-aparts (o brazos en cruz) — 2 × 15',
       ],
       exercises: [
-        { id: 'sl-rdl', name: 'Peso muerto rumano a una pierna', muscle: 'Hamstrings', sets: 3, reps: '10-12/pierna', rpe: '8', defaultRest: 90, notes: 'Bisagra de cadera, no de rodilla. Baja lento hasta notar el isquio, espalda recta. Con una mochila cargada si la tienes. El equilibrio es parte del ejercicio.', bw: true, compound: true },
+        { id: 'sl-rdl', name: 'Single-Leg RDL', muscle: 'Hamstrings', sets: 3, reps: '10-12/pierna', rpe: '8', defaultRest: 90, notes: 'Bisagra de cadera, no de rodilla. Baja lento hasta notar el isquio, espalda recta. Con una mochila cargada si la tienes. El equilibrio es parte del ejercicio.', bw: true, compound: true },
         { id: 'pike-pushup', name: 'Pike Push-up', muscle: 'Shoulders', sets: 3, reps: '6-12', rpe: '8', defaultRest: 90, notes: 'Empuje vertical: cadera alta en V, cabeza hacia el suelo entre las manos. Cuanto más verticales las caderas, más difícil. Pies en la cama para progresar.', bw: true, compound: true },
-        { id: 'band-row', name: 'Remo con banda', muscle: 'Back', sets: 3, reps: '15-20', rpe: '8', defaultRest: 90, notes: 'Banda anclada a una puerta o pilar. Aprieta las escápulas, sin encoger los hombros. Sin banda: Inverted Row bajo una mesa firme.', compound: true },
-        { id: 'nordic-curl', name: 'Nordic Curl (asistido)', muscle: 'Hamstrings', sets: 3, reps: '5-8', rpe: '8', defaultRest: 90, notes: 'Flexión de rodilla, lo que el rumano NO cubre. Pies enganchados bajo un sofá o cama pesada; baja lo más lento que puedas y empuja con las manos para volver. Muy exigente: 3-5 reps ya valen.', bw: true },
+        { id: 'band-row', name: 'Band Row', muscle: 'Back', sets: 3, reps: '15-20', rpe: '8', defaultRest: 90, notes: 'Banda anclada a una puerta o pilar. Aprieta las escápulas, sin encoger los hombros. Sin banda: Inverted Row bajo una mesa firme.', compound: true },
+        { id: 'nordic-curl', name: 'Nordic Curl', muscle: 'Hamstrings', sets: 3, reps: '5-8', rpe: '8', defaultRest: 90, notes: 'Flexión de rodilla, lo que el rumano NO cubre. Pies enganchados bajo un sofá o cama pesada; baja lo más lento que puedas y empuja con las manos para volver. Muy exigente: 3-5 reps ya valen.', bw: true },
         { id: 'dead-bug', name: 'Dead Bug', muscle: 'Core', sets: 3, reps: '8-10/lado', rpe: '-', defaultRest: 45, notes: 'Anti-extensión. Lumbar pegada al suelo todo el rato — si se despega, acorta el recorrido. Lento, exhalando al extender.', bw: true },
       ]
     }
@@ -434,9 +434,9 @@ function mobilityColorVars(color) {
 const EXERCISE_ALTERNATIVES = {
   'Chest': [
     { id: 'bench-press', name: 'Barbell Bench Press' },
-    { id: 'incline-press', name: 'Press Inclinado' },
+    { id: 'incline-press', name: 'Incline Chest Press' },
     { id: 'incline-db-press', name: 'Incline DB Press' },
-    { id: 'incline-db-fly', name: 'Apertura Inclinada con Mancuerna' },
+    { id: 'incline-db-fly', name: 'Incline DB Fly' },
     { id: 'db-bench', name: 'DB Bench Press' },
     { id: 'machine-chest-press', name: 'Machine Chest Press' },
     { id: 'hammer-chest-press', name: 'Hammer Strength Chest Press' },
@@ -453,7 +453,7 @@ const EXERCISE_ALTERNATIVES = {
     { id: 'inverted-row', name: 'Inverted Row' },
     { id: 'chinups', name: 'Chin-ups' },
     { id: 'lat-pulldown', name: 'Lat Pulldown' },
-    { id: 'straight-arm-pulldown', name: 'Pullover en Polea (brazos extendidos)' },
+    { id: 'straight-arm-pulldown', name: 'Cable Straight-Arm Pulldown' },
     { id: 'chest-supported-row', name: 'Chest-Supported Row' },
     { id: 'high-row', name: 'High Row (machine)' },
     { id: 'landmine-row', name: 'Landmine Row' },
@@ -465,7 +465,7 @@ const EXERCISE_ALTERNATIVES = {
   'Shoulders': [
     { id: 'ohp', name: 'Overhead Press' },
     { id: 'lateral-raise', name: 'DB Lateral Raise' },
-    { id: 'front-raise', name: 'Elevación Frontal' },
+    { id: 'front-raise', name: 'DB Front Raise' },
     { id: 'cable-lateral', name: 'Cable Lateral Raise' },
     { id: 'lateral-raise-machine', name: 'Lateral Raise Machine' },
     { id: 'db-shoulder-press', name: 'DB Shoulder Press' },
@@ -487,7 +487,7 @@ const EXERCISE_ALTERNATIVES = {
     { id: 'bss', name: 'Bulgarian Split Squat' },
     { id: 'goblet-squat', name: 'Goblet Squat' },
     { id: 'hack-squat', name: 'Hack Squat' },
-    { id: 'split-squat', name: 'Split Squat (peso corporal)' },
+    { id: 'split-squat', name: 'Bodyweight Split Squat' },
     { id: 'pogo-hops', name: 'Pogo Hops' },
     { id: 'box-jump', name: 'Box Jump' },
     { id: 'broad-jump', name: 'Broad Jump' },
@@ -495,7 +495,7 @@ const EXERCISE_ALTERNATIVES = {
   'Hamstrings': [
     { id: 'rdl', name: 'Barbell RDL' },
     { id: 'stiff-leg-deadlift', name: 'Stiff-Leg Deadlift' },
-    { id: 'leg-curl-a', name: 'Lying Leg Curl' },
+    { id: 'leg-curl-b', name: 'Lying Leg Curl' },
     { id: 'seated-leg-curl', name: 'Seated Leg Curl' },
     { id: 'ghr', name: 'Glute-Ham Raise (GHD)' },
     { id: 'db-rdl', name: 'DB RDL' },
@@ -3073,6 +3073,16 @@ async function startFreeWorkout() {
   await startWorkout(FREE_SESSION_ID);
   await saveActiveWorkout();
   await addAdHocExercise();        // arranca pidiendo el primer ejercicio
+
+  // Si cancelaste el selector sin elegir nada, no dejamos una sesión viva y persistida con cero
+  // ejercicios: el banner de "en curso" aparecería en Home con 0/0 series y sólo se podría cerrar
+  // terminándola o descartándola a mano.
+  if (state.adHocSession && !state.adHocSession.exercises.length) {
+    state.activeSession = null;
+    if (state.workoutTimerInterval) { clearInterval(state.workoutTimerInterval); state.workoutTimerInterval = null; }
+    await clearActiveWorkout();
+    switchTab('home');
+  }
 }
 
 // Añade un ejercicio a la sesión libre en caliente. Reutiliza `showActionSheet`, que ya es un
@@ -3087,27 +3097,24 @@ async function addAdHocExercise() {
     .sort();
   if (!muscles.length) { toast('No quedan ejercicios por añadir'); return; }
 
-  const muscle = await showActionSheet('¿Qué trabajás?', muscles.map(m => ({
-    value: m, label: _MUSCLE_ES[m] || m,
-  })));
+  // Grupos musculares EN INGLÉS, igual que la insignia de músculo de cada tarjeta de ejercicio en
+  // el resto de la app. Dos pasos y ya: músculo → ejercicio. El número de series no se pregunta —
+  // entra con 3 y se ajusta con el botón "+ serie" de la tarjeta.
+  const muscle = await showActionSheet('Muscle group', muscles.map(m => ({ value: m, label: m })));
   if (!muscle || !catalog[muscle]) return;
 
   const opts = [...catalog[muscle].entries()]
     .filter(([id]) => !already.has(id))
     .map(([id, name]) => ({ value: id, label: name }));
-  const exId = await showActionSheet(_MUSCLE_ES[muscle] || muscle, opts);
+  const exId = await showActionSheet(muscle, opts);
   if (!exId) return;
-
-  const nSets = await showActionSheet('¿Cuántas series?',
-    [2, 3, 4, 5, 6].map(n => ({ value: String(n), label: `${n} series`, selected: n === 3 })));
-  if (!nSets) return;
 
   const name = catalog[muscle].get(exId);
   const flags = deriveExerciseFlags(exId);
   const d = defaultsForPattern(exId);
   state.adHocSession.exercises.push({
     id: exId, name, muscle,
-    sets: parseInt(nSets, 10) || 3,
+    sets: 3,
     reps: d.reps, rpe: d.rpe, defaultRest: d.defaultRest,
     notes: '',
     ...(flags.db ? { db: true } : {}),
@@ -3126,6 +3133,18 @@ async function addAdHocExercise() {
     exerciseLibrary[exId] = { id: exId, name, muscle, movementPattern: MOVEMENT_PATTERNS[exId] || 'other', bw: !!flags.bw };
   }
 
+  await _rerenderAdHoc(exId);
+}
+
+// Añade una serie a un ejercicio de la sesión libre.
+// Clave: incrementa `sets` en la DEFINICIÓN, no sólo añade una fila al DOM. La restauración
+// reconstruye las filas a partir de `sets`, así que una fila sin su incremento desaparecería al
+// reabrir la app — la misma pérdida silenciosa que este módulo existe para evitar.
+async function addAdHocSet(exId) {
+  if (!state.adHocSession) return;
+  const ex = state.adHocSession.exercises.find(e => e.id === exId);
+  if (!ex) return;
+  ex.sets = (ex.sets || 3) + 1;
   await _rerenderAdHoc(exId);
 }
 
@@ -3473,7 +3492,7 @@ async function startWorkout(sessionId) {
 
   // Event: swap buttons. El :not() importa — el botón de quitar reutiliza la clase .btn-swap por
   // estilo, y sin excluirlo caería aquí con un exId undefined.
-  container.querySelectorAll('.btn-swap:not(.btn-remove-ex)').forEach(btn => {
+  container.querySelectorAll('.btn-swap:not(.btn-remove-ex):not(.btn-add-set)').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       const card = btn.closest('.exercise-card');
@@ -3484,7 +3503,13 @@ async function startWorkout(sessionId) {
     });
   });
 
-  // Event: quitar un ejercicio de la sesión libre
+  // Event: añadir una serie / quitar un ejercicio (sólo en sesión libre)
+  container.querySelectorAll('.btn-add-set').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      await addAdHocSet(btn.dataset.addSetExId);
+    });
+  });
   container.querySelectorAll('.btn-remove-ex').forEach(btn => {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
@@ -3683,7 +3708,8 @@ function buildExerciseCard(ex, exIdx, previous, restSettings, exerciseNotes, del
         <div class="exercise-notes">${coachNote}</div>
         <textarea class="ex-note" data-ex-note="${ex.id}" placeholder="Notes for this exercise..." rows="1"></textarea>
         <button class="btn-swap" data-swap-muscle="${ex.muscle}" data-swap-ex-id="${ex.id}">↔ Swap exercise</button>
-        ${session && session.adHoc ? `<button class="btn-swap btn-remove-ex" data-remove-ex-id="${ex.id}">✕ Quitar de la sesión</button>` : ''}
+        ${session && session.adHoc ? `<button class="btn-swap btn-add-set" data-add-set-ex-id="${ex.id}">+ Serie</button>
+        <button class="btn-swap btn-remove-ex" data-remove-ex-id="${ex.id}">✕ Quitar de la sesión</button>` : ''}
       </div>
     </div>
   `;
@@ -8009,7 +8035,9 @@ function buildWeekTemplateFromIdeal(variantNum) {
 // 3 = v11.37 (fullA: Cable Crunch->Pallof + RDL; fullB: Hanging Leg Raise->Ab Wheel).
 // 4 = v11.38 (fullA: RDL->Seated Leg Curl; fullB: +Leg Extension).
 // 5 = v11.42 (pliometría en lowerA; sesiones de viaje; híbrido trineo+SkiErg).
-const PLAN_REV = 5;
+// 6 = v11.45 (nombres de ejercicio a inglés: la tarjeta de la sesión lee `ex.name` del plan, así
+//     que sin este bump seguiría diciendo "Dominadas" mientras el historial dice "Pull-ups").
+const PLAN_REV = 6;
 
 async function applyIdealPlan({ force = false } = {}) {
   const n = _idealVariant();
@@ -11166,14 +11194,24 @@ function registerServiceWorker() {
 
 // ==================== INIT ====================
 
-// Ejercicios que la corrección del 20-ago necesita registrar en el store. Mismo shape que produce
-// `ensureExerciseLibrarySeeded` — ojo: ese shape NO incluye `db`, así que el factor de mancuerna del
-// cálculo de volumen se resuelve por `deriveExerciseFlags`, no desde aquí.
-const NEW_EXERCISES_V1144 = [
-  { id: 'incline-press', name: 'Press Inclinado', muscle: 'Chest', movementPattern: 'horizontal-press', bw: false, defaultNotes: '', custom: false },
-  { id: 'incline-db-fly', name: 'Apertura Inclinada con Mancuerna', muscle: 'Chest', movementPattern: 'horizontal-press', bw: false, defaultNotes: '', custom: false },
-  { id: 'straight-arm-pulldown', name: 'Pullover en Polea (brazos extendidos)', muscle: 'Back', movementPattern: 'isolation-lat', bw: false, defaultNotes: '', custom: false },
-  { id: 'front-raise', name: 'Elevación Frontal', muscle: 'Shoulders', movementPattern: 'isolation-shoulder', bw: false, defaultNotes: '', custom: false },
+// Nombres canónicos en inglés (v11.45). Los nombres de ejercicio de toda la librería estaban en
+// inglés; v11.42 metió cinco en castellano en las sesiones de viaje y v11.44 otros cuatro. El efecto
+// no era cosmético: un mismo id acababa con DOS nombres —"Dominadas" en la vista de entrenamiento,
+// que lee `ex.name` de la sesión, y "Pull-ups" en el historial, que resuelve por `getExerciseName`.
+//
+// Los `id` NO se tocan: un id es la clave del historial y cambiarlo lo partiría en dos.
+const EXERCISE_NAMES_EN = [
+  // v11.44
+  { id: 'incline-press', name: 'Incline Chest Press', muscle: 'Chest', movementPattern: 'horizontal-press', bw: false },
+  { id: 'incline-db-fly', name: 'Incline DB Fly', muscle: 'Chest', movementPattern: 'horizontal-press', bw: false },
+  { id: 'straight-arm-pulldown', name: 'Cable Straight-Arm Pulldown', muscle: 'Back', movementPattern: 'isolation-lat', bw: false },
+  { id: 'front-raise', name: 'DB Front Raise', muscle: 'Shoulders', movementPattern: 'isolation-shoulder', bw: false },
+  // v11.42 — el nombre inglés ya existía en EXERCISE_ALTERNATIVES; aquí sólo se hace que gane
+  { id: 'pullups', name: 'Pull-ups', muscle: 'Back', movementPattern: 'vertical-pull', bw: true },
+  { id: 'sl-rdl', name: 'Single-Leg RDL', muscle: 'Hamstrings', movementPattern: 'hinge', bw: true },
+  { id: 'sl-glute-bridge', name: 'Single-Leg Glute Bridge', muscle: 'Glutes', movementPattern: 'glute', bw: true },
+  { id: 'band-row', name: 'Band Row', muscle: 'Back', movementPattern: 'horizontal-pull', bw: false },
+  { id: 'nordic-curl', name: 'Nordic Curl', muscle: 'Hamstrings', movementPattern: 'isolation-ham', bw: true },
 ];
 
 const AUG20_WORKOUT_ID = 'mt1mjjrhqlx740';
@@ -11282,15 +11320,8 @@ async function runMigrations() {
   // pull de 60 kg hace que `generateCoachNote` sugiera "bajar a 57,5 kg", que la rampa automática
   // genere calentamientos de face pull a 47,5 kg, y que el 1RM estimado quede en ~80 kg.
   if (!done.data.includes('fix-aug20-mislabeled')) {
-    // El store `exercises` se sembró UNA vez (`ensureExerciseLibrarySeeded` sale si ya hay filas),
-    // así que añadir los ejercicios a las constantes no basta: sin este upsert `getExerciseName`
-    // devolvería el id crudo en todo el historial.
-    let seeded = 0;
-    for (const nx of NEW_EXERCISES_V1144) {
-      if (!(await dbGet('exercises', nx.id))) { await smartPut('exercises', nx); seeded++; }
-    }
-    if (seeded) await loadExerciseLibrary();
-
+    // Los ejercicios que esta corrección introduce se registran en el store en la migración
+    // `rename-exercises-en` de abajo, que corre a continuación y es la única fuente de nombres.
     const w = await dbGet('workouts', AUG20_WORKOUT_ID);
     if (w && Array.isArray(w.exercises)) {
       const fixed = fixAug20Mislabeled(w);
@@ -11302,6 +11333,37 @@ async function runMigrations() {
       }
     }
     done.data.push('fix-aug20-mislabeled');
+    await dbPut('settings', done);
+  }
+
+  // Migration (v11.45): los nombres de ejercicio, todos a inglés.
+  //
+  // El store gana sobre las sesiones en `getExerciseName`, así que si aquí queda un nombre en
+  // castellano, seguirá saliendo en el historial aunque la constante ya esté corregida. Esta
+  // migración es la que hace que el nombre canónico sea el del store.
+  //
+  // Escrita para dar el resultado correcto en los dos escenarios posibles: si el teléfono nunca
+  // corrió `fix-aug20-mislabeled` (no hay filas), las crea bien; y si sí la corrió cuando escribía
+  // los nombres en castellano, las corrige.
+  if (!done.data.includes('rename-exercises-en')) {
+    let changed = 0;
+    for (const canon of EXERCISE_NAMES_EN) {
+      const cur = await dbGet('exercises', canon.id);
+      if (cur && cur.name === canon.name) continue;   // ya está bien
+      await smartPut('exercises', {
+        // Se preserva lo que ya hubiera (notas propias, `custom`) y sólo se imponen los campos
+        // canónicos. Así un renombrado no borra nada de lo que el usuario haya tocado.
+        ...(cur || { defaultNotes: '', custom: false }),
+        id: canon.id, name: canon.name, muscle: canon.muscle,
+        movementPattern: canon.movementPattern, bw: canon.bw,
+      });
+      changed++;
+    }
+    if (changed) {
+      await loadExerciseLibrary();
+      console.log(`[Migration] ${changed} nombres de ejercicio normalizados a inglés`);
+    }
+    done.data.push('rename-exercises-en');
     await dbPut('settings', done);
   }
 }

@@ -106,7 +106,9 @@ const vdIdx = html.indexOf('25-OH vitamina D');
 const bloque = html.slice(vdIdx, vdIdx + 700);
 ok(/an-score s1/.test(bloque), 'vitamina D pinta el puntaje 1');
 ok(/an-stale historico/.test(bloque), 'vitamina D pinta la antigüedad como histórica, aparte del puntaje');
-ok(/36 meses/.test(bloque), 'vitamina D dice cuántos meses tiene el dato');
+// Sin fijar la cifra: la vista se renderiza con la fecha real, así que un "36 meses" hardcodeado
+// caduca solo al pasar el mes. Lo que importa es que muestre la antigüedad, no cuál es.
+ok(/\d+ meses/.test(bloque), 'vitamina D dice cuántos meses tiene el dato');
 
 console.log('\n=== Orden: lo peor primero dentro de cada familia ===');
 // En lípidos, el ApoB (2) debe ir antes que los que no se puntúan.
