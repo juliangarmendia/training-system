@@ -15,6 +15,7 @@ Cero salida y código 0 = verde. Cualquier `FAIL` imprime qué aserción cayó.
 | Test | Qué garantiza |
 |---|---|
 | `verify-bloodwork.mjs` | Que `app/bloodwork.js` y `data/processed/2026-08-20_analitica-puntuada.md` **digan lo mismo**: compara fila a fila valor, fecha y puntaje de la tabla maestra contra lo que produce el código. Más los invariantes de la rúbrica: intervalos anidados, Regla A (ningún 5 sin objetivo publicado), y que todo marcador sin puntaje tenga el motivo escrito |
+| `verify-workout-unit.mjs` | Que la unidad de un registro tenga **una sola fuente** (`loggedUnit`): que la ficha de edición y "Copy for WHOOP" no puedan discrepar —el 24-ago-2026 el mismo entrenamiento se veía en kg y se copiaba en lb—, que el transcript etiquete sin convertir nunca, que guardar no reetiquete pesos en lb como kg, y que la calculadora de discos no escriba el ajuste global de unidad |
 | `verify-analytics-render.mjs` | Que la vista `view-analytics` renderice de verdad: extrae las funciones de render de `app.js`, las corre con un DOM mínimo y revisa el HTML — nada `undefined`/`NaN`, los avisos de `LONG-003` presentes, los 33 marcadores pintados (incluidos los que no se puntúan), puntaje y antigüedad como elementos separados, y **cero dosis de vitamina D** |
 
 ## Por qué existen

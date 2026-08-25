@@ -343,6 +343,20 @@ function dispW(weight, workoutUnit) {
   return convertWeight(weight, workoutUnit || state.settings.unit, state.settings.unit);
 }
 
+// Unidad en la que están guardados los pesos de UN registro. Fuente única.
+//
+// El fallo que esta función existe para impedir (24-ago-2026): la ficha de edición deducía la
+// unidad con `w.inputUnit || appUnit` —sin mirar nunca `w.unit`— mientras el transcript de WHOOP
+// la deducía con `w.unit`. Con un registro sellado `unit: 'lb'` la ficha lo pintaba en kg y
+// "Copy for WHOOP" lo copiaba en lb: los mismos números, dos etiquetas. Todo lo que necesite la
+// unidad de un registro pasa por aquí.
+//
+// `inputUnit` manda sobre `unit` porque sólo existe mientras un borrador está sin guardar: son los
+// pesos tal y como se están tecleando, antes de la conversión que hace saveEditWorkout.
+function loggedUnit(w) {
+  return (w && (w.inputUnit || w.unit)) || state.settings.unit || 'kg';
+}
+
 // Volume helper: dumbbell exercises count both hands (peso × reps × 2). Uses
 // the snapshot meta on saved exercises (set in finishWorkout); for legacy
 // workouts without it, falls back to the plan definition by id. `unit` is the
@@ -2247,10 +2261,13 @@ async function openEditWorkout(id) {
   document.getElementById('ew-notes').value = w.notes || '';
 
   const appUnit = state.settings.unit || 'kg';
-  const unit = w.inputUnit || appUnit;
+  const unit = loggedUnit(w);
   const titleEl = document.getElementById('ew-title');
-  if (w.inputUnit && w.inputUnit !== appUnit) {
-    titleEl.innerHTML = `${sessionName} <span style="font-size:11px;color:var(--accent);font-weight:600">· input: ${unit.toUpperCase()}</span>`;
+  // El aviso salta siempre que el registro NO esté en la unidad de la app, venga de `inputUnit`
+  // (borrador a medio guardar) o de `unit` (sesión de EE.UU. en lb). Antes sólo miraba `inputUnit`,
+  // así que un registro en lb se abría sin ninguna señal de que estaba en lb.
+  if (unit !== appUnit) {
+    titleEl.innerHTML = `${sessionName} <span style="font-size:11px;color:var(--accent);font-weight:600">· ${unit.toUpperCase()}</span>`;
   }
 
   // Calorie estimate row + cache for sync clipboard copy later
@@ -2411,7 +2428,7 @@ function closeEditWorkout() {
 function buildWhoopTranscript(w, ctx = {}) {
   const session = activePlan.sessions[w.session];
   const sessionName = session ? session.name : (w.sessionName || w.session);
-  const unit = w.unit || state.settings.unit || 'kg';
+  const unit = loggedUnit(w);
   const headerBits = [sessionName];
   if (w.date) headerBits.push(formatDate(w.date));
   if (w.duration) headerBits.push(w.duration);
@@ -2521,8 +2538,12 @@ async function saveEditWorkout() {
     s.rpe = isNaN(rpeVal) ? null : rpeVal;
     s.done = row.querySelector('[data-f="done"]').classList.contains('checked');
   });
-  // Record the unit weights are stored in (after conversion).
-  w.unit = appUnit;
+  // Re-etiquetar SÓLO cuando de verdad se ha convertido (round-trip de `inputUnit`) o cuando el
+  // registro no traía unidad. Hacer `w.unit = appUnit` incondicional era corrupción de datos: abrir
+  // un entrenamiento de abril guardado en lb, tocar cualquier campo y guardar convertía sus 205 en
+  // "205 kg" sin tocar el número. Es también lo que borró la prueba del fallo del 24-ago: al añadir
+  // la nota, el registro pasó de `lb` a `kg` solo.
+  if (w.inputUnit || !w.unit) w.unit = appUnit;
   // One-time conversion only: strip inputUnit after saving so future edits
   // use the app's canonical unit directly.
   delete w.inputUnit;
@@ -9920,6 +9941,12 @@ async function renderBodyWeightChart() {
 
 // ==================== PLATE CALCULATOR ====================
 let plateCalcUnit = 'kg';
+// La hoja de discos que se abre con el FAB DURANTE el entrenamiento. Su unidad es local, igual que
+// la de la calculadora de Ajustes: escribía `state.settings.unit` y eso es lo que sellaba
+// `unit: 'lb'` en un entrenamiento tecleado en kg — finishWorkout estampa `state.settings.unit`,
+// así que un toque en una CALCULADORA decidía en qué unidad quedaba grabada la sesión. La
+// sincronización es de una sola dirección: openPlateSheet la copia del ajuste al abrir.
+let plateSheetUnit = 'kg';
 
 function calculatePlates(targetWeight, unit) {
   const barWeight = unit === 'lb' ? 45 : BAR_WEIGHT;
@@ -9981,10 +10008,10 @@ function openPlateSheet(prefillWeight) {
   const input = document.getElementById('plate-sheet-input');
   if (!sheet || !backdrop || !input) return;
 
-  // Sync unit with app setting on open
-  const unit = state.settings.unit || 'kg';
+  // Sync unit with app setting on open — de una sola dirección (ajuste → hoja).
+  plateSheetUnit = state.settings.unit || 'kg';
   document.querySelectorAll('#plate-sheet-unit-toggle .toggle-btn').forEach(b => {
-    b.classList.toggle('selected', b.dataset.sheetUnit === unit);
+    b.classList.toggle('selected', b.dataset.sheetUnit === plateSheetUnit);
   });
 
   // Prefill: explicit value > last used > current focused set weight
@@ -10001,7 +10028,7 @@ function openPlateSheet(prefillWeight) {
   backdrop.classList.add('visible');
   sheet.classList.add('visible');
 
-  renderPlateInto('plate-sheet-input', 'plate-sheet-result', unit);
+  renderPlateInto('plate-sheet-input', 'plate-sheet-result', plateSheetUnit);
   setTimeout(() => input.focus(), 200);
 }
 
@@ -10976,24 +11003,18 @@ function bindEvents() {
 
   const sheetInput = document.getElementById('plate-sheet-input');
   if (sheetInput) sheetInput.addEventListener('input', () => {
-    const activeBtn = document.querySelector('#plate-sheet-unit-toggle .toggle-btn.selected');
-    const unit = (activeBtn && activeBtn.dataset.sheetUnit) || (state.settings.unit || 'kg');
-    renderPlateInto('plate-sheet-input', 'plate-sheet-result', unit);
+    renderPlateInto('plate-sheet-input', 'plate-sheet-result', plateSheetUnit);
   });
 
   document.querySelectorAll('#plate-sheet-unit-toggle .toggle-btn').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const newUnit = btn.dataset.sheetUnit;
+    btn.addEventListener('click', () => {
+      plateSheetUnit = btn.dataset.sheetUnit;
       document.querySelectorAll('#plate-sheet-unit-toggle .toggle-btn').forEach(b => {
         b.classList.toggle('selected', b === btn);
       });
-      // Sync app-wide unit so it matches the workout view
-      state.settings.unit = newUnit;
-      await dbPut('settings', { key: 'userSettings', data: state.settings });
-      document.querySelectorAll('#unit-toggle .unit-opt').forEach(b => {
-        b.classList.toggle('active', b.dataset.unit === newUnit);
-      });
-      renderPlateInto('plate-sheet-input', 'plate-sheet-result', newUnit);
+      // Local a la calculadora: NO toca state.settings.unit ni el selector de la cabecera. Cambiar
+      // la unidad con la que consultas discos no puede cambiar en qué unidad se graba la sesión.
+      renderPlateInto('plate-sheet-input', 'plate-sheet-result', plateSheetUnit);
     });
   });
 
