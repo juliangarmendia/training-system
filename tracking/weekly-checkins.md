@@ -13,6 +13,33 @@
 
 ---
 
+## 2026-09-03 (jue) — W36 en curso · el objetivo cambia de forma
+
+**Objetivo reformulado:** bajar de peso para reducir cintura — *"me queda todo chico de cintura"*.
+Balanza nueva en configuración: peso diario por primera vez desde el 27-may (98 días).
+
+- **Entrenamiento:** Lower A el 3-sep, **74:21, 8 de 8 ejercicios, cero series saltadas** — la mejor
+  sesión del historial y la primera de pierna completa del año. Sentadilla **105 × 5 @7,0 × 4**, RDL
+  a **85**, primera pliometría ejecutada. Antes: 5 sesiones upper seguidas, sin pierna desde el
+  15-ago y **sin peso muerto desde el 2-may (126 días)**.
+- **Recuperación:** readiness 88,8 de media (4 d), HRV 70,5, **frecuencia en reposo 42 el 1-sep, el
+  mínimo del dataset**. ATL 4,9 con CTL 4,9. **No hay fatiga: hay desentrenamiento** → no hay deload.
+- **Adherencia:** 3,0 sesiones/semana en las tres últimas frente a 1,6/semana en las diez anteriores.
+  Movilidad 0 (siguen siendo 2 en todo el historial). Pasos 4.723/día con un 1-sep de **159** y un
+  2-sep de **13.055**.
+- **Cardio:** 0 esta semana. Las 4 últimas carreras: **0 de 4 en Z2**; la del 26-ago fueron 1,92 km
+  con 425 de 735 segundos en zona 4.
+- **Cambios aplicados:** déficit ~500 kcal pilotado por la media de 7 días (sin contar comida,
+  proteína 185 g el único registro manual) · cintura semanal + suelo de 8.000 pasos · Upper B de 7 a
+  5 ejercicios con el core primero · **retirado** el recorte de Lower A y Upper A que había propuesto
+  (la sesión del 3-sep lo desmiente) · peso muerto de vuelta el lun 7 con **trap bar** a 100 y gate
+  de RPE · todas las cargas re-ancladas al último dato real (el plan pedía hack squat 80 cuando el
+  dato era 50).
+- **Pendiente:** primera medición de cintura el dom 6-sep. Primer ajuste de calorías posible el
+  **24-sep** — antes no hay señal, solo ruido.
+
+---
+
 ### Backfill W19-W33 — analizado el 2026-08-19
 
 **Peso:** sin serie. Dos registros en 15 semanas (W19, W22). La referencia valida es la Tanita del

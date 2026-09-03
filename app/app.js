@@ -76,15 +76,29 @@ const PLAN = {
         'Scapular pull-ups — 2 × 8 (lat activation pre-chinup)',
         'Chin-up: BW × 3-5 easy, or lat pulldown light × 10',
       ],
+      // v11.47 — RECORTE, 7 → 5. Los tres ultimos ejercicios salian `done=false` en LAS TRES
+      // sesiones de agosto (14, 22, 26): `incline-curl`, `lateral-raise-machine` y
+      // `hanging-leg-raise`, cero series de nueve posibles cada uno. El 26-ago los
+      // blockTimings lo dejan claro — "Superset A" duro 17 segundos: cerro la app.
+      //
+      // No baja el volumen real, esas series ya no ocurrian. Lo que quita es la senal de
+      // sesion a medias. `incline-curl` y `lateral-raise-machine` salen. El deltoide lateral sigue
+      // cubierto en Upper A (`lateral-raise`, 3 series). El BICEPS pierde todo su trabajo directo:
+      // Upper A no tiene curl, asi que se queda con el indirecto de dominadas lastradas (4 series),
+      // lat pulldown (3) y los dos remos (7) — suficiente en un bloque de deficit con la fuerza en
+      // mantenimiento, y recuperable desde el swap de la sesion si hace falta. El core SE QUEDA pero
+      // sube al principio: era lo unico que entrenaba el patron en esta sesion y moria
+      // sistematicamente por ir el ultimo.
+      //
+      // Lower A y Upper A NO se recortan: la sesion del 3-sep (74 min, 8 de 8 ejercicios,
+      // cero saltos) demuestra que ahi el problema era el tiempo disponible, no el plan.
       exercises: [
+        { id: 'hanging-leg-raise', name: 'Hanging Leg Raise', muscle: 'Core', sets: 3, reps: '8-12', rpe: '-', defaultRest: 60, notes: 'Primero, no al final: por ir el ultimo salio 0 de 9 series en agosto. Escala a rodillas si hace falta.', bw: true },
         { id: 'chinups', name: 'Chin-ups', muscle: 'Back', sets: 4, reps: '5-8', rpe: '7-8', defaultRest: 150, notes: 'Add weight at 4×8. Assisted pull-up machine if <5 reps.', bw: true, compound: true },
         { id: 'ohp', name: 'Overhead Press', muscle: 'Shoulders', sets: 4, reps: '5-8', rpe: '7-8', defaultRest: 150, notes: 'Standing. Strict form, no leg drive.', compound: true },
         // v11.35 (D2): arrives from Upper A — the week's 2nd horizontal-press stimulus.
         { id: 'pec-deck', name: 'Pec Deck', muscle: 'Chest', sets: 3, reps: '10-12', rpe: '7', defaultRest: 90, notes: '2º estímulo de pecho de la semana. Tensión constante, squeeze 1s.' },
-        { id: 'chest-supported-row', name: 'Chest-Supported Row', muscle: 'Back', sets: 3, reps: '10-12', rpe: '7', defaultRest: 90, notes: 'Strict, no lower-back fatigue. Squeeze at the top.' },
-        { id: 'incline-curl', name: 'Incline DB Curl', muscle: 'Biceps', sets: 3, reps: '10-12', rpe: '7', defaultRest: 60, notes: 'Stretch at bottom. 3s eccentric.', superset: 'A', db: true },
-        { id: 'lateral-raise-machine', name: 'Lateral Raise Machine', muscle: 'Shoulders', sets: 3, reps: '12-15', rpe: '7', defaultRest: 60, notes: 'Constant tension. Controlled, full ROM.', superset: 'A' },
-        { id: 'hanging-leg-raise', name: 'Hanging Leg Raise', muscle: 'Core', sets: 3, reps: '8-12', rpe: '-', defaultRest: 60, notes: 'Scale to knee raises if needed.', bw: true },
+        { id: 'chest-supported-row', name: 'Chest-Supported Row', muscle: 'Back', sets: 3, reps: '10-12', rpe: '7', defaultRest: 90, notes: 'Strict, no lower-back fatigue. Squeeze at the top. Cable Row vale igual (esta en el swap): son maquinas distintas, no compares las cargas entre ellas.' },
       ]
     },
     lowerB: {
@@ -4480,7 +4494,7 @@ async function renderStats() {
   await renderStreakCalendar();
   await renderMuscleVolume();
   await renderSwimlaneTL();
-  renderBodyCompEstimator();
+  await renderBodyCompEstimator();
   await renderStepsHistoryChart();
   await renderProteinChart();
   renderMacroCalculator();
@@ -6235,30 +6249,67 @@ async function renderStreakCalendar() {
   `;
 }
 
-// ==================== BODY COMPOSITION ESTIMATOR ====================
-function renderBodyCompEstimator() {
+// ==================== BODY COMPOSITION + WAIST TRACKING ====================
+// v11.47: hasta ahora esto era una calculadora que TIRABA el dato. Pedia cintura, cuello y
+// altura, mostraba un % de grasa por el metodo Navy, y no guardaba nada. El numero que mide
+// el objetivo declarado --reducir cintura-- se escribia, se veia una vez y se perdia. Sin
+// historico no hay tendencia, y sin tendencia la circunferencia no sirve: el ruido de
+// medicion es de +-0,5 cm, asi que solo los cambios a ~2 semanas significan algo.
+//
+// Persiste dentro del store `bodyweight` en lugar de un store nuevo: ya tiene keyPath
+// 'date', ya sincroniza a Supabase, ya esta en BACKUP_STORES y en el export CSV. Anadir
+// campos es aditivo, no rompe las filas existentes (las de intervals.icu traen `measured`
+// y `source`), y deja la serie de cintura al lado de la de peso -- que es como se leen,
+// las dos son tendencia de composicion.
+//
+// El write MERGEA sobre la fila del dia: la balanza escribe `weight` cada manana y la
+// cintura se mide un dia a la semana, asi que pisar la fila perderia uno de los dos.
+const WAIST_MIN_DELTA_DAYS = 10; // por debajo de esto el delta es ruido, no senal
+
+async function renderBodyCompEstimator() {
   const container = document.getElementById('bodycomp-section');
   if (!container) return;
 
+  const rows = (await dbGetAll('bodyweight').catch(() => [])) || [];
+  const sorted = rows.slice().sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  const waistLog = sorted.filter(e => Number(e.waist) > 0);
+  const last = waistLog.length ? waistLog[waistLog.length - 1] : null;
+  const lastWeighIn = sorted.length ? sorted[sorted.length - 1] : null;
+
+  // Prefill: cuello y altura no cambian entre mediciones; el peso viene del ultimo pesaje.
+  const pfWeight = (lastWeighIn && Number(lastWeighIn.weight)) || '';
+  const pfWaist = (last && Number(last.waist)) || '';
+  const pfNeck = (last && Number(last.neck)) || '';
+  const pfHeight = (last && Number(last.heightCm)) || 182;
+  const inputCss = 'width:100%;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:14px;padding:8px 10px';
+
   container.innerHTML = `
+    <div class="section-label" style="margin-bottom:8px">Cintura y composicion</div>
     <div style="display:flex;gap:8px;margin-bottom:10px">
-      <div style="flex:1"><label class="muted" style="font-size:11px">Weight (kg)</label><input type="number" id="bc-weight" inputmode="decimal" step="0.1" placeholder="82" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:14px;padding:8px 10px"></div>
-      <div style="flex:1"><label class="muted" style="font-size:11px">Waist (cm)</label><input type="number" id="bc-waist" inputmode="decimal" step="0.5" placeholder="85" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:14px;padding:8px 10px"></div>
-      <div style="flex:1"><label class="muted" style="font-size:11px">Neck (cm)</label><input type="number" id="bc-neck" inputmode="decimal" step="0.5" placeholder="38" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:14px;padding:8px 10px"></div>
-      <div style="flex:1"><label class="muted" style="font-size:11px">Height (cm)</label><input type="number" id="bc-height" inputmode="decimal" step="1" placeholder="178" style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:14px;padding:8px 10px"></div>
+      <div style="flex:1"><label class="muted" style="font-size:11px">Peso (kg)</label><input type="number" id="bc-weight" inputmode="decimal" step="0.1" value="${pfWeight}" placeholder="87" style="${inputCss}"></div>
+      <div style="flex:1"><label class="muted" style="font-size:11px">Cintura (cm)</label><input type="number" id="bc-waist" inputmode="decimal" step="0.5" value="${pfWaist}" placeholder="92" style="${inputCss}"></div>
+      <div style="flex:1"><label class="muted" style="font-size:11px">Cuello (cm)</label><input type="number" id="bc-neck" inputmode="decimal" step="0.5" value="${pfNeck}" placeholder="39" style="${inputCss}"></div>
+      <div style="flex:1"><label class="muted" style="font-size:11px">Altura (cm)</label><input type="number" id="bc-height" inputmode="decimal" step="1" value="${pfHeight}" placeholder="182" style="${inputCss}"></div>
     </div>
-    <button id="btn-calc-bf" class="btn-secondary" style="width:100%;text-align:center">Calculate</button>
-    <div id="bc-result" style="margin-top:10px"></div>
+    <button id="btn-calc-bf" class="btn-secondary" style="width:100%;text-align:center">Calcular y guardar</button>
+    <div id="bc-result" style="margin-top:10px">${renderWaistSummary(waistLog)}</div>
+    <p class="muted" style="margin:10px 0 0;font-size:11px;line-height:1.5">Domingo por la manana, en ayunas. De pie y relajado, cinta a la altura del ombligo, al final de una exhalacion normal, ajustada sin comprimir. Dos medidas y promedia.</p>
   `;
 
-  document.getElementById('btn-calc-bf').addEventListener('click', () => {
+  document.getElementById('btn-calc-bf').addEventListener('click', async () => {
     const weight = parseFloat(document.getElementById('bc-weight').value);
     const waist = parseFloat(document.getElementById('bc-waist').value);
     const neck = parseFloat(document.getElementById('bc-neck').value);
     const height = parseFloat(document.getElementById('bc-height').value);
+    const resultEl = document.getElementById('bc-result');
 
     if (!weight || !waist || !neck || !height) {
-      document.getElementById('bc-result').innerHTML = '<span class="muted">Fill all fields</span>';
+      resultEl.innerHTML = '<span class="muted">Rellena los cuatro campos</span>';
+      return;
+    }
+    // El logaritmo de Navy explota si la cintura no supera al cuello.
+    if (waist <= neck) {
+      resultEl.innerHTML = '<span class="muted">La cintura debe ser mayor que el cuello</span>';
       return;
     }
 
@@ -6275,7 +6326,25 @@ function renderBodyCompEstimator() {
     else if (bfPct < 25) category = 'Average';
     else category = 'Above average';
 
-    document.getElementById('bc-result').innerHTML = `
+    // Merge sobre la fila del dia: no pisar el peso que ya escribio la balanza, ni los
+    // campos `source`/`measured` que trae intervals.icu.
+    const d = today();
+    let existing = null;
+    try { existing = await dbGet('bodyweight', d); } catch (e) {}
+    await smartPut('bodyweight', {
+      ...(existing || {}),
+      date: d,
+      weight,
+      waist,
+      neck,
+      heightCm: height,
+      bfPct,
+      measured: true,
+      timestamp: Date.now(),
+    });
+    _bwCache = weight; // igual que logBodyWeight(): refresca el peso de las estimaciones
+
+    resultEl.innerHTML = `
       <div class="bc-result-grid">
         <div class="bc-stat"><span class="bc-val">${bfPct}%</span><span class="bc-label">Body Fat</span></div>
         <div class="bc-stat"><span class="bc-val">${leanMass} kg</span><span class="bc-label">Lean Mass</span></div>
@@ -6283,7 +6352,46 @@ function renderBodyCompEstimator() {
         <div class="bc-stat"><span class="bc-val">${category}</span><span class="bc-label">Category</span></div>
       </div>
     `;
+    toast(`Cintura ${waist} cm guardada`);
+    try { await renderBodyWeightChart(); } catch (e) {}
   });
+}
+
+// Resumen del historico de cintura: valor actual, delta contra la medicion mas reciente que
+// este al menos WAIST_MIN_DELTA_DAYS antes, y las ultimas mediciones. Devuelve HTML.
+function renderWaistSummary(waistLog) {
+  if (!waistLog || !waistLog.length) {
+    return '<span class="muted" style="font-size:12px">Sin mediciones. La primera fija la linea base.</span>';
+  }
+  const last = waistLog[waistLog.length - 1];
+  const lastMs = new Date(last.date + 'T00:00:00').getTime();
+
+  let ref = null;
+  for (let k = waistLog.length - 2; k >= 0; k--) {
+    const days = Math.round((lastMs - new Date(waistLog[k].date + 'T00:00:00').getTime()) / 86400000);
+    if (days >= WAIST_MIN_DELTA_DAYS) { ref = Object.assign({}, waistLog[k], { days }); break; }
+  }
+
+  let deltaHtml = '<span class="muted" style="font-size:12px">Delta disponible tras ~2 semanas</span>';
+  if (ref) {
+    const delta = Math.round((Number(last.waist) - Number(ref.waist)) * 10) / 10;
+    const color = delta < -0.05 ? 'var(--accent)' : (delta > 0.05 ? 'var(--red)' : 'var(--text2)');
+    const sign = delta > 0 ? '+' : '';
+    deltaHtml = `<span style="color:${color};font-size:12px"><b>${sign}${delta.toFixed(1)} cm</b> en ${ref.days} dias</span>`;
+  }
+
+  const recent = waistLog.slice(-6).reverse().map(e => {
+    const bf = Number(e.bfPct) > 0 ? ` &middot; ${Number(e.bfPct).toFixed(1)}%` : '';
+    return `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:12px"><span class="muted">${e.date}</span><span>${Number(e.waist).toFixed(1)} cm${bf}</span></div>`;
+  }).join('');
+
+  return `
+    <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:6px">
+      <span style="font-size:22px;font-weight:600">${Number(last.waist).toFixed(1)} cm</span>
+      ${deltaHtml}
+    </div>
+    <div style="border-top:1px solid var(--border);padding-top:6px">${recent}</div>
+  `;
 }
 
 // ==================== WEEKLY TRAINING SUMMARY ====================
@@ -8058,7 +8166,8 @@ function buildWeekTemplateFromIdeal(variantNum) {
 // 5 = v11.42 (pliometría en lowerA; sesiones de viaje; híbrido trineo+SkiErg).
 // 6 = v11.45 (nombres de ejercicio a inglés: la tarjeta de la sesión lee `ex.name` del plan, así
 //     que sin este bump seguiría diciendo "Dominadas" mientras el historial dice "Pull-ups").
-const PLAN_REV = 6;
+// 7 = v11.47 (Upper B de 7 a 5 ejercicios, con el core al principio).
+const PLAN_REV = 7;
 
 async function applyIdealPlan({ force = false } = {}) {
   const n = _idealVariant();
@@ -8247,18 +8356,29 @@ function _anSeriesLine(series, unit) {
   return `<div class="an-series">${parts.join('<span class="an-arrow">→</span>')}</div>`;
 }
 
+// Orden deliberado, tras el aviso de Julian de que la sección "no decía nada de qué sucede":
+// LO QUE SIGNIFICA su valor va VISIBLE, sin desplegar. Al desplegar: qué es el marcador y qué hacer.
+// Y la metodología —rango del laboratorio, objetivo de guía, fuente, por qué no se puntúa— al final,
+// que es dónde debió estar desde el principio. Antes ocupaba el sitio de la interpretación.
 function _anMarkerRow(latest) {
   const d = latest.def;
   const stale = latest.stale;
   const state = d.states ? bloodMarkerState(d.key, latest.value) : null;
-  const bits = [];
-  if (d.labRange) bits.push(`<div class="an-meta"><span>Laboratorio</span> ${d.labRange}</div>`);
-  if (d.target) bits.push(`<div class="an-meta"><span>Guías</span> ${d.target}</div>`);
-  if (d.source) bits.push(`<div class="an-meta"><span>Fuente</span> ${d.source}</div>`);
-  if (d.noScore) bits.push(`<div class="an-why">${d.noScore}</div>`);
-  if (d.note) bits.push(`<div class="an-why">${d.note}</div>`);
-  if (d.confounder) bits.push(`<div class="an-warn">⚠️ Confusor: ${d.confounder}</div>`);
-  if (d.caution) bits.push(`<div class="an-warn">⚠️ ${d.caution}</div>`);
+
+  const detalle = [];
+  if (d.what) detalle.push(`<div class="an-block"><span class="an-block-h">Qué es</span>${d.what}</div>`);
+  if (d.action) detalle.push(`<div class="an-block an-block-do"><span class="an-block-h">Qué hacer</span>${d.action}</div>`);
+  if (d.confounder) detalle.push(`<div class="an-warn">⚠️ Ojo: ${d.confounder}</div>`);
+  if (d.caution) detalle.push(`<div class="an-warn">⚠️ ${d.caution}</div>`);
+
+  // Metodología, plegada aparte para que no compita con lo anterior.
+  const metodo = [];
+  if (d.labRange) metodo.push(`<div class="an-meta"><span>Laboratorio</span> ${d.labRange}</div>`);
+  if (d.target) metodo.push(`<div class="an-meta"><span>Guías</span> ${d.target}</div>`);
+  if (d.source) metodo.push(`<div class="an-meta"><span>Fuente</span> ${d.source}</div>`);
+  if (d.noScore) metodo.push(`<div class="an-why">${d.noScore}</div>`);
+  if (d.note) metodo.push(`<div class="an-why">${d.note}</div>`);
+
   return `
     <details class="an-marker">
       <summary>
@@ -8272,12 +8392,35 @@ function _anMarkerRow(latest) {
           <span class="an-stale ${stale.level}">${stale.label}</span>
           ${state ? `<span class="an-state">${state}</span>` : ''}
         </div>
+        ${d.meaning ? `<div class="an-meaning">${d.meaning}</div>` : ''}
       </summary>
       <div class="an-detail">
         ${_anSeriesLine(latest.series, d.unit)}
-        ${bits.join('')}
+        ${detalle.join('')}
+        ${metodo.length ? `<details class="an-method"><summary>Rangos y fuentes</summary>${metodo.join('')}</details>` : ''}
       </div>
     </details>`;
+}
+
+// El resumen del conjunto, que es lo que faltaba: qué pasa, qué va bien, qué vigilar y qué lo
+// mejoraría. Va PRIMERO, antes de cualquier marcador.
+function _anSummary() {
+  if (typeof BLOOD_SUMMARY === 'undefined' || !BLOOD_SUMMARY) return '';
+  const s = BLOOD_SUMMARY;
+  const lista = (items, cls, titulo, icono) => (items && items.length) ? `
+    <div class="an-sum-block ${cls}">
+      <div class="an-sum-h">${icono} ${titulo}</div>
+      <ul class="an-sum-list">${items.map(i => `<li>${i}</li>`).join('')}</ul>
+    </div>` : '';
+  return `
+    <div class="an-summary">
+      ${s.titular ? `<div class="an-sum-lead">${s.titular}</div>` : ''}
+      ${s.queEstaPasando ? `<div class="an-sum-body">${s.queEstaPasando}</div>` : ''}
+      ${lista(s.loQueVaBien, 'good', 'Lo que va bien', '✓')}
+      ${lista(s.loQueVigilar, 'watch', 'Lo que hay que vigilar', '!')}
+      ${lista(s.loQueLoMejoraria, 'improve', 'Lo que lo mejoraría', '→')}
+      ${s.laLimitacion ? `<div class="an-sum-limit">${s.laLimitacion}</div>` : ''}
+    </div>`;
 }
 
 function renderAnalytics() {
@@ -8318,6 +8461,8 @@ function renderAnalytics() {
       <div class="ip-goal-title">Analítica</div>
       <div class="ip-goal-sub">6 paneles · 2021-2025 · ${fresh.total} marcadores medidos, ${fresh.scored} puntuados</div>
     </div>
+
+    ${_anSummary()}
 
     <div class="an-disclaimer">
       <b>Esto es contexto histórico, no un diagnóstico.</b> El puntaje describe dónde cae tu valor

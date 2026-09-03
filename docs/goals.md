@@ -1,5 +1,66 @@
 # Goals and Constraints
 
+## 🎯 El objetivo, afinado (2026-09-03): reducir cintura
+
+**Julian:** *"Lo que necesito es bajar de peso (reducir cintura ya que me queda todo chico de
+cintura)."*
+
+Esto no contradice la sección de agosto —sigue siendo 79-81 kg— pero le pone **un criterio físico
+detrás del número**, y eso cambia qué se mide y qué se prioriza.
+
+### Por qué la cintura es la métrica correcta
+
+La Tanita del 11-ago reparte los 14,3 kg de grasa así:
+
+| Segmento | Grasa | % del total |
+|---|---|---|
+| **Torso** | **8,3 kg** | **58%** |
+| Piernas (2) | 4,4 kg | 31% |
+| Brazos (2) | 1,6 kg | 11% |
+
+Con **grasa visceral en 5** (la escala Tanita marca riesgo desde 12), es grasa **subcutánea**
+abdominal.
+
+**No se puede reducir por zonas.** Pero como más de la mitad de la grasa está en el torso, la
+pérdida total se manifestará de forma **desproporcionada en la cintura**. Es donde más se va a
+notar, y por eso la circunferencia responde antes y más claro que la báscula.
+
+**Lo que no funciona:** el ab wheel, el Pallof y las elevaciones de piernas construyen el músculo
+*debajo* de la grasa. No la quitan. Se mantienen por salud lumbar (dos contracturas en el
+historial), no como herramienta de cintura.
+
+### La jerarquía de palancas, en orden de impacto real
+
+1. **Déficit calórico** — es lo que quita la grasa. ~500 kcal/día, pilotado por la media móvil de 7
+   días de la báscula. Regla de ajuste en [`../plans/nutrition-notes.md`](../plans/nutrition-notes.md)
+2. **Proteína 185 g/día** — decide si los 6 kg salen de grasa o de músculo
+3. **Pasos, suelo de 8.000/día** — de ~5.300 a 8.000 son ~110 kcal/día: **un quinto del déficit**,
+   sin dieta y sin entrenar
+4. **Entrenamiento de fuerza** — **no crea el déficit, protege el músculo**. Es lo que separa llegar
+   a 81 kg atlético de llegar blando
+5. **Sueño y alcohol** — los tres desplomes del periodo (30-jul, 16-ago, 21-ago) llegaron con ATL
+   <18: no los causó el entrenamiento. En cintura el alcohol cuenta dos veces
+
+> **El error que hay que evitar:** esperar que el gimnasio baje la cintura. La fuerza va a
+> **mantenimiento** durante este bloque —que en déficit ES progreso— y no se añade volumen. El
+> trabajo del gimnasio aquí es defensivo.
+
+### Métricas de seguimiento
+
+| Qué | Cadencia | Dónde |
+|---|---|---|
+| **Peso** | diario, en ayunas al levantarte | balanza → media móvil de 7 días |
+| **Cintura** | semanal, domingo en ayunas | app (persiste desde v11.47) → `wellness.abdomen` |
+| Pasos | diario, suelo 8.000 | `stepsTarget` en la app |
+| Proteína | diaria, ≥185 g | lo único que se cuenta a mano |
+| Composición (Tanita) | cada 8-12 semanas, **misma máquina** | próxima ~2026-11-03 |
+
+**Ritmo objetivo: −0,45 kg/semana.** 87,1 → 81 kg = 6,1 kg → **~14 semanas**, llegada hacia la 3ª
+semana de diciembre. Los 7 primeros días de báscula (3 → 9-sep) fijan la línea base; **el primer
+ajuste de calorías posible es el 24-sep.**
+
+---
+
 > Last updated: **2026-08-19** — objetivo de peso confirmado por Julian y traducido a composición
 > real medida.
 

@@ -1,5 +1,89 @@
 # Nutrition Plan — Cut Phase 1
 
+## ⚖️ PILOTAJE POR BÁSCULA — 2026-09-03 (manda sobre todo lo demás)
+
+> Julian reformuló el objetivo el 3-sep: **bajar de peso para reducir cintura** (*"me queda todo
+> chico de cintura"*). Y compró una balanza — habrá peso diario por primera vez desde el 27-may,
+> **98 días de hueco**. Esta sección sustituye el enfoque de contar calorías.
+
+### Por qué no se cuentan calorías
+
+El registro de nutrición tiene **11 entradas en total y ninguna desde el 28-may**. Se abandonó dos
+veces. Un plan que depende de registrar comida ya falló aquí, así que el instrumento pasa a ser la
+báscula: mide el resultado en lugar de la entrada, y no requiere adherencia diaria a una app.
+
+**El coste honesto:** el ajuste llega con 2 semanas de retraso en lugar de ser inmediato, y no se
+detecta el fin de semana que borra el déficit de la semana. Se acepta a cambio de que exista.
+
+### Protocolo de pesaje
+
+Diario, **al levantarte, en ayunas, después de orinar, antes de beber**, misma balanza, misma ropa.
+El número de un día **no significa nada** — oscila ±1 kg por agua, sodio y glucógeno. Solo cuenta la
+**media móvil de 7 días**.
+
+### Regla de ajuste — cada 2 semanas, sobre la pendiente de la media de 7 días
+
+| Pendiente medida | Acción |
+|---|---|
+| > −0,30 kg/sem | **−200 kcal/día** |
+| −0,30 a −0,70 kg/sem | **no tocar nada** — está en banda |
+| < −0,70 kg/sem | **+150 kcal/día** — protege masa magra |
+
+**Objetivo: −0,45 kg/semana (0,52%).** De 87,1 a 81 kg son 6,1 kg → **~14 semanas**, llegada hacia la
+3ª semana de diciembre.
+
+**Anclaje:** los 7 primeros días completos (3 → 9-sep) fijan la línea base. **Primer ajuste posible:
+24-sep.** Antes de esa fecha no hay señal, solo ruido — y ajustar sobre ruido es la forma más rápida
+de romper el plan.
+
+### Punto de partida
+
+| | |
+|---|---|
+| Días de entreno | **2.700 kcal** |
+| Días de descanso | **2.400 kcal** |
+| Media semanal | ~2.570 kcal |
+| **Proteína** | **185 g/día — el único número que se cuenta a mano** |
+
+Disponibilidad energética: **37,1 kcal/kg de masa magra** en días de entreno y **33,0** en descanso.
+Las dos por encima del umbral de 30. ✅
+
+Es una **estimación de partida, no aritmética de precisión**: con un TDEE entre 2.720 y 3.110 según
+lo que se entrene de verdad, el déficit real cae entre ~150 y ~540 kcal. Por eso el número no se
+defiende con la fórmula, se corrige con la tendencia.
+
+### Proteína: por qué es lo único que se registra
+
+Es lo que separa perder grasa de perder músculo, y es exactamente lo que la báscula **no** puede
+vigilar: dos personas bajando 0,45 kg/semana con proteína distinta llegan a 81 kg con composiciones
+distintas. 185 g = 2,12 g/kg de peso y 2,54 g/kg de masa magra.
+
+### Cintura — la métrica que mide el objetivo real
+
+Semanal, **domingo por la mañana en ayunas**: de pie y relajado, cinta a la altura del ombligo, al
+final de una exhalación normal, ajustada sin comprimir. **Dos medidas, se promedia.**
+
+Ruido de ±0,5 cm → **solo los cambios a 2 semanas significan algo**. Referencia: ~1 cm por cada
+1-1,5 kg perdidos.
+
+Desde v11.47 **persiste en la app** con histórico y delta. Antes el campo existía y tiraba el dato.
+
+### Pasos — suelo de 8.000/día
+
+`stepsTarget` ya está en 8.000 en la app. La realidad de W35: media **5.256**, con 2 de 7 días por
+encima (159 · 954 · 997 · 1.367 · 13.055 — la misma semana). Pasar de ~5.300 a 8.000 son **~110
+kcal/día: entre un quinto y un cuarto del déficit completo**, sin dieta y sin entrenar.
+
+### Alcohol
+
+Los tres desplomes de recuperación del periodo — 30-jul (readiness 21 · RHR 63), 16-ago (23 · 64),
+21-ago (**1,0** · 63 · **3,03 h de sueño**) — ocurrieron **todos con ATL por debajo de 18**. No los
+causó el entrenamiento. En un objetivo de cintura el alcohol cuenta dos veces: calorías que no se
+registran y sueño que no se recupera. No se prohíbe nada; se registra el patrón porque explica la
+sesión mala del día siguiente.
+
+---
+
 ## ✅ RECALIBRADO con datos medidos — 2026-08-19
 
 Base: **87,1 kg · 14,3 kg de grasa (16,4%) · 72,8 kg de masa libre de grasa**, Tanita MC-780MA-N del

@@ -2,6 +2,84 @@
 
 > Key metrics over time. Updated after each check-in.
 
+## W34-W36 (analizado el 2026-09-03) — reorientación a cintura
+
+Las revisiones W34 y W35 nunca se generaron (el cron no corrió). Detalle en
+[`weekly-reviews/`](weekly-reviews/).
+
+### Fuerza — medida, todo en kg
+
+| Ejercicio | W33 | **Ahora** | Delta | RPE |
+|---|---|---|---|---|
+| Back Squat | 100 × 8 (15-ago) | **105 × 5** (3-sep) | mismo 1RM est. (~126) | 7,0 → 7,0 |
+| Bench Press | 90 × 8 (17-ago) | **95 × 8** (24-ago) | **+5 kg** | 7,0 → **7,9** ⚠️ |
+| RDL | 80 × 10 (15-ago) | **85 × 10** (3-sep) | **+5 kg** | 7,0 → 7,0 |
+| Barbell Row | 60 × 10 (17-ago) | 60 × 10 (24-ago) | 0 | 7,0 → **6,5** ✅ |
+| Chin-ups | BW × 8 (14-ago) | **BW +5 × 8** (26-ago) | **+5 kg** | 7,1 → 7,0 |
+| OHP | 55 × 8 (14-ago) | **50 × 8** (26-ago) | **−5 kg** ⚠️ | 6,9 → 7,0 |
+| Seated Leg Curl | — | 60 × 12 (3-sep) | — | 7,0 |
+| **Sumo Deadlift** | — | — | **126 días sin entrenar** | — |
+
+**El RPE 7,9 de la banca y el retroceso del OHP no son de carga, son de frecuencia:** 5 sesiones con
+press del 17 al 26-ago, ~19 series de pecho/semana frente a las 10 prescritas.
+
+### Adherencia — subiendo
+
+| Semana | Sesiones | Nota |
+|---|---|---|
+| W34 | **4** | Todas upper. Peor semana de recuperación del año |
+| W35 | 2 | Sueño ya recuperado a 8,01 h |
+| W36 | 1 (a jueves) | **Lower A completa: 8 de 8 ejercicios** |
+
+**3,0 sesiones/semana en las tres últimas frente a 1,6/semana en las diez anteriores.**
+
+⚠️ **Sesgo estructural: 18 upper contra 10 lower en 29 sesiones.** Cinco upper seguidos entre el
+15-ago y el 3-sep, con cero pierna.
+
+### Recuperación
+
+| | W34 | W35 | W36 (4 d) |
+|---|---|---|---|
+| Readiness | **47,0** | 68,0 | **88,8** |
+| HRV | 52,6 | 57,7 | **70,5** |
+| Frecuencia en reposo | **54,1** | 46,1 | **44,3** |
+| Sueño | **6,13 h** | 8,01 h | 7,68 h |
+| Pasos/día | 6.758 | 5.256 | 4.723 |
+| CTL máx | 6,3 | 5,9 | 5,3 |
+
+**Tres desplomes agudos, todos con ATL <18** (no los causó el entrenamiento): 30-jul (readiness 21 ·
+RHR 63 · 5,10 h), 16-ago (23 · 64 · 6,27 h), **21-ago (1,0 · 63 · 3,03 h)**. El del 21 se cobró el
+OHP del día siguiente: 3 de 4 series y RPE de 6,9 a 7,7.
+
+**El 1-sep marcó frecuencia en reposo 42 — el valor más bajo de todo el dataset.** ATL 4,9 con
+CTL 4,9 y ramp negativo: no hay fatiga, hay desentrenamiento.
+
+### Composición y objetivo
+
+| | |
+|---|---|
+| Peso | **87,1 kg** (Tanita 11-ago) · sin pesaje desde el 27-may (98 días) |
+| Grasa | 14,3 kg · 16,4% · **8,3 kg en torso (58%)** |
+| Masa libre de grasa | 72,8 kg |
+| Grasa visceral | 5 (riesgo desde 12) |
+| **Objetivo** | **81 kg**, −0,45 kg/sem → ~14 semanas |
+| Cintura | **sin medición** — primera prevista el dom 6-sep |
+
+Balanza nueva en configuración: la línea base son los 7 primeros días (3 → 9-sep) y **el primer
+ajuste de calorías posible es el 24-sep**.
+
+### Cardio — peor de lo que parece
+
+| | |
+|---|---|
+| Carreras W34-W36 | 0,98 km (18-ago) · 1,92 km (26-ago) |
+| Z2 real | **0 de las 4 últimas** |
+| La del 26-ago | 1,92 km · HR 152 · **425 de 735 s en zona 4** |
+| No-carrera | 1 remo (18-ago, 4,19 km) · 1 bici (24-ago, 15 min) |
+| Movilidad | **0** — siguen siendo 2 en todo el historial, ambas del 27-abr |
+
+---
+
 ## Backfill W19-W33 (analizado el 2026-08-19)
 
 15 semanas sin revisar, reconstruidas con datos reales de Supabase. Detalle por semana en

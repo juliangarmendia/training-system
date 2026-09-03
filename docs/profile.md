@@ -1,6 +1,7 @@
 # User Profile
 
-> Last updated: **2026-08-18** — composición corporal medida con Tanita MC-780MA-N.
+> Last updated: **2026-09-03** — fuerza actual medida y frecuencia recalculada tras la sesión
+> del 3-sep. Composición corporal: Tanita MC-780MA-N del 11-ago.
 > Antes de esta fecha los datos de composición llevaban ~3,5 meses caducados.
 
 ## Basic info
@@ -40,8 +41,8 @@
 - **Years training consistently:** At least ~9+ months documented with a trainer. Training has been on-and-off — consistency in showing up but not in frequency
 - **Primary style:** Gym (compound lifts + CrossFit-influenced conditioning). Some running
 - **Current status:** entrenando de forma intermitente. El plan IDEAL es el default desde el 2026-06-30 (v11.28)
-- **Current frequency:** **~1,2 sesiones de fuerza/semana medidas** (11 sesiones entre el 20-jun y el 17-ago). El plan prescribe 4. **Adherencia ~30%** — es el dato dominante del perfil, ver abajo
-- **Current running volume:** ~1 carrera cada 2-4 semanas; 13 carreras registradas en total, última 2026-08-16 (5,06 km / 35 min)
+- **Current frequency (actualizado 2026-09-03):** **3,0 sesiones/semana en las tres últimas** (W34 = 4, W35 = 2, W36 = 3 previstas con 1 hecha) frente a **1,6/semana en las diez anteriores** (16 sesiones del 20-jun al 26-ago). **La adherencia está subiendo**, y el ~30% que decía esta línea ya no describe el estado actual — aunque sigue siendo la palanca grande
+- **Current running volume:** 15 carreras registradas, última 2026-08-26. ⚠️ **Las tres últimas fueron 5,06 / 0,98 / 1,92 km** — dos de ellas por debajo de 2 km, y la del 26-ago con 425 de 735 segundos en **zona 4**. **Z2 real: 0 de las 4 últimas.** CTL 4,9: base aeróbica prácticamente inexistente. Cardio no-carrera: 2 remos y 1 bici en todo el registro
 
 > ### ⚠️ El dato que domina todo lo demás: adherencia ~30%
 >
@@ -95,7 +96,52 @@
 
 **Recovery / club:** stretching area, foam rollers, bands, **pool, sauna, steam room**, recovery area.
 
-## Current strength (recent working weights — source: Last Year Weights.txt, ~2025)
+## Fuerza actual medida (2026-09-03)
+
+Cargas reales del registro, no estimaciones. Todo en kg.
+
+| Ejercicio | Carga × reps @RPE | Fecha | Siguiente paso |
+|---|---|---|---|
+| **Back Squat** | **105 × 5 @7,0** × 4 series | 3-sep | 105 × 6 — no subir peso |
+| **Bench Press** | **95 × 8 @7,5** (bajó a 90 a mitad) | 24-ago | Mantener 95 |
+| **RDL** | **85 × 10 @7,0** × 2 | 3-sep | 85 × 3 series |
+| **Barbell Row** | **60 × 10 @6,5** × 4 | 24-ago | 62,5 |
+| **OHP** | 55 × 8 @6,9 (14-ago) → **50 × 8 @7,0** | 26-ago | Recuperar 55 |
+| **Chin-ups** | **BW +5 × 8 @7,0** × 4 | 26-ago | BW +7,5 |
+| Seated Leg Curl | 60 × 12 @7,0 × 3 | 3-sep | 65 |
+| Hack Squat | 50 × 10 @7,0 | 3-sep | 50 × 12 |
+| Incline DB Press | 30 × 12 @7,0 /mano | 24-ago | 32/mano |
+| Lat Pulldown | 70 × 10 @7,0 | 24-ago | 70 × 12 |
+| Pec Deck | 90 × 10 @7,0 | 26-ago | Mantener |
+| Cable Row | 73 × 12 @7,0 | 26-ago | Mantener |
+| **Sumo Deadlift** | **111 × 6 @7,0** | **2-may** | ⚠️ **126 días sin entrenar** → reentrada con trap bar a 100 |
+
+> ### La sesión del 3-sep marca un cambio de patrón
+>
+> **74:21, 8 de 8 ejercicios, cero series saltadas.** Primera sesión de pierna completa del año y
+> primera pliometría ejecutada (pogos 2×20, box jumps 3×5).
+>
+> Invalida la hipótesis de que el plan fuera demasiado largo: las sesiones de 42 min del 3 y 15-ago
+> con 4 de 6 ejercicios saltados eran **falta de tiempo**, no exceso de plan. Con 74 minutos hace las
+> ocho. Un recorte de Lower A y Upper A se propuso, se aprobó y se **retiró** por este dato.
+>
+> Nota sobre la sentadilla: 105 × 5 @7,0 y 100 × 8 @7,0 dan el **mismo 1RM estimado (~126 kg)**. No es
+> un récord, es la misma fuerza expresada distinto.
+
+> ### ⚠️ El sesgo que domina el historial: 18 upper contra 10 lower
+>
+> De las 29 sesiones registradas (7-abr → 3-sep): `upperA` 11, `upperB` 7, `lowerA` 8, `lowerB` **2**,
+> híbrido 1.
+>
+> Entre el 15-ago y el 3-sep hubo **cinco sesiones de upper seguidas y cero de pierna**. En esos diez
+> días: **~19 series de pecho y ~24 de espalda por semana** (el plan prescribe 10 y 14) y **0 de
+> pierna**. Eso —no la carga— explica la banca a 95 × 7 @8,0 bajando a 90 y el OHP retrocediendo de
+> 55 a 50: **5 sesiones con press en 10 días.**
+>
+> `lowerB` (bisagra / peso muerto) sigue siendo el hueco grande: **2 sesiones en todo el registro**,
+> ambas en abril-mayo.
+
+## Fuerza histórica (source: Last Year Weights.txt, ~2025) — superada por la tabla de arriba
 
 | Exercise | Weight (kg) | Reps | RPE (est.) |
 |----------|-------------|------|------------|
