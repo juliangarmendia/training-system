@@ -3,6 +3,21 @@
 // ============================================================
 
 // ==================== TRAINING PLAN DATA ====================
+// v11.48 — UNA sola prescripcion de aproximacion.
+// Cada sesion traia una linea fija tipo 'Squat: bar x 10, 50% x 6, 70% x 4, 85% x 2' mientras
+// renderWorkout() YA calcula la rampa sola (bar -> 40% -> 60% -> 80%) con kg reales y desglose
+// de discos, leyendo la serie top de la ultima vez que se hizo ESA sesion. Se veian las dos a la
+// vez y decian cosas distintas. La automatica es estrictamente mejor, asi que la fija se retira.
+//
+// Esta nota no lleva numeros a proposito: no puede contradecir a la automatica, y cubre el caso
+// en que la automatica NO aparece — `previous` es el ultimo workout de esta misma sesion, asi que
+// fullA/fullB (nunca registradas) no tienen rampa y sin esto se quedarian sin ninguna guia.
+//
+// Retirada aparte: la linea de lowerB pedia 85% x 1. Un single pesado calentando, con dos
+// contracturas lumbares en el historial, es la prescripcion equivocada. La automatica topa en 80% x 2.
+const RAMP_NOTE = 'Aproximacion al primer compuesto: la app la calcula abajo con kg y discos reales. '
+  + 'Si no aparece (primera vez con esta sesion), sube en 3-4 series hasta ~80% del peso de trabajo.';
+
 const PLAN = {
   sessions: {
     upperA: {
@@ -10,10 +25,13 @@ const PLAN = {
       warmup: [
         '5 min treadmill walk or light bike',
         'Band pull-aparts — 2 × 15 (scapular activation)',
+        // v11.48: los pull-aparts cubren retraccion escapular, NO rotacion del manguito, y
+        // detras vienen 4 series de banca a RPE 7-8. Son 60 segundos.
+        'Rotacion externa con banda — 2 × 12/lado (manguito, antes de la banca pesada)',
         'Arm circles forward/back — 1 × 10 each direction',
         'Cat-cow — 1 × 8',
         'Thoracic rotations — 2 × 8/side (T-spine prep)',
-        'Bench press: bar × 10, 50% × 6, 70% × 4, 85% × 2',
+        RAMP_NOTE,
       ],
       exercises: [
         { id: 'bench-press', name: 'Barbell Bench Press', muscle: 'Chest', sets: 4, reps: '5-8', rpe: '7-8', defaultRest: 150, notes: 'Main press. Full ROM, control the eccentric.', compound: true },
@@ -35,9 +53,16 @@ const PLAN = {
         'Leg swings front/back — 2 × 10/side',
         'Leg swings lateral — 1 × 10/side',
         'Hip circles — 1 × 10/side',
+        // v11.48: no habia NADA de dorsiflexion antes de sentadilla profunda.
+        'Tobillo contra la pared — 2 × 10/lado (dorsiflexion antes de la sentadilla)',
         'Bodyweight squats — 1 × 10',
         'Glute bridges — 2 × 10 (glute activation pre-squat)',
-        'Squat: bar × 10, 50% × 6, 70% × 4, 85% × 2',
+        // v11.48: los pogos LLEGAN de `exercises`. Su proposito declarado siempre fue "prepara el
+        // tendon para el salto al cajon" — es preparacion, no entrenamiento: baja amplitud, sin
+        // variable de progresion, y la columna de carga que tenian no significaba nada.
+        // El box jump SI se queda como ejercicio (ATH-002: potencia fresca y con intencion maxima).
+        'Pogo hops — 2 × 20 (solo tobillo, rodilla casi recta, contacto corto y rigido; prepara el tendon para el box jump)',
+        RAMP_NOTE,
       ],
       exercises: [
         // PLIOMETRÍA (v11.42) — al principio, en fresco, antes de cargar nada.
@@ -51,8 +76,17 @@ const PLAN = {
         // base, no de golpe). INT-004: la potencia va en fresco y nunca después de aeróbico.
         // Los pogos primero porque son de baja amplitud y bajo riesgo: preparan el tendón para el
         // salto al cajón. Del cajón se BAJA caminando — la caída es donde está la lesión.
-        { id: 'pogo-hops', name: 'Pogo Hops', muscle: 'Quads', sets: 2, reps: '20', rpe: '-', defaultRest: 60, notes: 'Saltitos en el sitio, sólo tobillo, rodilla casi recta. Contacto corto y rígido, como un muelle. Baja amplitud: prepara el tendón.', bw: true },
-        { id: 'box-jump', name: 'Box Jump', muscle: 'Quads', sets: 3, reps: '5', rpe: '-', defaultRest: 90, notes: 'Cajón medio (~40-50 cm). Salta con intención máxima y **BAJA CAMINANDO**, nunca saltando: la caída es donde se lesiona. Si la técnica se ensucia, para la serie.', bw: true },
+        // v11.48: `pogo-hops` se ha ido al calentamiento (sigue en la libreria y en
+        // MOVEMENT_PATTERNS: el registro del 3-sep lo referencia y el historico tiene que
+        // seguir resolviendose). El box jump se queda porque ATH-002 pide la potencia fresca y
+        // con intencion maxima — eso es trabajo, no preparacion.
+        //
+        // Y pierde `bw: true`. Esa flag significa "peso corporal MAS lastre opcional", correcto
+        // en dominadas o fondos; en un salto no existe la dimension de carga y la columna salia
+        // como "+kg" con placeholder 0 (el 3-sep quedo registrado como 0x5@6, donde el 0 es
+        // ruido). Ahora esa columna mide la ALTURA DEL CAJON en cm, que es su variable de
+        // progresion real. Ver `_MEASURE_EXERCISES`.
+        { id: 'box-jump', name: 'Box Jump', muscle: 'Quads', sets: 3, reps: '5', rpe: '-', defaultRest: 90, notes: 'Apunta la ALTURA del cajon en cm en la columna de carga. Salta con intención máxima y **BAJA CAMINANDO**, nunca saltando: la caída es donde se lesiona. Si la técnica se ensucia, para la serie.' },
         { id: 'back-squat', name: 'Barbell Back Squat', muscle: 'Quads', sets: 4, reps: '5-8', rpe: '7-8', defaultRest: 180, notes: 'Priority #1. Use rack safeties.', compound: true },
         { id: 'rdl', name: 'Barbell RDL', muscle: 'Hamstrings', sets: 3, reps: '8-10', rpe: '7', defaultRest: 150, notes: '3 sec eccentric. Stop at mid-shin.' },
         { id: 'hack-squat', name: 'Hack Squat', muscle: 'Quads', sets: 3, reps: '10-12', rpe: '7-8', defaultRest: 120, notes: 'Quad volume, no spinal load. Controlled depth.' },
@@ -71,9 +105,16 @@ const PLAN = {
       warmup: [
         '5 min treadmill walk or light bike',
         'Band pull-aparts — 2 × 15 (scapular activation)',
-        'Arm circles forward/back — 1 × 10 each direction',
+        // v11.48 — EL HUECO MAS GRAVE de los 9 calentamientos. El OHP es lift principal a
+        // 4 × 5-8 @RPE 7-8 y no habia NADA de posicion overhead: ni wall slides, ni dislocates,
+        // ni alcance. Es el movimiento con mas demanda de movilidad de la sesion y entraba en frio.
+        // Los arm circles salen: los dislocates cubren lo mismo y mas.
+        'Wall slides — 2 × 10 (posicion overhead antes del OHP)',
+        'Dislocates con banda — 2 × 10 (movilidad de hombro en overhead)',
         'Thoracic rotations — 2 × 8/side',
         'Scapular pull-ups — 2 × 8 (lat activation pre-chinup)',
+        // Se MANTIENE: la rampa automatica salta las dominadas, porque su carga es lastre y cae
+        // en el filtro `topWeight <= bar`. Sin esta linea no tendrian aproximacion ninguna.
         'Chin-up: BW × 3-5 easy, or lat pulldown light × 10',
       ],
       // v11.47 — RECORTE, 7 → 5. Los tres ultimos ejercicios salian `done=false` en LAS TRES
@@ -106,11 +147,16 @@ const PLAN = {
       warmup: [
         '5 min treadmill walk or light bike',
         'Leg swings front/back — 2 × 10/side',
+        // v11.48: era el unico dia de pierna sin swings laterales, que si tiene lowerA.
+        'Leg swings lateral — 1 × 10/side',
         'Hip circles — 1 × 10/side',
         'Cat-cow — 1 × 8',
+        // v11.48: habia cat-cow (movilidad) pero CERO anti-extension ni bracing antes de la
+        // bisagra pesada, con dos contracturas lumbares en el historial.
+        'Dead bug — 2 × 8/lado (anti-extension y bracing antes de la bisagra pesada)',
         'Glute bridges — 2 × 10 (glute activation pre-hinge)',
         'Good mornings (bodyweight) — 2 × 8 (hinge pattern prep)',
-        'Deadlift: bar × 8, 50% × 5, 70% × 3, 85% × 1',
+        RAMP_NOTE,
       ],
       exercises: [
         { id: 'sumo-dl', name: 'Sumo Deadlift', muscle: 'Posterior', sets: 4, reps: '3-6', rpe: '7-8', defaultRest: 210, notes: 'Reset each rep from floor. First working set gates load (lumbar history).', compound: true },
@@ -132,7 +178,7 @@ const PLAN = {
         'Leg swings front/back — 2 × 10/side',
         'Band pull-aparts — 2 × 15',
         'Bodyweight squats — 1 × 10',
-        'Squat: bar × 10, 50% × 6, 70% × 4, 85% × 2',
+        RAMP_NOTE,
       ],
       exercises: [
         { id: 'back-squat', name: 'Barbell Back Squat', muscle: 'Quads', sets: 4, reps: '5-8', rpe: '7-8', defaultRest: 180, notes: 'Objetivo ~97.5 kg. Prioridad #1, usa safeties. Rampa lumbar conservadora.', compound: true },
@@ -157,8 +203,10 @@ const PLAN = {
         '5 min treadmill walk or light bike',
         'Hip circles — 1 × 10/side',
         'Glute bridges — 2 × 10',
+        // v11.48: fullB tambien tiene OHP como lift principal, mismo hueco que upperB.
+        'Wall slides — 2 × 10 (posicion overhead antes del OHP)',
         'Scapular pull-ups — 2 × 8',
-        'Deadlift: bar × 8, 50% × 5, 70% × 3, 85% × 1',
+        RAMP_NOTE,
       ],
       exercises: [
         { id: 'sumo-dl', name: 'Sumo Deadlift', muscle: 'Posterior', sets: 3, reps: '3-6', rpe: '7-8', defaultRest: 210, notes: 'Objetivo ~110 kg. Reset cada rep. Primer set decide: si sale ≥RPE 8, no subir. Historial lumbar.', compound: true },
@@ -376,7 +424,27 @@ function loggedUnit(w) {
 // workouts without it, falls back to the plan definition by id. `unit` is the
 // owning workout's unit — weights are converted to the display unit so volume
 // across mixed lb/kg sessions sums consistently.
+// v11.48 — Ejercicios cuya columna de carga es una MEDIDA, no un peso.
+//
+// `box-jump` llevaba `bw: true`, que significa "peso corporal MAS lastre opcional" (correcto en
+// dominadas o fondos). En un salto no existe la dimension de carga: la columna salia como "+kg"
+// con placeholder 0 y el 3-sep quedo registrado como 0x5@6, donde el 0 no significa nada.
+// Julian lo detecto entrenando. Ahora esa columna mide la ALTURA DEL CAJON, que es la variable
+// de progresion real del ejercicio.
+//
+// Consecuencia que hay que blindar: un numero en esa columna NO es kg. Sin esto, 50 cm x 5 reps
+// x 3 series inyectarian 750 kg de tonelaje inventado en el grafico de volumen, y el "Est. 1RM"
+// se calcularia sobre centimetros.
+//
+// Mismo patron que `_DB_EXERCISE_IDS`: un mapa de ids, porque el store `exercises` no persiste
+// campos arbitrarios (solo id, name, muscle, movementPattern, bw, defaultNotes, custom).
+const _MEASURE_EXERCISES = { 'box-jump': 'cm' };
+function measureUnitFor(exId) { return _MEASURE_EXERCISES[exId] || null; }
+
 function volumeForExercise(ex, unit) {
+  // Una medida no es carga: no aporta tonelaje. Aqui dentro y no en cada consumidor, porque
+  // volumeForExercise se llama desde 7 sitios distintos.
+  if (measureUnitFor(ex.exerciseId)) return 0;
   const planEx = activePlan && activePlan.sessions
     ? Object.values(activePlan.sessions).flatMap(s => s.exercises).find(e => e.id === ex.exerciseId)
     : null;
@@ -783,7 +851,11 @@ const MOVEMENT_PATTERNS = {
   'inverted-row': 'horizontal-pull', 'band-row': 'horizontal-pull',
   'pike-pushup': 'vertical-press',
   'sl-rdl': 'hinge', 'sl-glute-bridge': 'glute', 'split-squat': 'single-leg',
-  // Pliometría (v11.42): patrón propio para poder auditar el volumen de contactos.
+  // Pliometría (v11.42): patrón propio, para no contarla como volumen de pierna.
+  // Corregido en v11.48: esto decía "para poder auditar el volumen de contactos", y NADA audita
+  // contactos — 'plyometric' sólo se consume en los defaults de reps/RPE de ejercicios nuevos y,
+  // desde v11.48, en renderMuscleVolume para mandar los saltos a la fila 'Power'. Además los 40
+  // contactos de los pogos ya no están aquí: se fueron al calentamiento de lowerA.
   'pogo-hops': 'plyometric', 'box-jump': 'plyometric', 'broad-jump': 'plyometric',
   // Acondicionamiento híbrido: concéntrico dominante, bajo DOMS, baja skill.
   'sled-push': 'conditioning', 'sled-drag': 'conditioning',
@@ -1102,7 +1174,7 @@ async function applyReentryPlan() {
 
 // ==================== DATABASE ====================
 const DB_NAME = 'TrainingApp';
-const DB_VERSION = 10;
+const DB_VERSION = 11;
 let db = null;
 
 function openDB() {
@@ -1135,6 +1207,16 @@ function openDB() {
       // Legacy stores stay untouched; reads merge via toSession(). Not yet written to
       // until T2 (logging) — and sync wiring for it is deferred to T2.
       if (!d.objectStoreNames.contains('sessions')) d.createObjectStore('sessions', { keyPath: 'id' });
+      // Nutricion v2 — DB v11 (v11.48). `foods` es la biblioteca canonica de alimentos
+      // con macros por 100 g; `meals` es una fila por comida registrada con sus items en
+      // gramos. El store `nutrition` NO se sustituye: pasa a ser el agregado derivado por
+      // dia (recomputeNutritionDay), asi los consumidores que ya leen .protein/.calories
+      // siguen funcionando sin cambios.
+      if (!d.objectStoreNames.contains('foods')) d.createObjectStore('foods', { keyPath: 'id' });
+      if (!d.objectStoreNames.contains('meals')) {
+        const st = d.createObjectStore('meals', { keyPath: 'id' });
+        st.createIndex('date', 'date', { unique: false });
+      }
     };
     req.onsuccess = (e) => { db = e.target.result; resolve(db); };
     req.onerror = (e) => reject(e);
@@ -2366,7 +2448,8 @@ async function openEditWorkout(id) {
     // Est 1RM from all history — convert each session's weight from its own unit
     // to the display unit before estimating, so lb and kg sessions compare cleanly.
     let best1RM = 0;
-    allSessionWorkouts.concat([w]).forEach(wk => {
+    // Un 1RM estimado sobre centimetros de cajon no significa nada (v11.48).
+    if (!measureUnitFor(ex.exerciseId)) allSessionWorkouts.concat([w]).forEach(wk => {
       const wex = wk.exercises.find(e => e.exerciseId === ex.exerciseId);
       if (wex) wex.sets.filter(s => s.done && s.weight > 0 && s.reps > 0).forEach(s => {
         const e1rm = estimate1RM(convertWeight(s.weight, wk.unit, appUnit), s.reps);
@@ -2408,7 +2491,7 @@ async function openEditWorkout(id) {
         ${targetHTML}
         ${prevHeaderHTML}
         ${e1rmHTML}
-        <div class="ew-set-head"><span></span><span>${planEx && planEx.bw ? '+' + unit : (planEx && planEx.db ? unit + '/DB' : unit)}</span><span>Reps</span><span>RPE</span><span>Done</span></div>
+        <div class="ew-set-head"><span></span><span>${measureUnitFor(ex.exerciseId) || (planEx && planEx.bw ? '+' + unit : (planEx && planEx.db ? unit + '/DB' : unit))}</span><span>Reps</span><span>RPE</span><span>Done</span></div>
         ${rows}
         ${notesHTML}
       </div>
@@ -3667,7 +3750,8 @@ function buildExerciseCard(ex, exIdx, previous, restSettings, exerciseNotes, del
 
   // Calculate est. 1RM from all history for this exercise
   let best1RM = 0;
-  allWorkouts.forEach(w => {
+  // Un 1RM estimado sobre centimetros de cajon no significa nada (v11.48).
+  if (!measureUnitFor(ex.id)) allWorkouts.forEach(w => {
     const wex = w.exercises.find(e => e.exerciseId === ex.id);
     if (wex) {
       wex.sets.filter(s => s.done && s.weight > 0 && s.reps > 0).forEach(s => {
@@ -3733,7 +3817,7 @@ function buildExerciseCard(ex, exIdx, previous, restSettings, exerciseNotes, del
         <div class="set-table">
           <div class="set-table-header">
             <div>Set</div>
-            <div>${ex.bw ? '+' + state.settings.unit : (ex.db ? state.settings.unit + '/DB' : state.settings.unit)}</div>
+            <div>${measureUnitFor(ex.id) || (ex.bw ? '+' + state.settings.unit : (ex.db ? state.settings.unit + '/DB' : state.settings.unit))}</div>
             <div>Reps</div>
             <div>RPE</div>
             <div></div>
@@ -8167,7 +8251,9 @@ function buildWeekTemplateFromIdeal(variantNum) {
 // 6 = v11.45 (nombres de ejercicio a inglés: la tarjeta de la sesión lee `ex.name` del plan, así
 //     que sin este bump seguiría diciendo "Dominadas" mientras el historial dice "Pull-ups").
 // 7 = v11.47 (Upper B de 7 a 5 ejercicios, con el core al principio).
-const PLAN_REV = 7;
+// 8 = v11.48 (calentamientos: fuera las rampas fijas de %, prep de overhead en upperB/fullB,
+//     bracing en lowerB, tobillo en lowerA; los pogo hops pasan de ejercicio a calentamiento).
+const PLAN_REV = 8;
 
 async function applyIdealPlan({ force = false } = {}) {
   const n = _idealVariant();
@@ -10503,6 +10589,15 @@ async function renderMuscleVolume() {
         }
       }
       if (!muscle) muscle = 'Other';
+      // v11.48 — `pogo-hops` y `box-jump` estan como muscle: 'Quads', asi que sus series se
+      // contaban como volumen de cuadriceps: el 3-sep el mapa de calor marco 12 series de
+      // cuadriceps cuando eran 7 (4 sentadilla + 3 hack + 2 pogos + 3 saltos), un +71%. Con las
+      // decisiones de volumen tomadas sobre ese numero, era un dato corrupto.
+      //
+      // Se reetiqueta AQUI y no en el PLAN: el campo `muscle` alimenta `data-swap-muscle`, y
+      // 'Power' no es una clave de EXERCISE_ALTERNATIVES, asi que cambiarlo alli dejaria el
+      // boton de swap sin alternativas. Los contactos siguen visibles en su propia fila.
+      if (MOVEMENT_PATTERNS[ex.exerciseId] === 'plyometric') muscle = 'Power';
 
       const doneSets = ex.sets.filter(s => s.done).length;
       if (!muscleDay[muscle]) muscleDay[muscle] = {};
@@ -10925,6 +11020,10 @@ function bindEvents() {
       const cols = header.children;
       if (cols[1]) {
         const ex = header.closest('.exercise-card');
+        // v11.48: si la columna es una medida (cm de cajon), el toggle kg/lb no la toca —
+        // convertirla haria de 50 cm 110.
+        const measured = ex && ex.dataset && measureUnitFor(ex.dataset.exerciseId);
+        if (measured) { cols[1].textContent = measured; return; }
         const isBw = ex && ex.querySelector('.set-input[data-field="weight"]')?.placeholder === '0';
         cols[1].textContent = isBw ? '+' + newUnit : newUnit;
       }

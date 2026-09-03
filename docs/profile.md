@@ -127,6 +127,11 @@ Cargas reales del registro, no estimaciones. Todo en kg.
 >
 > Nota sobre la sentadilla: 105 × 5 @7,0 y 100 × 8 @7,0 dan el **mismo 1RM estimado (~126 kg)**. No es
 > un récord, es la misma fuerza expresada distinto.
+>
+> Corregido el 2026-09-04: **la app mostraba 12 series de cuádriceps esa sesión y eran 7.** Pogo hops
+> y box jump estaban como `muscle: 'Quads'`, así que sus 5 series de saltos se contaban como volumen
+> de pierna (+71%). Desde v11.48 se agregan en su propia fila `Power`, los pogos pasaron al
+> calentamiento y el box jump mide la altura del cajón en cm en vez de un peso que no existía.
 
 > ### ⚠️ El sesgo que domina el historial: 18 upper contra 10 lower
 >

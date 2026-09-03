@@ -547,6 +547,7 @@ This data feeds into weekly check-ins and progress tracking.
 
 | Date | Change | Reason |
 |------|--------|--------|
+| 2026-09-04 | v7.1 — Calentamientos auditados + pliometria fuera del registro de carga (v11.48) | Lo detecto Julian entrenando: el box jump tenia columna de peso. Pogo hops al calentamiento de Lower A (es preparacion: baja amplitud, sin progresion, y su proposito declarado era preparar el tendon para el salto). Box jump se queda como ejercicio (ATH-002: potencia fresca, intencion maxima) pero su columna mide la ALTURA del cajon en cm, excluida del tonelaje y del 1RM estimado — sin eso 50 cm x 5 x 3 metian 750 kg de tonelaje inventado. Los saltos dejan de contar como volumen de cuadriceps: la app marco 12 series el 3-sep cuando eran 7 (+71%). Retiradas las 6 lineas fijas de porcentajes de los calentamientos, que duplicaban y contradecian la rampa que la app ya calcula sola (fija 50/70/85 vs automatica 40/60/80 con kg y discos); la de Lower B pedia 85% x 1, un single pesado calentando con dos contracturas lumbares detras. Cuatro huecos tapados: prep de overhead en Upper B y Full B (el OHP entraba en frio, el hueco mas grave), dead bug en Lower B, tobillo en Lower A, rotacion externa en Upper A. |
 | 2026-09-03 | v7.0 — Reorientacion a perdida de grasa y cintura (W36-37) | Objetivo reformulado por Julian: bajar de peso para reducir cintura. La perdida de grasa pasa a cualidad dominante y la fuerza a mantenimiento; sin anadir volumen. Deficit ~500 kcal pilotado por la media movil de 7 dias de la balanza nueva (regla de ajuste en nutrition-notes.md), proteina 185 g, suelo de 8.000 pasos y cintura semanal. Upper B recortada de 7 a 5 ejercicios con el core al principio (sus 3 ultimos salian done=false en las TRES sesiones de agosto; el 26-ago el bloque final duro 17 segundos). Lower A y Upper A NO se recortan: recorte propuesto, aprobado y RETIRADO tras la sesion del 3-sep (74 min, 8 de 8 ejercicios, cero saltos) — el problema era el tiempo disponible, no el plan. La bisagra vuelve con TRAP BAR y no sumo (LOAD-003, 126 dias sin peso muerto del suelo, dos contracturas lumbares), el lunes 7 y no el sabado, por los 105x4 de sentadilla y 85x10 de RDL del 3-sep. Todas las cargas re-ancladas al ultimo dato registrado: el plan pedia hack squat 80 cuando el dato real era 50 (+60%), y pedia por debajo de lo real en pec deck, lat pulldown, incline DB, leg curl y dominadas. Banca se MANTIENE en 95: su RPE 7,9 era frecuencia (5 sesiones con press en 10 dias, ~19 series de pecho/sem frente a 10 prescritas), no carga. |
 | 2026-06-20 | v6.0 — Top-class redesign for David Lloyd Serrano | Moved to Spain → premium club. Upgraded accessory selection to its machines while keeping the 4-day U/L structure, the 5 anchors, rep/RPE schemes, eccentric tempo, and **identical per-session volume** (22/19/20/19 — no added volume in a deficit/re-entry). Block A swaps live in the app `PLAN`: Cable Fly→Pec Deck, Leg Press→Hack Squat, Leg Curl→Seated Leg Curl, Ab Wheel→Cable Crunch, Landmine Row→Chest-Supported Row, Cable Lateral→Lateral-Raise Machine, Hip Thrust→Glute-Drive machine, Lower-B leg curl→Lying. Block B rotation documented (incl. Trap-Bar DL as lumbar-friendly Lower-B anchor rotation, GHR, Hammer chest press, Pendlay, Stiff-Leg DL) — activates W29. Also: exercise library + movement patterns extended; profile equipment inventory replaced with the DL list. See "Program v6.0" section near the top. |
 | 2026-04-06 | v1.0 created | Initial assessment |
@@ -749,8 +750,34 @@ Vuelta a sumo en W39, retomando desde ~95.
 | Tríceps | 2 directas + ~11 indirectas | Pushdown 2 + banca/OHP/incline | 6-10 ✅ |
 | **Bíceps** | **0 directas** + ~14 indirectas | Dominadas 4 + Pulldown 3 + remos 7 | 6-10 ⚠️ ver abajo |
 
-**Total: 77 series** en 4 sesiones (+5 de pliometría), frente a 83 antes del recorte. **Las 6 series
-que desaparecen son exactamente las que no se estaban haciendo.** Ningún grupo sale de su banda.
+**Total: 77 series** en 4 sesiones frente a 83 antes del recorte. **Las 6 series que desaparecen son
+exactamente las que no se estaban haciendo.** Ningún grupo sale de su banda.
+
+> ### Pliometría (revisado el 2026-09-04) — separada de la carga y del volumen de pierna
+>
+> Julian, entrenando: *"no hace mucho sentido tener Box Jump con peso y repeticiones cuando es un
+> warm up"*. Tenía razón: los dos llevaban la flag `bw`, que significa "peso corporal **más lastre
+> opcional**" — correcta en dominadas, sin sentido en un salto. El 3-sep quedó registrado como
+> `0x5@6`, donde el 0 es ruido.
+>
+> **Los pogo hops pasan al calentamiento de Lower A.** Su propósito declarado siempre fue *"prepara
+> el tendón para el salto al cajón"*: es preparación, baja amplitud, sin variable de progresión.
+>
+> **El box jump se queda como ejercicio registrado**, porque **ATH-002** pide la potencia *fresca,
+> con poco volumen e intención máxima* — eso es trabajo, no calentamiento. Pero su columna de carga
+> pasa a medir la **altura del cajón en cm**, que es su variable de progresión real, y queda excluida
+> del tonelaje y del 1RM estimado (50 cm × 5 × 3 habrían inyectado **750 kg de tonelaje inventado**).
+>
+> **Y los saltos dejan de contar como volumen de cuádriceps.** `renderMuscleVolume` agregaba por el
+> campo `muscle`, donde pogos y saltos estaban como `Quads`: **el 3-sep la app marcó 12 series de
+> cuádriceps cuando eran 7** (4 sentadilla + 3 hack + 2 pogos + 3 saltos), un **+71%**. Ahora se
+> agregan en su propia fila `Power`. La tabla de arriba ya excluía los saltos a mano; desde v11.48 lo
+> hace también la app.
+>
+> **Coste asumido:** los 40 contactos de los pogos dejan de estar en el log, así que la dosis
+> registrada baja de 55 a 15 frente al rango 40-80 de **ATH-001**. Se acepta porque nada audita
+> contactos hoy y la línea del calentamiento deja la dosis escrita. Si se construye el auditor,
+> tendrá que leer también el calentamiento.
 
 > ⚠️ **El bíceps se queda sin trabajo directo.** Al salir `incline-curl` de Upper B, y como **Upper A
 > no tiene curl**, el bíceps pasa a depender del indirecto: 4 series de dominadas lastradas (BW+7,5),
@@ -762,6 +789,32 @@ que desaparecen son exactamente las que no se estaban haciendo.** Ningún grupo 
 > ⚠️ La tabla **"Weekly Volume Summary"** de más arriba en este documento está **caducada desde
 > v6.0** (junio): habla de Cable Fly, Landmine Row, Leg Press y Cable Lateral, que el rediseño para
 > David Lloyd ya sustituyó. La tabla de esta sección es la vigente.
+
+### Calentamientos — auditoría de los 9 (2026-09-04)
+
+Preguntó Julian: *"¿el warm up está correcto para cada uno de los días?"*. Auditados los nueve.
+
+**Lo que estaba mal en todos:** cada sesión traía una línea fija de aproximación
+(`'Squat: bar × 10, 50% × 6, 70% × 4, 85% × 2'`) mientras la app **ya calcula la rampa sola** en
+**bar → 40% → 60% → 80%**, con kg reales y desglose de discos, leyendo la serie top de la última vez
+que se hizo esa sesión. Se veían las dos a la vez y decían cosas distintas. Se retiran las 6 líneas
+fijas y queda una nota sin tabla, que además cubre el caso en que la automática **no** aparece:
+`fullA` y `fullB` nunca se han registrado, así que no tienen historial del que calcularla.
+
+**Y una retirada por seguridad:** la línea de Lower B pedía **`85% × 1`**. Un single pesado
+calentando, con dos contracturas lumbares en el historial y el peso muerto volviendo tras 126 días,
+es la prescripción equivocada. La automática topa en 80% × 2.
+
+| Sesión | Hueco encontrado | Añadido |
+|---|---|---|
+| **Upper B** y **Full B** | ⚠️ **El más grave.** El OHP es lift principal a 4 × 5-8 @RPE 7-8 y **no había nada de posición overhead** — el movimiento con más demanda de movilidad de la sesión entraba en frío | Wall slides 2 × 10 + dislocates con banda 2 × 10 (fuera los arm circles, redundantes) |
+| **Lower B** | Había cat-cow, que es movilidad, pero **cero anti-extensión ni bracing** antes de la bisagra pesada | Dead bug 2 × 8/lado + swings laterales (era el único día de pierna sin ellos) |
+| **Lower A** | Nada de dorsiflexión antes de sentadilla profunda | Tobillo contra la pared 2 × 10/lado |
+| **Upper A** | Los pull-aparts cubren retracción escapular, no rotación del manguito, y detrás vienen 4 series de banca a RPE 7-8 | Rotación externa con banda 2 × 12/lado |
+| Híbrido · Viaje A · Viaje B | ✅ **Sin cambios.** Su preparación ya es específica del patrón (trineo vacío 2 × 20 m, SkiErg suave) | — |
+
+**Se mantiene el primer de dominadas de Upper B**: la rampa automática las salta, porque su carga es
+lastre y cae por debajo del umbral de la barra. Sin esa línea no tendrían aproximación ninguna.
 
 ### Lo que explica el estancamiento de los press
 
