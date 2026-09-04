@@ -344,7 +344,7 @@ async function syncAll() {
 
   // Pull from cloud for each store. `mobility_sessions` was missing until v11.35: the
   // table exists and push worked, but it was never pulled back on another device.
-  const stores = ['workouts', 'runs', 'nutrition', 'settings', 'bodyweight', 'plans', 'exercises', 'steps', 'wellness', 'sessions', 'mobility_sessions'];
+  const stores = ['workouts', 'runs', 'nutrition', 'settings', 'bodyweight', 'plans', 'exercises', 'steps', 'wellness', 'sessions', 'mobility_sessions', 'foods', 'meals'];
   const lastSync = await dbGet('settings', 'lastSyncTimestamp');
   const since = lastSync ? lastSync.data : '1970-01-01T00:00:00Z';
 
@@ -409,6 +409,10 @@ window.supaSignOut = supaSignOut;
 window.syncAll = syncAll;
 window.getSupaUser = getUser;
 window.getSyncStatus = getSyncStatus;
+// Nutricion v2 necesita Storage (subir la foto) y functions.invoke (parsearla). El
+// cliente se expone por getter y no como valor: initSupabase() lo crea despues de que
+// este fichero se evalue, asi que capturar la referencia ahora daria null para siempre.
+window.getSupaClient = () => supabaseClient;
 window.drainSyncQueue = drainSyncQueue;
 Object.defineProperty(window, '__supabaseClient', { get: () => supabaseClient });
 
@@ -465,3 +469,40 @@ Object.defineProperty(window, '__supabaseClient', { get: () => supabaseClient })
 // );
 // alter table settings enable row level security;
 // create policy "Users see own settings" on settings for all using (auth.uid() = user_id);
+//
+// -- Foods table (Nutrición v2, v11.49) — biblioteca canónica de alimentos.
+// -- record_id = slug del alimento. data: {name, aliases[], kcal100, protein100,
+// -- carbs100, fat100, fiber100, nova, source, verified}
+// create table if not exists foods (
+//   id bigint generated always as identity primary key,
+//   user_id uuid references auth.users(id) on delete cascade not null,
+//   record_id text not null,
+//   data jsonb not null,
+//   updated_at timestamptz default now(),
+//   unique(user_id, record_id)
+// );
+// alter table foods enable row level security;
+// create policy "Users see own foods" on foods for all using (auth.uid() = user_id);
+// create index if not exists foods_user_updated_idx on foods (user_id, updated_at);
+//
+// -- Meals table (Nutrición v2, v11.49) — una fila por comida registrada.
+// -- record_id = timestamp ISO. data: {date, time, type, photoPath, source, items[]}
+// create table if not exists meals (
+//   id bigint generated always as identity primary key,
+//   user_id uuid references auth.users(id) on delete cascade not null,
+//   record_id text not null,
+//   data jsonb not null,
+//   updated_at timestamptz default now(),
+//   unique(user_id, record_id)
+// );
+// alter table meals enable row level security;
+// create policy "Users see own meals" on meals for all using (auth.uid() = user_id);
+// create index if not exists meals_user_updated_idx on meals (user_id, updated_at);
+//
+// -- Storage: bucket privado `meal-photos`, ruta <user_id>/<meal_id>.jpg
+// insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+// values ('meal-photos', 'meal-photos', false, 10485760,
+//         array['image/jpeg','image/png','image/webp','image/heic']);
+// create policy "Users manage own meal photos" on storage.objects for all
+//   using (bucket_id = 'meal-photos' and (storage.foldername(name))[1] = auth.uid()::text)
+//   with check (bucket_id = 'meal-photos' and (storage.foldername(name))[1] = auth.uid()::text);

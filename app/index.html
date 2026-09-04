@@ -109,6 +109,32 @@
   </div>
 
   <!-- Exercise History Modal -->
+  <!-- Confirmación de la comida detectada. La foto PROPONE; nada se guarda hasta que
+       el usuario acepta, porque un gramaje estimado que entra solo deja de ser una
+       estimación y pasa a ser un dato falso. -->
+  <div id="nut-confirm-modal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Revisa la comida</h3>
+        <button id="nut-confirm-close" class="modal-close-btn">&times;</button>
+      </div>
+      <div id="nut-confirm-notes" class="nut-ai-notes"></div>
+      <div id="nut-confirm-items" class="nut-items"></div>
+      <button id="nut-confirm-add" class="btn-secondary" style="margin-top:10px">+ Añadir alimento</button>
+      <div id="nut-confirm-totals" class="nut-confirm-totals"></div>
+      <div class="form-row" style="margin-top:12px">
+        <label>Comida</label>
+        <select id="nut-confirm-type" class="text-input sm">
+          <option value="desayuno">Desayuno</option>
+          <option value="comida">Comida</option>
+          <option value="cena">Cena</option>
+          <option value="snack">Snack</option>
+        </select>
+      </div>
+      <button id="nut-confirm-save" class="btn-primary btn-lg" style="margin-top:12px">Guardar comida</button>
+    </div>
+  </div>
+
   <div id="exercise-modal" class="modal hidden">
     <div class="modal-content">
       <div class="modal-header">
@@ -333,61 +359,47 @@
       </section>
 
       <!-- Nutrition -->
+      <!-- Nutrición v2 (v11.49): el registro entra por foto. El formulario de teclear
+           proteína a mano se retiró a propósito — dejar dos rutas de entrada compitiendo
+           es cómo se llegó a 11 filas en cuatro meses. -->
       <section id="view-nutrition" class="view">
         <div class="view-scroll">
           <div class="section-head">
             <div class="section-head-icon" style="background:var(--tint-green);color:var(--accent)">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8h1a4 4 0 010 8h-1"/><path d="M2 8h16v9a4 4 0 01-4 4H6a4 4 0 01-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>
             </div>
-            <span class="section-head-title" id="nutrition-date-label">Today</span>
+            <span class="section-head-title" id="nutrition-date-label">Hoy</span>
           </div>
-          <div class="card nutrition-card">
-            <div class="protein-ring-container">
-              <div class="macro-ring" id="protein-ring">
-                <svg viewBox="0 0 120 120"><circle cx="60" cy="60" r="52" class="ring-bg"/><circle cx="60" cy="60" r="52" class="ring-fill" id="protein-ring-fill"/></svg>
-                <div class="ring-label">
-                  <span id="protein-current" class="ring-value">0</span>
-                  <span class="ring-unit">of <span id="protein-target-display">170</span>g</span>
-                  <span class="ring-name">Protein</span>
-                </div>
-              </div>
-            </div>
-            <div class="section-label" style="margin-top:4px">Log a Meal</div>
-            <div class="meal-log-form">
-              <div class="meal-input-row">
-                <input type="text" id="meal-name" class="text-input sm" placeholder="What did you eat?" list="protein-suggestions">
-                <input type="number" id="meal-protein" class="text-input sm meal-protein-input" placeholder="g" inputmode="numeric">
-              </div>
-              <datalist id="protein-suggestions"></datalist>
-              <div class="quick-add quick-add-grid" id="quick-add" style="margin-top:8px">
-                <button data-meal="Protein Shake" data-g="30"><span class="qa-name">Shake</span><span class="qa-g">30g</span></button>
-                <button data-meal="Chicken Breast" data-g="40"><span class="qa-name">Chicken</span><span class="qa-g">40g</span></button>
-                <button data-meal="Steak (200g)" data-g="50"><span class="qa-name">Steak</span><span class="qa-g">50g</span></button>
-                <button data-meal="Eggs x3" data-g="18"><span class="qa-name">Eggs×3</span><span class="qa-g">18g</span></button>
-                <button data-meal="Greek Yogurt" data-g="15"><span class="qa-name">Yogurt</span><span class="qa-g">15g</span></button>
-                <button data-meal="Tuna Can" data-g="25"><span class="qa-name">Tuna</span><span class="qa-g">25g</span></button>
-                <button data-meal="Salmon Fillet" data-g="35"><span class="qa-name">Salmon</span><span class="qa-g">35g</span></button>
-                <button data-meal="Ground Beef" data-g="40"><span class="qa-name">Beef</span><span class="qa-g">40g</span></button>
-              </div>
-              <button id="btn-add-meal" class="btn-primary" style="margin-top:8px">Add Meal</button>
-            </div>
-            <div class="divider" style="margin:12px 0"></div>
-            <div class="section-label">Today's Meals</div>
-            <div id="meal-list" class="recent-list" style="max-height:200px;overflow-y:auto"></div>
-            <div class="divider" style="margin:12px 0"></div>
+
+          <!-- El contrato del día en cuatro números, como la cabecera de Caltrack -->
+          <div id="nut-contract" class="nut-contract"></div>
+
+          <!-- Captura. `capture="environment"` abre la cámara trasera directamente en iOS. -->
+          <button id="btn-nut-photo" class="btn-primary btn-lg nut-photo-btn">
+            <span class="nut-photo-ico">📷</span> Foto de la comida
+          </button>
+          <input type="file" id="nut-photo-input" accept="image/*" capture="environment" hidden>
+          <div id="nut-photo-status" class="nut-status hidden"></div>
+
+          <!-- Totales del día + disponibilidad energética -->
+          <div id="nut-today" class="card"></div>
+
+          <div class="section-label" style="margin-top:20px">Comidas de hoy</div>
+          <div id="nut-meals" class="recent-list"></div>
+
+          <!-- La energía se conserva del formulario anterior: el motor de fatiga la
+               consume (app.js, cálculo de fatiga). Quitarla sería una regresión. -->
+          <div class="card" style="margin-top:16px">
             <div class="checklist">
-              <div class="check-row"><label>Energy level</label><div id="nut-energy" class="stars compact"><button data-v="1">1</button><button data-v="2">2</button><button data-v="3" class="selected">3</button><button data-v="4">4</button><button data-v="5">5</button></div></div>
+              <div class="check-row">
+                <label>Nivel de energía</label>
+                <div id="nut-energy" class="stars compact"><button data-v="1">1</button><button data-v="2">2</button><button data-v="3" class="selected">3</button><button data-v="4">4</button><button data-v="5">5</button></div>
+              </div>
             </div>
-            <button class="expand-btn" id="nut-expand-btn">More details ▾</button>
-            <div class="expand-content hidden" id="nut-expand">
-              <div class="form-row"><label>Alcohol (drinks)</label><input type="number" id="nut-alcohol" step="1" min="0" value="0" inputmode="numeric"></div>
-              <div class="form-row"><label>Hunger (1=full, 5=starving)</label><div id="nut-hunger" class="stars"><button data-v="1">1</button><button data-v="2">2</button><button data-v="3" class="selected">3</button><button data-v="4">4</button><button data-v="5">5</button></div></div>
-              <div class="form-row"><label>Calories (optional)</label><input type="number" id="nut-calories" step="50" min="0" placeholder="2500" inputmode="numeric"></div>
-              <div class="form-row"><textarea id="nut-notes" class="input-notes" placeholder="Notes (optional)" rows="2"></textarea></div>
-            </div>
-            <button id="btn-log-nutrition" class="btn-primary btn-lg">Save Today</button>
+            <button id="btn-nut-energy" class="btn-secondary" style="margin-top:10px">Guardar energía</button>
           </div>
-          <div class="section-label" style="margin-top:24px">This Week</div>
+
+          <div class="section-label" style="margin-top:24px">Esta semana</div>
           <div id="nutrition-history" class="recent-list"></div>
         </div>
       </section>
@@ -645,8 +657,12 @@
             <div style="height:12px"></div>
             <div class="form-row inline"><label>Weight unit</label><div class="toggle-group"><button id="unit-kg" class="toggle-btn selected">kg</button><button id="unit-lb" class="toggle-btn">lb</button></div></div>
             <div style="height:12px"></div>
-            <div class="form-row"><label>Daily protein target (g)</label><input type="number" id="setting-protein-target" step="5" min="0" value="170" inputmode="numeric"></div>
-            <div class="form-row"><label>Daily calorie target</label><input type="number" id="setting-calorie-target" step="50" min="0" value="2500" inputmode="numeric"></div>
+            <div class="form-row"><label>Daily protein target (g)</label><input type="number" id="setting-protein-target" step="5" min="0" value="185" inputmode="numeric"></div>
+            <!-- Objetivos por tipo de dia (v11.49): plans/nutrition-notes.md cicla 2.700 kcal
+                 en dia de entreno y 2.400 en descanso. Un unico numero no podia representarlo,
+                 y `calorieTarget` ademas no estaba cableado a nada. -->
+            <div class="form-row"><label>Calorías · día de entreno</label><input type="number" id="setting-calorie-target-training" step="50" min="0" value="2700" inputmode="numeric"></div>
+            <div class="form-row"><label>Calorías · día de descanso</label><input type="number" id="setting-calorie-target-rest" step="50" min="0" value="2400" inputmode="numeric"></div>
             <div class="form-row"><label>Goal weight (kg)</label><input type="number" id="setting-goal-weight" step="0.5" min="20" max="300" placeholder="e.g. 78" inputmode="decimal"></div>
             <p class="muted" style="font-size:11px;margin-top:-6px">Used to project ETA and progress on the Body card.</p>
             <button id="btn-save-settings" class="btn-primary">Save Settings</button>
@@ -676,7 +692,7 @@
           </div>
           <div class="section-label" style="margin-top:24px">App</div>
           <div class="card">
-            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v11.48<br>Data stored locally + cloud sync.<br>Works offline.</p>
+            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v11.49<br>Data stored locally + cloud sync.<br>Works offline.</p>
             <button id="btn-force-update" class="btn-secondary btn-full" style="text-align:center">Force Update App</button>
           </div>
         </div>
@@ -735,6 +751,7 @@
   <script src="whoop.js"></script>
   <script src="strava.js"></script>
   <script src="bloodwork.js"></script>
+  <script src="nutrition.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

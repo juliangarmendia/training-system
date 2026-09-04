@@ -1,0 +1,20 @@
+
+[functions.whoop-auth]
+enabled = true
+verify_jwt = true
+import_map = "./functions/whoop-auth/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/whoop-auth/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/whoop-auth/*.html" ]
+
+[functions.parse-meal-photo]
+enabled = true
+# verify_jwt: la PWA llama con la sesion de Supabase del usuario. La funcion genera una
+# URL firmada con la service role (que ignora el RLS del bucket), asi que necesita saber
+# quien pregunta para comprobar que la foto es suya.
+verify_jwt = true
+import_map = "./functions/parse-meal-photo/deno.json"
+entrypoint = "./functions/parse-meal-photo/index.ts"

@@ -12,6 +12,11 @@ El registro de nutrición tiene **11 entradas en total y ninguna desde el 28-may
 veces. Un plan que depende de registrar comida ya falló aquí, así que el instrumento pasa a ser la
 báscula: mide el resultado en lugar de la entrada, y no requiere adherencia diaria a una app.
 
+> **Actualización del 4-sep:** sigue en pie *como regla de decisión* — la báscula pilota. Lo que
+> cambió es que registrar dejó de costar lo que costaba: hay registro **por foto** y convive con
+> esto bajo un guardarraíl de adherencia. Ver *Registro por foto* más abajo. Si el registro se cae,
+> esta sección vuelve a mandar sola.
+
 **El coste honesto:** el ajuste llega con 2 semanas de retraso en lugar de ser inmediato, y no se
 detecta el fin de semana que borra el déficit de la semana. Se acepta a cambio de que exista.
 
@@ -58,6 +63,57 @@ Es lo que separa perder grasa de perder músculo, y es exactamente lo que la bá
 vigilar: dos personas bajando 0,45 kg/semana con proteína distinta llegan a 81 kg con composiciones
 distintas. 185 g = 2,12 g/kg de peso y 2,54 g/kg de masa magra.
 
+### Registro por foto — 2026-09-04, y el guardarraíl que lo mantiene honesto
+
+La app tiene desde v11.49 registro de comida **por foto**: se fotografía el plato, un modelo con
+visión lo convierte en alimentos con gramos, y se confirma o corrige antes de guardar.
+
+**Esto no contradice la sección de arriba, y es importante por qué.** Lo que falló dos veces no fue
+la estrategia sino el instrumento: `tracking/progress-log.md` lo dejó escrito —*"bottleneck is
+logging, not strategy"*. Teclear macros y hacer una foto son dos hipótesis distintas sobre la misma
+conducta. Esta es la segunda, y se despliega **sin desmontar la primera**.
+
+**El pilotaje por báscula sigue mandando.** La regla de ajuste cada 2 semanas sobre la pendiente de
+7 días no cambia. Lo que aporta el registro es el **por qué** de esa pendiente (¿se paró porque se
+comió más o porque se movió menos?) y la vigilancia de lo que la báscula no ve: proteína y
+disponibilidad energética.
+
+#### El guardarraíl de adherencia
+
+| Días registrados (ventana de 14) | Quién decide las calorías |
+|---|---|
+| **≥ 10 de 14** (≈5/7) | el registro |
+| **< 10 de 14** | la **pendiente del peso** — la app lo dice en pantalla y vuelve sola a la regla de arriba |
+
+El umbral 5/7 no es nuevo: es el que el propio sistema ya usaba (*"no macro adjustments until
+5/7"*). Está codificado en `adherenceMode()` (`app/nutrition.js`) y el badge del contrato del día
+muestra siempre quién pilota. **Un tercer abandono degrada el sistema, no lo rompe** — que es la
+única condición bajo la que merecía la pena volver a intentarlo.
+
+#### Disponibilidad energética como guardarraíl duro (REC-008)
+
+`EA = (kcal ingeridas − gasto de la sesión) / masa libre de grasa`, en kcal/kg FFM/día.
+Suelo **30** (ACSM §3, Thomas 2016; Burke 2021). Con 72,8 kg de FFM son **2.184 kcal netas**.
+
+Los 37,1 y 33,0 de la sección anterior son proyecciones sobre el objetivo. Ahora se calcula **con
+lo que se comió de verdad y el gasto real de la sesión**, cada día y en vivo, y avisa por debajo de
+30. Importa porque las summaries ya habían calculado ~27 en días de entreno para este perfil, por
+debajo del umbral, sin forma de verlo hasta la revisión semanal. **Avisa; nunca bloquea.**
+
+#### Qué se registra y qué no
+
+Se registra: alimentos en gramos, kcal, proteína, carbos, grasa, fibra, alcohol (en gramos, 7 kcal/g)
+y grado de procesado NOVA. Se conserva la **energía subjetiva** (1-5) porque el motor de fatiga la
+consume y no hay forma de derivarla. Se retiraron hambre, copas de alcohol y notas: eran campos que
+en la práctica no se rellenaban.
+
+Métricas derivadas nuevas: **densidad proteica** (g de proteína por 100 kcal, la métrica que de
+verdad gobierna una recomposición), score de alimento 0-100 con fórmula publicada y auditable
+(`tests/verify-nutrition-v2.mjs` fija los casos de referencia), % de kcal desde alimentos sin
+procesar, déficit semanal, racha, y **calibración del wearable**: a 14 días compara el cambio de
+peso predicho por el balance energético contra el real de la báscula, y dice si Whoop infla el
+gasto. Audita el dato en vez de creerlo.
+
 ### Cintura — la métrica que mide el objetivo real
 
 Semanal, **domingo por la mañana en ayunas**: de pie y relajado, cinta a la altura del ombligo, al
@@ -78,9 +134,13 @@ kcal/día: entre un quinto y un cuarto del déficit completo**, sin dieta y sin 
 
 Los tres desplomes de recuperación del periodo — 30-jul (readiness 21 · RHR 63), 16-ago (23 · 64),
 21-ago (**1,0** · 63 · **3,03 h de sueño**) — ocurrieron **todos con ATL por debajo de 18**. No los
-causó el entrenamiento. En un objetivo de cintura el alcohol cuenta dos veces: calorías que no se
-registran y sueño que no se recupera. No se prohíbe nada; se registra el patrón porque explica la
-sesión mala del día siguiente.
+causó el entrenamiento. En un objetivo de cintura el alcohol cuenta dos veces: calorías y
+sueño que no se recupera. No se prohíbe nada; se registra el patrón porque explica la sesión mala
+del día siguiente.
+
+Desde v11.49 **las calorías del alcohol sí se registran**: es el cuarto macro, en gramos de etanol
+a 7 kcal/g. Sin ese campo una copa de vino aportaba 128 kcal que no salían de ninguna parte y el
+desglose del día no cuadraba.
 
 ---
 

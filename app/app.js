@@ -1207,7 +1207,7 @@ function openDB() {
       // Legacy stores stay untouched; reads merge via toSession(). Not yet written to
       // until T2 (logging) — and sync wiring for it is deferred to T2.
       if (!d.objectStoreNames.contains('sessions')) d.createObjectStore('sessions', { keyPath: 'id' });
-      // Nutricion v2 — DB v11 (v11.48). `foods` es la biblioteca canonica de alimentos
+      // Nutricion v2 — DB v11 (v11.49). `foods` es la biblioteca canonica de alimentos
       // con macros por 100 g; `meals` es una fila por comida registrada con sus items en
       // gramos. El store `nutrition` NO se sustituye: pasa a ser el agregado derivado por
       // dia (recomputeNutritionDay), asi los consumidores que ya leen .protein/.calories
@@ -1283,7 +1283,7 @@ const state = {
   restTimerInterval: null,
   restTimerRemaining: 0,
   restTimerTotal: 0,
-  settings: { unit: 'kg', proteinTarget: 170, calorieTarget: 2500, startDate: null, userName: '', goalWeight: null, idealVariant: 6 },
+  settings: { unit: 'kg', proteinTarget: 185, calorieTargetTraining: 2700, calorieTargetRest: 2400, calorieTarget: 2570, startDate: null, userName: '', goalWeight: null, idealVariant: 6 },
   sessionQuality: 3,
   quickMode: false,
   selectedStrengthLift: 'bench-press',
@@ -1970,7 +1970,7 @@ function updateHeader(tab) {
     sub.textContent = `Week ${wk}${dayChip} · Zona 2`;
   } else if (tab === 'nutrition') {
     title.textContent = 'Nutrition';
-    sub.textContent = `Target: ${state.settings.proteinTarget}g protein`;
+    sub.textContent = `${state.settings.proteinTarget} g proteína · foto para registrar`;
   } else if (tab === 'stats') {
     title.textContent = 'Stats';
     sub.textContent = `Week ${wk}${dayChip} · ${deload ? 'Deload' : 'Cut Phase'}`;
@@ -9367,171 +9367,18 @@ async function renderRunHistory() {
 }
 
 // ==================== NUTRITION MODULE ====================
+// v11.49: el registro vive en nutrition.js (Nutricion v2, foto -> IA -> confirmacion).
+// Se retiraron `renderMealList`, `updateProteinRing`, `PROTEIN_DB`,
+// `setupProteinAutocomplete`, `addMeal` y `logNutrition`: dejar dos rutas de entrada
+// compitiendo es como se llego a 11 filas en cuatro meses. `PROTEIN_DB` (proteina por
+// racion, sin kcal) lo sustituye FOODS_SEED, con macros por 100 g.
+//
+// El store `nutrition` NO se sustituyo: sigue siendo la fila por dia, ahora derivada por
+// recomputeNutritionDay(). Por eso renderNutritionHistory(), la racha, la tarjeta del
+// coach y el anillo del dashboard siguen funcionando sin tocarlos.
 async function renderNutrition() {
-  const dateLabel = document.getElementById('nutrition-date-label');
-  dateLabel.textContent = 'Today — ' + formatDate(today());
-  document.getElementById('protein-target-display').textContent = state.settings.proteinTarget;
-
-  const entry = await dbGet('nutrition', today());
-  if (entry) {
-    setStarValue('nut-energy', entry.energy || 3);
-    document.getElementById('nut-alcohol').value = entry.alcohol || 0;
-    setStarValue('nut-hunger', entry.hunger || 3);
-    document.getElementById('nut-calories').value = entry.calories || '';
-    document.getElementById('nut-notes').value = entry.notes || '';
-  }
-
-  renderMealList();
-  renderNutritionHistory();
-}
-
-async function renderMealList() {
-  const entry = await dbGet('nutrition', today());
-  const meals = (entry && entry.meals) || [];
-  const totalProtein = meals.reduce((sum, m) => sum + (m.protein || 0), 0);
-
-  updateProteinRing(totalProtein);
-
-  const container = document.getElementById('meal-list');
-  if (meals.length === 0) {
-    showEmptyState(container, '🍽️', 'No meals today', 'Add what you ate to track your protein intake.');
-    return;
-  }
-
-  container.innerHTML = meals.map((m, i) => `
-    <div class="history-item" style="padding:10px 12px">
-      <div class="hi-left">
-        <div class="hi-title" style="font-size:13px">${m.name}</div>
-        <div class="hi-sub">${m.time || ''}</div>
-      </div>
-      <div class="hi-right" style="display:flex;align-items:center">
-        <div class="hi-stat" style="font-size:14px">${m.protein}g</div>
-        <button class="hi-delete" data-delete-meal="${i}">&times;</button>
-      </div>
-    </div>
-  `).join('');
-
-  container.querySelectorAll('[data-delete-meal]').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const idx = parseInt(btn.dataset.deleteMeal);
-      const entry = await dbGet('nutrition', today()) || { date: today(), meals: [] };
-      const removed = entry.meals.splice(idx, 1)[0];
-      entry.protein = entry.meals.reduce((sum, m) => sum + (m.protein || 0), 0);
-      await smartPut('nutrition', entry);
-      renderMealList();
-      toast('Meal removed', {
-        label: 'Undo',
-        callback: async () => {
-          const e = await dbGet('nutrition', today()) || { date: today(), meals: [] };
-          e.meals.splice(idx, 0, removed);
-          e.protein = e.meals.reduce((sum, m) => sum + (m.protein || 0), 0);
-          await smartPut('nutrition', e);
-          renderMealList();
-        }
-      });
-    });
-  });
-}
-
-function updateProteinRing(current) {
-  const target = state.settings.proteinTarget;
-  const pct = Math.min(current / target, 1);
-  const circumference = 2 * Math.PI * 52;
-  document.getElementById('protein-ring-fill').style.strokeDashoffset = circumference * (1 - pct);
-  document.getElementById('protein-current').textContent = current;
-
-  const fill = document.getElementById('protein-ring-fill');
-  if (pct >= 1) fill.style.stroke = 'var(--accent)';
-  else if (pct >= 0.7) fill.style.stroke = 'var(--yellow)';
-  else fill.style.stroke = 'var(--orange)';
-}
-
-// Common foods protein lookup (per typical serving)
-const PROTEIN_DB = [
-  { name: 'Chicken Breast', g: 40, serving: '200g' },
-  { name: 'Steak', g: 50, serving: '200g' },
-  { name: 'Ground Beef', g: 40, serving: '200g' },
-  { name: 'Salmon Fillet', g: 35, serving: '180g' },
-  { name: 'Tuna Can', g: 25, serving: '1 can' },
-  { name: 'Eggs', g: 6, serving: '1 egg' },
-  { name: 'Eggs x2', g: 12, serving: '2 eggs' },
-  { name: 'Eggs x3', g: 18, serving: '3 eggs' },
-  { name: 'Eggs x4', g: 24, serving: '4 eggs' },
-  { name: 'Protein Shake', g: 30, serving: '1 scoop' },
-  { name: 'Greek Yogurt', g: 15, serving: '170g' },
-  { name: 'Cottage Cheese', g: 14, serving: '100g' },
-  { name: 'Milk', g: 8, serving: '1 glass' },
-  { name: 'Cheese', g: 7, serving: '1 slice' },
-  { name: 'Turkey Breast', g: 35, serving: '150g' },
-  { name: 'Pork Chop', g: 30, serving: '150g' },
-  { name: 'Shrimp', g: 24, serving: '150g' },
-  { name: 'Tofu', g: 15, serving: '150g' },
-  { name: 'Lentils', g: 18, serving: '1 cup cooked' },
-  { name: 'Chickpeas', g: 15, serving: '1 cup' },
-  { name: 'Rice & Chicken', g: 45, serving: 'plate' },
-  { name: 'Pasta & Meat', g: 35, serving: 'plate' },
-  { name: 'Hamburger', g: 25, serving: '1 burger' },
-  { name: 'Bife de Chorizo', g: 55, serving: '250g' },
-  { name: 'Milanesa', g: 30, serving: '1 piece' },
-  { name: 'Empanadas x3', g: 18, serving: '3 units' },
-  { name: 'Protein Bar', g: 20, serving: '1 bar' },
-  { name: 'Almonds', g: 6, serving: 'handful' },
-  { name: 'Peanut Butter', g: 8, serving: '2 tbsp' },
-];
-
-function setupProteinAutocomplete() {
-  const nameInput = document.getElementById('meal-name');
-  const proteinInput = document.getElementById('meal-protein');
-  const datalist = document.getElementById('protein-suggestions');
-
-  // Populate datalist
-  datalist.innerHTML = PROTEIN_DB.map(f =>
-    `<option value="${f.name}" label="${f.g}g protein (${f.serving})">`
-  ).join('');
-
-  // Auto-fill protein when a known food is selected/typed
-  nameInput.addEventListener('change', () => {
-    const val = nameInput.value.trim().toLowerCase();
-    const match = PROTEIN_DB.find(f => f.name.toLowerCase() === val);
-    if (match && !proteinInput.value) {
-      proteinInput.value = match.g;
-    }
-  });
-}
-
-async function addMeal(name, protein) {
-  if (!name || !protein) { toast('Enter meal name and protein'); return; }
-
-  const now = new Date();
-  const time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
-
-  const entry = await dbGet('nutrition', today()) || { date: today(), meals: [], energy: 3 };
-  if (!entry.meals) entry.meals = [];
-  entry.meals.push({ name, protein, time });
-  entry.protein = entry.meals.reduce((sum, m) => sum + (m.protein || 0), 0);
-
-  await smartPut('nutrition', entry);
-
-  // Clear inputs
-  document.getElementById('meal-name').value = '';
-  document.getElementById('meal-protein').value = '';
-
-  toast(`${name} — ${protein}g logged`);
-  renderMealList();
-}
-
-async function logNutrition() {
-  const entry = await dbGet('nutrition', today()) || { date: today(), meals: [] };
-  entry.energy = getStarValue('nut-energy');
-  entry.alcohol = parseInt(document.getElementById('nut-alcohol').value) || 0;
-  entry.hunger = getStarValue('nut-hunger');
-  entry.calories = parseInt(document.getElementById('nut-calories').value) || null;
-  entry.notes = document.getElementById('nut-notes').value.trim();
-  entry.protein = (entry.meals || []).reduce((sum, m) => sum + (m.protein || 0), 0);
-
-  await smartPut('nutrition', entry);
-  toast('Saved!');
-  renderNutritionHistory();
+  if (typeof renderNutricionV2 === 'function') return renderNutricionV2();
+  console.warn('[Nutricion] nutrition.js no cargo');
 }
 
 async function renderNutritionHistory() {
@@ -9539,23 +9386,25 @@ async function renderNutritionHistory() {
   const entries = (await dbGetAll('nutrition')).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 7);
 
   if (!entries.length) {
-    showEmptyState(container, '📊', 'No nutrition history', 'Your daily protein totals will appear here.');
+    showEmptyState(container, '📊', 'Sin historial', 'Aquí aparecerán los totales de cada día.');
     return;
   }
 
   container.innerHTML = entries.map(e => {
     const totalProtein = e.protein || (e.meals || []).reduce((sum, m) => sum + (m.protein || 0), 0);
-    const mealCount = (e.meals || []).length;
-    const hitTarget = totalProtein >= state.settings.proteinTarget;
+    // `mealCount` lo escribe recomputeNutritionDay; el fallback lee las filas antiguas,
+    // que guardaban las comidas dentro del propio registro del dia.
+    const mealCount = e.mealCount != null ? e.mealCount : (e.meals || []).length;
+    const hitTarget = totalProtein >= (e.proteinFloor || state.settings.proteinTarget);
     return `
       <div class="history-item">
         <div class="hi-left">
           <div class="hi-title">${formatDate(e.date)}</div>
-          <div class="hi-sub">${totalProtein}g protein · ${mealCount} meals${e.alcohol ? ` · ${e.alcohol} drinks` : ''}${e.calories ? ` · ${e.calories} kcal` : ''}</div>
+          <div class="hi-sub">${e.calories ? `${e.calories} kcal · ` : ''}${totalProtein} g proteína · ${mealCount} ${mealCount === 1 ? 'comida' : 'comidas'}${e.ea != null ? ` · EA ${e.ea}` : ''}</div>
         </div>
         <div class="hi-right">
           <div class="hi-stat" style="color:${hitTarget ? 'var(--accent)' : 'var(--orange)'}">${hitTarget ? '✓' : '✗'}</div>
-          <div class="hi-stat-sub">protein</div>
+          <div class="hi-stat-sub">proteína</div>
         </div>
       </div>
     `;
@@ -10851,11 +10700,16 @@ async function loadSettings() {
 }
 
 function applySettingsToUI() {
-  const { unit, proteinTarget, calorieTarget, startDate, userName, audioFeedback, stepsTarget, stepsSecret, goalWeight } = state.settings;
+  const { unit, proteinTarget, startDate, userName, audioFeedback, stepsTarget, stepsSecret, goalWeight } = state.settings;
   document.getElementById('unit-kg').classList.toggle('selected', unit === 'kg');
   document.getElementById('unit-lb').classList.toggle('selected', unit === 'lb');
   document.getElementById('setting-protein-target').value = proteinTarget;
-  document.getElementById('setting-calorie-target').value = calorieTarget;
+  // Objetivos por tipo de dia. El `calorieTarget` unico se conserva en el estado como
+  // media (lo leen otras vistas), pero ya no se edita a mano: se deriva de los dos.
+  const elTr = document.getElementById('setting-calorie-target-training');
+  const elRe = document.getElementById('setting-calorie-target-rest');
+  if (elTr) elTr.value = state.settings.calorieTargetTraining || 2700;
+  if (elRe) elRe.value = state.settings.calorieTargetRest || 2400;
   document.getElementById('setting-start-date').value = startDate || today();
   document.getElementById('setting-name').value = userName || '';
   const goalWeightEl = document.getElementById('setting-goal-weight');
@@ -10877,8 +10731,14 @@ function applySettingsToUI() {
 
 async function saveSettings() {
   const unit = document.getElementById('unit-kg').classList.contains('selected') ? 'kg' : 'lb';
-  const proteinTarget = parseInt(document.getElementById('setting-protein-target').value) || 170;
-  const calorieTarget = parseInt(document.getElementById('setting-calorie-target').value) || 2500;
+  const proteinTarget = parseInt(document.getElementById('setting-protein-target').value) || NUT_PROTEIN_FLOOR;
+  const trEl = document.getElementById('setting-calorie-target-training');
+  const reEl = document.getElementById('setting-calorie-target-rest');
+  const calorieTargetTraining = (trEl && parseInt(trEl.value)) || NUT_KCAL_TRAINING;
+  const calorieTargetRest = (reEl && parseInt(reEl.value)) || NUT_KCAL_REST;
+  // Media de la semana del plan (4 dias de entreno + 3 de descanso). Se sigue guardando
+  // porque otras vistas leen `calorieTarget`, pero es derivado, no editable.
+  const calorieTarget = Math.round((calorieTargetTraining * 4 + calorieTargetRest * 3) / 7);
   const startDate = document.getElementById('setting-start-date').value || today();
   const userName = document.getElementById('setting-name').value.trim();
   const stepsTargetEl = document.getElementById('setting-steps-target');
@@ -10887,7 +10747,7 @@ async function saveSettings() {
   const goalWeightVal = goalWeightEl ? parseFloat(goalWeightEl.value) : NaN;
   const goalWeight = (Number.isFinite(goalWeightVal) && goalWeightVal > 20 && goalWeightVal < 300) ? goalWeightVal : null;
 
-  state.settings = { ...state.settings, unit, proteinTarget, calorieTarget, startDate, userName, stepsTarget, goalWeight };
+  state.settings = { ...state.settings, unit, proteinTarget, calorieTarget, calorieTargetTraining, calorieTargetRest, startDate, userName, stepsTarget, goalWeight };
   await dbPut('settings', { key: 'userSettings', data: state.settings });
   toast('Settings saved!');
   renderStepsCard();
@@ -11120,37 +10980,9 @@ function bindEvents() {
   // Cardio logging (unified)
   { const b = document.getElementById('btn-log-cardio'); if (b) b.addEventListener('click', logCardio); }
 
-  // Nutrition
-  document.getElementById('btn-log-nutrition').addEventListener('click', logNutrition);
-
-  // Add meal button
-  document.getElementById('btn-add-meal').addEventListener('click', () => {
-    const name = document.getElementById('meal-name').value.trim();
-    const protein = parseInt(document.getElementById('meal-protein').value) || 0;
-    if (!name && !protein) return;
-    addMeal(name || 'Meal', protein);
-    document.getElementById('meal-name').value = '';
-    document.getElementById('meal-protein').value = '';
-  });
-
-  // Quick-add meal buttons
-  document.querySelectorAll('[data-meal]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      addMeal(btn.dataset.meal, parseInt(btn.dataset.g));
-    });
-  });
-
-  // Protein autocomplete
-  setupProteinAutocomplete();
-
-  // Nutrition expand
-  document.getElementById('nut-expand-btn').addEventListener('click', () => {
-    const content = document.getElementById('nut-expand');
-    const btn = document.getElementById('nut-expand-btn');
-    content.classList.toggle('hidden');
-    btn.classList.toggle('open');
-    btn.textContent = content.classList.contains('hidden') ? 'More details ▾' : 'Less details ▴';
-  });
+  // Nutricion v2 (v11.49): captura por foto. Los bindings viven en nutrition.js
+  // para que el modulo sea autocontenido, como bloodwork.js.
+  if (typeof bindNutricionV2 === 'function') bindNutricionV2();
 
   // Settings save
   document.getElementById('btn-save-settings').addEventListener('click', saveSettings);
@@ -11194,7 +11026,7 @@ function bindEvents() {
   // Theme: dark-only (no toggle UI)
 
   // Star selectors
-  ['cardio-feel', 'nut-hunger', 'nut-energy'].forEach(setupStarGroup);
+  ['cardio-feel', 'nut-energy'].forEach(setupStarGroup);
 
   // Rest timer controls
   document.getElementById('timer-skip').addEventListener('click', stopRestTimer);
@@ -11535,6 +11367,29 @@ async function runMigrations() {
   const done = (await dbGet('settings', migKey)) || { key: migKey, data: [] };
   if (!done.data) done.data = [];
 
+  // Nutricion v2 (v11.49): los objetivos de la app llevaban meses desfasados respecto a
+  // plans/nutrition-notes.md — proteina 170 cuando el plan dice 185 desde el 2026-08-19, y
+  // un unico `calorieTarget: 2500` que no representaba el ciclado 2.700/2.400 y que ademas
+  // no estaba cableado a nada.
+  //
+  // CONSERVADORA A PROPOSITO: solo toca los valores que siguen en el default viejo. Si el
+  // usuario los habia cambiado a mano, esa decision gana; subirle un objetivo que eligio
+  // el mismo seria decidir por el.
+  if (!done.data.includes('nutricion-v2-targets')) {
+    const st = state.settings;
+    let cambios = [];
+    if (st.proteinTarget === 170) { st.proteinTarget = NUT_PROTEIN_FLOOR; cambios.push('proteina 170 -> ' + NUT_PROTEIN_FLOOR); }
+    if (st.calorieTargetTraining == null) { st.calorieTargetTraining = NUT_KCAL_TRAINING; cambios.push('kcal entreno ' + NUT_KCAL_TRAINING); }
+    if (st.calorieTargetRest == null) { st.calorieTargetRest = NUT_KCAL_REST; cambios.push('kcal descanso ' + NUT_KCAL_REST); }
+    if (cambios.length) {
+      await dbPut('settings', { key: 'userSettings', data: st });
+      applySettingsToUI();
+      console.log('[Nutricion] objetivos alineados con nutrition-notes.md:', cambios.join(', '));
+    }
+    done.data.push('nutricion-v2-targets');
+    await dbPut('settings', done);
+  }
+
   // Migration: backfill `unit` on all workouts + convert known lb workouts to kg
   if (!done.data.includes('backfill-unit')) {
     const appUnit = state.settings.unit || 'kg';
@@ -11655,6 +11510,9 @@ async function init() {
   // Seed and load dynamic plan + exercise library
   await ensurePlanSeeded();
   await ensureExerciseLibrarySeeded();
+  // Nutricion v2: la biblioteca de alimentos. Idempotente por id, asi que no duplica al
+  // reinstalar la PWA ni pisa lo que el usuario haya editado.
+  if (typeof seedFoods === 'function') { try { await seedFoods(); } catch (e) { console.warn('[Nutricion] seed:', e); } }
   await loadActivePlan();
   await ensureDeloadAnchor(); // v11.35: D1 — anchor the 5-week deload block (first one 4 wks out)
   await applyIdealPlan();     // T5: install the ideal plan as the live default (replaces re-entry ramp)

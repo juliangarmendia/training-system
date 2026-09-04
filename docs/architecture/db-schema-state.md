@@ -3,10 +3,10 @@
 Estado vivo del esquema IndexedDB de la PWA y reglas de rollback seguro. Actualizar al cambiar
 `DB_VERSION` o agregar/quitar stores. Crítico para no romper la app en dispositivos ya migrados.
 
-## Estado actual (T1, v11.10)
+## Estado actual (Nutrición v2, v11.49)
 
-- **DB version actual:** **v10** (`app/app.js` → `const DB_VERSION = 10`).
-- **Store nuevo (T1):** `sessions` (keyPath `id`).
+- **DB version actual:** **v11** (`app/app.js` → `const DB_VERSION = 11`).
+- **Stores más recientes:** `foods` y `meals` (v11, Nutrición v2). Antes: `sessions` (v10, T1).
 - **Estado de `sessions`:** activo. T2a loguea recovery-walk / cardio non-run.
 - **Sync:** **CONECTADO (T2b, v11.24)** — tabla Supabase `public.sessions` creada (PK
   `(user_id, record_id)`, RLS por `auth.uid()`, mismo patrón que `wellness`/`steps`) y `sessions`
@@ -43,6 +43,76 @@ registro, y el estado real del sync es visible en Settings y en Home.
 > crear su tabla en Supabase en el mismo cambio. `weekly_reviews`, `trash` y `sync_queue` siguen
 > siendo deliberadamente locales y **no** están en esa lista.
 
+## v11.49 (2026-09-04) — Nutrición v2: `foods` y `meals`, y `nutrition` pasa a ser derivado
+
+**DB version: v10 → v11.** Dos stores nuevos, aditivos como siempre:
+
+- **`foods`** (keyPath `id`) — biblioteca canónica de alimentos con macros **por 100 g**:
+  `{id, name, aliases[], kcal100, protein100, carbs100, fat100, fiber100, alcohol100, nova,
+  source, verified}`. Sembrada con 55 alimentos (`FOODS_SEED` en `app/nutrition.js`), todos
+  `verified: false`. Sustituye a `PROTEIN_DB`, que tenía 28 alimentos con proteína **por ración
+  y sin kcal**: servía para autocompletar un número, no para calcular un día.
+- **`meals`** (keyPath `id` = timestamp ISO, índice por `date`) — una fila por comida registrada:
+  `{id, date, time, type, photoPath, source, aiNotes, items[]}`, con cada item en **gramos**
+  más sus macros ya resueltos.
+
+### `nutrition` NO se sustituyó — es ahora el agregado derivado
+
+Decisión deliberada y la más importante del release. El store `nutrition` (keyPath `date`)
+estructuralmente ya era un agregado por día con `protein` y `calories`. En vez de crear un tercer
+store `nutrition_days` y repuntar a sus cinco consumidores, `recomputeNutritionDay()`
+(`app/nutrition.js`) reescribe esa misma fila desde `meals`:
+
+| Consumidor | Qué lee |
+|---|---|
+| `renderProteinChart()` | `.protein` |
+| Lógica de racha (anillos) | `.protein` |
+| Tarjeta de fatiga del coach | `.protein`, `.energy` |
+| Anillo de proteína del dashboard | `.protein` |
+| `renderNutritionHistory()` | `.protein`, `.calories`, `.mealCount` |
+
+Los cinco siguen funcionando **sin un solo cambio**: los campos son los mismos, sólo dejaron de
+teclearse y empezaron a derivarse. Campos nuevos en la misma fila: `carbs`, `fat`, `fiber`,
+`alcoholG`, `nova12Pct`, `mealCount`, `itemCount`, `estimatedItems`, `kcalTarget`, `proteinFloor`,
+`trainingDay`, `eee`, `ffm`, `ea`, `loggedV2`.
+
+`energy` **se conserva** y se sigue escribiendo a mano (`nutSaveEnergy`): no hay forma de derivarla
+y el motor de fatiga la consume. `recomputeNutritionDay()` hace **merge**, nunca sobreescritura, o
+un recálculo la borraría y convertiría la fatiga en un número inventado.
+
+`alcoholG` es un campo **nuevo** a propósito, en gramos. El `alcohol` que ya existía en las filas
+antiguas son **número de copas** que teclaba el usuario; pisarlo convertiría "2 copas" en "21 g"
+sin avisar a nadie.
+
+**Un solo escritor.** `app.js` ya no escribe en `nutrition` (0 ocurrencias de `smartPut('nutrition'`);
+`tests/verify-nutrition-wiring.mjs` lo verifica). Si vuelve a haber dos escritores, los totales
+dejan de venir de las comidas.
+
+### Sync y la regla de la tabla previa
+
+Las dos tablas Supabase se crearon **antes** de añadir los stores a la lista de sync, migración
+`nutricion_v2_foods_meals`: mismo patrón `(user_id, record_id)` + `data jsonb` + `updated_at` + RLS
+`auth.uid() = user_id`, más un índice `(user_id, updated_at)` porque el pull filtra por ahí.
+Es exactamente la regla que dejó escrita el incidente de `plans`/`exercises` de v11.35.
+
+**Tablas Supabase (13):** `bodyweight` · `exercises` · **`foods`** · **`meals`** ·
+`mobility_sessions` · `nutrition` · `plans` · `runs` · `sessions` · `settings` · `steps` ·
+`wellness` · `workouts`.
+
+### Storage (nuevo — antes no se usaba)
+
+Bucket privado **`meal-photos`**, ruta `<user_id>/<fecha>_<ts>.<ext>`, límite 10 MB, tipos
+`image/jpeg|png|webp|heic`. Política RLS: el primer segmento de la ruta tiene que ser el uid del
+solicitante. La edge function `parse-meal-photo` firma la URL con la **service role**, que ignora
+ese RLS, así que además comprueba en código que `photoPath` empiece por el uid del JWT.
+
+### Stores IndexedDB (v11)
+`workouts` · `runs` · `nutrition` · `settings` · `sync_queue` · `bodyweight` · `trash` · `plans` ·
+`exercises` · `mobility_sessions` · `weekly_reviews` · `steps` · `wellness` · `sessions` (v10) ·
+**`foods`** · **`meals`** (v11).
+
+> Sigue en pie el caveat de rollback: **nunca bajar `DB_VERSION`**. Ahora el suelo es **11**.
+
 ## Caveat de rollback (IMPORTANTE)
 
 **Revert de commit ≠ rollback limpio una vez que el browser subió la DB.**
@@ -56,7 +126,7 @@ DB local quedó en v10. Si después se despliega código viejo que llama `indexe
 
 ## Estrategia de rollback seguro
 
-1. **Nunca bajar `DB_VERSION`.** Mantener `DB_VERSION >= 10` en todo rollback futuro, aunque se
+1. **Nunca bajar `DB_VERSION`.** Mantener `DB_VERSION >= 11` en todo rollback futuro, aunque se
    desactive el uso de `sessions` u otros stores nuevos.
 2. **Para "apagar" una feature (T1/T2):** dejar de escribir/leer su store y ocultar su UI. El store
    vacío es **inerte** y no rompe nada.

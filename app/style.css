@@ -2305,3 +2305,85 @@ body[data-tab="home"] .home-scroll-v2 { padding-top: calc(var(--safe-top) + 10px
 .an-method > summary::-webkit-details-marker { display: none; }
 .an-method > summary::before { content: "▸ "; }
 .an-method[open] > summary::before { content: "▾ "; }
+
+/* ========== Nutrición v2 (v11.49) ========== */
+/* Semáforo. Los umbrales se imprimen SIEMPRE junto al color en la propia UI: un color
+   cuyo criterio hay que adivinar no informa, decora. */
+.nut-verde   { color: var(--accent); }
+.nut-ambar   { color: var(--yellow); }
+.nut-rojo    { color: var(--red); }
+.nut-neutral { color: var(--text3); }
+
+/* El contrato del día: los cuatro números que gobiernan la jornada */
+.nut-contract { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 12px; }
+.nut-contract-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.nut-contract-day { font-size: var(--fs-xs); color: var(--text2); text-transform: uppercase; letter-spacing: 0.6px; font-weight: 600; }
+.nut-contract-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.nut-contract-cell { display: flex; flex-direction: column; align-items: center; text-align: center; }
+.ncc-val { font-family: var(--font-mono); font-size: 17px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+.ncc-lbl { font-size: 10px; color: var(--text3); margin-top: 2px; line-height: 1.25; }
+.nut-contract-note { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); font-size: var(--fs-xs); color: var(--text2); line-height: 1.45; }
+
+.nut-pill { font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 999px; text-transform: uppercase; letter-spacing: 0.4px; }
+.nut-pill-ok { background: var(--tint-green); color: var(--accent); }
+.nut-pill-warn { background: var(--tint-orange); color: var(--orange); }
+
+/* Captura */
+.nut-photo-btn { display: flex; align-items: center; justify-content: center; gap: 8px; }
+.nut-photo-ico { font-size: 18px; }
+.nut-status { margin-top: 10px; padding: 10px 12px; border-radius: var(--radius-sm); font-size: var(--fs-xs); line-height: 1.45; }
+.nut-status-info  { background: var(--surface2); color: var(--text2); }
+.nut-status-warn  { background: var(--tint-orange); color: var(--orange); }
+.nut-status-error { background: var(--tint-red); color: var(--red); }
+
+/* Totales del día */
+.nut-hero { display: flex; align-items: baseline; gap: 8px; margin-bottom: 2px; }
+.nut-hero-val { font-family: var(--font-mono); font-size: 34px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -1px; }
+.nut-hero-sep { font-size: 15px; color: var(--text2); font-weight: 600; }
+.nut-hero-sub { font-size: var(--fs-xs); color: var(--text2); display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 16px; }
+.nut-legend { color: var(--text3); font-size: 10px; text-align: right; }
+
+.nut-metric { margin-bottom: 14px; }
+.nut-metric-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.nut-metric-name { font-size: 13px; color: var(--text2); }
+.nut-metric-val { font-family: var(--font-mono); font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.nut-metric-note { font-size: 10px; color: var(--text3); margin-top: 3px; line-height: 1.4; }
+.nut-bar { height: 6px; background: var(--surface3); border-radius: 3px; margin-top: 6px; overflow: hidden; }
+.nut-bar-fill { height: 100%; border-radius: 3px; background: currentColor; transition: width 0.35s ease; }
+
+.nut-macros { display: flex; flex-wrap: wrap; gap: 12px; padding-top: 12px; border-top: 1px solid var(--border); font-size: var(--fs-xs); color: var(--text3); }
+.nut-macros strong { color: var(--text2); font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+/* Lista de comidas */
+.nut-meal-row { align-items: flex-start; }
+.nut-item-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+.nut-item-chip { font-size: 10px; background: var(--surface3); color: var(--text2); padding: 2px 7px; border-radius: var(--radius-xs); }
+/* Los items poco fiables se marcan: son los que conviene corregir a mano. */
+.nut-item-chip-dudoso { background: var(--tint-orange); color: var(--orange); }
+
+/* Hoja de confirmación */
+.nut-ai-notes { background: var(--surface2); border-radius: var(--radius-sm); padding: 10px 12px; font-size: var(--fs-xs); color: var(--text2); line-height: 1.45; margin-bottom: 12px; }
+.nut-ai-notes.hidden { display: none; }
+.nut-ai-ico { margin-right: 4px; }
+.nut-items { display: flex; flex-direction: column; gap: 8px; }
+.nut-item-row { display: flex; align-items: center; gap: 10px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px; }
+.nut-item-main { flex: 1; min-width: 0; }
+.nut-item-name { font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.nut-item-macros { font-size: 10px; color: var(--text3); margin-top: 3px; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.nut-item-grams { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+/* Los gramos son el ÚNICO campo editable, y a propósito: es lo único que la foto estima. */
+.nut-item-grams input { width: 68px; text-align: right; font-family: var(--font-mono); }
+.nut-item-unit { font-size: 11px; color: var(--text3); }
+.nut-tag { font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: var(--radius-xs); text-transform: uppercase; letter-spacing: 0.3px; }
+.nut-tag-nuevo { background: var(--tint-blue); color: var(--blue); }
+.nut-tag-dudoso { background: var(--tint-orange); color: var(--orange); }
+.nut-empty-items { font-size: var(--fs-xs); color: var(--text3); text-align: center; padding: 18px 12px; }
+.nut-confirm-totals { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); font-size: var(--fs-xs); color: var(--text3); }
+.nut-confirm-totals strong { color: var(--text); font-family: var(--font-mono); font-size: 15px; font-variant-numeric: tabular-nums; }
+
+/* En pantallas estrechas los cuatro números del contrato pasan a dos filas antes que
+   encogerse hasta ser ilegibles. */
+@media (max-width: 360px) {
+  .nut-contract-grid { grid-template-columns: repeat(2, 1fr); gap: 12px 8px; }
+  .nut-hero-val { font-size: 28px; }
+}
