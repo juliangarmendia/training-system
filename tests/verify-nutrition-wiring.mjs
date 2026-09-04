@@ -140,6 +140,21 @@ for (const store of ['foods', 'meals']) {
 }
 yes(/DB_VERSION = 11/.test(APP), 'DB_VERSION subió a 11 para crear los stores');
 
+// ── 10. La semilla tiene que poder llegar a Supabase ───────────────────────
+// enqueueSync() hace `if (!supabaseClient) return`, asi que sembrar antes de initSupabase()
+// deja los 55 alimentos SOLO en IndexedDB. Y la edge function lee `foods` de Supabase: con la
+// tabla vacia no resuelve ningun alimento contra la biblioteca y cada foto vuelve a estimar
+// macros desde cero — justo la debilidad de Caltrack que este diseño existe para corregir.
+// Sintoma a vigilar: `public.exercises` tiene 0 filas por este mismo motivo.
+console.log('');
+console.log('10. Orden de la semilla respecto a la auth');
+const iAuth = APP.indexOf('await checkAuth()');
+const iSeed = APP.indexOf('seedFoods()');
+yes(iAuth > 0 && iSeed > 0, 'se localizan checkAuth() y seedFoods() en init()');
+yes(iSeed > iAuth, 'seedFoods() corre DESPUES de checkAuth(), o la semilla no sincroniza');
+yes(/if \(!supabaseClient\) return;/.test(SYNC),
+  'enqueueSync() sigue descartando en silencio sin cliente (la razon del orden anterior)');
+
 console.log('');
 console.log(failed === 0
   ? '✅ Nutrición v2: el cableado entre los tres ficheros está completo.'

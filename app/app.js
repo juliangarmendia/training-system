@@ -11510,9 +11510,6 @@ async function init() {
   // Seed and load dynamic plan + exercise library
   await ensurePlanSeeded();
   await ensureExerciseLibrarySeeded();
-  // Nutricion v2: la biblioteca de alimentos. Idempotente por id, asi que no duplica al
-  // reinstalar la PWA ni pisa lo que el usuario haya editado.
-  if (typeof seedFoods === 'function') { try { await seedFoods(); } catch (e) { console.warn('[Nutricion] seed:', e); } }
   await loadActivePlan();
   await ensureDeloadAnchor(); // v11.35: D1 — anchor the 5-week deload block (first one 4 wks out)
   await applyIdealPlan();     // T5: install the ideal plan as the live default (replaces re-entry ramp)
@@ -11541,6 +11538,18 @@ async function init() {
     if (authSection) {
       authSection.innerHTML = '<p class="muted" style="font-size:13px;margin:0">Cloud sync not configured.</p>';
     }
+  }
+
+  // Nutricion v2: la biblioteca de alimentos. Idempotente por id, asi que no duplica al
+  // reinstalar la PWA ni pisa lo que el usuario haya editado.
+  //
+  // VA DESPUES DE LA AUTH A PROPOSITO. `enqueueSync()` hace `if (!supabaseClient) return`,
+  // asi que sembrar antes de initSupabase() dejaria los 55 alimentos SOLO en IndexedDB. Y la
+  // edge function `parse-meal-photo` lee `foods` de Supabase: con la tabla vacia no podria
+  // resolver ningun alimento contra la biblioteca y cada foto volveria a estimar macros desde
+  // cero, que es exactamente la debilidad de Caltrack que este diseño existe para corregir.
+  if (typeof seedFoods === 'function') {
+    try { await seedFoods(); } catch (e) { console.warn('[Nutricion] seed:', e); }
   }
 
   renderWeekStrip();
