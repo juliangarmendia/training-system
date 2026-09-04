@@ -942,7 +942,7 @@ async function ensurePlanSeeded() {
     sessions: JSON.parse(JSON.stringify(PLAN.sessions)),
     weekTemplate: JSON.parse(JSON.stringify(WEEK_TEMPLATE)),
   };
-  await dbPut('plans', seedPlan);
+  await smartPut('plans', seedPlan);
   console.log('[Plan] Seeded plan_v1 from hardcoded PLAN');
 }
 
@@ -976,7 +976,7 @@ async function ensureExerciseLibrarySeeded() {
     }
   }
   for (const ex of Object.values(exMap)) {
-    await dbPut('exercises', ex);
+    await smartPut('exercises', ex);
   }
   console.log(`[Plan] Seeded ${Object.keys(exMap).length} exercises`);
 }
@@ -1154,7 +1154,7 @@ async function applyReentryPlan() {
     });
     if (state.settings.unit !== 'kg') {
       state.settings.unit = 'kg';
-      await dbPut('settings', { key: 'userSettings', data: state.settings });
+      await smartPut('settings', { key: 'userSettings', data: state.settings });
     }
     console.log(`[Re-entry] Applied ${cfg.label} (kg)`);
     return;
@@ -1500,7 +1500,7 @@ function isDeloadWeek(weekNum) {
 async function ensureDeloadAnchor() {
   if (deloadAnchorWeek()) return;
   state.settings.deloadAnchorWeek = getWeekNumber();
-  try { await dbPut('settings', { key: 'userSettings', data: state.settings }); } catch (e) {}
+  try { await smartPut('settings', { key: 'userSettings', data: state.settings }); } catch (e) {}
   console.log(`[Deload] Anchored to week ${state.settings.deloadAnchorWeek}; next deload in ${DELOAD_BLOCK_WEEKS - 1} weeks`);
 }
 
@@ -1765,7 +1765,7 @@ function bindLoginEvents() {
     errEl.textContent = '';
     // Save name to settings after signup
     state.settings.userName = name;
-    await dbPut('settings', { key: 'userSettings', data: state.settings });
+    await smartPut('settings', { key: 'userSettings', data: state.settings });
     const { error } = await supaSignUp(email, pass);
     if (error) {
       errEl.textContent = error.message;
@@ -1795,7 +1795,7 @@ async function checkAuth() {
     // If no userName saved, derive from email
     if (!state.settings.userName && user.email) {
       state.settings.userName = user.email.split('@')[0];
-      await dbPut('settings', { key: 'userSettings', data: state.settings });
+      await smartPut('settings', { key: 'userSettings', data: state.settings });
     }
     hideLoginScreen();
     showWelcomeScreen();
@@ -4334,7 +4334,7 @@ async function openExerciseHistory(exId) {
     const notes = await dbGet('settings', 'exerciseNotes') || { key: 'exerciseNotes', data: {} };
     if (!notes.data) notes.data = {};
     notes.data[exId] = document.getElementById('modal-ex-notes').value.trim();
-    await dbPut('settings', notes);
+    await smartPut('settings', notes);
     toast('Notes saved');
   };
 
@@ -8265,7 +8265,7 @@ async function applyIdealPlan({ force = false } = {}) {
   if (lbl === targetLabel && !force && !revStale) return; // already current → no version churn
   if (revStale) {
     state.settings.planRev = PLAN_REV;
-    try { await dbPut('settings', { key: 'userSettings', data: state.settings }); } catch (e) {}
+    try { await smartPut('settings', { key: 'userSettings', data: state.settings }); } catch (e) {}
   }
   await createNewPlanVersion({
     label: targetLabel,
@@ -8275,7 +8275,7 @@ async function applyIdealPlan({ force = false } = {}) {
   });
   if (state.settings.unit !== 'kg') {
     state.settings.unit = 'kg';
-    await dbPut('settings', { key: 'userSettings', data: state.settings });
+    await smartPut('settings', { key: 'userSettings', data: state.settings });
   }
   console.log(`[Plan] Ideal default → "${targetLabel}"`);
 }
@@ -10748,7 +10748,7 @@ async function saveSettings() {
   const goalWeight = (Number.isFinite(goalWeightVal) && goalWeightVal > 20 && goalWeightVal < 300) ? goalWeightVal : null;
 
   state.settings = { ...state.settings, unit, proteinTarget, calorieTarget, calorieTargetTraining, calorieTargetRest, startDate, userName, stepsTarget, goalWeight };
-  await dbPut('settings', { key: 'userSettings', data: state.settings });
+  await smartPut('settings', { key: 'userSettings', data: state.settings });
   toast('Settings saved!');
   renderStepsCard();
 }
@@ -10761,7 +10761,7 @@ async function generateStepsSecret() {
   crypto.getRandomValues(bytes);
   const secret = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
   state.settings = { ...state.settings, stepsSecret: secret };
-  await dbPut('settings', { key: 'userSettings', data: state.settings });
+  await smartPut('settings', { key: 'userSettings', data: state.settings });
   applySettingsToUI();
   toast('Secret generated. Copy it to the Supabase env var + your Shortcut.');
 }
@@ -10874,7 +10874,7 @@ function bindEvents() {
     if (newUnit === state.settings.unit) return;
     state.settings.unit = newUnit;
     document.querySelectorAll('#unit-toggle .unit-opt').forEach(b => b.classList.toggle('active', b.dataset.unit === newUnit));
-    await dbPut('settings', { key: 'userSettings', data: state.settings });
+    await smartPut('settings', { key: 'userSettings', data: state.settings });
     // Update column headers to reflect new unit
     document.querySelectorAll('#workout-exercises .set-table-header').forEach(header => {
       const cols = header.children;
@@ -11169,7 +11169,7 @@ function bindEvents() {
       state.settings.audioFeedback = on;
       audioOn.classList.toggle('selected', on);
       audioOff.classList.toggle('selected', !on);
-      await dbPut('settings', { key: 'userSettings', data: state.settings });
+      await smartPut('settings', { key: 'userSettings', data: state.settings });
       if (on) primeAudio();
     };
     audioOn.addEventListener('click', () => setAudio(true));
@@ -11382,7 +11382,7 @@ async function runMigrations() {
     if (st.calorieTargetTraining == null) { st.calorieTargetTraining = NUT_KCAL_TRAINING; cambios.push('kcal entreno ' + NUT_KCAL_TRAINING); }
     if (st.calorieTargetRest == null) { st.calorieTargetRest = NUT_KCAL_REST; cambios.push('kcal descanso ' + NUT_KCAL_REST); }
     if (cambios.length) {
-      await dbPut('settings', { key: 'userSettings', data: st });
+      await smartPut('settings', { key: 'userSettings', data: st });
       applySettingsToUI();
       console.log('[Nutricion] objetivos alineados con nutrition-notes.md:', cambios.join(', '));
     }
@@ -11501,6 +11501,41 @@ async function requestPersistentStorage() {
   } catch (e) { /* not supported — nothing to do */ }
 }
 
+// Empuja a la nube lo que los seeds dejaron solo en local.
+//
+// EL FALLO QUE ARREGLA: `ensurePlanSeeded()` y `ensureExerciseLibrarySeeded()` tienen que
+// correr ANTES de `loadActivePlan()`, que es el paso 8 de init(), mientras `initSupabase()`
+// es el paso 20. Y `enqueueSync()` hace `if (!supabaseClient) return`, asi que sus filas
+// nunca se encolaban. Por eso `public.exercises` esta en 0 filas: la biblioteca de
+// ejercicios —el vocabulario que el cron semanal necesita para resolver patron de
+// movimiento y grupo muscular— no existia en la nube.
+//
+// No se arregla adelantando initSupabase(): eso registra onAuthStateChange, que dispara
+// syncAll(), y mover el arranque de la cola es justo lo que la congelo siete semanas en
+// v11.28. Este backfill es aditivo y no toca el orden de la auth.
+//
+// El flag va con `dbPut` a proposito: si se sincronizara, otro dispositivo se saltaria su
+// propio backfill al recibirlo. Misma razon que los flags de migracion.
+async function backfillSeedStoresToCloud() {
+  if (!window.syncedPut || !window.getSupaClient || !window.getSupaClient()) return;
+  const user = window.getSupaUser ? await window.getSupaUser() : null;
+  if (!user) return;
+
+  const KEY = 'seed_cloud_backfill_v1';
+  const flag = await dbGet('settings', KEY).catch(() => null);
+  if (flag && flag.data && flag.data.done) return;
+
+  let n = 0;
+  for (const store of ['plans', 'exercises']) {
+    const rows = (await dbGetAll(store).catch(() => [])) || [];
+    for (const r of rows) {
+      try { await window.syncedPut(store, r); n++; } catch (e) { console.warn('[Sync] backfill', store, e); }
+    }
+  }
+  await dbPut('settings', { key: KEY, data: { done: true, rows: n, at: Date.now() } });
+  if (n) console.log(`[Sync] Backfill de seeds: ${n} filas encoladas`);
+}
+
 async function init() {
   await openDB();
   await requestPersistentStorage();
@@ -11551,6 +11586,9 @@ async function init() {
   if (typeof seedFoods === 'function') {
     try { await seedFoods(); } catch (e) { console.warn('[Nutricion] seed:', e); }
   }
+
+  // Y empujar lo que los seeds de plan/ejercicios dejaron solo en local (ver la funcion).
+  try { await backfillSeedStoresToCloud(); } catch (e) { console.warn('[Sync] backfill:', e); }
 
   renderWeekStrip();
   renderRecentWorkouts();
