@@ -2465,3 +2465,8 @@ body[data-tab="home"] .home-scroll-v2 { padding-top: calc(var(--safe-top) + 10px
 .nut-coach-macros { font-size: 10px; color: var(--text3); margin-top: 2px; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 .nut-coach-add { width: auto !important; padding: 7px 14px !important; font-size: 12px !important; flex-shrink: 0; }
 .nut-coach-note { margin-top: 12px; font-size: 10px; color: var(--text3); line-height: 1.5; }
+/* Coste del parseo por foto: hace medible la decision de modelo. */
+.nut-cost-card { margin-top: 12px; }
+.nut-cost-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 12px 0; border-top: 1px solid var(--border); }
+.nut-cost-grid > div { display: flex; flex-direction: column; align-items: center; text-align: center; }
+.nut-cost-card code { font-family: var(--font-mono); font-size: 9px; color: var(--text2); }

@@ -84,7 +84,7 @@ const m = SW.match(/CACHE_NAME\s*=\s*'training-v(\d+)\.(\d+)'/);
 yes(!!m, 'CACHE_NAME tiene el formato esperado');
 if (m) {
   const version = `${m[1]}.${m[2]}`;
-  yes(Number(m[2]) >= 51, `cache en v${version} (v11.50 ya estaba desplegada)`);
+  yes(Number(m[2]) >= 52, `cache en v${version} (v11.51 ya estaba desplegada)`);
 }
 
 // ── 6. Clases CSS usadas en el marcado generado ─────────────────────────────────────

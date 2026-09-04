@@ -67,6 +67,37 @@ const NUT_BANDS = {
 const NUT_ADHERENCE_WINDOW = 14;
 const NUT_ADHERENCE_MIN = 10;           // 10/14 ≈ 5/7
 
+// ==================== COSTE DEL PARSEO POR FOTO ====================
+//
+// El modelo se eligió a mano (Opus 5, por precisión de porción, que es EL dato que importa)
+// sobre una ESTIMACIÓN de ~4 $/mes. Una decisión de coste tomada sobre una estimación hay
+// que poder revisarla con el número real, así que cada comida guarda los tokens que costó y
+// Tendencias muestra el acumulado del mes.
+//
+// Si cambia el modelo de la edge function, cambian estos precios. Van juntos a propósito.
+const NUT_AI_MODEL = 'claude-opus-5';
+const NUT_AI_USD_IN = 5 / 1e6;      // $/token de entrada
+const NUT_AI_USD_OUT = 25 / 1e6;    // $/token de salida
+
+function photoCostUsd(usage) {
+  if (!usage) return 0;
+  return ((Number(usage.input) || 0) * NUT_AI_USD_IN)
+       + ((Number(usage.output) || 0) * NUT_AI_USD_OUT);
+}
+
+// Coste acumulado del mes en curso y media por foto.
+function photoCostSummary(meals, hasta) {
+  const mes = String(hasta).slice(0, 7);
+  const conCoste = (meals || []).filter(m => m.date && m.date.slice(0, 7) === mes && m.usage);
+  const total = conCoste.reduce((sum, m) => sum + photoCostUsd(m.usage), 0);
+  return {
+    mes,
+    fotos: conCoste.length,
+    totalUsd: total,
+    mediaUsd: conCoste.length ? total / conCoste.length : 0,
+  };
+}
+
 // ==================== LA FÓRMULA DEL SCORE ====================
 //
 // Un número por alimento, 0-100, reproducible a mano. Caltrack publica un score
@@ -1133,6 +1164,7 @@ function nutGuessMealType() {
 function openNutConfirm(result) {
   _nutPending = {
     photoPath: result.photoPath || null,
+    usage: result.usage || null,
     notes: result.notes || '',
     type: result.mealType || nutGuessMealType(),
     items: (result.items || []).map(it => ({ ...it })),
@@ -1299,6 +1331,9 @@ async function nutSaveConfirmed() {
     photoPath: _nutPending.photoPath || null,
     source: _nutPending.photoPath ? 'foto' : 'manual',
     aiNotes: _nutPending.notes || null,
+    // Tokens que costó parsear esta foto. Es lo que hace medible la decisión de modelo.
+    usage: _nutPending.usage || null,
+    aiModel: _nutPending.usage ? NUT_AI_MODEL : null,
     items: _nutPending.items.map(it => ({
       foodId: it.foodId || nutSlug(it.name),
       name: it.name,
@@ -1547,6 +1582,7 @@ async function renderNutCalibration(days, date) {
   if (!el) return;
   const weights = (await dbGetAll('bodyweight').catch(() => [])) || [];
   const cal = wearableCalibration(days, weights, date);
+  const coste = await renderNutCostLine(date);
 
   if (!cal.ok) {
     const motivo = cal.reason === 'pocos-datos'
@@ -1558,7 +1594,7 @@ async function renderNutCalibration(days, date) {
         Sin señal no se emite veredicto. Un número aquí sin datos suficientes sería
         aritmética sobre ruido.
       </div>
-    </div>`;
+    </div>` + coste;
     return;
   }
 
@@ -1597,6 +1633,34 @@ async function renderNutCalibration(days, date) {
         energético en el pipeline (122 filas de wellness, cero campos de energía). Se compone de
         BMR Katch-McArdle sobre la FFM medida, NEAT de los pasos, gasto de sesión y efecto
         térmico. Es una tendencia, no una medición.
+      </div>
+    </div>` + coste;
+}
+
+// Lo que cuesta de verdad el parseo por foto. El modelo se eligió sobre una estimación de
+// ~4 $/mes; esto la sustituye por el número medido, para poder revisar la decisión con
+// datos en vez de con mi aritmética.
+async function renderNutCostLine(date) {
+  const meals = (await dbGetAll('meals').catch(() => [])) || [];
+  const c = photoCostSummary(meals, date);
+  if (!c.fotos) return '';
+  const eur = (usd) => usd.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  // Proyección a mes completo desde el ritmo del mes en curso.
+  const dia = Number(String(date).slice(8, 10)) || 1;
+  const proyeccion = (c.totalUsd / dia) * 30;
+  return `
+    <div class="card nut-cost-card">
+      <div class="nut-trend-title">Coste del parseo</div>
+      <div class="nut-cost-grid">
+        <div><span class="ncg-val">$${eur(c.totalUsd)}</span><span class="ncg-lbl">este mes (${c.fotos} ${c.fotos === 1 ? 'foto' : 'fotos'})</span></div>
+        <div><span class="ncg-val">$${c.mediaUsd.toFixed(3)}</span><span class="ncg-lbl">por foto</span></div>
+        <div><span class="ncg-val">$${eur(proyeccion)}</span><span class="ncg-lbl">proyección a 30 d</span></div>
+      </div>
+      <div class="nut-calib-note">
+        Tokens reales devueltos por la función, a los precios de <code>${NUT_AI_MODEL}</code>
+        ($5 / $25 por millón). Si la proyección se te va, bajar a Haiku 4.5 es cambiar una
+        constante en la edge function: ~5× más barato, y la parte difícil ya no la hace el
+        modelo — los macros salen de la biblioteca.
       </div>
     </div>`;
 }
@@ -1833,6 +1897,7 @@ if (typeof module !== 'undefined' && module.exports) {
     nutShiftDate, nutIsoWeekStart,
     nutNormalize, nutSlug, findFood, itemFromFood, FOODS_SEED,
     bmrKatchMcArdle, maintenanceKcal, maintenanceCorrection,
+    photoCostUsd, photoCostSummary, NUT_AI_MODEL,
     NUT_NEAT_BASE_FACTOR, NUT_KCAL_PER_STEP_PER_KG, NUT_TEF_FRACTION,
     NUT_NOVA_PENALTY, NUT_PD_CAP, NUT_EA_FLOOR, NUT_FFM_KG_FALLBACK,
     NUT_PROTEIN_FLOOR, NUT_KCAL_TRAINING, NUT_KCAL_REST, NUT_BANDS,

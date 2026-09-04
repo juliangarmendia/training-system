@@ -134,6 +134,26 @@ devuelve el error en kcal/día. Por debajo de 150 kcal/día no emite veredicto: 
 ruido de la ventana, y un "tu mantenimiento está 40 kcal alto" sería ruido disfrazado de
 precisión.
 
+#### El modelo que lee las fotos, y lo que cuesta
+
+**Claude Opus 5 por API, elegido a mano el 4-sep-2026** frente a Haiku 4.5, Grok y Gemini.
+El criterio fue precisión de porción: los macros salen de la biblioteca `foods`, así que lo
+único que estima el modelo son **gramos** — y ese es el número del que cuelga todo lo demás.
+Medido: **~$0,035 por foto → ~$4,1/mes a 4 fotos/día.**
+
+Lo que se descartó y por qué:
+
+| Opción | Motivo |
+|---|---|
+| Haiku 4.5 (~$0,83/mes) | 5× más barato y suficiente para la tarea, pero se prefirió pagar por mejor estimación de gramaje. Cambiar es una constante en la edge function. |
+| Dentro de la suscripción | Existe la vía: Agent SDK / `claude -p` con auth de suscripción consume la cuota del plan (los créditos mensuales de Agent SDK se anunciaron y están **pausados** desde el 15-jun-2026). Pero una edge function no puede usar tu OAuth, así que obliga a la ruta de agente programado — y eso significa confirmar los gramos **de memoria y por lotes** en vez de en la mesa. Se rechazó por eso, no por el dinero. |
+| Grok | X Premium+ y SuperGrok **no** incluyen la API; facturación aparte igual que Anthropic. Sin ventaja de calidad demostrable y con un segundo proveedor que mantener. El bot @grok de X no es vía de integración: sin contrato de API ni salida estructurada. |
+| Gemini Flash free tier | Coste 0 real (~1.500 peticiones/día), pero segundo proveedor, hay que reimplementar el contrato de salida estructurada del que depende la resolución contra la biblioteca, y el free tier usa los datos para entrenar. |
+
+La decisión se tomó sobre una estimación, así que **cada comida guarda los tokens que costó**
+y *Tendencias → Coste del parseo* muestra el acumulado del mes, la media por foto y la
+proyección a 30 días. Si la proyección se va, la decisión se revisa con el número real.
+
 #### Qué se registra y qué no
 
 Se registra: alimentos en gramos, kcal, proteína, carbos, grasa, fibra, alcohol (en gramos, 7 kcal/g)

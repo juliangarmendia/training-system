@@ -368,6 +368,36 @@ eq(N.maintenanceCorrection({ ok: true, veredicto: 'sobreestima', errorKcalDia: 2
 eq(N.maintenanceCorrection({ ok: true, veredicto: 'subestima', errorKcalDia: -300 }), 300,
    'perder mas de lo predicho lo sube');
 
+// ── 16. Coste del parseo por foto ─────────────────────────────────
+// El modelo se eligio a mano sobre una ESTIMACION de ~4 $/mes. Si el numero medido no es
+// correcto, la decision no se puede revisar con datos y vuelve a depender de mi aritmetica.
+console.log('');
+console.log('16. Coste del parseo por foto');
+eq(N.NUT_AI_MODEL, 'claude-opus-5', 'los precios van atados al modelo que usa la edge function');
+// 3.900 entrada + 600 salida a 5/25 $ por millon.
+near(N.photoCostUsd({ input: 3900, output: 600 }), 0.0345, 0.0001, 'foto tipica ~ $0,0345');
+eq(N.photoCostUsd(null), 0, 'sin usage el coste es 0, no NaN');
+eq(N.photoCostUsd({}), 0, 'usage vacio es 0');
+// Solo cuenta el mes en curso, y solo las comidas que trajeron usage (las manuales no).
+const comidasCoste = [
+  { date: '2026-09-01', usage: { input: 4000, output: 600 } },
+  { date: '2026-09-02', usage: { input: 4000, output: 600 } },
+  { date: '2026-08-30', usage: { input: 4000, output: 600 } },  // mes anterior
+  { date: '2026-09-03' },                                        // manual, sin IA
+];
+const res = N.photoCostSummary(comidasCoste, '2026-09-04');
+eq(res.fotos, 2, 'cuenta solo las fotos del mes en curso');
+eq(res.mes, '2026-09', 'mes correcto');
+near(res.totalUsd, 0.07, 0.0001, 'total del mes');
+near(res.mediaUsd, 0.035, 0.0001, 'media por foto');
+eq(N.photoCostSummary([], '2026-09-04').fotos, 0, 'sin comidas no revienta');
+eq(N.photoCostSummary(null, '2026-09-04').totalUsd, 0, 'null no revienta');
+// La comprobacion que importa: a 4 fotos/dia la proyeccion tiene que salir cerca de los
+// ~4,2 $/mes que estime al recomendar el modelo. Si no, la estimacion estaba mal.
+const proyeccion = N.photoCostUsd({ input: 3900, output: 600 }) * 4 * 30;
+yes(proyeccion > 3.5 && proyeccion < 5,
+   `4 fotos/dia proyecta $${proyeccion.toFixed(2)}/mes, coherente con la estimacion de ~$4,2`);
+
 // ── Resultado ───────────────────────────────────────────────────────────────────
 console.log(failed === 0
   ? '\n✅ Nutrición v2: todas las métricas derivadas son reproducibles.'
