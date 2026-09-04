@@ -100,6 +100,40 @@ lo que se comió de verdad y el gasto real de la sesión**, cada día y en vivo,
 30. Importa porque las summaries ya habían calculado ~27 en días de entreno para este perfil, por
 debajo del umbral, sin forma de verlo hasta la revisión semanal. **Avisa; nunca bloquea.**
 
+#### Calibración del mantenimiento — lo que cierra la incertidumbre del TDEE
+
+Esta sección declara un TDEE "entre 2.720 y 3.110 según lo que se entrene de verdad", con lo
+que "el déficit real cae entre ~150 y ~540 kcal" — casi un factor de cuatro — y remata: *"el
+número no se defiende con la fórmula, se corrige con la tendencia"*. Desde v11.51 esa
+corrección es aritmética, no intuición.
+
+**El mantenimiento se modela con términos explícitos**, ninguno un factor de actividad opaco:
+
+| Término | Cómo sale | Día de entreno | Descanso |
+|---|---|---|---|
+| BMR | Katch-McArdle sobre la FFM **medida**: 370 + 21,6 × 72,8 | 1.942 | 1.942 |
+| NEAT no-pasos | 10% del BMR (estar de pie, cocinar, postura) | 194 | 194 |
+| NEAT de pasos | pasos × 0,00046 × kg — dato real del store `steps` | 320 (8.000) | 236 (5.256) |
+| Sesión | `estimateCalories()`, la misma función que el editor de entrenos | ~500 | 0 |
+| TEF | 10% de lo ingerido | 270 | 240 |
+| **Total** | | **3.226** | **2.586** |
+
+El BMR cuadra exactamente con `docs/profile.md` (1.942) y el día de descanso sale 1,33 × BMR,
+dentro de lo fisiológico. Con esos números el déficit medio de la semana del plan (4 entrenos
++ 3 descansos) es **~380 kcal/día → 0,35 kg/semana**, por debajo del objetivo de 0,45. Es la
+primera vez que ese hueco es visible sin esperar dos semanas de báscula.
+
+**No se mide, se modela**, y la app lo dice en pantalla: no hay dato de gasto energético en el
+pipeline. Las 122 filas de `wellness` traen readiness, HRV, RHR y sueño, y cero campos de
+energía; `whoop.js` pide `/v2/cycle` sólo para recovery y nunca lee `score.kilojoule`. Se
+construyó sobre lo que existe en vez de sobre un campo inexistente.
+
+**Y la báscula arbitra.** A 14 días la app compara el cambio de peso predicho por el balance
+energético con el real (medias móviles de 3 días en los dos extremos, no pesadas puntuales) y
+devuelve el error en kcal/día. Por debajo de 150 kcal/día no emite veredicto: es el suelo de
+ruido de la ventana, y un "tu mantenimiento está 40 kcal alto" sería ruido disfrazado de
+precisión.
+
 #### Qué se registra y qué no
 
 Se registra: alimentos en gramos, kcal, proteína, carbos, grasa, fibra, alcohol (en gramos, 7 kcal/g)

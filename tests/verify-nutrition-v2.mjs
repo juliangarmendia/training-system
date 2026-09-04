@@ -27,6 +27,7 @@ const ok = (m) => console.log(`  ok   ${m}`);
 const bad = (m) => { console.log(`  FAIL ${m}`); failed++; };
 const eq = (got, want, m) =>
   (String(got) === String(want) ? ok(m) : bad(`${m} — esperaba ${want}, obtuve ${got}`));
+const yes = (cond, m) => (cond ? ok(m) : bad(m));
 const near = (got, want, tol, m) =>
   (Math.abs(got - want) <= tol ? ok(m) : bad(`${m} — esperaba ~${want} (±${tol}), obtuve ${got}`));
 
@@ -324,6 +325,48 @@ const sinOrigen = conVino.calories - (4 * conVino.protein + 4 * conVino.carbs + 
 eq(sinOrigen > 100, true, 'sin el termino de alcohol, 100+ kcal del dia no tendrian explicacion');
 eq(N.aggregateMeals([{ items: [N.itemFromFood(pollo, 200)] }]).alcohol, 0,
    'un dia sin alcohol suma 0, no undefined');
+
+// ── 15. Mantenimiento modelado ────────────────────────────────────
+// Si estos numeros no cuadran con docs/profile.md y plans/nutrition-notes.md, el modelo
+// no sirve: todo el deficit y toda la calibracion salen de aqui.
+console.log('');
+console.log('15. Mantenimiento modelado');
+// Katch-McArdle sobre la FFM medida. docs/profile.md dice 1.942 kcal.
+eq(N.bmrKatchMcArdle(72.8), 1942, 'BMR con 72,8 kg de FFM = 1.942, el numero de docs/profile.md');
+eq(N.bmrKatchMcArdle(null), N.bmrKatchMcArdle(N.NUT_FFM_KG_FALLBACK), 'sin FFM usa el respaldo');
+// Cada termino por separado, para poder discutirlos uno a uno.
+const mDesc = N.maintenanceKcal({ ffmKg: 72.8, bodyweightKg: 87, steps: 8000, eee: 500, kcalIn: 2700 });
+eq(mDesc.bmr, 1942, 'desglose: BMR');
+eq(mDesc.neatBase, 194, 'desglose: NEAT no atribuible a pasos (10% del BMR)');
+eq(mDesc.neatSteps, 320, 'desglose: 8.000 pasos a 87 kg = 320 kcal');
+eq(mDesc.exercise, 500, 'desglose: gasto de la sesion');
+eq(mDesc.tef, 270, 'desglose: TEF, 10% de 2.700 ingeridas');
+eq(mDesc.total, 1942 + 194 + 320 + 500 + 270, 'el total es la suma de los terminos, sin factores ocultos');
+// LA COMPROBACION QUE IMPORTA: el modelo tiene que caer dentro del rango que el propio
+// plan declara (2.720 con la adherencia medida, 3.110 con adherencia plena).
+const diaEntreno = N.maintenanceKcal({ ffmKg: 72.8, bodyweightKg: 87, steps: 8000, eee: 500, kcalIn: 2700 }).total;
+const diaDescanso = N.maintenanceKcal({ ffmKg: 72.8, bodyweightKg: 87, steps: 5256, eee: 0, kcalIn: 2400 }).total;
+yes(diaEntreno >= 3000 && diaEntreno <= 3300, `dia de entreno ${diaEntreno} kcal, cerca del techo de 3.110 del plan`);
+yes(diaDescanso >= 2300 && diaDescanso <= 2650, `dia de descanso ${diaDescanso} kcal (5.256 pasos, la media real de W35)`);
+// Y el dia sedentario no puede quedarse por debajo de 1,25 x BMR: seria irreal.
+const factor = diaDescanso / N.bmrKatchMcArdle(72.8);
+yes(factor >= 1.25 && factor <= 1.45, `dia de descanso = ${factor.toFixed(2)} x BMR, dentro de lo fisiologico`);
+// Robustez.
+eq(N.maintenanceKcal({}).total > 0, true, 'sin ningun dato sigue devolviendo el BMR de respaldo');
+eq(N.maintenanceKcal({ ffmKg: 72.8, steps: 0, eee: 0, kcalIn: 0 }).tef, 0, 'sin comer no hay TEF');
+
+// La correccion que devuelve la calibracion es lo que hay que sumarle al mantenimiento.
+console.log('');
+console.log('15b. Correccion del mantenimiento');
+eq(N.maintenanceCorrection(null), null, 'sin calibracion no hay correccion');
+eq(N.maintenanceCorrection({ ok: false }), null, 'calibracion sin datos no corrige');
+eq(N.maintenanceCorrection({ ok: true, veredicto: 'calibrado', errorKcalDia: 40 }), null,
+   'bajo el ruido no se corrige nada: 40 kcal seria ruido disfrazado de precision');
+// Perdiste MENOS de lo predicho -> el mantenimiento real es MAS BAJO -> correccion negativa.
+eq(N.maintenanceCorrection({ ok: true, veredicto: 'sobreestima', errorKcalDia: 250 }), -250,
+   'perder menos de lo predicho baja el mantenimiento en esa cantidad');
+eq(N.maintenanceCorrection({ ok: true, veredicto: 'subestima', errorKcalDia: -300 }), 300,
+   'perder mas de lo predicho lo sube');
 
 // ── Resultado ───────────────────────────────────────────────────────────────────
 console.log(failed === 0

@@ -358,13 +358,20 @@
         </div>
       </section>
 
-      <!-- Nutrition -->
       <!-- Nutrición v2 (v11.49): el registro entra por foto. El formulario de teclear
            proteína a mano se retiró a propósito — dejar dos rutas de entrada compitiendo
-           es cómo se llegó a 11 filas en cuatro meses. -->
+           es cómo se llegó a 11 filas en cuatro meses.
+           v11.51: tres sub-vistas con el mismo patrón que las de Stats. -->
       <section id="view-nutrition" class="view">
         <div class="view-scroll">
-          <div class="section-head">
+          <div class="stats-tabs" id="nut-tabs">
+            <button class="stats-tab active" data-nut-group="hoy">Hoy</button>
+            <button class="stats-tab" data-nut-group="tendencias">Tendencias</button>
+            <button class="stats-tab" data-nut-group="alimentos">Alimentos</button>
+          </div>
+
+          <!-- ===== HOY ===== -->
+          <div class="section-head" data-group="hoy">
             <div class="section-head-icon" style="background:var(--tint-green);color:var(--accent)">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8h1a4 4 0 010 8h-1"/><path d="M2 8h16v9a4 4 0 01-4 4H6a4 4 0 01-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>
             </div>
@@ -372,24 +379,27 @@
           </div>
 
           <!-- El contrato del día en cuatro números, como la cabecera de Caltrack -->
-          <div id="nut-contract" class="nut-contract"></div>
+          <div id="nut-contract" class="nut-contract" data-group="hoy"></div>
 
           <!-- Captura. `capture="environment"` abre la cámara trasera directamente en iOS. -->
-          <button id="btn-nut-photo" class="btn-primary btn-lg nut-photo-btn">
+          <button id="btn-nut-photo" class="btn-primary btn-lg nut-photo-btn" data-group="hoy">
             <span class="nut-photo-ico">📷</span> Foto de la comida
           </button>
           <input type="file" id="nut-photo-input" accept="image/*" capture="environment" hidden>
-          <div id="nut-photo-status" class="nut-status hidden"></div>
+          <div id="nut-photo-status" class="nut-status hidden" data-group="hoy"></div>
 
           <!-- Totales del día + disponibilidad energética -->
-          <div id="nut-today" class="card"></div>
+          <div id="nut-today" class="card" data-group="hoy"></div>
 
-          <div class="section-label" style="margin-top:20px">Comidas de hoy</div>
-          <div id="nut-meals" class="recent-list"></div>
+          <!-- Coach "resto del día": determinista, sin llamada al LLM -->
+          <div id="nut-coach" data-group="hoy"></div>
+
+          <div class="section-label" style="margin-top:20px" data-group="hoy">Comidas de hoy</div>
+          <div id="nut-meals" class="recent-list" data-group="hoy"></div>
 
           <!-- La energía se conserva del formulario anterior: el motor de fatiga la
                consume (app.js, cálculo de fatiga). Quitarla sería una regresión. -->
-          <div class="card" style="margin-top:16px">
+          <div class="card" style="margin-top:16px" data-group="hoy">
             <div class="checklist">
               <div class="check-row">
                 <label>Nivel de energía</label>
@@ -399,8 +409,19 @@
             <button id="btn-nut-energy" class="btn-secondary" style="margin-top:10px">Guardar energía</button>
           </div>
 
-          <div class="section-label" style="margin-top:24px">Esta semana</div>
-          <div id="nutrition-history" class="recent-list"></div>
+          <div class="section-label" style="margin-top:24px" data-group="hoy">Esta semana</div>
+          <div id="nutrition-history" class="recent-list" data-group="hoy"></div>
+
+          <!-- ===== TENDENCIAS ===== -->
+          <div id="nut-streak" data-group="tendencias"></div>
+          <div id="nut-trends" data-group="tendencias"></div>
+          <div class="section-label" style="margin-top:20px" data-group="tendencias">Déficit por semana</div>
+          <div id="nut-weekly" data-group="tendencias"></div>
+          <div class="section-label" style="margin-top:20px" data-group="tendencias">Calibración del mantenimiento</div>
+          <div id="nut-calibration" data-group="tendencias"></div>
+
+          <!-- ===== ALIMENTOS ===== -->
+          <div id="nut-foods" data-group="alimentos"></div>
         </div>
       </section>
 
@@ -692,7 +713,7 @@
           </div>
           <div class="section-label" style="margin-top:24px">App</div>
           <div class="card">
-            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v11.50<br>Data stored locally + cloud sync.<br>Works offline.</p>
+            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v11.51<br>Data stored locally + cloud sync.<br>Works offline.</p>
             <button id="btn-force-update" class="btn-secondary btn-full" style="text-align:center">Force Update App</button>
           </div>
         </div>

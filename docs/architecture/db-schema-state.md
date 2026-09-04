@@ -76,6 +76,15 @@ teclearse y empezaron a derivarse. Campos nuevos en la misma fila: `carbs`, `fat
 `alcoholG`, `nova12Pct`, `mealCount`, `itemCount`, `estimatedItems`, `kcalTarget`, `proteinFloor`,
 `trainingDay`, `eee`, `ffm`, `ea`, `loggedV2`.
 
+v11.51 añade a la misma fila `steps` (del store `steps`) y el mantenimiento **modelado**:
+`burn` (total), `burnSource` (`'modelo'`) y `burnBreakdown` (BMR Katch-McArdle sobre la FFM
+medida, NEAT de pasos, gasto de sesión, efecto térmico). Se modela y no se mide porque no
+hay dato de gasto energético en el pipeline: las 122 filas de `wellness` traen readiness,
+HRV, RHR y sueño, y **cero** campos de energía; `whoop.js` pide `/v2/cycle` sólo para sacar
+recovery y nunca lee `score.kilojoule`, y la ruta primaria es intervals.icu, que no expone
+gasto total. `burnSource` existe para poder cambiar a `'whoop'` el día que ese dato entre,
+sin migrar nada.
+
 `energy` **se conserva** y se sigue escribiendo a mano (`nutSaveEnergy`): no hay forma de derivarla
 y el motor de fatiga la consume. `recomputeNutritionDay()` hace **merge**, nunca sobreescritura, o
 un recálculo la borraría y convertiría la fatiga en un número inventado.

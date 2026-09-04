@@ -84,7 +84,7 @@ const m = SW.match(/CACHE_NAME\s*=\s*'training-v(\d+)\.(\d+)'/);
 yes(!!m, 'CACHE_NAME tiene el formato esperado');
 if (m) {
   const version = `${m[1]}.${m[2]}`;
-  yes(Number(m[2]) >= 50, `cache en v${version} (v11.49 ya estaba desplegada)`);
+  yes(Number(m[2]) >= 51, `cache en v${version} (v11.50 ya estaba desplegada)`);
 }
 
 // ── 6. Clases CSS usadas en el marcado generado ─────────────────────────────────────
@@ -154,6 +154,39 @@ yes(iAuth > 0 && iSeed > 0, 'se localizan checkAuth() y seedFoods() en init()');
 yes(iSeed > iAuth, 'seedFoods() corre DESPUES de checkAuth(), o la semilla no sincroniza');
 yes(/if \(!supabaseClient\) return;/.test(SYNC),
   'enqueueSync() sigue descartando en silencio sin cliente (la razon del orden anterior)');
+
+// ── 11. Sub-vistas (Hoy / Tendencias / Alimentos) ─────────────────────
+// La regla que oculta grupos inactivos esta scopeada a #view-stats, asi que esta vista
+// necesita la suya. Sin ella las tres sub-vistas se pintan una debajo de otra.
+console.log('');
+console.log('11. Sub-vistas');
+yes(/function switchNutGroup/.test(NUT), 'switchNutGroup() existe');
+yes(NUT.includes('dataset.nutGroup'), 'los botones se cablean por data-nut-group');
+for (const g of ['hoy', 'tendencias', 'alimentos']) {
+  yes(HTML.includes(`data-nut-group="${g}"`), `boton de la sub-vista "${g}"`);
+  yes(HTML.includes(`data-group="${g}"`), `contenido de la sub-vista "${g}"`);
+}
+yes(/#view-nutrition[^{]*\[data-group\][^{]*:not\(\.active-group\)/.test(CSS),
+  'CSS propio para ocultar grupos inactivos (el de Stats esta scopeado a #view-stats)');
+// Cada render de sub-vista tiene su contenedor y se invoca.
+for (const [fn, id] of [['renderNutStreak', 'nut-streak'], ['renderNutTrends', 'nut-trends'],
+                        ['renderNutWeekly', 'nut-weekly'], ['renderNutCalibration', 'nut-calibration'],
+                        ['renderNutFoods', 'nut-foods'], ['renderNutCoach', 'nut-coach']]) {
+  yes(new RegExp(`function ${fn}`).test(NUT), `${fn}() existe`);
+  yes(HTML.includes(`id="${id}"`), `#${id} existe`);
+  const cuerpoV2 = NUT.slice(NUT.indexOf('async function renderNutricionV2'),
+                             NUT.indexOf('async function renderNutricionV2') + 2200);
+  yes(cuerpoV2.includes(fn + '('), `renderNutricionV2() invoca ${fn}()`);
+}
+
+// ── 12. La tabla no puede desbordar la vista ─────────────────────────
+console.log('');
+console.log('12. Contencion del leaderboard');
+yes(/\.nut-table-wrap\s*\{[^}]*overflow-x:\s*auto/.test(CSS),
+  'la tabla scrollea dentro de su caja, no arrastra el body en horizontal');
+// Y `.nut-bar` (barra de progreso de Hoy) no puede colisionar con las de tendencia.
+yes(!NUT.includes('class="nut-bar "') && NUT.includes('class="nut-tbar'),
+  'las barras de tendencia usan .nut-tbar, sin colisionar con la .nut-bar de progreso');
 
 console.log('');
 console.log(failed === 0

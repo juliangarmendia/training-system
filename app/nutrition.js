@@ -138,6 +138,88 @@ function eaStatus(ea) {
   return 'critico';
 }
 
+// ==================== MANTENIMIENTO MODELADO ====================
+//
+// POR QUÉ MODELADO Y NO MEDIDO: no hay dato de gasto energético en el pipeline. Las 122
+// filas de `wellness` traen readiness, HRV, RHR y sueño, pero cero campos de energía; y
+// `whoop.js` pide /v2/cycle solo para sacar recovery — nunca lee `score.kilojoule`, y la
+// ruta primaria es intervals.icu, que no expone gasto total. Construir la calibración
+// sobre un campo inexistente habría sido peor que no construirla.
+//
+// LO QUE ESTO RESUELVE, que es más útil que auditar a Whoop: `plans/nutrition-notes.md`
+// admite que el TDEE está "entre 2.720 y 3.110 según lo que se entrene de verdad", con lo
+// que "el déficit real cae entre ~150 y ~540 kcal" — un factor de casi cuatro. Y remata:
+// "el número no se defiende con la fórmula, se corrige con la tendencia". Esto es esa
+// corrección, hecha aritmética: el modelo es la hipótesis, la báscula es la evidencia, y
+// la calibración devuelve el error en kcal/día.
+//
+// CADA TÉRMINO ES EXPLÍCITO Y AUDITABLE. Ninguno es un factor de actividad opaco:
+//
+//   BMR    Katch-McArdle sobre la masa libre de grasa MEDIDA. Se elige esta y no
+//          Mifflin porque usa FFM real en vez de estimarla desde peso y altura, que es
+//          justo el dato que hay (Tanita MC-780MA-N). Comprobación: con 72,8 kg da
+//          370 + 21,6 × 72,8 = 1.942, el mismo número que docs/profile.md.
+//   NEAT   dos partes: los pasos (dato real, 115 filas en el store) y un factor sobre el
+//          BMR para todo lo que no son pasos — estar de pie, cocinar, postura. Sin ese
+//          factor el modelo se queda en ~1,23 × BMR en un día sedentario, cuando la
+//          realidad ronda 1,3-1,4.
+//   EEE    el gasto de las sesiones, vía estimateCalories() de app.js. La MISMA función
+//          que ya se muestra en el editor de entrenos, para que dos pantallas no den
+//          números distintos del mismo día.
+//   TEF    efecto térmico de los alimentos, ~10% de lo ingerido. Es gasto real y va en el
+//          mantenimiento: dejarlo fuera infla el déficit aparente en ~250 kcal.
+
+const NUT_BMR_KATCH_BASE = 370;         // Katch-McArdle: 370 + 21,6 × FFM
+const NUT_BMR_KATCH_COEF = 21.6;
+const NUT_NEAT_BASE_FACTOR = 1.10;      // NEAT no atribuible a pasos, sobre el BMR
+const NUT_KCAL_PER_STEP_PER_KG = 0.00046; // ≈ 0,040 kcal/paso a 87 kg
+const NUT_TEF_FRACTION = 0.10;          // efecto térmico de los alimentos
+
+function bmrKatchMcArdle(ffmKg) {
+  const ffm = Number(ffmKg) || NUT_FFM_KG_FALLBACK;
+  return Math.round(NUT_BMR_KATCH_BASE + NUT_BMR_KATCH_COEF * ffm);
+}
+
+// Gasto de mantenimiento del día. Devuelve el desglose además del total, porque un número
+// de mantenimiento que no se puede descomponer no se puede discutir — y este se va a
+// discutir cada dos semanas contra la báscula.
+function maintenanceKcal({ ffmKg, bodyweightKg, steps, eee, kcalIn }) {
+  const bmr = bmrKatchMcArdle(ffmKg);
+  const kg = Number(bodyweightKg) || 87;
+  const neatBase = Math.round(bmr * (NUT_NEAT_BASE_FACTOR - 1));
+  const neatSteps = Math.round((Number(steps) || 0) * NUT_KCAL_PER_STEP_PER_KG * kg);
+  const exercise = Math.round(Number(eee) || 0);
+  const tef = Math.round((Number(kcalIn) || 0) * NUT_TEF_FRACTION);
+  return {
+    total: bmr + neatBase + neatSteps + exercise + tef,
+    bmr, neatBase, neatSteps, exercise, tef,
+  };
+}
+
+// ==================== CALIBRACIÓN DEL MANTENIMIENTO ====================
+//
+// Compara el cambio de peso PREDICHO por el balance energético con el REAL de la báscula.
+// Si difieren de forma sostenida, el que miente es el mantenimiento modelado — la báscula
+// no negocia.
+//
+// Mejora sobre Caltrack, que hace lo mismo contra el gasto de Whoop: los dos extremos usan
+// medias móviles de 3 días. Con pesadas puntuales, 400 g de agua contaminan el veredicto.
+//
+// Y no emite veredicto cuando la discrepancia cae bajo el ruido: con 14 días y ±0,3 kg de
+// error residual en las medias, el suelo de detección ronda ±165 kcal/día. Un "tu
+// mantenimiento está 40 kcal alto" sería ruido disfrazado de precisión.
+//
+// El veredicto se lee así:
+//   'sobreestima'  perdiste MENOS de lo predicho → el mantenimiento real es MÁS BAJO
+//   'subestima'    perdiste MÁS de lo predicho   → el mantenimiento real es MÁS ALTO
+//   'calibrado'    la discrepancia no supera el ruido
+
+function maintenanceCorrection(cal) {
+  if (!cal || !cal.ok || cal.veredicto === 'calibrado') return null;
+  // El error en kcal/día es directamente cuánto hay que corregir el mantenimiento.
+  return -cal.errorKcalDia;
+}
+
 // ==================== AGREGADO DEL DÍA ====================
 //
 // Suma los items de todas las comidas de una fecha. Único sitio donde se calculan
@@ -632,6 +714,11 @@ async function recomputeNutritionDay(date) {
   const ffm = await nutFfmKg();
   const eee = await nutEeeForDate(date);
   const ea = energyAvailability(agg.calories, eee, ffm);
+  const steps = await nutStepsForDate(date);
+  const bw = (typeof getBodyweightLatest === 'function' ? await getBodyweightLatest() : null) || 87;
+  // `burn` es el mantenimiento MODELADO, no medido: no hay dato de gasto en el pipeline
+  // (ver maintenanceKcal). La calibracion contra la bascula es lo que lo corrige.
+  const maint = maintenanceKcal({ ffmKg: ffm, bodyweightKg: bw, steps, eee, kcalIn: agg.calories });
 
   let existing = null;
   try { existing = await dbGet('nutrition', date); } catch (e) {}
@@ -656,6 +743,10 @@ async function recomputeNutritionDay(date) {
     trainingDay: targets.training,
     eee,
     ffm,
+    steps,
+    burn: maint.total,
+    burnSource: 'modelo',
+    burnBreakdown: maint,
     ea: ea == null ? null : Math.round(ea * 10) / 10,
     loggedV2: agg.mealCount > 0,
     updatedAt: Date.now(),
@@ -665,6 +756,14 @@ async function recomputeNutritionDay(date) {
 }
 
 // ==================== ACCESO A COMIDAS ====================
+
+// Pasos del dia. Vienen del store `steps` (iOS Shortcut -> steps-ingest, o intervals.icu).
+async function nutStepsForDate(date) {
+  try {
+    const row = await dbGet('steps', date);
+    return row && Number(row.steps) > 0 ? Number(row.steps) : 0;
+  } catch (e) { return 0; }
+}
 
 async function nutMealsForDate(date) {
   const all = (await dbGetAll('meals').catch(() => [])) || [];
@@ -776,6 +875,20 @@ async function renderNutricionV2() {
   renderNutContract(day, adh);
   renderNutToday(day);
   await renderNutMeals(date);
+  await renderNutCoach(day);
+
+  // Sub-vistas. Se pintan siempre: son baratas (leen de IDB) y asi cambiar de pestaña es
+  // instantaneo en vez de mostrar un hueco mientras cargan.
+  renderNutStreak(days, date);
+  renderNutTrends(days, date);
+  renderNutWeekly(days);
+  await renderNutCalibration(days, date);
+  await renderNutFoods();
+
+  // Dejar un grupo activo (por defecto Hoy), como hace renderStats().
+  if (!document.querySelector('#view-nutrition .view-scroll > [data-group].active-group')) {
+    switchNutGroup('hoy');
+  }
 
   const starEl = document.getElementById('nut-energy');
   if (starEl && typeof setStarValue === 'function') setStarValue('nut-energy', day.energy || 3);
@@ -1216,6 +1329,473 @@ async function nutSaveEnergy() {
   toast('Energía guardada');
 }
 
+// ==================== SUB-VISTAS ====================
+//
+// Mismo patrón que las sub-pestañas de Stats: `data-nut-group` en los botones y
+// `data-group` + `.active-group` en el contenido.
+
+function switchNutGroup(group) {
+  document.querySelectorAll('#nut-tabs .stats-tab').forEach(b => {
+    b.classList.toggle('active', b.dataset.nutGroup === group);
+  });
+  document.querySelectorAll('#view-nutrition .view-scroll > [data-group]').forEach(el => {
+    el.classList.toggle('active-group', el.dataset.group === group);
+  });
+  const scroll = document.querySelector('#view-nutrition .view-scroll');
+  if (scroll) scroll.scrollTop = 0;
+  _nutGroup = group;
+}
+
+let _nutGroup = 'hoy';
+
+// ==================== BARRAS DE 30 DÍAS ====================
+//
+// El widget que Caltrack repite para todas sus métricas, y la razón de que su dashboard se
+// lea bien siendo densísimo: la misma forma para todo, con las líneas de referencia
+// encima. Aquí en CSS y no en SVG porque 30 barras con texto en un móvil de 375 px se
+// comportan mejor con flexbox que con un viewBox fijo.
+//
+// Los umbrales SIEMPRE se imprimen en la leyenda. Un color cuyo criterio hay que adivinar
+// no informa: decora.
+
+const NUT_TREND_DAYS = 30;
+
+function renderNutBars(serie, opts) {
+  const o = opts || {};
+  const vals = serie.map(p => p.v);
+  const conDato = vals.filter(v => v != null && v > 0);
+  if (conDato.length < 2) {
+    return `<div class="nut-bars-empty">Aún no hay suficientes días con datos</div>`;
+  }
+
+  const refs = (o.refs || []).filter(r => r.value != null);
+  const techo = Math.max(...conDato, ...refs.map(r => r.value)) * 1.12 || 1;
+  const pct = (v) => Math.max(1.5, Math.min(100, (v / techo) * 100));
+
+  const barras = serie.map(p => {
+    if (p.v == null || p.v <= 0) {
+      // Un día sin dato NO es un cero: se marca como hueco. Pintarlo a cero mentiría.
+      return `<div class="nut-tbar nut-tbar-hueco" title="${p.label}: sin registrar"></div>`;
+    }
+    const cls = o.colorFor ? o.colorFor(p.v, p) : 'nut-neutral';
+    return `<div class="nut-tbar ${cls}" style="height:${pct(p.v)}%"
+      title="${p.label}: ${Math.round(p.v)}${o.unit || ''}"></div>`;
+  }).join('');
+
+  const lineas = refs.map(r => `
+    <div class="nut-ref ${r.dash ? 'nut-ref-dash' : ''}" style="bottom:${pct(r.value)}%">
+      <span class="nut-ref-lbl">${r.label}</span>
+    </div>`).join('');
+
+  const primero = serie.find(p => p.v != null);
+  const ultimo = [...serie].reverse().find(p => p.v != null);
+
+  return `
+    <div class="nut-bars">
+      <div class="nut-bars-plot">${lineas}${barras}</div>
+      <div class="nut-bars-axis">
+        <span>${primero ? primero.label : ''}</span>
+        <span class="nut-bars-legend">${o.legend || ''}</span>
+        <span>${ultimo ? ultimo.label : ''}</span>
+      </div>
+    </div>`;
+}
+
+// Serie de los últimos N días para un campo, con hueco donde no hay registro.
+function nutSerie(days, campo, hasta, n) {
+  const byDate = new Map((days || []).map(d => [d.date, d]));
+  const out = [];
+  for (let k = (n || NUT_TREND_DAYS) - 1; k >= 0; k--) {
+    const date = nutShiftDate(hasta, -k);
+    const d = byDate.get(date);
+    const v = d && d.loggedV2 ? d[campo] : null;
+    out.push({ date, v: (v == null || Number.isNaN(v)) ? null : v, label: formatDate(date) });
+  }
+  return out;
+}
+
+// ==================== RACHA ====================
+function renderNutStreak(days, date) {
+  const el = document.getElementById('nut-streak');
+  if (!el) return;
+  const r = deficitStreak(days, date);
+  const semanas = weeklyDeficits(days);
+  const ultima = semanas.length ? semanas[semanas.length - 1] : null;
+  const adh = adherenceMode(days, date);
+
+  el.innerHTML = `
+    <div class="card nut-streak-card">
+      <div class="nut-streak-main">
+        <span class="nut-streak-ico">🔥</span>
+        <div>
+          <div class="nut-streak-val">${r.current} ${r.current === 1 ? 'día' : 'días'} en déficit</div>
+          <div class="nut-streak-sub">
+            mejor racha ${r.best}
+            ${ultima ? ` · esta semana ${ultima.avgDeficit > 0 ? '+' : ''}${nutFmt(ultima.avgDeficit)} kcal/día` : ''}
+          </div>
+        </div>
+      </div>
+      <div class="nut-streak-note">
+        Un día sin registrar corta la racha: si no lo mediste, no cuenta.
+        Registro ${adh.perWeek}/7 · pilota ${adh.pilot === 'tracker' ? 'el registro' : 'el peso'}.
+      </div>
+    </div>`;
+}
+
+// ==================== TENDENCIAS ====================
+function renderNutTrends(days, date) {
+  const el = document.getElementById('nut-trends');
+  if (!el) return;
+
+  const ultimo = (days || []).filter(d => d.loggedV2).sort((a, b) => a.date.localeCompare(b.date)).pop();
+  const objetivoKcal = (ultimo && ultimo.kcalTarget) || NUT_KCAL_REST;
+  const sueloProt = (ultimo && ultimo.proteinFloor) || NUT_PROTEIN_FLOOR;
+
+  const bloques = [
+    {
+      titulo: 'Calorías',
+      serie: nutSerie(days, 'calories', date),
+      unit: ' kcal',
+      refs: [{ value: objetivoKcal, label: `objetivo ${nutFmt(objetivoKcal)}` }],
+      legend: `verde ±${NUT_BANDS.kcal.verde} · ámbar ±${NUT_BANDS.kcal.ambar}`,
+      colorFor: (v, p) => {
+        const byDate = new Map(days.map(d => [d.date, d]));
+        const t = (byDate.get(p.date) || {}).kcalTarget || objetivoKcal;
+        return nutKcalClass(v, t);
+      },
+    },
+    {
+      titulo: 'Proteína',
+      serie: nutSerie(days, 'protein', date),
+      unit: ' g',
+      refs: [{ value: sueloProt, label: `suelo ${sueloProt} g` }],
+      legend: `verde ≥ suelo · ámbar ≥ ${Math.round(NUT_BANDS.proteina.ambar * 100)}%`,
+      colorFor: (v) => v >= sueloProt ? 'nut-verde'
+        : v >= sueloProt * NUT_BANDS.proteina.ambar ? 'nut-ambar' : 'nut-rojo',
+    },
+    {
+      titulo: 'Disponibilidad energética',
+      serie: nutSerie(days, 'ea', date),
+      unit: ' kcal/kg',
+      refs: [{ value: NUT_EA_FLOOR, label: `suelo ${NUT_EA_FLOOR}` }],
+      legend: `REC-008 · verde ≥${NUT_BANDS.ea.verde} · ámbar ≥${NUT_BANDS.ea.ambar}`,
+      colorFor: (v) => ({ ok: 'nut-verde', bajo: 'nut-ambar', critico: 'nut-rojo' }[eaStatus(v)] || 'nut-neutral'),
+    },
+    {
+      titulo: 'Sin procesar (NOVA 1-2)',
+      serie: nutSerie(days, 'nova12Pct', date),
+      unit: '%',
+      refs: [{ value: NUT_BANDS.nova.verde, label: `${NUT_BANDS.nova.verde}%` }],
+      legend: `% de las kcal · verde ≥${NUT_BANDS.nova.verde}% · ámbar ≥${NUT_BANDS.nova.ambar}%`,
+      colorFor: (v) => v >= NUT_BANDS.nova.verde ? 'nut-verde'
+        : v >= NUT_BANDS.nova.ambar ? 'nut-ambar' : 'nut-rojo',
+    },
+    {
+      titulo: 'Fibra',
+      serie: nutSerie(days, 'fiber', date),
+      unit: ' g',
+      refs: [{ value: NUT_FIBER_TARGET, label: `${NUT_FIBER_TARGET} g` }],
+      legend: `objetivo ${NUT_FIBER_TARGET} g/día`,
+      colorFor: (v) => v >= NUT_FIBER_TARGET ? 'nut-verde'
+        : v >= NUT_FIBER_TARGET * 0.7 ? 'nut-ambar' : 'nut-rojo',
+    },
+  ];
+
+  el.innerHTML = bloques.map(b => `
+    <div class="card nut-trend-block">
+      <div class="nut-trend-head">
+        <span class="nut-trend-title">${b.titulo}</span>
+        <span class="nut-trend-legend">${b.legend}</span>
+      </div>
+      ${renderNutBars(b.serie, b)}
+    </div>`).join('');
+}
+
+// ==================== DÉFICIT SEMANAL ====================
+function renderNutWeekly(days) {
+  const el = document.getElementById('nut-weekly');
+  if (!el) return;
+  const semanas = weeklyDeficits(days).slice(-8).reverse();
+  if (!semanas.length) {
+    showEmptyState(el, '📉', 'Sin semanas completas', 'Aparecerá cuando haya días registrados.');
+    return;
+  }
+  el.innerHTML = `<div class="recent-list">${semanas.map(w => {
+    const bueno = w.avgDeficit < 0;
+    return `
+      <div class="history-item">
+        <div class="hi-left">
+          <div class="hi-title">Semana del ${formatDate(w.weekStart)}</div>
+          <div class="hi-sub">${nutFmt(w.avgKcal)} kcal/día · objetivo ${nutFmt(w.avgTarget)} · ${w.days} ${w.days === 1 ? 'día' : 'días'}</div>
+        </div>
+        <div class="hi-right">
+          <div class="hi-stat ${bueno ? 'nut-verde' : 'nut-rojo'}">${w.avgDeficit > 0 ? '+' : ''}${nutFmt(w.avgDeficit)}</div>
+          <div class="hi-stat-sub">kcal/día</div>
+        </div>
+      </div>`;
+  }).join('')}</div>`;
+}
+
+// ==================== CALIBRACIÓN DEL MANTENIMIENTO ====================
+//
+// La pieza que resuelve la incertidumbre que `nutrition-notes.md` declara y no puede
+// cerrar: "el TDEE cae entre 2.720 y 3.110 según lo que se entrene de verdad", así que
+// "el déficit real cae entre ~150 y ~540 kcal". Casi un factor de cuatro. Aquí la báscula
+// arbitra: el modelo es la hipótesis, el peso es la evidencia.
+async function renderNutCalibration(days, date) {
+  const el = document.getElementById('nut-calibration');
+  if (!el) return;
+  const weights = (await dbGetAll('bodyweight').catch(() => [])) || [];
+  const cal = wearableCalibration(days, weights, date);
+
+  if (!cal.ok) {
+    const motivo = cal.reason === 'pocos-datos'
+      ? `Hacen falta 10 días registrados en los últimos 14; hay ${cal.have}.`
+      : 'Hacen falta pesadas al principio y al final de la ventana de 14 días.';
+    el.innerHTML = `<div class="card nut-calib-card">
+      <div class="nut-calib-none">${motivo}</div>
+      <div class="nut-calib-note">
+        Sin señal no se emite veredicto. Un número aquí sin datos suficientes sería
+        aritmética sobre ruido.
+      </div>
+    </div>`;
+    return;
+  }
+
+  const correccion = maintenanceCorrection(cal);
+  const veredictos = {
+    calibrado: {
+      cls: 'nut-verde',
+      txt: 'El mantenimiento modelado cuadra con la báscula. Sin corrección.',
+    },
+    sobreestima: {
+      cls: 'nut-ambar',
+      txt: `Perdiste menos de lo predicho: tu mantenimiento real es <strong>~${nutFmt(Math.abs(correccion || 0))} kcal/día más bajo</strong> de lo que estima el modelo.`,
+    },
+    subestima: {
+      cls: 'nut-teal',
+      txt: `Perdiste más de lo predicho: tu mantenimiento real es <strong>~${nutFmt(Math.abs(correccion || 0))} kcal/día más alto</strong> de lo que estima el modelo.`,
+    },
+  };
+  const v = veredictos[cal.veredicto];
+
+  el.innerHTML = `
+    <div class="card nut-calib-card">
+      <div class="nut-calib-verdict ${v.cls}">${v.txt}</div>
+      <div class="nut-calib-grid">
+        <div><span class="ncg-val">${cal.predichoKg > 0 ? '+' : ''}${cal.predichoKg} kg</span><span class="ncg-lbl">predicho por el balance</span></div>
+        <div><span class="ncg-val">${cal.realKg > 0 ? '+' : ''}${cal.realKg} kg</span><span class="ncg-lbl">real (media 3 d)</span></div>
+        <div><span class="ncg-val">${cal.days}</span><span class="ncg-lbl">días con dato</span></div>
+      </div>
+      <div class="nut-calib-note">
+        Ventana ${formatDate(cal.start)} – ${formatDate(cal.end)}. Los dos extremos usan medias
+        móviles de 3 días: con pesadas puntuales, 400 g de agua contaminan el veredicto.
+        Por debajo de ${NUT_CALIB_MIN_SIGNAL} kcal/día no se emite corrección — es el suelo de
+        ruido de la ventana.
+        <br><br>
+        El gasto que se compara es <strong>modelado, no medido</strong>: no hay dato de gasto
+        energético en el pipeline (122 filas de wellness, cero campos de energía). Se compone de
+        BMR Katch-McArdle sobre la FFM medida, NEAT de los pasos, gasto de sesión y efecto
+        térmico. Es una tendencia, no una medición.
+      </div>
+    </div>`;
+}
+
+// ==================== LEADERBOARD DE ALIMENTOS ====================
+//
+// Lo que convierte tu propia lista de alimentos en herramienta de conducta, que es la mejor
+// idea de Caltrack. La diferencia: aquí el score se puede recalcular a mano — su fórmula
+// está impresa debajo de la tabla y fijada en tests/verify-nutrition-v2.mjs.
+
+let _nutFoodSort = 'score';
+
+async function renderNutFoods() {
+  const el = document.getElementById('nut-foods');
+  if (!el) return;
+
+  const [foods, meals] = await Promise.all([
+    dbGetAll('foods').catch(() => []),
+    dbGetAll('meals').catch(() => []),
+  ]);
+  if (!foods || !foods.length) {
+    showEmptyState(el, '🥩', 'Biblioteca vacía', 'Se siembra al iniciar sesión.');
+    return;
+  }
+
+  // Veces registrado y kcal acumuladas: es lo que distingue "un alimento que existe" de
+  // "un alimento que de verdad comes".
+  const uso = new Map();
+  for (const m of meals || []) {
+    for (const it of m.items || []) {
+      const k = it.foodId || nutSlug(it.name);
+      const u = uso.get(k) || { veces: 0, kcal: 0 };
+      u.veces++; u.kcal += Number(it.kcal) || 0;
+      uso.set(k, u);
+    }
+  }
+
+  const filas = foods.map(f => {
+    const u = uso.get(f.id) || { veces: 0, kcal: 0 };
+    return {
+      f, score: foodScore(f), pd: proteinDensity(f),
+      kcalPorG: (Number(f.kcal100) || 0) / 100,
+      veces: u.veces, kcalTotal: Math.round(u.kcal),
+    };
+  });
+
+  const ordenes = {
+    score: (a, b) => b.score - a.score,
+    pd: (a, b) => b.pd - a.pd,
+    veces: (a, b) => b.veces - a.veces || b.score - a.score,
+    kcal: (a, b) => b.kcalTotal - a.kcalTotal,
+    nova: (a, b) => (a.f.nova || 9) - (b.f.nova || 9) || b.score - a.score,
+  };
+  const ordenadas = [...filas].sort(ordenes[_nutFoodSort] || ordenes.score);
+
+  // "A evitar": densidad calórica alta y score bajo. Ordenadas por kcal/g, como Caltrack.
+  const aEvitar = [...filas]
+    .filter(r => r.score <= 25 && r.kcalPorG >= 1.5)
+    .sort((a, b) => b.kcalPorG - a.kcalPorG)
+    .slice(0, 8);
+
+  const th = (key, label) =>
+    `<th data-sort="${key}" class="${_nutFoodSort === key ? 'nut-th-active' : ''}">${label}</th>`;
+
+  const fila = (r) => `
+    <tr>
+      <td class="nut-food-name">
+        ${r.f.name}
+        ${r.f.verified === false ? '<span class="nut-tag nut-tag-nuevo">sin verificar</span>' : ''}
+      </td>
+      <td class="nut-food-score"><span class="nut-score-pill ${r.score >= 70 ? 'nut-verde' : r.score >= 40 ? 'nut-ambar' : 'nut-rojo'}">${r.score}</span></td>
+      <td>${r.pd.toFixed(1)}</td>
+      <td>${r.f.nova}</td>
+      <td>${r.veces || '—'}</td>
+      <td>${r.kcalTotal ? nutFmt(r.kcalTotal) : '—'}</td>
+    </tr>`;
+
+  el.innerHTML = `
+    <div class="card">
+      <div class="nut-foods-head">
+        <span class="nut-trend-title">Tus alimentos</span>
+        <span class="nut-trend-legend">${filas.length} · toca una columna para ordenar</span>
+      </div>
+      <div class="nut-table-wrap">
+        <table class="nut-table" id="nut-foods-table">
+          <thead><tr>
+            <th>Alimento</th>${th('score', 'Score')}${th('pd', 'g P/100kcal')}${th('nova', 'NOVA')}${th('veces', '×')}${th('kcal', 'kcal tot.')}
+          </tr></thead>
+          <tbody>${ordenadas.map(fila).join('')}</tbody>
+        </table>
+      </div>
+      <div class="nut-formula">
+        <strong>score</strong> = min(densidad/${NUT_PD_CAP}, 1)×100 − penalización NOVA
+        (1:0 · 2:10 · 3:25 · 4:45) + min(fibra/${NUT_FIBER_CAP}, 1)×10, acotado a 0-100.
+        Reproducible a mano y fijado en los tests: skyr 87 · pechuga 94 · lentejas 49 ·
+        refresco 0. La whey sale 55 pese a sus 80 g de proteína porque es NOVA 4 — eso no es
+        un fallo, es el eje de calidad haciendo su trabajo.
+      </div>
+    </div>
+
+    ${aEvitar.length ? `
+    <div class="section-label" style="margin-top:20px">A evitar</div>
+    <div class="card">
+      <div class="nut-trend-legend" style="margin-bottom:10px">
+        Score bajo y mucha energía por gramo — se cuelan sin llenar. Ordenados por kcal/g.
+      </div>
+      <div class="nut-table-wrap">
+        <table class="nut-table">
+          <thead><tr><th>Alimento</th><th>kcal/g</th><th>Score</th><th>NOVA</th></tr></thead>
+          <tbody>${aEvitar.map(r => `
+            <tr>
+              <td class="nut-food-name">${r.f.name}</td>
+              <td><strong>${r.kcalPorG.toFixed(2)}</strong></td>
+              <td><span class="nut-score-pill nut-rojo">${r.score}</span></td>
+              <td>${r.f.nova}</td>
+            </tr>`).join('')}</tbody>
+        </table>
+      </div>
+    </div>` : ''}
+  `;
+
+  el.querySelectorAll('[data-sort]').forEach(h => {
+    h.addEventListener('click', () => { _nutFoodSort = h.dataset.sort; renderNutFoods(); });
+  });
+}
+
+// ==================== COACH "RESTO DEL DÍA" ====================
+//
+// Determinista y offline: NO llama al LLM. Con la biblioteca poblada no hace falta — el
+// hueco se cierra buscando entre los alimentos que ya comes. Instantáneo, gratis, y no
+// propone nada que no esté en tu cocina. Caltrack gasta una llamada de IA para esto.
+async function renderNutCoach(day) {
+  const el = document.getElementById('nut-coach');
+  if (!el) return;
+  if (!day || !day.loggedV2) { el.innerHTML = ''; return; }
+
+  const foods = (await dbGetAll('foods').catch(() => [])) || [];
+  const r = restOfDay(day, foods, {});
+
+  if (r.done) {
+    el.innerHTML = `<div class="card nut-coach-card">
+      <div class="nut-coach-head"><span>🤖</span> Resto del día</div>
+      <div class="nut-coach-ok">
+        Suelo de proteína cubierto (${Math.round(day.protein)} de ${day.proteinFloor} g).
+        ${r.huecoKcal > 0 ? `Te quedan ${nutFmt(r.huecoKcal)} kcal de margen.`
+                          : `Vas ${nutFmt(-r.huecoKcal)} kcal por encima del objetivo.`}
+      </div>
+    </div>`;
+    return;
+  }
+
+  if (!r.sugerencias.length) {
+    el.innerHTML = `<div class="card nut-coach-card">
+      <div class="nut-coach-head"><span>🤖</span> Resto del día</div>
+      <div class="nut-coach-ok">
+        Faltan ${r.huecoProt} g de proteína y ${r.huecoKcal > 0 ? `solo ${nutFmt(r.huecoKcal)} kcal` : 'no queda margen'} de presupuesto.
+        Nada de tu biblioteca lo cierra sin pasarse: hoy toca aceptar el hueco o pasarte un poco.
+      </div>
+    </div>`;
+    return;
+  }
+
+  el.innerHTML = `<div class="card nut-coach-card">
+    <div class="nut-coach-head"><span>🤖</span> Resto del día</div>
+    <div class="nut-coach-gap">
+      Faltan <strong>${r.huecoProt} g</strong> de proteína · margen <strong>${nutFmt(r.huecoKcal)} kcal</strong>
+    </div>
+    <div class="nut-coach-list">
+      ${r.sugerencias.map(s => `
+        <div class="nut-coach-row">
+          <div>
+            <div class="nut-coach-food">${s.name}</div>
+            <div class="nut-coach-macros">${s.grams} g · ${nutFmt(s.kcal)} kcal · ${s.protein} g P</div>
+          </div>
+          <button class="btn-secondary nut-coach-add" data-coach-food="${s.foodId}" data-coach-g="${s.grams}">Añadir</button>
+        </div>`).join('')}
+    </div>
+    <div class="nut-coach-note">
+      Solo alimentos verificados de tu biblioteca: proponer un gramaje sobre macros que
+      estimó una foto sería una estimación al cuadrado.
+    </div>
+  </div>`;
+
+  el.querySelectorAll('[data-coach-food]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const food = foods.find(f => f.id === btn.dataset.coachFood);
+      if (!food) return;
+      const item = itemFromFood(food, parseFloat(btn.dataset.coachG), { estimated: false, confidence: 1 });
+      item.per100 = {
+        kcal100: food.kcal100, protein100: food.protein100, carbs100: food.carbs100,
+        fat100: food.fat100, fiber100: food.fiber100, alcohol100: food.alcohol100 || 0,
+        nova: food.nova,
+      };
+      item.resolved = 'biblioteca';
+      openNutConfirm({ items: [item], mealType: nutGuessMealType(), notes: '' });
+    });
+  });
+}
+
 // ==================== BINDINGS ====================
 // Se llaman desde bindEvents() de app.js, después de que exista el DOM.
 function bindNutricionV2() {
@@ -1237,6 +1817,10 @@ function bindNutricionV2() {
   if (add) add.addEventListener('click', nutAddItemManual);
   const energy = document.getElementById('btn-nut-energy');
   if (energy) energy.addEventListener('click', nutSaveEnergy);
+
+  document.querySelectorAll('#nut-tabs .stats-tab').forEach(btn => {
+    btn.addEventListener('click', () => switchNutGroup(btn.dataset.nutGroup));
+  });
 }
 
 // ==================== EXPORTS PARA EL TEST ====================
@@ -1248,6 +1832,8 @@ if (typeof module !== 'undefined' && module.exports) {
     wearableCalibration, nutRollingWeight, restOfDay,
     nutShiftDate, nutIsoWeekStart,
     nutNormalize, nutSlug, findFood, itemFromFood, FOODS_SEED,
+    bmrKatchMcArdle, maintenanceKcal, maintenanceCorrection,
+    NUT_NEAT_BASE_FACTOR, NUT_KCAL_PER_STEP_PER_KG, NUT_TEF_FRACTION,
     NUT_NOVA_PENALTY, NUT_PD_CAP, NUT_EA_FLOOR, NUT_FFM_KG_FALLBACK,
     NUT_PROTEIN_FLOOR, NUT_KCAL_TRAINING, NUT_KCAL_REST, NUT_BANDS,
     NUT_ADHERENCE_MIN, NUT_ADHERENCE_WINDOW, NUT_CALIB_MIN_SIGNAL,
