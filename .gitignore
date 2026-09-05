@@ -17,3 +17,6 @@ data/raw/
 # Lovable design-reference folder: keep source + config, drop build/env cruft
 lovable/.workspace/
 lovable/.tanstack/
+
+# Cache de estado del CLI de Supabase, no es del proyecto
+supabase/.temp/
