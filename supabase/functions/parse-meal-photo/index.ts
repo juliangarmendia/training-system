@@ -37,6 +37,7 @@ const BUCKET = "meal-photos";
 const SIGNED_URL_TTL = 120;      // segundos: sólo tiene que vivir lo que dura la llamada
 const MAX_LIBRARY = 400;         // techo de alimentos en el prompt
 const MAX_ITEMS = 20;            // un plato con más de 20 items no es un plato
+const MAX_IMAGES = 4;            // carta + plato + un par de angulos; mas no aporta
 
 // Cada item: el modelo estima nombre, gramos y confianza. Los macros por 100 g se piden
 // SOLO cuando el alimento no está en la biblioteca — o cuando es un plato compuesto, que
@@ -70,7 +71,21 @@ const SYSTEM = `Eres un nutricionista deportivo estimando la composición de una
 TU ÚNICA TAREA DIFÍCIL ES ESTIMAR CANTIDAD. Los macros de los alimentos que ya están en la
 biblioteca los pone el sistema, no tú.
 
-## DECIDE PRIMERO QUÉ TIPO DE FOTO ES. Es la decisión que más afecta a la precisión.
+## PUEDES RECIBIR VARIAS FOTOS Y UNA NOTA. Son de la MISMA comida.
+
+Varias fotos NO son varias comidas: combínalas en un solo registro. La combinación más útil
+es **carta o etiqueta + plato**: la carta da los macros publicados, la foto del plato dice
+cuánto hay servido de verdad. Úsalas así — macros de la carta, cantidad del plato.
+
+**La NOTA DEL USUARIO tiene prioridad sobre lo que veas.** Describe lo que la foto no puede
+mostrar: 'me comí la mitad', 'sin la salsa', 'el pan no', 'doble ración de pollo'. Él estuvo
+delante del plato y tú no. Si la nota contradice tu estimación visual, gana la nota, y lo
+dices en notes.
+
+Si no hay foto y sólo hay nota, registra a partir de la nota. Es un caso legítimo: comidas
+que ya se comió o donde no pudo fotografiar.
+
+## DECIDE QUÉ TIPO DE COMIDA ES. Es la decisión que más afecta a la precisión.
 
 **etiqueta** — se ven macros PUBLICADOS: etiqueta de un envase, carta de un restaurante,
 captura de una app. Manda sobre todo lo demás: usa esos números tal cual, no estimes nada.
@@ -140,22 +155,39 @@ Deno.serve(async (req) => {
     const userId = userData.user.id;
 
     const body = await req.json().catch(() => ({}));
-    const photoPath: string = body.photoPath || "";
-    if (!photoPath || typeof photoPath !== "string") {
-      return json({ error: "Falta photoPath" }, 400);
+
+    // Varias fotos de la MISMA comida: tipico carta + plato, o dos angulos. Se acepta
+    // `photoPath` suelto por compatibilidad con la version anterior.
+    const rawPaths: string[] = Array.isArray(body.photoPaths)
+      ? body.photoPaths
+      : (body.photoPath ? [body.photoPath] : []);
+    const photoPaths = rawPaths.filter((x) => typeof x === "string" && x).slice(0, MAX_IMAGES);
+
+    // La nota es lo que la foto NO puede mostrar ("me comi la mitad", "sin la salsa"). Es la
+    // mejora de precision mas barata que existe aqui: informacion que no esta en los pixeles.
+    const note = typeof body.note === "string" ? body.note.trim().slice(0, 600) : "";
+
+    if (!photoPaths.length && !note) {
+      return json({ error: "Hace falta al menos una foto o una nota" }, 400);
     }
     // La URL firmada se crea con la service role, que ignora el RLS del bucket. Sin esta
     // comprobación, un usuario podría pedir la foto de otro.
-    if (!photoPath.startsWith(`${userId}/`)) {
-      return json({ error: "photoPath fuera de tu carpeta" }, 403);
+    for (const path of photoPaths) {
+      if (!path.startsWith(`${userId}/`)) {
+        return json({ error: "photoPath fuera de tu carpeta" }, 403);
+      }
     }
 
     const admin = createClient(supabaseUrl, serviceKey);
 
-    const { data: signed, error: signErr } = await admin
-      .storage.from(BUCKET).createSignedUrl(photoPath, SIGNED_URL_TTL);
-    if (signErr || !signed?.signedUrl) {
-      return json({ error: `No se pudo firmar la foto: ${signErr?.message || "desconocido"}` }, 404);
+    const signedUrls: string[] = [];
+    for (const path of photoPaths) {
+      const { data: signed, error: signErr } = await admin
+        .storage.from(BUCKET).createSignedUrl(path, SIGNED_URL_TTL);
+      if (signErr || !signed?.signedUrl) {
+        return json({ error: `No se pudo firmar la foto: ${signErr?.message || "desconocido"}` }, 404);
+      }
+      signedUrls.push(signed.signedUrl);
     }
 
     // La biblioteca del usuario, para que resuelva contra ella en vez de inventar nombres.
@@ -195,11 +227,27 @@ Deno.serve(async (req) => {
       messages: [{
         role: "user",
         content: [
-          { type: "image", source: { type: "url", url: signed.signedUrl } },
+          ...signedUrls.map((url) => ({
+            type: "image" as const,
+            source: { type: "url" as const, url },
+          })),
           {
-            type: "text",
-            text: `BIBLIOTECA DE ALIMENTOS (id | nombre (alias) | macros | NOVA):\n${libraryText}\n\n` +
-                  `Analiza la foto y devuelve los items del plato.`,
+            type: "text" as const,
+            text: `BIBLIOTECA DE ALIMENTOS (id | nombre (alias) | macros | NOVA):
+${libraryText}
+
+` +
+                  (signedUrls.length > 1
+                    ? `Recibes ${signedUrls.length} fotos de la MISMA comida. Combinalas en UN solo registro.
+
+`
+                    : signedUrls.length === 0 ? `No hay foto: registra a partir de la nota.
+
+` : ``) +
+                  (note ? `NOTA DEL USUARIO: ${note}
+
+` : ``) +
+                  `Devuelve los items de esta comida.`,
           },
         ],
       }],
@@ -288,7 +336,9 @@ Deno.serve(async (req) => {
 
     return json({
       ok: true,
-      photoPath,
+      photoPaths,
+      photoPath: photoPaths[0] || null,
+      note,
       kind: parsed.kind,
       mealType: parsed.mealType,
       notes: parsed.notes,

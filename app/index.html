@@ -381,11 +381,32 @@
           <!-- El contrato del día en cuatro números, como la cabecera de Caltrack -->
           <div id="nut-contract" class="nut-contract" data-group="hoy"></div>
 
-          <!-- Captura. `capture="environment"` abre la cámara trasera directamente en iOS. -->
-          <button id="btn-nut-photo" class="btn-primary btn-lg nut-photo-btn" data-group="hoy">
-            <span class="nut-photo-ico">📷</span> Foto de la comida
-          </button>
+          <!-- Captura. Tres vías al mismo sitio: cámara (`capture="environment"` abre la
+               trasera directamente en iOS), galería (`multiple`, para carta + plato) y sólo
+               texto. Las tres desembocan en el compositor: N fotos + una nota, UNA llamada. -->
+          <div class="nut-capture-row" data-group="hoy">
+            <button id="btn-nut-photo" class="btn-primary nut-photo-btn"><span class="nut-photo-ico">📷</span> Cámara</button>
+            <button id="btn-nut-gallery" class="btn-secondary nut-cap-icon" aria-label="Elegir de la galería">🖼️</button>
+            <button id="btn-nut-write" class="btn-secondary nut-cap-icon" aria-label="Escribir sin foto">✏️</button>
+          </div>
           <input type="file" id="nut-photo-input" accept="image/*" capture="environment" hidden>
+          <input type="file" id="nut-gallery-input" accept="image/*" multiple hidden>
+
+          <div id="nut-composer" class="nut-composer hidden" data-group="hoy">
+            <div id="nut-composer-thumbs" class="nut-thumbs"></div>
+            <textarea id="nut-composer-note" class="input-notes nut-note" rows="2"
+              placeholder="¿Algo que la foto no diga? «me comí la mitad», «sin la salsa», «doble de pollo»…"></textarea>
+            <div class="nut-composer-hint">
+              La nota manda sobre lo que se ve: tú estuviste delante del plato.
+              Carta + plato juntos es la mejor combinación — la carta da los macros
+              publicados, la foto dice cuánto hay servido.
+            </div>
+            <div class="nut-composer-actions">
+              <button id="btn-nut-discard" class="btn-secondary">Descartar</button>
+              <button id="btn-nut-analyze" class="btn-primary">Analizar</button>
+            </div>
+          </div>
+
           <div id="nut-photo-status" class="nut-status hidden" data-group="hoy"></div>
 
           <!-- Totales del día + disponibilidad energética -->
@@ -713,7 +734,7 @@
           </div>
           <div class="section-label" style="margin-top:24px">App</div>
           <div class="card">
-            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v11.53<br>Data stored locally + cloud sync.<br>Works offline.</p>
+            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v11.54<br>Data stored locally + cloud sync.<br>Works offline.</p>
             <button id="btn-force-update" class="btn-secondary btn-full" style="text-align:center">Force Update App</button>
           </div>
         </div>

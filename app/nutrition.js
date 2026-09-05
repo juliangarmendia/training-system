@@ -1109,65 +1109,182 @@ async function renderNutMeals(date) {
   });
 }
 
-// ==================== CAPTURA POR FOTO ====================
+// ==================== COMPOSITOR: N FOTOS + NOTA ====================
 //
-// El flujo completo: foto → Storage → edge function → hoja de confirmación → IndexedDB.
-// La foto PROPONE y el usuario DISPONE: nada se guarda sin pasar por la confirmación,
-// porque un gramaje estimado que entra solo deja de ser estimación y pasa a ser un dato
-// falso que además contamina el déficit semanal y la calibración del wearable.
+// El flujo completo: fotos y/o nota → Storage → edge function → hoja de confirmación →
+// IndexedDB. La foto PROPONE y el usuario DISPONE: nada se guarda sin pasar por la
+// confirmación, porque un gramaje estimado que entra solo deja de ser estimación y pasa a
+// ser un dato falso que además contamina el déficit semanal y la calibración.
+//
+// POR QUÉ VARIAS FOTOS Y UNA NOTA:
+//   · Carta + plato es la mejor combinación que existe aquí. La carta da macros
+//     PUBLICADOS —exactos— y la foto del plato dice cuánto hay servido de verdad. Cada
+//     imagen aporta lo que la otra no puede.
+//   · La nota es la mejora de precisión más barata del sistema: "me comí la mitad" no está
+//     en los píxeles y ningún modelo la puede deducir. Cuesta cero tokens de imagen.
+//   · Sólo nota, sin foto, es un caso legítimo: comidas ya comidas o donde no pudiste
+//     fotografiar. Antes eso no se podía registrar y por tanto se perdía.
+//
+// Las fotos se quedan EN LOCAL hasta que pulsas Analizar: subir cada una al elegirla
+// llenaría Storage de intentos abandonados.
 
-let _nutPending = null;   // resultado del parseo en espera de confirmación
+const NUT_MAX_FOTOS = 4;
+// 1.400 px en el lado largo. La API reescala por encima de ~1.568 px de todos modos, así que
+// más resolución no compra precisión: sólo hace la subida lenta con datos móviles y engorda
+// el bucket. Por debajo se empiezan a perder las etiquetas pequeñas de una carta.
+const NUT_FOTO_MAX_PX = 1400;
 
-function nutStatus(msg, kind) {
-  const el = document.getElementById('nut-photo-status');
-  if (!el) return;
-  if (!msg) { el.classList.add('hidden'); el.innerHTML = ''; return; }
-  el.classList.remove('hidden');
-  el.className = 'nut-status nut-status-' + (kind || 'info');
-  el.innerHTML = msg;
+let _nutStaged = [];   // [{ id, blob, url }]
+
+// Redimensiona en el móvil antes de subir. `imageOrientation: 'from-image'` aplica el EXIF:
+// sin eso, una foto hecha en vertical llega girada y el modelo estima sobre un plato tumbado.
+async function nutResizeImage(file) {
+  try {
+    const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' });
+    const escala = Math.min(1, NUT_FOTO_MAX_PX / Math.max(bmp.width, bmp.height));
+    const w = Math.round(bmp.width * escala);
+    const h = Math.round(bmp.height * escala);
+    const canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    canvas.getContext('2d').drawImage(bmp, 0, 0, w, h);
+    if (bmp.close) bmp.close();
+    const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.85));
+    return blob || file;
+  } catch (e) {
+    // Un navegador sin createImageBitmap sube el original: peor, pero funciona.
+    console.warn('[Nutrición] no se pudo redimensionar:', e);
+    return file;
+  }
 }
 
-async function nutHandlePhoto(file) {
-  if (!file) return;
+async function nutAddFiles(fileList) {
+  const files = [...(fileList || [])].filter(f => f && f.type && f.type.startsWith('image/'));
+  if (!files.length) return;
+
+  const hueco = NUT_MAX_FOTOS - _nutStaged.length;
+  if (hueco <= 0) { toast(`Máximo ${NUT_MAX_FOTOS} fotos`); return; }
+  if (files.length > hueco) toast(`Sólo caben ${hueco} más`);
+
+  nutStatus('Preparando la foto…', 'info');
+  for (const file of files.slice(0, hueco)) {
+    const blob = await nutResizeImage(file);
+    _nutStaged.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, blob, url: URL.createObjectURL(blob) });
+  }
+  nutStatus(null);
+  nutOpenComposer();
+}
+
+function nutOpenComposer() {
+  const c = document.getElementById('nut-composer');
+  if (c) c.classList.remove('hidden');
+  renderNutStaged();
+}
+
+function nutCloseComposer(limpiar) {
+  const c = document.getElementById('nut-composer');
+  if (c) c.classList.add('hidden');
+  if (limpiar !== false) {
+    _nutStaged.forEach(s => URL.revokeObjectURL(s.url));
+    _nutStaged = [];
+    const nota = document.getElementById('nut-composer-note');
+    if (nota) nota.value = '';
+  }
+  renderNutStaged();
+}
+
+function renderNutStaged() {
+  const cont = document.getElementById('nut-composer-thumbs');
+  if (!cont) return;
+  if (!_nutStaged.length) {
+    cont.innerHTML = `<div class="nut-thumbs-empty">Sin fotos — se registrará sólo con lo que escribas.</div>`;
+  } else {
+    cont.innerHTML = _nutStaged.map((s, i) => `
+      <div class="nut-thumb">
+        <img src="${s.url}" alt="Foto ${i + 1}">
+        <button class="nut-thumb-del" data-del-foto="${s.id}" aria-label="Quitar">&times;</button>
+      </div>`).join('') +
+      (_nutStaged.length < NUT_MAX_FOTOS
+        ? `<button class="nut-thumb-add" id="nut-thumb-add" aria-label="Añadir otra">+</button>` : '');
+
+    cont.querySelectorAll('[data-del-foto]').forEach(b => {
+      b.addEventListener('click', () => {
+        const idx = _nutStaged.findIndex(s => s.id === b.dataset.delFoto);
+        if (idx >= 0) { URL.revokeObjectURL(_nutStaged[idx].url); _nutStaged.splice(idx, 1); }
+        renderNutStaged();
+      });
+    });
+    const add = document.getElementById('nut-thumb-add');
+    if (add) add.addEventListener('click', () => {
+      const inp = document.getElementById('nut-gallery-input');
+      if (inp) inp.click();
+    });
+  }
+
+  const btn = document.getElementById('btn-nut-analyze');
+  if (btn) {
+    const n = _nutStaged.length;
+    btn.textContent = n === 0 ? 'Analizar la nota' : n === 1 ? 'Analizar la foto' : `Analizar ${n} fotos`;
+  }
+}
+
+// ==================== ANALIZAR ====================
+
+async function nutAnalyze() {
+  const notaEl = document.getElementById('nut-composer-note');
+  const note = (notaEl && notaEl.value.trim()) || '';
+
+  if (!_nutStaged.length && !note) { toast('Añade una foto o escribe qué comiste'); return; }
 
   const supa = nutSupa();
   const user = (typeof window !== 'undefined' && window.getSupaUser) ? await window.getSupaUser() : null;
 
-  // El paso de IA necesita red por definición. Cuando no la hay se abre la hoja vacía
-  // para registrar a mano desde la biblioteca: así el registro sigue funcionando sin
-  // cobertura, que es la mitad del valor de que esto sea una PWA.
+  // El paso de IA necesita red por definición. Sin ella se abre la hoja vacía para registrar
+  // a mano desde la biblioteca: así el registro sigue funcionando sin cobertura, que es la
+  // mitad del valor de que esto sea una PWA.
   if (!supa || !user || !navigator.onLine) {
     nutStatus('Sin conexión o sin sesión: añade los alimentos a mano desde tu biblioteca.', 'warn');
+    nutCloseComposer();
     openNutConfirm({ items: [], mealType: nutGuessMealType(), notes: '' });
     return;
   }
 
+  const btn = document.getElementById('btn-nut-analyze');
+  if (btn) { btn.disabled = true; }
+
   try {
-    nutStatus('Subiendo la foto…', 'info');
-    const ext = (file.name || '').split('.').pop().toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
-    const photoPath = `${user.id}/${today()}_${Date.now()}.${ext}`;
+    const photoPaths = [];
+    for (let i = 0; i < _nutStaged.length; i++) {
+      nutStatus(`Subiendo ${i + 1} de ${_nutStaged.length}…`, 'info');
+      const path = `${user.id}/${today()}_${Date.now()}_${i}.jpg`;
+      const { error } = await supa.storage.from('meal-photos')
+        .upload(path, _nutStaged[i].blob, { contentType: 'image/jpeg', upsert: false });
+      if (error) throw new Error('No se pudo subir la foto: ' + error.message);
+      photoPaths.push(path);
+    }
 
-    const { error: upErr } = await supa.storage.from('meal-photos')
-      .upload(photoPath, file, { contentType: file.type || 'image/jpeg', upsert: false });
-    if (upErr) throw new Error('No se pudo subir la foto: ' + upErr.message);
-
-    nutStatus('Analizando el plato…', 'info');
-    const { data, error } = await supa.functions.invoke('parse-meal-photo', { body: { photoPath } });
+    nutStatus(photoPaths.length ? 'Analizando…' : 'Interpretando la nota…', 'info');
+    const { data, error } = await supa.functions.invoke('parse-meal-photo', {
+      body: { photoPaths, note },
+    });
     if (error) throw new Error(error.message || 'La función de análisis falló');
     if (data && data.error) throw new Error(data.error);
     if (!data || !data.ok) throw new Error('Respuesta inesperada del análisis');
 
     nutStatus(null);
+    nutCloseComposer();
     if (!data.items || !data.items.length) {
-      toast('No se reconoció comida en la foto');
-      openNutConfirm({ items: [], mealType: nutGuessMealType(), notes: data.notes || '', photoPath });
+      toast('No se reconoció comida');
+      openNutConfirm({ ...data, items: [] });
       return;
     }
-    openNutConfirm({ ...data, photoPath });
+    openNutConfirm(data);
   } catch (e) {
-    console.error('[Nutrición] foto:', e);
+    console.error('[Nutrición] analizar:', e);
     nutStatus(`${e.message}. Puedes añadirlo a mano.`, 'error');
+    nutCloseComposer();
     openNutConfirm({ items: [], mealType: nutGuessMealType(), notes: '' });
+  } finally {
+    if (btn) btn.disabled = false;
   }
 }
 
@@ -1180,11 +1297,24 @@ function nutGuessMealType() {
   return 'cena';
 }
 
+let _nutPending = null;   // resultado del parseo en espera de confirmación
+
+function nutStatus(msg, kind) {
+  const el = document.getElementById('nut-photo-status');
+  if (!el) return;
+  if (!msg) { el.classList.add('hidden'); el.innerHTML = ''; return; }
+  el.classList.remove('hidden');
+  el.className = 'nut-status nut-status-' + (kind || 'info');
+  el.innerHTML = msg;
+}
+
 // ── Hoja de confirmación ────────────────────────────────────────────────────────────
 
 function openNutConfirm(result) {
   _nutPending = {
     photoPath: result.photoPath || null,
+    photoPaths: result.photoPaths || (result.photoPath ? [result.photoPath] : []),
+    userNote: result.note || '',
     usage: result.usage || null,
     kind: result.kind || null,
     notes: result.notes || '',
@@ -1197,10 +1327,12 @@ function openNutConfirm(result) {
   if (notes) {
     const k = NUT_KIND_INFO[_nutPending.kind];
     const badge = k ? `<div class="nut-kind ${k.cls}"><strong>${k.label}</strong> — ${k.hint}</div>` : '';
-    notes.innerHTML = (badge || _nutPending.notes)
-      ? `${badge}${_nutPending.notes ? `<div class="nut-ai-txt"><span class="nut-ai-ico">🤖</span> ${_nutPending.notes}</div>` : ''}`
+    const tuNota = _nutPending.userNote
+      ? `<div class="nut-user-note"><span class="nut-ai-ico">✏️</span> ${_nutPending.userNote}</div>` : '';
+    notes.innerHTML = (badge || tuNota || _nutPending.notes)
+      ? `${badge}${tuNota}${_nutPending.notes ? `<div class="nut-ai-txt"><span class="nut-ai-ico">🤖</span> ${_nutPending.notes}</div>` : ''}`
       : '';
-    notes.classList.toggle('hidden', !badge && !_nutPending.notes);
+    notes.classList.toggle('hidden', !badge && !tuNota && !_nutPending.notes);
   }
   renderNutConfirmItems();
   const modal = document.getElementById('nut-confirm-modal');
@@ -1354,7 +1486,12 @@ async function nutSaveConfirmed() {
     time: `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`,
     type,
     photoPath: _nutPending.photoPath || null,
-    source: _nutPending.photoPath ? 'foto' : 'manual',
+    photoPaths: _nutPending.photoPaths || [],
+    // Lo que escribiste tu, separado de lo que dedujo el modelo. Sirve para releer por que
+    // un dia salio raro sin confundir tu dato con su inferencia.
+    userNote: _nutPending.userNote || null,
+    source: (_nutPending.photoPaths && _nutPending.photoPaths.length) ? 'foto'
+          : (_nutPending.userNote ? 'nota' : 'manual'),
     aiNotes: _nutPending.notes || null,
     // Tokens que costó parsear esta foto. Es lo que hace medible la decisión de modelo.
     usage: _nutPending.usage || null,
@@ -1888,16 +2025,32 @@ async function renderNutCoach(day) {
 // ==================== BINDINGS ====================
 // Se llaman desde bindEvents() de app.js, después de que exista el DOM.
 function bindNutricionV2() {
-  const btn = document.getElementById('btn-nut-photo');
-  const input = document.getElementById('nut-photo-input');
-  if (btn && input) {
-    btn.addEventListener('click', () => input.click());
-    input.addEventListener('change', async () => {
-      const file = input.files && input.files[0];
-      input.value = '';   // permite repetir la misma foto sin recargar
-      await nutHandlePhoto(file);
+  // Tres vias de entrada al mismo compositor.
+  const abrir = (idBoton, idInput) => {
+    const b = document.getElementById(idBoton);
+    const i = document.getElementById(idInput);
+    if (!b || !i) return;
+    b.addEventListener('click', () => i.click());
+    i.addEventListener('change', async () => {
+      const files = i.files;
+      i.value = '';   // permite volver a elegir el mismo fichero sin recargar
+      await nutAddFiles(files);
     });
-  }
+  };
+  abrir('btn-nut-photo', 'nut-photo-input');
+  abrir('btn-nut-gallery', 'nut-gallery-input');
+
+  const escribir = document.getElementById('btn-nut-write');
+  if (escribir) escribir.addEventListener('click', () => {
+    nutOpenComposer();
+    const n = document.getElementById('nut-composer-note');
+    if (n) n.focus();
+  });
+
+  const analizar = document.getElementById('btn-nut-analyze');
+  if (analizar) analizar.addEventListener('click', nutAnalyze);
+  const descartar = document.getElementById('btn-nut-discard');
+  if (descartar) descartar.addEventListener('click', () => { nutCloseComposer(); nutStatus(null); });
   const close = document.getElementById('nut-confirm-close');
   if (close) close.addEventListener('click', closeNutConfirm);
   const save = document.getElementById('nut-confirm-save');

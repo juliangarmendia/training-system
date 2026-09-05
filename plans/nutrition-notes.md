@@ -134,6 +134,32 @@ devuelve el error en kcal/día. Por debajo de 150 kcal/día no emite veredicto: 
 ruido de la ventana, y un "tu mantenimiento está 40 kcal alto" sería ruido disfrazado de
 precisión.
 
+#### Cómo se registra: varias fotos y una nota
+
+Tres vías al mismo sitio, y las tres acaban en una sola llamada:
+
+| | Para qué |
+|---|---|
+| 📷 **Cámara** | el caso rápido de siempre |
+| 🖼️ **Galería** | varias a la vez — la combinación buena es **carta + plato** |
+| ✏️ **Escribir** | sin foto: comidas ya comidas o donde no pudiste fotografiar |
+
+**Carta + plato** es la mejor combinación que permite este sistema: la carta da macros
+**publicados** (exactos, no estimados) y la foto del plato dice cuánto hay servido de verdad.
+Cada imagen aporta lo que la otra no puede.
+
+**La nota es la mejora de precisión más barata que existe aquí.** *"Me comí la mitad"*, *"sin
+la salsa"*, *"doble de pollo"* — no está en los píxeles y ningún modelo lo puede deducir.
+Cuesta cero tokens de imagen y el prompt le da **prioridad sobre la estimación visual**:
+estuviste delante del plato y el modelo no. En la hoja de confirmación tu nota se muestra
+separada de lo que dedujo la IA, para poder verificar que se tuvo en cuenta.
+
+Detalles que importan: las fotos se redimensionan **en el móvil** a 1.400 px antes de subir
+(la API reescala por encima de ~1.568 px de todos modos, así que más resolución no compra
+precisión — sólo subida lenta con datos y bucket lleno) y se les aplica la orientación EXIF,
+o una foto hecha en vertical llega tumbada. Y no se sube nada hasta que pulsas *Analizar*:
+subir al elegir llenaría Storage de intentos abandonados.
+
 #### Los tres tipos de foto — la decisión que más afecta a la precisión
 
 El diseño original ("la foto estima gramos, los macros salen de la biblioteca") sólo era

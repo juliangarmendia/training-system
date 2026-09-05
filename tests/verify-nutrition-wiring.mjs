@@ -40,7 +40,13 @@ const ids = [...NUT.matchAll(/getElementById\(['"`]([^'"`]+)['"`]\)/g)].map((m) 
 const idsUnicos = [...new Set(ids)];
 yes(idsUnicos.length > 10, `${idsUnicos.length} ids referenciados desde nutrition.js`);
 for (const id of idsUnicos) {
-  yes(HTML.includes(`id="${id}"`), `#${id} existe en index.html`);
+  // Un id puede vivir en el marcado estatico O crearlo el propio modulo al renderizar
+  // (el boton de "anadir otra foto" nace dentro de renderNutStaged). Las dos son validas;
+  // lo que no vale es apuntar a un id que no exista en ninguno de los dos sitios.
+  const enHtml = HTML.includes(`id="${id}"`);
+  const generado = NUT.includes(`id="${id}"`);
+  yes(enHtml || generado,
+    `#${id} existe${enHtml ? ' en index.html' : generado ? ' (generado por nutrition.js)' : ''}`);
 }
 
 // ── 2. Funciones de app.js que nutrition.js da por hechas ───────────────────────────
@@ -85,7 +91,7 @@ const m = SW.match(/CACHE_NAME\s*=\s*'training-v(\d+)\.(\d+)'/);
 yes(!!m, 'CACHE_NAME tiene el formato esperado');
 if (m) {
   const version = `${m[1]}.${m[2]}`;
-  yes(Number(m[2]) >= 53, `cache en v${version} (v11.52 ya estaba desplegada)`);
+  yes(Number(m[2]) >= 54, `cache en v${version} (v11.53 ya estaba desplegada)`);
 }
 
 // ── 6. Clases CSS usadas en el marcado generado ─────────────────────────────────────
@@ -218,6 +224,54 @@ yes(/effort: "medium"/.test(FN), 'esfuerzo en medium (elegido el 4-sep por preci
 yes(/claude-opus-5/.test(FN), 'modelo Opus 5, coherente con los precios de NUT_AI_MODEL');
 const modeloPWA = (NUT.match(/NUT_AI_MODEL = '([^']+)'/) || [])[1];
 yes(FN.includes(modeloPWA), `el modelo de la funcion (${modeloPWA}) coincide con el que usa el calculo de coste`);
+
+// ── 14. Compositor: N fotos + nota ───────────────────────────────
+console.log('');
+console.log('14. Compositor de comida');
+// Tres vias de entrada: camara, galeria y solo texto.
+for (const id of ['btn-nut-photo', 'btn-nut-gallery', 'btn-nut-write',
+                  'nut-photo-input', 'nut-gallery-input', 'nut-composer',
+                  'nut-composer-note', 'btn-nut-analyze', 'btn-nut-discard']) {
+  yes(HTML.includes(`id="${id}"`), `#${id} existe`);
+}
+// La camara tiene que forzar la trasera; la galeria tiene que permitir varias.
+yes(/id="nut-photo-input"[^>]*capture="environment"/.test(HTML),
+  'la camara abre la trasera directamente (capture=environment)');
+yes(/id="nut-gallery-input"[^>]*multiple/.test(HTML),
+  'la galeria permite elegir varias (carta + plato en una pasada)');
+yes(!/id="nut-gallery-input"[^>]*capture=/.test(HTML),
+  'la galeria NO lleva capture: eso forzaria la camara y bloquearia elegir de la fototeca');
+
+// La funcion tiene que aceptar el array y la nota, no solo una foto suelta.
+yes(FN.includes('body.photoPaths'), 'la funcion acepta varias fotos');
+yes(FN.includes('body.photoPath ?'), 'y sigue aceptando photoPath suelto por compatibilidad');
+yes(/const note = typeof body\.note === "string"/.test(FN), 'la funcion acepta la nota');
+yes(/!photoPaths\.length && !note/.test(FN), 'sin foto Y sin nota es error; solo nota es valido');
+yes(FN.includes('MAX_IMAGES'), 'hay tope de imagenes');
+// Comprobacion de seguridad: cada ruta se valida contra el uid, no solo la primera. La URL
+// firmada se crea con la service role, que se salta el RLS del bucket.
+yes(/for \(const path of photoPaths\) \{[\s\S]{0,160}startsWith\(`\$\{userId\}\/`\)/.test(FN),
+  'TODAS las rutas se validan contra el uid, no solo la primera');
+
+// La nota manda sobre lo que se ve: es informacion que no esta en los pixeles.
+yes(/NOTA DEL USUARIO/.test(FN), 'la nota se le pasa al modelo etiquetada');
+yes(/tiene prioridad sobre lo que veas/.test(FN),
+  'el prompt dice que la nota gana a la estimacion visual');
+yes(/MISMA comida/.test(FN), 'varias fotos se combinan en un registro, no en varias comidas');
+yes(/carta o etiqueta \+ plato|carta \+ plato/i.test(FN),
+  'el prompt explica la combinacion carta + plato');
+
+// Redimensionado en el movil: EXIF incluido, o una foto vertical llega tumbada.
+yes(/function nutResizeImage/.test(NUT), 'las fotos se redimensionan antes de subir');
+yes(/imageOrientation: 'from-image'/.test(NUT),
+  'se aplica la orientacion EXIF, o una foto vertical llegaria girada');
+yes(/NUT_FOTO_MAX_PX/.test(NUT), 'hay un maximo de pixeles definido');
+// Las fotos no se suben hasta pulsar Analizar: subir al elegir llenaria Storage de intentos.
+const cuerpoAdd = NUT.slice(NUT.indexOf('async function nutAddFiles'),
+                            NUT.indexOf('function nutOpenComposer'));
+yes(!cuerpoAdd.includes('.upload('), 'elegir una foto NO la sube: solo se suben al analizar');
+yes(NUT.slice(NUT.indexOf('async function nutAnalyze')).includes('.upload('),
+  'la subida ocurre en nutAnalyze()');
 
 console.log('');
 console.log(failed === 0
