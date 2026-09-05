@@ -874,6 +874,27 @@ async function seedFoods() {
 
 const NUT_MEAL_LABELS = { desayuno: 'Desayuno', comida: 'Comida', cena: 'Cena', snack: 'Snack' };
 
+// Qué decidió el modelo sobre la foto, y qué implica para lo que tienes que corregir.
+// Un plato compuesto de 500 g y un ingrediente de 500 g se leen igual en pantalla pero se
+// corrigen distinto: en el primero ajustas el tamaño de la ración, en el segundo el peso
+// de ese alimento concreto.
+const NUT_KIND_INFO = {
+  etiqueta: {
+    label: 'Macros publicados', cls: 'nut-kind-ok',
+    hint: 'leídos de la etiqueta o la carta, no estimados. Ajusta solo cuánto te comes.',
+  },
+  plato: {
+    label: 'Plato compuesto', cls: 'nut-kind-warn',
+    hint: 'va como un solo alimento porque sus partes no se pueden pesar por separado. ' +
+          'Ajusta el peso TOTAL del plato; si corriges los macros una vez, queda en tu ' +
+          'biblioteca y la próxima vez es exacto.',
+  },
+  componentes: {
+    label: 'Componentes', cls: 'nut-kind-ok',
+    hint: 'alimentos separables. Los macros salen de tu biblioteca; ajusta los gramos.',
+  },
+};
+
 function nutSupa() {
   return (typeof window !== 'undefined' && window.getSupaClient) ? window.getSupaClient() : null;
 }
@@ -1165,6 +1186,7 @@ function openNutConfirm(result) {
   _nutPending = {
     photoPath: result.photoPath || null,
     usage: result.usage || null,
+    kind: result.kind || null,
     notes: result.notes || '',
     type: result.mealType || nutGuessMealType(),
     items: (result.items || []).map(it => ({ ...it })),
@@ -1173,9 +1195,12 @@ function openNutConfirm(result) {
   if (sel) sel.value = _nutPending.type;
   const notes = document.getElementById('nut-confirm-notes');
   if (notes) {
-    notes.innerHTML = _nutPending.notes
-      ? `<span class="nut-ai-ico">🤖</span> ${_nutPending.notes}` : '';
-    notes.classList.toggle('hidden', !_nutPending.notes);
+    const k = NUT_KIND_INFO[_nutPending.kind];
+    const badge = k ? `<div class="nut-kind ${k.cls}"><strong>${k.label}</strong> — ${k.hint}</div>` : '';
+    notes.innerHTML = (badge || _nutPending.notes)
+      ? `${badge}${_nutPending.notes ? `<div class="nut-ai-txt"><span class="nut-ai-ico">🤖</span> ${_nutPending.notes}</div>` : ''}`
+      : '';
+    notes.classList.toggle('hidden', !badge && !_nutPending.notes);
   }
   renderNutConfirmItems();
   const modal = document.getElementById('nut-confirm-modal');

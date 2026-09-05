@@ -24,6 +24,7 @@ const APP = readFileSync('app/app.js', 'utf8');
 const HTML = readFileSync('app/index.html', 'utf8');
 const CSS = readFileSync('app/style.css', 'utf8');
 const SW = readFileSync('app/sw.js', 'utf8');
+const FN = readFileSync('supabase/functions/parse-meal-photo/index.ts', 'utf8');
 
 let failed = 0;
 const ok = (m) => console.log(`  ok   ${m}`);
@@ -84,7 +85,7 @@ const m = SW.match(/CACHE_NAME\s*=\s*'training-v(\d+)\.(\d+)'/);
 yes(!!m, 'CACHE_NAME tiene el formato esperado');
 if (m) {
   const version = `${m[1]}.${m[2]}`;
-  yes(Number(m[2]) >= 52, `cache en v${version} (v11.51 ya estaba desplegada)`);
+  yes(Number(m[2]) >= 53, `cache en v${version} (v11.52 ya estaba desplegada)`);
 }
 
 // ── 6. Clases CSS usadas en el marcado generado ─────────────────────────────────────
@@ -187,6 +188,36 @@ yes(/\.nut-table-wrap\s*\{[^}]*overflow-x:\s*auto/.test(CSS),
 // Y `.nut-bar` (barra de progreso de Hoy) no puede colisionar con las de tendencia.
 yes(!NUT.includes('class="nut-bar "') && NUT.includes('class="nut-tbar'),
   'las barras de tendencia usan .nut-tbar, sin colisionar con la .nut-bar de progreso');
+
+// ── 13. El contrato del prompt ──────────────────────────────────
+// La decision componentes/plato/etiqueta es lo que mas afecta a la precision, y es la mas
+// facil de romper sin que nada falle: el modelo devolveria 19 filas inventadas para un bowl
+// mezclado y el total tendria falsa precision. Peor que un solo numero honesto, porque un
+// numero aproximado se corrige y diecinueve no.
+console.log('');
+console.log('13. Contrato del prompt de la edge function');
+yes(/kind: z\.enum\(\["componentes", "plato", "etiqueta"\]\)/.test(FN),
+  'el esquema obliga a clasificar la foto en uno de los tres tipos');
+yes(FN.includes('kind: parsed.kind'), 'el tipo se devuelve a la PWA');
+yes(NUT.includes('NUT_KIND_INFO'), 'la PWA explica el tipo en la hoja de confirmacion');
+for (const k of ['componentes', 'plato', 'etiqueta']) {
+  yes(NUT.includes(k + ':'), `la PWA sabe explicar "${k}"`);
+}
+// Las tres reglas duras del prompt. Si alguna desaparece, la precision cae en silencio.
+yes(/UN SOLO item con el plato entero/.test(FN),
+  'regla dura: un plato compuesto va como UNA unidad, no descompuesto');
+yes(/NO lo descompongas en ingredientes/.test(FN), 'y se dice explicitamente');
+yes(/Un dato publicado siempre gana a tu mejor estimaci/.test(FN),
+  'una etiqueta o carta manda sobre cualquier estimacion');
+yes(/grasas invisibles|aceite de cocci/.test(FN),
+  'se pide contar el aceite y el alino: la fuente de kcal que mas se olvida');
+yes(/confianza inflada es peor/.test(FN),
+  'se pide confianza honesta: la baja se marca y se corrige, la inflada se cuela');
+// El esfuerzo es una decision tomada a mano y documentada; no puede volver a low por descuido.
+yes(/effort: "medium"/.test(FN), 'esfuerzo en medium (elegido el 4-sep por precision de gramaje)');
+yes(/claude-opus-5/.test(FN), 'modelo Opus 5, coherente con los precios de NUT_AI_MODEL');
+const modeloPWA = (NUT.match(/NUT_AI_MODEL = '([^']+)'/) || [])[1];
+yes(FN.includes(modeloPWA), `el modelo de la funcion (${modeloPWA}) coincide con el que usa el calculo de coste`);
 
 console.log('');
 console.log(failed === 0

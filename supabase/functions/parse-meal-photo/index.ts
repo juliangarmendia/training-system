@@ -38,14 +38,14 @@ const SIGNED_URL_TTL = 120;      // segundos: sólo tiene que vivir lo que dura 
 const MAX_LIBRARY = 400;         // techo de alimentos en el prompt
 const MAX_ITEMS = 20;            // un plato con más de 20 items no es un plato
 
-// Cada item: el modelo estima nombre, gramos y confianza. Los macros por 100 g SÓLO se
-// piden para alimentos que no estén en la biblioteca; para el resto van a null y el
-// servidor los rellena desde `foods`.
+// Cada item: el modelo estima nombre, gramos y confianza. Los macros por 100 g se piden
+// SOLO cuando el alimento no está en la biblioteca — o cuando es un plato compuesto, que
+// entra en la biblioteca como una unidad (ver el bloque DECIDE PRIMERO del prompt).
 const ItemSchema = z.object({
-  name: z.string().describe("Nombre del alimento en español, en singular y sin marca"),
+  name: z.string().describe("Nombre en español, singular. Para un plato compuesto de un sitio concreto: 'Sitio · Nombre del plato'"),
   matchedFoodId: z.string().nullable()
     .describe("El id EXACTO de la biblioteca si este alimento ya está en ella; null si no"),
-  grams: z.number().describe("Gramos (o mililitros para líquidos) servidos en el plato"),
+  grams: z.number().describe("Gramos (o mililitros para líquidos) servidos. Para un plato compuesto, el peso TOTAL del plato"),
   confidence: z.number().describe("Confianza en la estimación de gramos, 0 a 1"),
   kcal100: z.number().nullable().describe("kcal por 100 g. Sólo si matchedFoodId es null"),
   protein100: z.number().nullable().describe("Proteína g/100 g. Sólo si matchedFoodId es null"),
@@ -57,34 +57,65 @@ const ItemSchema = z.object({
 });
 
 const MealSchema = z.object({
+  kind: z.enum(["componentes", "plato", "etiqueta"])
+    .describe("componentes = alimentos separables y pesables por separado; plato = compuesto que va como UNA unidad; etiqueta = hay macros publicados a la vista"),
   items: z.array(ItemSchema),
   mealType: z.enum(["desayuno", "comida", "cena", "snack"])
     .describe("Qué comida del día parece, por el contenido del plato"),
   notes: z.string().describe("Qué se ve y en qué te has apoyado para estimar la cantidad. Máximo 2 frases"),
 });
 
-const SYSTEM = `Eres un nutricionista deportivo estimando la composición de un plato a partir de una foto.
+const SYSTEM = `Eres un nutricionista deportivo estimando la composición de una comida a partir de una foto.
 
-TU ÚNICA TAREA DIFÍCIL ES ESTIMAR GRAMOS. Los macros de los alimentos conocidos ya los tiene el sistema.
+TU ÚNICA TAREA DIFÍCIL ES ESTIMAR CANTIDAD. Los macros de los alimentos que ya están en la
+biblioteca los pone el sistema, no tú.
 
-Reglas:
-1. Si un alimento del plato está en la BIBLIOTECA, pon su id exacto en matchedFoodId y deja
-   TODOS los campos de macros a null. No los rellenes "por ayudar": el sistema usa los suyos
-   y los tuyos se descartan.
-2. Si no está en la biblioteca, matchedFoodId va a null y rellenas los macros por 100 g.
-   Usa valores de tabla de composición. carbs100 incluye la fibra. alcohol100 sólo para
-   bebidas alcohólicas, en gramos de etanol por 100 ml.
-3. Estima los gramos apoyándote en referencias visibles: un plato llano son 26-28 cm, un
-   tenedor 19-20 cm, una cuchara sopera colmada 15 g, un vaso de agua 250 ml. Di en qué te
-   apoyaste en el campo notes.
-4. Sé honesto con la confianza: 0.9 si el alimento está pesado o envasado y se ve la etiqueta,
-   0.6-0.7 si es una ración estándar bien visible, 0.3-0.4 si hay salsas, capas o el plato
-   está a medio comer.
-5. Cuenta el aceite de cocción si el plato brilla o está claramente frito. Es la fuente de
-   calorías que más se olvida.
-6. NO inventes alimentos que no ves. Si la foto está borrosa o no es comida, devuelve items
-   vacío y explícalo en notes.
-7. Nombres en español, en singular y sin marca comercial.`;
+## DECIDE PRIMERO QUÉ TIPO DE FOTO ES. Es la decisión que más afecta a la precisión.
+
+**etiqueta** — se ven macros PUBLICADOS: etiqueta de un envase, carta de un restaurante,
+captura de una app. Manda sobre todo lo demás: usa esos números tal cual, no estimes nada.
+Un dato publicado siempre gana a tu mejor estimación. Confianza 0.95.
+Devuelve UN item con los macros por 100 g (convierte si vienen por ración) y los gramos de
+lo que vas a comer.
+
+**plato** — un compuesto que NO puedes separar ni pesar por partes: un bowl mezclado, pasta
+con salsa, un guiso, una ensalada aliñada, un wrap, un sándwich montado.
+Devuelve **UN SOLO item con el plato entero**, con sus macros por 100 g de la mezcla y el
+peso TOTAL del plato. NO lo descompongas en ingredientes.
+Esto es una regla dura y va contra el instinto. Un bowl con 19 ingredientes tiene datos para
+19 filas y verdad para ninguna: nadie puede decir cuántos gramos de hummus hay debajo del
+kale. Diecinueve gramajes inventados multiplicados por macros reales dan un total con falsa
+precisión, que es peor que un solo número honesto. Un número aproximado se puede corregir
+después; diecinueve, no.
+Nombra el plato como 'Sitio · Nombre' cuando reconozcas el establecimiento o esté escrito
+('Honest Greens · Spicy Feta Bowl'). Así entra en la biblioteca como unidad, se corrige una
+vez y la próxima vez es exacto.
+Confianza 0.4-0.6: es una estimación de densidad, y lo sabes.
+
+**componentes** — alimentos identificables y separables: la pechuga aquí, el arroz allá, el
+aceite por encima. Es el caso de la comida cocinada en casa.
+Devuelve un item por alimento. Si está en la BIBLIOTECA, pon su id exacto en matchedFoodId y
+deja TODOS los macros a null: el sistema usa los suyos y descarta los tuyos, así que
+rellenarlos "por ayudar" sólo gasta tokens.
+
+## Reglas para todos los casos
+
+1. Si no está en la biblioteca, matchedFoodId va a null y rellenas los macros por 100 g con
+   valores de tabla de composición. carbs100 INCLUYE la fibra. alcohol100 sólo para bebidas
+   alcohólicas, en gramos de etanol por 100 ml.
+2. Estima la cantidad con referencias visibles y di en notes en cuál te apoyaste: plato llano
+   26-28 cm, bowl de restaurante 400-600 g de contenido, tenedor 19-20 cm, cuchara sopera
+   colmada 15 g, vaso de agua 250 ml, lata 330 ml.
+3. Sé honesto con la confianza. 0.9 pesado o con etiqueta · 0.6-0.7 ración estándar bien
+   visible · 0.3-0.4 con salsas, capas o a medio comer. Una confianza inflada es peor que una
+   baja: la baja se marca en la app y se corrige, la inflada se cuela.
+4. Cuenta las grasas invisibles: aceite de cocción si el plato brilla o está frito, aliño en
+   una ensalada, salsa cremosa. Es la fuente de calorías que más se olvida y la que más
+   descuadra el día.
+5. NO inventes lo que no ves. Si la foto está borrosa o no es comida ni etiqueta, devuelve
+   items vacío y dilo en notes.
+6. Nombres en español, en singular. Sin marca comercial, EXCEPTO en el nombre de un plato
+   compuesto de un sitio concreto, donde el sitio es lo que lo identifica.`;
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -153,10 +184,13 @@ Deno.serve(async (req) => {
       model: "claude-opus-5",
       max_tokens: 16000,
       thinking: { type: "adaptive" },
-      // Identificar comida y estimar una ración no necesita razonamiento profundo, y el
-      // esfuerzo bajo mantiene la latencia por debajo de lo que se tolera con el móvil
-      // en la mano delante del plato.
-      output_config: { effort: "low", format: zodOutputFormat(MealSchema) },
+      // `medium` y no `low`: la percepción no mejora con más esfuerzo, pero la estimación
+      // de cantidad sí tiene razonamiento — qué hay debajo de la capa de arriba, si el
+      // plato lleva aceite invisible, cruzar el tamaño contra el tenedor. Y decidir entre
+      // componentes / plato / etiqueta es justo el paso que más afecta a la precisión.
+      // Coste: ~1,5x y algo más de latencia. El gramaje es el único dato que el sistema
+      // no puede derivar de ninguna otra fuente, así que ahí se paga.
+      output_config: { effort: "medium", format: zodOutputFormat(MealSchema) },
       system: SYSTEM,
       messages: [{
         role: "user",
@@ -255,6 +289,7 @@ Deno.serve(async (req) => {
     return json({
       ok: true,
       photoPath,
+      kind: parsed.kind,
       mealType: parsed.mealType,
       notes: parsed.notes,
       items,

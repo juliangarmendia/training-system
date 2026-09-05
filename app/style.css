@@ -2470,3 +2470,9 @@ body[data-tab="home"] .home-scroll-v2 { padding-top: calc(var(--safe-top) + 10px
 .nut-cost-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 12px 0; border-top: 1px solid var(--border); }
 .nut-cost-grid > div { display: flex; flex-direction: column; align-items: center; text-align: center; }
 .nut-cost-card code { font-family: var(--font-mono); font-size: 9px; color: var(--text2); }
+/* Que decidio el modelo sobre la foto. Cambia lo que el usuario tiene que corregir. */
+.nut-kind { font-size: 11px; line-height: 1.5; padding: 9px 11px; border-radius: var(--radius-sm); margin-bottom: 8px; }
+.nut-kind strong { font-weight: 700; }
+.nut-kind-ok { background: var(--tint-green); color: var(--accent); }
+.nut-kind-warn { background: var(--tint-orange); color: var(--orange); }
+.nut-ai-txt { font-size: var(--fs-xs); color: var(--text2); line-height: 1.45; }

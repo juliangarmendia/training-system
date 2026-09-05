@@ -134,6 +134,39 @@ devuelve el error en kcal/día. Por debajo de 150 kcal/día no emite veredicto: 
 ruido de la ventana, y un "tu mantenimiento está 40 kcal alto" sería ruido disfrazado de
 precisión.
 
+#### Los tres tipos de foto — la decisión que más afecta a la precisión
+
+El diseño original ("la foto estima gramos, los macros salen de la biblioteca") sólo era
+correcto para comida **separable**. Un bowl de restaurante lo rompe: el Spicy Feta Bowl de
+Honest Greens lleva 19 ingredientes mezclados, y nadie —ni un modelo— puede decir cuántos
+gramos de hummus hay debajo del kale. Diecinueve gramajes inventados multiplicados por
+macros reales dan un total con **falsa precisión**, que es peor que un solo número honesto:
+un número aproximado se corrige después, diecinueve no.
+
+Desde v11.53 el modelo clasifica la foto antes de nada:
+
+| Tipo | Quién pone los macros | Qué corriges tú |
+|---|---|---|
+| **etiqueta** | los números publicados (envase, carta, app) | sólo cuánto te comes |
+| **plato** | la IA, para el plato entero **como una unidad** | el peso TOTAL del plato |
+| **componentes** | tu biblioteca `foods` | los gramos de cada alimento |
+
+Un plato compuesto entra en `foods` como **un solo alimento** con nombre `Sitio · Plato`
+("Honest Greens · Spicy Feta Bowl"). Corriges su densidad **una vez** y a partir de ahí ese
+bowl resuelve al instante y exacto. Es la propiedad de "la precisión crece con el uso"
+aplicada también a la comida de fuera, que antes se quedaba fuera.
+
+Y para un sitio que publica sus macros —como Honest Greens— **fotografiar la carta es más
+exacto que fotografiar el plato**. El prompt lo dice explícitamente: un dato publicado
+siempre gana a la mejor estimación.
+
+Palancas de precisión, por orden de impacto real: (1) leer etiquetas y cartas, (2) platos
+compuestos como unidad, (3) una referencia de escala en la foto, (4) el nivel de esfuerzo
+del modelo. La cuarta es la que menos mueve — el esfuerzo afecta al razonamiento, no a la
+percepción — pero se subió a `medium` porque estimar cantidad sí tiene razonamiento: qué hay
+debajo de la capa de arriba, si el plato lleva aceite invisible, cruzar el tamaño contra el
+tenedor.
+
 #### El modelo que lee las fotos, y lo que cuesta
 
 **Claude Opus 5 por API, elegido a mano el 4-sep-2026** frente a Haiku 4.5, Grok y Gemini.
