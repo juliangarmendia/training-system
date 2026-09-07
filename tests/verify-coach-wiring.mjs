@@ -1373,17 +1373,30 @@ yes(!/adjusted:/.test(FIN16), 'y ya no escribe `adjusted`');
 yes(!/workout\.adjustments/.test(FIN16), 'ni `workout.adjustments`');
 yes(/color:/.test(fnSrc('function _coachReadinessStamp(')), 'la instantánea sigue siendo color + señales + confianza + origen');
 
-// 16.d Home: la línea informativa entra, el consejo sale
+// 16.d La línea de rendimiento sale de Home y baja a Stats › Today (v11.65)
+//
+// EL FALLO QUE IMPIDE. Julian vio la línea en el iPhone en v11.64 y la rechazó: dos párrafos de
+// texto plano en medio de un dashboard de tarjetas ("está feo, sin nada que ver con la UX").
+// Mudarla tiene dos formas de salir mal, y las dos son silenciosas: que `renderHomeView` la siga
+// llamando (el párrafo reaparece donde el usuario lo rechazó) o que el div se mude a Stats y
+// NADIE lo pinte (un contenedor vacío para siempre, que es peor que no haberlo movido).
 const HOME16 = fnSrc('async function renderHomeView(');
-yes(/renderRecoveryLine\(\)/.test(HOME16), 'renderHomeView llama renderRecoveryLine()');
-yes(/typeof renderRecoveryLine === 'function'/.test(HOME16), 'con guarda typeof (vive en coach.js)');
+yes(!/renderRecoveryLine/.test(HOME16), 'renderHomeView ya NO llama a renderRecoveryLine()');
 yes(!/renderRecoveryHero|renderHardDayBudget|advisory/i.test(HOME16),
-  'y ya no llama al hero, al advisory ni al presupuesto');
-yes(HTML.indexOf('id="coach-recovery-line"') > 0, 'index.html tiene #coach-recovery-line');
-yes(HTML.indexOf('id="coach-recovery-line"') > HTML.indexOf('id="todays-plan-card"'),
-  'justo DESPUÉS de la sesión de hoy (primero qué toca hacer, luego el contexto)');
-yes(HTML.indexOf('id="coach-recovery-line"') < HTML.indexOf('id="home-stat-trio"'),
-  'y antes del trío de estadísticas');
+  'y sigue sin llamar al hero, al advisory ni al presupuesto');
+yes(/renderHomeStatTrio\(\)/.test(HOME16), 'lo que sí pinta es el trío (con el tile Readiness)');
+const HOME_BLOCK16 = HTML.slice(HTML.indexOf('id="view-home"'), HTML.indexOf('id="view-gym"'));
+yes(!HOME_BLOCK16.includes('id="coach-recovery-line"'),
+  'y el bloque de Home ya no tiene #coach-recovery-line');
+yes(/id="coach-recovery-line" class="coach-recovery-line" data-group="today"/.test(HTML),
+  '#coach-recovery-line vive en Stats › Today, con su data-group (sin él no se mostraría nunca)');
+yes(HTML.indexOf('id="coach-recovery-line"') > HTML.indexOf('id="hard-day-budget"'),
+  'y va DESPUÉS de la carga de la semana');
+const STATS16D = fnSrc('async function renderStats(');
+yes(/renderRecoveryLine\(\)/.test(STATS16D), 'renderStats la pinta');
+yes(/typeof renderRecoveryLine === 'function'/.test(STATS16D), 'con guarda typeof (vive en coach.js)');
+yes(STATS16D.indexOf('renderHardDayBudget') < STATS16D.indexOf('renderRecoveryLine'),
+  'detrás del presupuesto, que es el orden del HTML');
 
 // 16.e El presupuesto de días duros se muda a Stats
 const STATS16 = fnSrc('async function renderStats(');
@@ -1445,6 +1458,59 @@ eq(cardCtx.buildExerciseCard(EX_FIXTURE, 1, null, { data: {} }, { data: {} }, fa
   { id: 'upperA' }, [], null).innerHTML, GOLDEN_V1156,
   'la tarjeta sin objetivo sigue siendo byte a byte la de v11.56 tras la retirada');
 
+// 16.l El tile Readiness: el WHOOP de hoy, en la fila de números (v11.65)
+//
+// EL FALLO QUE ESTA SUBSECCIÓN EXISTE PARA IMPEDIR. El número del wearable subió al dashboard
+// porque el usuario lo pidió allí ("lo de WHOOP envíalo arriba, al Readiness / Strain / Streak /
+// Volume"). Tres formas de romperlo en silencio:
+//
+//   · Leer el store `wellness` para llenar el tile: su última fila es la de AYER a primera hora
+//     de la mañana, y un tile no tiene sitio para poner la fecha al lado. Sería la mentira que
+//     v11.58 (F-6) quitó del advisory, reintroducida en un sitio más visible.
+//   · Cuatro tarjetas con el CSS de tres: `repeat(3, 1fr)` con cuatro hijos las desborda en los
+//     390 px del iPhone, que es el único ancho en el que esta app se usa.
+//   · Un tile sin dato que enseñe un 0, o el número de ayer: "no hay dato de hoy" es información,
+//     un cero es una lectura falsa.
+const TRIO16 = fnSrc('async function renderHomeStatTrio(');
+const TRIO_CARDS = (TRIO16.match(/\{ label: '([A-Za-z]+)'/g) || []).map(m => m.split("'")[1]);
+eq(TRIO_CARDS.length, 4, 'renderHomeStatTrio construye exactamente 4 tarjetas');
+eq(TRIO_CARDS.join(' > '), 'Readiness > Strain > Streak > Volume', 'y en este orden');
+yes(/getWhoopContext\(\)/.test(TRIO16),
+  'el valor sale de getWhoopContext() — el dato de HOY o nada (F-6)');
+yes(!/wellness/.test(TRIO16), 'y NUNCA del store wellness (su última fila puede ser la de ayer)');
+yes(!/whoopLastAvailable/.test(TRIO16), 'ni del último dato disponible, que se pinta con su fecha o no se pinta');
+yes(/'—'/.test(TRIO16) && /NO DATA/.test(TRIO16), 'sin dato de hoy el tile dice "—" / NO DATA');
+yes(/WHOOP OFF/.test(TRIO16) && /typeof whoopIsConnected === 'function'/.test(TRIO16),
+  'y "WHOOP OFF" si la integración no está conectada (con guarda typeof)');
+yes(!/\b0\b\s*:/.test(TRIO16.slice(TRIO16.indexOf('let rd'), TRIO16.indexOf('const cards'))),
+  'la ausencia de dato no se rellena con un 0');
+yes(/wc\.score >= 67 \? 'var\(--accent\)' : \(wc\.score >= 34 \? 'var\(--yellow\)' : 'var\(--red\)'\)/.test(TRIO16),
+  'las bandas de color son las de WHOOP (≥67 verde · 34-66 amarillo · <34 rojo)');
+yes(/repeat\(4, 1fr\)/.test(CSS.slice(CSS.indexOf('.stat-trio {'), CSS.indexOf('.stat-trio {') + 200)),
+  '.stat-trio es repeat(4, 1fr) en style.css');
+// Y el número se refresca cuando el dato llega tarde: WHOOP publica la recuperación por la
+// mañana, muchas veces con la app en segundo plano o recién abierta.
+yes(/invalidateReadiness\(\);[\s\S]{0,600}renderHomeStatTrio\(\)/.test(APP),
+  'al llegar el dato de hoy en init se repinta el trío');
+yes(/visibilityState === 'visible'[\s\S]{0,700}renderHomeStatTrio\(\)/.test(APP),
+  'y al volver a primer plano también (sin tocar integrations.js)');
+
+// 16.m La pesada de Withings dice todo lo que mide la báscula, en UNA línea
+//
+// El servidor escribe pulso, grasa visceral, metabolismo basal y edad metabólica junto al peso.
+// El fallo que impide: que esos campos lleguen a IndexedDB y no se vean en ninguna pantalla —el
+// dato que nadie enseña es dato que nadie sabe que tiene— o que cada uno se convierta en una
+// tarjeta nueva, que es justo lo que esta línea existe para no ser.
+const BWI16 = fnSrc('function renderBodyWeightInsights(');
+const BW_WITHINGS16 = BWI16.slice(BWI16.indexOf("latest.source === 'withings'"));
+for (const k of ['visceralFat', 'bmrKcal', 'heartRateBpm', 'metabolicAge', 'muscleKg']) {
+  yes(BW_WITHINGS16.includes(k), `la línea de Withings lee \`${k}\``);
+}
+yes(/Number\.isFinite/.test(BW_WITHINGS16), 'y sólo pinta lo que es un número finito');
+yes(/replace\('\.', ','\)/.test(BW_WITHINGS16), 'con coma decimal (formato español)');
+yes((BW_WITHINGS16.match(/etaEl\.innerHTML \+=/g) || []).length === 1,
+  'sigue siendo UNA sola línea: ni una tarjeta ni un gráfico nuevos');
+
 // ── 17. Inc B-4 — LA HOME EXPLICA LA SEMANA (v11.65) ─────────────────────────────────────────
 //
 // EL FALLO QUE ESTA SECCIÓN EXISTE PARA IMPEDIR. Julian pidió el 2026-09-07, con estas
@@ -1483,8 +1549,8 @@ const HOME_ESPERADO = [
   'home-topbar', 'plan-selector', 'week-calendar',
   'coach-week-card', 'coach-goal-line',
   'todays-detail',                    // la fila "Today's session"
-  'coach-readout', 'todays-plan-card', 'coach-recovery-line',
-  'home-stat-trio',
+  'coach-readout', 'todays-plan-card',
+  'home-stat-trio',                   // v11.65: 4 tiles, Readiness el primero
   'queue-ahead',                      // la fila "This week"
   'home-queue',
 ];
@@ -1501,6 +1567,8 @@ for (const id of ['training-advisory', 'recovery-hero', 'deload-reminder']) {
 }
 yes(!HOME_HTML.includes('id="hard-day-budget"'), 'el presupuesto de días duros no vuelve a Home');
 yes(/id="hard-day-budget" data-group="today"/.test(HTML), 'sigue en Stats › Today');
+// v11.65: y la línea de rendimiento tampoco vuelve — se fue a Stats con el mismo argumento.
+yes(!HOME_HTML.includes('id="coach-recovery-line"'), 'la línea de rendimiento tampoco vuelve a Home');
 
 // coach-facts.js en su propio sandbox, para probar el validador nuevo sin tocar el de §15.
 const F17 = (() => {
@@ -1628,8 +1696,9 @@ yes(/_cNum\(/.test(CGL17), 'los números salen con coma decimal (helper _cNum)')
 const HOME17 = fnSrc('async function renderHomeView(');
 yes(/renderCoachGoalLine\(\)/.test(HOME17), 'renderHomeView llama renderCoachGoalLine()');
 yes(/typeof renderCoachGoalLine === 'function'/.test(HOME17), 'con guarda typeof');
-yes(/renderCoachWeekCard\(\)/.test(HOME17) && /renderRecoveryLine\(\)/.test(HOME17),
-  'y sigue llamando a la tarjeta del coach y a la línea de recuperación');
+yes(/renderCoachWeekCard\(\)/.test(HOME17) && /renderHomeStatTrio\(\)/.test(HOME17),
+  'y sigue llamando a la tarjeta del coach y al trío de estadísticas (v11.65: la línea de'
+  + ' recuperación se mudó a Stats)');
 for (const fn of ['renderCoachGoalLine', 'coachBriefFromReview']) {
   yes(COACHJS.slice(COACHJS.indexOf('module.exports')).includes(fn), `${fn} está exportada`);
 }

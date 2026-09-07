@@ -13,7 +13,8 @@
 // y falla sin conexión, que es justo donde se entrena (ya pasó con nutrition.js).
 //
 // v11.60 (incremento 6) trae `renderGoalsCard`, la tarjeta "Objetivos". v11.62 trae
-// `renderRecoveryLine`, la línea informativa de Home que sustituye al consejo diario.
+// `renderRecoveryLine`, la línea informativa que sustituye al consejo diario (en Stats › Today
+// desde v11.65; el WHOOP de hoy vive en el tile Readiness de Home).
 // v11.57 (incremento 3) trae `renderCoachReadout`. v11.59 (incremento 5) trae
 // `renderReadinessSignals`, que sustituye al score 0-100 de la fatigue card. Los incrementos
 // siguientes añaden aquí `maybeRunWeeklyCoach`, `applyCoachProposal`, `rollbackPlanVersion`,
@@ -164,7 +165,7 @@ async function renderReadinessSignals() {
     ${lastLine}`;
 }
 
-// ==================== LÍNEA DE RECUPERACIÓN (Home, v11.62) ====================
+// ==================== LÍNEA DE RECUPERACIÓN (Stats › Today, v11.62 · v11.65) ====================
 //
 // QUÉ SUSTITUYE. En Home había tres cosas hablando de recuperación: el hero de WHOOP (anillo
 // gigante + "Your body is ready for high strain today"), la tarjeta de consejo diario con sus
@@ -187,6 +188,15 @@ async function renderReadinessSignals() {
 //
 // El contenedor queda VACÍO si no hay nada que decir: una etiqueta "Recuperación" sobre tres
 // guiones no es información, es un hueco con nombre.
+//
+// DÓNDE VIVE (v11.65). Nació en Home, entre la sesión del día y el trío de estadísticas, y ahí
+// se veía como lo que era: dos párrafos de texto plano en medio de un dashboard de tarjetas
+// —*"está feo, sin nada que ver con la UX"*—. Se muda a **Stats › Today**, detrás de las señales
+// y de la carga de la semana, y se pinta como una tarjeta más. El dato que sí tenía que estar en
+// Home —el WHOOP de hoy— se fue al tile `Readiness` de `renderHomeStatTrio`, que es un número
+// en una fila de números. Un fallo mudo, de paso: las reglas de `.coach-recovery-line` colgaban
+// de una clase que el contenedor no tenía (sólo `id`), así que NUNCA se aplicaron y el texto
+// salía a tamaño de párrafo. El div lleva ahora también la clase.
 
 /** Ventana de la línea de rendimiento: dos semanas. Más atrás ya no describe "cómo vengo". */
 const RECOVERY_LINE_DAYS = 14;
@@ -257,9 +267,14 @@ async function renderRecoveryLine() {
     }
 
     if (!perf && !trend) return;
+    // Tarjeta, no párrafo: `card t3-card` + eyebrow, las mismas que la carga de la semana
+    // justo encima. La ventana la dice el propio título (RECOVERY_LINE_DAYS = 14 d).
     el.innerHTML =
-      (perf ? `<div class="crl-perf">${escapeHtml(perf)}</div>` : '') +
-      (trend ? `<div class="crl-trend">${escapeHtml(trend)}</div>` : '');
+      `<section class="card t3-card">
+        <div class="t3-head"><span class="t3-eyebrow">Rendimiento · ${RECOVERY_LINE_DAYS} d</span></div>
+        ${perf ? `<div class="crl-perf">${escapeHtml(perf)}</div>` : ''}
+        ${trend ? `<div class="crl-trend">${escapeHtml(trend)}</div>` : ''}
+      </section>`;
   } catch (e) {
     // Patrón `renderHomeView`: cada sección con su try/catch. Una línea no tumba Home.
     console.warn('[Coach] renderRecoveryLine:', e);
@@ -553,7 +568,7 @@ async function renderCoachGoalLine() {
 // LA VERSIÓN DE LA APP viaja al servidor (`clientVersion`) y al pack (`meta.appVersion`), que
 // es lo que permite luego saber qué código produjo una revisión rara.
 // `verify-coach-wiring.mjs` comprueba que coincide con la de index.html y con `CACHE_NAME`.
-const COACH_APP_VERSION = 'v11.64';
+const COACH_APP_VERSION = 'v11.65';
 
 const COACH_MAX_SESSION_IDS = 12;   // el tope que valida la edge function
 const COACH_MAX_EXERCISE_IDS = 150; // idem

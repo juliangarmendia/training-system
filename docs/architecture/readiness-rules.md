@@ -57,16 +57,21 @@ Cómo el Readiness Engine convierte datos de wearables en un estado
    - **RED** — ≥2 señales concordantes degradadas. Es un dato para el usuario y para la revisión
      semanal, no una orden: *lo que hace la app con un rojo es escribirlo en la línea de Home y
      sellarlo en `readinessAtStart` del registro*.
-4. **Conflicto wearable vs realidad** (READ-005): manda el rendimiento. La línea de Home lo pone
-   primero, precisamente por esto.
+4. **Conflicto wearable vs realidad** (READ-005): manda el rendimiento. La línea lo pone primero,
+   precisamente por esto.
+
+> **v11.65:** la línea de rendimiento/tendencias vive en **Stats › Today**; el WHOOP de hoy, en el
+> tile **Readiness** de Home. En Home era un párrafo de texto plano en medio de un dashboard de
+> tarjetas y el usuario lo rechazó; el número del wearable sí es dashboard, el párrafo no.
 
 ## Qué hace la app con todo esto (v11.62)
 
 | Acción | ¿La hace la app? | Dónde |
 |---|---|---|
 | Mostrar el color y las señales que lo justifican | ✅ | Stats › Today (`renderReadinessSignals`) |
-| Mostrar las tendencias 7d + el dato de hoy en Home | ✅ | `renderRecoveryLine`, línea 2 |
-| Mostrar el rendimiento reciente (anclas + última carrera) | ✅ | `renderRecoveryLine`, línea 1 |
+| Mostrar el dato de HOY del wearable | ✅ | tile **Readiness** de Home (`renderHomeStatTrio`) |
+| Mostrar las tendencias 7d | ✅ | `renderRecoveryLine`, línea 2 (Stats › Today) |
+| Mostrar el rendimiento reciente (anclas + última carrera) | ✅ | `renderRecoveryLine`, línea 1 (Stats › Today) |
 | Sellar con qué recuperación se arrancó la sesión | ✅ (log puro) | `workout.readinessAtStart` |
 | Pasar `deloadHint` y las señales al coach semanal | ✅ | facts pack |
 | **Degradar una sesión dura en RED** | ❌ retirado v11.62 | lo decide él |

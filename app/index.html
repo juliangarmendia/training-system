@@ -191,10 +191,9 @@
           </div>
           <div id="coach-readout" class="hidden"></div>
           <div id="todays-plan-card"></div>
-          <!-- Recuperación como INFORMACIÓN (v11.62). Dos líneas apagadas: rendimiento
-               (anclas + última carrera) y tendencias de 7 días. Sin color de estado, sin
-               botones y sin nada que decidir: el entreno del día no se ajusta por WHOOP. -->
-          <div id="coach-recovery-line"></div>
+          <!-- v11.65: el trío pasa a CUATRO tarjetas — Readiness (el WHOOP de hoy) · Strain ·
+               Streak · Volume. La línea de texto de recuperación que estaba justo aquí se mudó
+               a Stats › Today: un número va en la fila de números, no en un párrafo. -->
           <div id="home-stat-trio"></div>
           <div class="home-sec-row" style="margin-top:28px">
             <h2 class="home-h2">This week</h2>
@@ -475,6 +474,11 @@
           <!-- La carga de la semana vivía en Home hasta v11.61. Es un dato que se consulta,
                no algo que haya que ver antes de entrenar: se queda en Stats, tras las señales. -->
           <div id="hard-day-budget" data-group="today"></div>
+          <!-- Rendimiento (anclas + última carrera) y tendencias de 7 días. Vivía en Home hasta
+               v11.64; es contexto que se consulta, no algo que haya que leer antes de entrenar,
+               y como texto suelto rompía el dashboard. Aquí es una tarjeta más, junto a las
+               señales y a la carga de la semana. Sin color de estado y sin botones. -->
+          <div id="coach-recovery-line" class="coach-recovery-line" data-group="today"></div>
           <div class="card coach-goals" id="coach-goals" data-group="today"></div>
           <div class="section-label" data-group="today">This Week</div>
           <div class="card" id="weekly-summary" data-group="today"></div>
@@ -791,7 +795,7 @@
           </div>
           <div class="section-label" style="margin-top:24px">App</div>
           <div class="card">
-            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v11.64<br>Data stored locally + cloud sync.<br>Works offline.</p>
+            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v11.65<br>Data stored locally + cloud sync.<br>Works offline.</p>
             <button id="btn-force-update" class="btn-secondary btn-full" style="text-align:center">Force Update App</button>
           </div>
         </div>

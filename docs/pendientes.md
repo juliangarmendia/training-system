@@ -58,7 +58,7 @@ igual"*. Plan completo en
 
 | Paso | Qué | Estado |
 |---|---|---|
-| B-1 | **Retirada del ajuste diario.** Fuera el consejo del día, el hero de WHOOP, el check-in de 2 toques y el banner de descarga; entra `renderRecoveryLine` (rendimiento primero, tendencias después) y el presupuesto de días duros se muda a Stats | hecho |
+| B-1 | **Retirada del ajuste diario.** Fuera el consejo del día, el hero de WHOOP, el check-in de 2 toques y el banner de descarga; entra `renderRecoveryLine` (rendimiento primero, tendencias después) y el presupuesto de días duros se muda a Stats. **v11.65:** la línea de rendimiento baja también a **Stats › Today** (en Home era texto plano en un dashboard de tarjetas) y el WHOOP de hoy sube al tile **Readiness** del trío, que pasa a cuatro tiles | hecho |
 | B-2 | **`trajectory` en el facts pack.** Todo el recorrido: programa, bloques, peso desde el inicio, anclas, adherencia, patrones saltados. `FACTS_SCHEMA 2`, `priorReviews` 6 | hecho |
 | B-3 | **Contrato v2 de la edge function.** `focus`, `phase` (5 fases), `whyChanged`, `whyKept`, `lastWeekSummary` y `weekSummary` con **una fila por CADA sesión**, también las que no cambian | desplegado |
 | B-4 | **La Home explica la semana.** `coachBrief` estampado en la versión del plan (y arrastrado en Deshacer y en el cambio de variante), `coachTargetWeekKey` (domingo → semana siguiente), botón **"Cerrar semana y pedir la próxima"**, Home reordenada (la semana antes que el día) con `#coach-goal-line`, y la vista Coach con Foco / Fase / Por qué / tabla de sesiones | hecho |

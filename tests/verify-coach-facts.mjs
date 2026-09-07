@@ -704,6 +704,40 @@ eq(factsPocas.trajectory.weight.nMeasuredSinceStart, 3, 'con 4 filas (3 medidas)
 eq(factsPocas.trajectory.weight.slopeSinceStartKgPerWeek, null, 'la pendiente del recorrido va a null (gate de 6 puntos)');
 ok(/pendiente del recorrido va a null/.test(factsPocas.trajectory.weight.note || ''), 'y la nota lo dice');
 
+// ---- weight.scale · lo que sabe la báscula (Withings Body Smart, v11.65) ----
+// El fallo que impide: que el modelo cite composición corporal cuando no hay báscula (inventada),
+// o que con báscula se quede sólo con el peso y no vea que el % grasa baja mientras la FFM aguanta.
+eq(tr.weight.scale, null, 'sin filas source:withings, scale es null (no se inventa composición)');
+const factsScale = buildCoachFacts(mkInput({
+  stores: Object.assign({}, mkInput().stores, {
+    bodyweight: BODYWEIGHT.concat([
+      { date: '2026-08-12', weight: 87.4, measured: true, source: 'withings', fatPct: 24.1, ffmKg: 66.3, muscleKg: 62.9, visceralFat: 9, bmrKcal: 1846, metabolicAge: 41, heartRateBpm: 61 },
+      { date: '2026-09-06', weight: 85.6, measured: true, source: 'withings', fatPct: 22.6, ffmKg: 66.2, muscleKg: 62.8, visceralFat: 8, bmrKcal: 1812.4, metabolicAge: 38, heartRateBpm: 57 },
+    ]),
+  }),
+}), DEPS);
+const sc = factsScale.trajectory.weight.scale;
+eq(sc && sc.date, '2026-09-06', 'scale = la última lectura del dispositivo');
+eq(sc && sc.daysAgo, 1, 'con su antigüedad en días');
+eq(sc && sc.fatPct, 22.6, '% grasa de la báscula');
+eq(sc && sc.visceralFat, 8, 'grasa visceral (índice, sin unidad)');
+eq(sc && sc.bmrKcal, 1812, 'metabolismo basal redondeado a kcal');
+eq(sc && sc.metabolicAge, 38, 'edad metabólica');
+eq(sc && sc.heartRateBpm, 57, 'pulso en la báscula');
+eq(sc && sc.readings28d, 2, 'dos lecturas en 28 días');
+eq(sc && sc.fatPctDelta28d, -1.5, 'y con ≥21 días entre ellas, el cambio de % grasa: −1,5');
+eq(sc && sc.ffmKgDelta28d, -0.1, 'y el de FFM: −0,1 (la recomposición se lee aquí, no en el peso)');
+const factsScaleCorta = buildCoachFacts(mkInput({
+  stores: Object.assign({}, mkInput().stores, {
+    bodyweight: BODYWEIGHT.concat([
+      { date: '2026-09-01', weight: 86.0, measured: true, source: 'withings', fatPct: 23.0 },
+      { date: '2026-09-06', weight: 85.6, measured: true, source: 'withings', fatPct: 22.6 },
+    ]),
+  }),
+}), DEPS);
+eq(factsScaleCorta.trajectory.weight.scale.fatPctDelta28d, null, 'con 5 días entre lecturas no hay delta: el % grasa de báscula oscila a diario');
+eq(factsScaleCorta.trajectory.weight.scale.bmrKcal, null, 'las claves que la fila no trae van a null, no a 0');
+
 // ---- anchors · las 6 anclas de goals.preserve, con lb → kg ----
 const anchorsById = Object.fromEntries(tr.anchors.map(a => [a.id, a]));
 eq(tr.anchors.length, 6, 'una fila por ancla de `goals.preserve.anchorLifts`');

@@ -142,7 +142,8 @@ decisión sale con su Rule ID. **El primero cambió en v11.62** y por eso se ree
 - **Reglas:** READ-001..006, READ-008. **READ-007 ya no lo aplica la app** (sigue siendo cierto como principio; lo ejecuta la persona).
 - **Datos:** tendencias, no valores diarios; baseline individual; el dato de hoy es de hoy o no existe (F-6).
 - **No debe:** actuar por una sola métrica (READ-002); tratar el score como calculadora de dosis (READ-003); sobrescribir un rendimiento real bueno por un score malo (READ-005); **volver a tocar la sesión del día**.
-- **Interacción:** alimenta la línea de Home (junto a `performanceLine`, que va PRIMERO), la lista de Stats y el coach semanal. Ver [`readiness-rules.md`](./readiness-rules.md).
+- **Interacción:** alimenta la línea de rendimiento (junto a `performanceLine`, que va PRIMERO), la lista de Stats y el coach semanal. Ver [`readiness-rules.md`](./readiness-rules.md).
+- **v11.65:** la línea de rendimiento/tendencias vive en **Stats › Today**; el WHOOP de hoy, en el tile **Readiness** de Home (`renderHomeStatTrio`, hoy o "—", nunca la fila de ayer).
 
 ## 3. Interference Engine (constraint resolver)
 - **Inputs:** sesiones de la semana con su objetivo + coste, estado de readiness, carga reciente de tren inferior.

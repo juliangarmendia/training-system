@@ -2009,11 +2009,16 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
 .sh-rest-sub { font-size: 12px; color: var(--text2); margin-top: 2px; }
 
 /* ---- Stat trio ---- */
-.stat-trio { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 16px; }
-.stat-card { border-radius: 18px; padding: 14px; background: linear-gradient(to bottom, rgba(255,255,255,0.05), rgba(255,255,255,0.01)); border: 1px solid rgba(255,255,255,0.07); box-shadow: 0 10px 30px -20px rgba(0,0,0,0.6); }
-.stat-card-label { font-family: var(--font-mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.2em; color: var(--text2); }
-.stat-card-val { font-family: var(--font-display); font-size: 26px; font-weight: 900; line-height: 1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; margin-top: 10px; }
-.stat-card-sub { font-family: var(--font-mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.2em; color: var(--text3); margin-top: 4px; }
+/* v11.65: CUATRO tarjetas (Readiness · Strain · Streak · Volume) en 390 px de iPhone. Con el
+   padding de la vista (16+16) y 3 huecos de 8 px, cada tarjeta mide ~83 px: el label más largo
+   ("READINESS", 9 caracteres) sólo cabe bajando la mono a 8,5 px y el tracking a 0,1em, y el
+   número a 22 px. El sub "NO DATA TODAY" parte en dos líneas a propósito — el grid estira las
+   cuatro tarjetas a la misma altura, así que la fila no se descuadra. */
+.stat-trio { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 16px; }
+.stat-card { border-radius: 16px; padding: 12px 10px; background: linear-gradient(to bottom, rgba(255,255,255,0.05), rgba(255,255,255,0.01)); border: 1px solid rgba(255,255,255,0.07); box-shadow: 0 10px 30px -20px rgba(0,0,0,0.6); }
+.stat-card-label { font-family: var(--font-mono); font-size: 8.5px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text2); }
+.stat-card-val { font-family: var(--font-display); font-size: 22px; font-weight: 900; line-height: 1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; margin-top: 9px; }
+.stat-card-sub { font-family: var(--font-mono); font-size: 8.5px; text-transform: uppercase; letter-spacing: 0.1em; line-height: 1.35; color: var(--text3); margin-top: 4px; }
 
 /* ---- Week strip: rounded glass cells, today = white (Lovable) ---- */
 #week-strip .ws-row { gap: 6px; }
@@ -2555,17 +2560,21 @@ body[data-tab="home"] .home-scroll-v2 { padding-top: calc(var(--safe-top) + 10px
 .coach-btn-primary { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
 .coach-btn:disabled { opacity: 0.5; }
 
-/* LA LÍNEA DE RECUPERACIÓN DE HOME (v11.62). Sustituye al hero, al advisory y al check-in de 2
-   toques. Texto apagado y dos líneas: la de arriba es el RENDIMIENTO (anclas y última carrera),
-   la de abajo las tendencias de 7 días y el WHOOP de hoy. Sin color por estado a propósito: un
-   rojo aquí volvería a ser un consejo. */
-.coach-recovery-line { margin: 10px 0 4px; padding: 0 2px; }
+/* LA LÍNEA DE RENDIMIENTO Y TENDENCIAS (v11.62 · mudada a Stats › Today en v11.65). Dos líneas
+   apagadas dentro de una `card t3-card`: la de arriba es el RENDIMIENTO (anclas y última
+   carrera), la de abajo las tendencias de 7 días y el WHOOP de hoy. Sin color por estado a
+   propósito: un rojo aquí volvería a ser un consejo.
+
+   v11.65 arregla además un fallo mudo: estas reglas colgaban de `.coach-recovery-line` y el
+   contenedor sólo tenía `id`, así que nunca se aplicaron y el texto salía a tamaño de párrafo
+   —el "está feo" del usuario—. El div lleva ahora también la clase. */
+.coach-recovery-line { margin: 0; padding: 0; }
 .coach-recovery-line .crl-perf,
 .coach-recovery-line .crl-trend {
   font-size: var(--fs-xs); line-height: 1.5; color: var(--text3);
   font-variant-numeric: tabular-nums;
 }
-.coach-recovery-line .crl-perf { color: var(--text2); }
+.coach-recovery-line .crl-perf { color: var(--text2); margin-bottom: 2px; }
 
 /* Stats › Today: la lista de señales que sustituye al score 0-100. Sin barra y sin número. */
 .readiness-signals { padding: 14px 16px; }

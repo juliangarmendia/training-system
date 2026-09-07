@@ -722,7 +722,43 @@ function _trajWeight(ctx) {
     slopeUsedForEta,
     weeksToMilestoneAtCurrentSlope: eta(g.milestoneKg),
     weeksToTargetAtCurrentSlope: eta(targetHi),
+    scale: _trajScale(ctx),
     note: notes.length ? _trunc(notes.join('; '), FACTS_NOTE_CHARS) : null,
+  };
+}
+
+/**
+ * Lo que la báscula (Withings Body Smart, v11.65) sabe y una pesada manual no: composición,
+ * grasa visceral, metabolismo basal, edad metabólica y pulso en pie. La última lectura del
+ * dispositivo y, si hay dos lecturas separadas ≥21 días dentro de 28, el cambio de % grasa —
+ * que es el número que de verdad mide la recomposición (FFM que se conserva mientras baja la
+ * grasa). Null si nunca se ha conectado la báscula: el modelo no debe inventar composición.
+ */
+function _trajScale(ctx) {
+  const rows = (ctx.bodyweight || [])
+    .filter(r => r && r.source === 'withings' && _cfDate(r.date))
+    .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  if (!rows.length) return null;
+  const last = rows[rows.length - 1];
+  const pick = (r, k, rnd) => { const v = _n(r[k]); return v == null ? null : (rnd ? rnd(v) : v); };
+  const in28 = rows.filter(r => { const dd = _cfDiff(r.date, ctx.todayStr); return dd != null && dd >= 0 && dd < FACTS_LONG_WINDOW_DAYS; });
+  const firstIn28 = in28.length ? in28[0] : null;
+  const fatNow = pick(last, 'fatPct', _rBw), fatThen = firstIn28 ? pick(firstIn28, 'fatPct', _rBw) : null;
+  const spanOk = firstIn28 && _cfDiff(firstIn28.date, last.date) >= 21;
+  return {
+    date: last.date,
+    daysAgo: _cfDiff(last.date, ctx.todayStr),
+    fatPct: fatNow,
+    ffmKg: pick(last, 'ffmKg', _rBw),
+    muscleKg: pick(last, 'muscleKg', _rBw),
+    visceralFat: pick(last, 'visceralFat'),
+    bmrKcal: pick(last, 'bmrKcal', (v) => Math.round(v)),
+    metabolicAge: pick(last, 'metabolicAge', (v) => Math.round(v)),
+    heartRateBpm: pick(last, 'heartRateBpm', (v) => Math.round(v)),
+    readings28d: in28.length,
+    fatPctDelta28d: (spanOk && fatNow != null && fatThen != null) ? _rBw(fatNow - fatThen) : null,
+    ffmKgDelta28d: (spanOk && pick(last, 'ffmKg') != null && pick(firstIn28, 'ffmKg') != null)
+      ? _rBw(pick(last, 'ffmKg') - pick(firstIn28, 'ffmKg')) : null,
   };
 }
 

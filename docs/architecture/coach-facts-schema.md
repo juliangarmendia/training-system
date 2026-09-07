@@ -212,7 +212,10 @@ trajectory: {
   weight: { startKg: 87.1, startDate: '2026-08-19', firstMeasured: { kg: 86.8, date: '2026-08-26' },
             nMeasuredSinceStart: 8, latest7dMean: 85.9, deltaKg: -1.2,
             slopeSinceStartKgPerWeek: -0.7, slopeUsedForEta: '28d'|'sinceStart'|null,
-            weeksToMilestoneAtCurrentSlope: 5.6, weeksToTargetAtCurrentSlope: 7, note },
+            weeksToMilestoneAtCurrentSlope: 5.6, weeksToTargetAtCurrentSlope: 7,
+            scale: { date, daysAgo, fatPct, ffmKg, muscleKg, visceralFat, bmrKcal, metabolicAge,
+                     heartRateBpm, readings28d, fatPctDelta28d, ffmKgDelta28d } | null,
+            note },
   anchors: [{ id, name, kind: 'load'|'bw', first: {date,kg,reps,e1rm}, best: {…},
               latest: {…, outcome}, exposures, exposures12w, daysSinceLast,
               trendSinceStartPct, trendBasis? }],
@@ -259,6 +262,13 @@ descargas y diet breaks —, `null` si no hay ninguna. Los dos ETA (hito `goals.
 = 82 kg y objetivo = el extremo alto de `targetWeightKg`) sólo se publican si la pendiente
 **baja**: con pendiente ≥0 la división daría "faltan −12 semanas". `note` (≤240 chars,
 castellano) recoge los motivos por los que la pendiente no es fiable; `null` si no hay ninguno.
+
+`scale` (v11.65) es la **última lectura de la báscula Withings** (`bodyweight.source === 'withings'`):
+% grasa, FFM, músculo, grasa visceral (índice), metabolismo basal (kcal/día), edad metabólica y
+pulso en pie, más `readings28d` y — sólo si la primera y la última lectura de los 28 días están a
+≥21 días — `fatPctDelta28d` y `ffmKgDelta28d`, que es donde se lee la recomposición (el % grasa de
+impedancia oscila a diario; a 5 días no significa nada). `null` si nunca se ha conectado la
+báscula, para que el modelo no invente composición. Las claves que la fila no trae van a `null`.
 
 #### `anchors[]`
 

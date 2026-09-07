@@ -5120,6 +5120,10 @@ async function renderStats() {
   // v11.62: la carga de la semana se muda de Home a Stats. Es un dato que se consulta, no algo
   // que haya que ver antes de entrenar.
   await renderHardDayBudget();
+  // v11.65: la línea de rendimiento y tendencias baja de Home a Stats › Today. En Home era un
+  // párrafo de texto en medio de un dashboard de tarjetas; aquí es una tarjeta más, detrás de
+  // las señales y de la carga de la semana. `typeof` porque vive en coach.js.
+  if (typeof renderRecoveryLine === 'function') await renderRecoveryLine();
   // v11.60: peso, 10k cómodo y fuerza mantenida, con su tamaño de muestra. `typeof` porque
   // vive en coach.js. Se mudará a la vista Coach en el incremento 9 (mismo id).
   if (typeof renderGoalsCard === 'function') await renderGoalsCard();
@@ -8179,9 +8183,9 @@ async function renderHomeView() {
     // Cómo viene el objetivo (v11.65): peso, pendiente, hito, carrera y anclas en dos líneas.
     (typeof renderCoachGoalLine === 'function' ? renderCoachGoalLine() : Promise.resolve()),
     renderTodaysPlan(),
-    // Recuperación como INFORMACIÓN (v11.62): rendimiento primero, tendencias de 7 días
-    // después. Sin color de estado y sin botones — la app no propone nada para hoy.
-    (typeof renderRecoveryLine === 'function' ? renderRecoveryLine() : Promise.resolve()),
+    // v11.65: el WHOOP de hoy es el tile `Readiness` del trío de estadísticas; el párrafo de
+    // rendimiento y tendencias que vivía aquí se mudó a Stats › Today. Un dashboard de tarjetas
+    // no se explica con una línea de texto suelta en medio.
     renderHomeStatTrio(),
     renderHomeQueue(),
   ]);
@@ -9527,7 +9531,20 @@ async function renderPlanSelector() {
 }
 
 // ==================== HOME STAT TRIO (Lovable dashboard cards) ====================
-// Strain (weekly RPE load) · Streak (weeks) · Volume (weekly kg) — from real logged data.
+// Readiness (WHOOP de HOY) · Strain (weekly RPE load) · Streak (weeks) · Volume (weekly kg).
+//
+// v11.65: entra `Readiness` y sale de Home la línea de texto de recuperación (se mudó a
+// Stats › Today). El dato del wearable es UN NÚMERO y su sitio es la fila de números del
+// dashboard, no un párrafo debajo de la sesión del día.
+//
+// HONESTIDAD DE FECHA (F-6). El valor sale de `getWhoopContext()`, que devuelve el dato SÓLO
+// si su fecha es la de hoy (`recs.find(r => r.date === today())`). Aquí no se lee el store
+// `wellness`: su fila de ayer, pintada sin fecha en un tile, sería exactamente la mentira que
+// v11.58 quitó. Sin dato de hoy el tile dice "—", y el sub dice por qué.
+//
+// Bandas de color = las de WHOOP (`getRecoveryColor`): ≥67 verde, 34-66 amarillo, <34 rojo.
+// Es el único sitio de Home con color por estado, y se lo puede permitir porque es el número
+// del wearable tal cual, sin recomendación pegada al lado.
 async function renderHomeStatTrio() {
   const container = document.getElementById('home-stat-trio');
   if (!container) return;
@@ -9565,7 +9582,27 @@ async function renderHomeStatTrio() {
 
   const volTxt = volume >= 1000 ? `${(volume / 1000).toFixed(volume >= 10000 ? 0 : 1)}k` : String(Math.round(volume));
 
+  // El WHOOP de HOY, o nada. `whoopIsConnected`/`integrationsIsActive` con `typeof` porque
+  // viven en whoop.js/integrations.js, que se cargan por <script> aparte.
+  let rd = { value: '—', sub: 'NO DATA', tone: 'var(--text3)' };
+  try {
+    const wc = await getWhoopContext();
+    if (wc && wc.score != null) {
+      rd = {
+        value: String(Math.round(wc.score)),
+        sub: 'RECOVERY',
+        tone: wc.score >= 67 ? 'var(--accent)' : (wc.score >= 34 ? 'var(--yellow)' : 'var(--red)'),
+      };
+    } else {
+      const conectado = (typeof whoopIsConnected === 'function')
+        ? whoopIsConnected()
+        : ((typeof integrationsIsActive === 'function') ? integrationsIsActive('whoop') : true);
+      if (!conectado) rd.sub = 'WHOOP OFF';
+    }
+  } catch (e) { /* el tile ya dice "—": no hay nada que inventar */ }
+
   const cards = [
+    { label: 'Readiness', value: rd.value, sub: rd.sub, tone: rd.tone },
     { label: 'Strain', value: String(Math.round(strain)), sub: 'THIS WK', tone: 'var(--blue)' },
     { label: 'Streak', value: String(streak), sub: streak === 1 ? 'WEEK' : 'WEEKS', tone: 'var(--yellow)' },
     { label: 'Volume', value: volTxt, sub: 'KG', tone: 'var(--accent)' },
@@ -10832,8 +10869,27 @@ function renderBodyWeightInsights(entries, nudgeEl, etaEl, plateauEl) {
 
   // Origen de la última pesada (A-5): si viene de la báscula Withings se dice, con el % de
   // grasa del dispositivo cuando lo trae. Una línea; ni gráfico nuevo ni tarjeta nueva.
+  //
+  // v11.65: la báscula manda además pulso, índice de grasa visceral, metabolismo basal y edad
+  // metabólica. Caben todos en la MISMA línea apagada, cada uno sólo si su número existe: son
+  // contexto de la pesada, no tres tarjetas más ni un gráfico que nadie pidió.
   if (etaEl && latest && latest.source === 'withings') {
-    etaEl.innerHTML += `<div style="margin-top:4px">Última pesada: ${_bwSourcePill(latest)}</div>`;
+    const _fin = (v) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : null);
+    const _es = (v, d) => v.toFixed(d).replace('.', ',');
+    const extras = [];
+    const musculo = _fin(latest.muscleKg);
+    if (musculo != null) extras.push(`músculo ${_es(musculo, 1)} kg`);
+    const visceral = _fin(latest.visceralFat);
+    if (visceral != null) extras.push(`visceral ${Number.isInteger(visceral) ? visceral : _es(visceral, 1)}`);
+    const bmr = _fin(latest.bmrKcal);
+    // Punto de millar a mano: `toLocaleString('es-ES')` NO agrupa los números de 4 cifras
+    // (minimumGroupingDigits = 2 en el CLDR español), así que devolvería "1812".
+    if (bmr != null) extras.push(`BMR ${String(Math.round(bmr)).replace(/\B(?=(\d{3})+(?!\d))/g, '.')} kcal`);
+    const pulso = _fin(latest.heartRateBpm);
+    if (pulso != null) extras.push(`pulso ${Math.round(pulso)}`);
+    const edadMet = _fin(latest.metabolicAge);
+    if (edadMet != null) extras.push(`edad metab. ${Math.round(edadMet)}`);
+    etaEl.innerHTML += `<div style="margin-top:4px">Última pesada: ${_bwSourcePill(latest)}${extras.length ? ' · ' + extras.join(' · ') : ''}</div>`;
   }
 
   // Plateau: 7-day avg now vs 7-day avg from 14d ago. If |delta| < 0.3 kg over
@@ -12580,6 +12636,8 @@ async function init() {
       invalidateReadiness();
       if (d && d.todaySource && d.todaySource !== 'missing') {
         if (typeof renderRecoveryLine === 'function') renderRecoveryLine().catch(() => {});
+        // v11.65: y el tile Readiness, que es donde se ve el número de hoy desde este incremento.
+        if (typeof renderHomeStatTrio === 'function') renderHomeStatTrio().catch(() => {});
       }
     }).catch(() => {});
   }
@@ -12609,6 +12667,17 @@ document.addEventListener('DOMContentLoaded', init);
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden' && state.activeSession) {
     saveActiveWorkout();
+  }
+  // v11.65: al volver a primer plano el dato de hoy puede haber llegado (WHOOP publica la
+  // recuperación por la mañana, casi siempre con la app en segundo plano). integrations.js ya
+  // resincroniza y repinta la línea de Stats; el tile Readiness de Home se repinta aquí, sin
+  // tocar ese fichero. `whoopSyncData` tiene caché de 10 min: llamarlo dos veces no cuesta.
+  if (document.visibilityState === 'visible' && state.currentTab === 'home') {
+    (async () => {
+      try { if (typeof whoopSyncData === 'function') await whoopSyncData(); } catch (e) {}
+      try { if (typeof invalidateReadiness === 'function') invalidateReadiness(); } catch (e) {}
+      try { if (typeof renderHomeStatTrio === 'function') await renderHomeStatTrio(); } catch (e) {}
+    })();
   }
 });
 window.addEventListener('pagehide', () => {
