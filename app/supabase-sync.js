@@ -185,8 +185,28 @@ function renderAuthUI() {
 // ==================== SYNC QUEUE ====================
 // Queue operations for when offline. Stored in IndexedDB 'sync_queue' store.
 
+// Se gatea por CONFIGURACIÓN, no por cliente.
+//
+// Hasta v11.55 esto empezaba con `if (!supabaseClient) return;`. `supabaseClient` lo crea
+// `initSupabase()`, que en `init()` es el paso ~20, mientras `ensurePlanSeeded`,
+// `ensureExerciseLibrarySeeded`, `ensureDeloadAnchor`, `applyIdealPlan` y `runMigrations`
+// corren antes y escriben con `smartPut`. Todas esas filas se descartaban en silencio. Es la
+// causa raíz común de tres incidentes ya sufridos (audit 2026-09-05, F-1):
+//
+//   · `public.exercises` con 0 filas durante meses: el vocabulario que el coach necesita
+//     para resolver patrón de movimiento y grupo muscular no existía en la nube.
+//   · Cola congelada siete semanas (2026-06-30, v11.28): el plan del arranque tampoco subía.
+//   · La semilla de `foods` (v11.49) iba a repetirlo; se parcheó moviendo la llamada detrás
+//     de la auth — un parche por sitio de llamada, no un arreglo.
+//
+// LECCIÓN: el guard miraba la variable equivocada. Protegía el caso "Supabase no
+// configurado", que no existe (URL y anon key son constantes de este fichero), y descartaba
+// el que sí ocurre (cliente aún no creado). La cola vive en IndexedDB y no necesita cliente:
+// sólo `drainSyncQueue`/`syncAll` lo necesitan, y ahí el guard se queda. Arreglado 2026-09-07
+// (v11.55). No adelantar `initSupabase()` en `init()`: registra onAuthStateChange → syncAll(),
+// y adelantar el arranque de la cola es justo lo que la congeló en v11.28.
 async function enqueueSync(store, action, data) {
-  if (!supabaseClient) return;
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return;   // copia del repo sin credenciales
   try {
     await dbPut('sync_queue', {
       id: uid(),
@@ -344,7 +364,10 @@ async function syncAll() {
 
   // Pull from cloud for each store. `mobility_sessions` was missing until v11.35: the
   // table exists and push worked, but it was never pulled back on another device.
-  const stores = ['workouts', 'runs', 'nutrition', 'settings', 'bodyweight', 'plans', 'exercises', 'steps', 'wellness', 'sessions', 'mobility_sessions', 'foods', 'meals'];
+  // `coach_reviews` y `decisions` entran en v11.55 (Coach v2). Sus tablas se crearon ANTES
+  // en Supabase (supabase/migrations/20260907_coach_reviews_and_decisions.sql): añadir un
+  // store aquí sin tabla es lo que congeló la cola siete semanas en v11.28.
+  const stores = ['workouts', 'runs', 'nutrition', 'settings', 'bodyweight', 'plans', 'exercises', 'steps', 'wellness', 'sessions', 'mobility_sessions', 'foods', 'meals', 'coach_reviews', 'decisions'];
   const lastSync = await dbGet('settings', 'lastSyncTimestamp');
   const since = lastSync ? lastSync.data : '1970-01-01T00:00:00Z';
 
@@ -498,6 +521,12 @@ Object.defineProperty(window, '__supabaseClient', { get: () => supabaseClient })
 // alter table meals enable row level security;
 // create policy "Users see own meals" on meals for all using (auth.uid() = user_id);
 // create index if not exists meals_user_updated_idx on meals (user_id, updated_at);
+//
+// -- Coach v2 (v11.55) — `coach_reviews` (una fila por revisión semanal del coach:
+// -- facts pack, salida del modelo, propuesta y estado) y `decisions` (registro de
+// -- decisiones para el "te propuse X, hiciste Y"). Mismo patrón genérico.
+// -- DDL aplicado: supabase/migrations/20260907_coach_reviews_and_decisions.sql
+// -- (created 2026-09-07, ANTES de añadir los stores a la lista de sync de arriba).
 //
 // -- Storage: bucket privado `meal-photos`, ruta <user_id>/<meal_id>.jpg
 // insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)

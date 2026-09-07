@@ -43,8 +43,9 @@ console.log('1. Stores sincronizados');
 const m = SYNC.match(/const stores = \[([^\]]*)\]/);
 yes(!!m, 'se localiza la lista de stores en syncAll()');
 const sincronizados = m ? [...m[1].matchAll(/'([a-z_]+)'/g)].map((x) => x[1]) : [];
-eq(sincronizados.length, 13, `${sincronizados.length} stores sincronizados`);
-for (const s of ['foods', 'meals', 'exercises', 'plans', 'settings', 'nutrition']) {
+eq(sincronizados.length, 15, `${sincronizados.length} stores sincronizados`);
+for (const s of ['foods', 'meals', 'exercises', 'plans', 'settings', 'nutrition',
+                 'coach_reviews', 'decisions']) {
   yes(sincronizados.includes(s), `'${s}' está en la lista`);
 }
 
@@ -98,7 +99,13 @@ for (const b of baseline) {
 
 // Los stores que NO deben tener ninguna escritura cruda en ningún fichero.
 const sinCrudas = ['bodyweight', 'sessions', 'mobility_sessions', 'wellness', 'foods', 'meals',
-                   'exercises', 'plans'];
+                   'exercises', 'plans',
+                   // Coach v2 (v11.55). `logDecision` y las revisiones del coach son dato de
+                   // usuario con tabla en Supabase: una escritura cruda repetiría el bug de
+                   // `exercises` (0 filas en la nube durante meses) sobre la memoria del coach.
+                   // Ojo: `pruneDecisions()` sí BORRA en local con dbDelete a propósito — la
+                   // nube conserva el historial completo.
+                   'coach_reviews', 'decisions'];
 for (const store of sinCrudas) {
   const total = [APP, SYNC, NUT, WHOOP]
     .reduce((acc, src) => acc + cuenta(src, new RegExp(`dbPut\\('${store}'`, 'g')), 0);
@@ -122,9 +129,12 @@ for (const [fn, store] of [['ensurePlanSeeded', 'plans'],
 
 // ── 5. El backfill existe, corre tras la auth, y su flag es local ───────────────────
 // Los seeds de plan y ejercicios TIENEN que correr antes de loadActivePlan(), que va mucho
-// antes de la auth, así que smartPut solo no basta: sin cliente, enqueueSync descarta.
+// antes de la auth. Hasta v11.55 eso bastaba para perderlos: `enqueueSync` descartaba sin
+// cliente (F-1). Desde v11.55 gatea por configuración y encola igual, así que el backfill
+// pasa a ser SANEAMIENTO ÚNICO de los dispositivos que ya arrancaron con el bug — se queda
+// una versión más y luego se borra. Su flag sigue siendo local.
 console.log('');
-console.log('5. Backfill post-auth de los seeds');
+console.log('5. Backfill post-auth de los seeds (saneamiento único)');
 yes(/async function backfillSeedStoresToCloud/.test(APP), 'backfillSeedStoresToCloud() existe');
 const iAuth = APP.indexOf('await checkAuth()');
 const iBack = APP.indexOf('await backfillSeedStoresToCloud()');
@@ -135,8 +145,14 @@ yes(iSeedPlan > 0 && iSeedPlan < iLoadPlan,
   'el seed del plan sigue antes de loadActivePlan() (por eso hace falta el backfill)');
 yes(/dbPut\('settings', \{ key: KEY/.test(APP),
   'el flag del backfill se guarda LOCAL: sincronizarlo haría que otro dispositivo se lo saltara');
-yes(/if \(!supabaseClient\) return;/.test(SYNC),
-  'enqueueSync() sigue descartando en silencio sin cliente (la razón de todo esto)');
+// Y la causa raíz, arreglada: el guard mira la configuración (constantes, disponibles desde
+// la primera línea) y no el cliente (tardío). Detalle en tests/verify-sync-enqueue.mjs.
+const iEnq = SYNC.indexOf('async function enqueueSync(');
+const ENQ = SYNC.slice(iEnq, SYNC.indexOf('\n}', iEnq));
+yes(/if \(!SUPABASE_URL \|\| !SUPABASE_ANON_KEY\) return;/.test(ENQ),
+  'enqueueSync() gatea por configuración, no por cliente (v11.55, F-1)');
+yes(!/supabaseClient/.test(ENQ),
+  'enqueueSync() ya no menciona supabaseClient');
 
 console.log('');
 console.log(failed === 0

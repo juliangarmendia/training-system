@@ -145,22 +145,27 @@ for (const store of ['foods', 'meals']) {
   yes(SYNC.includes(`create table if not exists ${store}`),
     `el DDL de '${store}' está documentado (la tabla debe existir o la cola se congela)`);
 }
-yes(/DB_VERSION = 11/.test(APP), 'DB_VERSION subió a 11 para crear los stores');
+// DB_VERSION es monótona creciente (rollback caveat de db-schema-state.md): `foods`/`meals`
+// nacieron en v11 y cualquier valor posterior los sigue creando. Bajarlo rompe la app.
+yes(Number((APP.match(/DB_VERSION = (\d+)/) || [])[1]) >= 11,
+  'DB_VERSION >= 11 (la versión que creó los stores; nunca baja)');
 
 // ── 10. La semilla tiene que poder llegar a Supabase ───────────────────────
-// enqueueSync() hace `if (!supabaseClient) return`, asi que sembrar antes de initSupabase()
-// deja los 55 alimentos SOLO en IndexedDB. Y la edge function lee `foods` de Supabase: con la
-// tabla vacia no resuelve ningun alimento contra la biblioteca y cada foto vuelve a estimar
-// macros desde cero — justo la debilidad de Caltrack que este diseño existe para corregir.
-// Sintoma a vigilar: `public.exercises` tiene 0 filas por este mismo motivo.
+// Hasta v11.55 enqueueSync() hacia `if (!supabaseClient) return`, asi que sembrar antes de
+// initSupabase() dejaba los 55 alimentos SOLO en IndexedDB. Y la edge function lee `foods` de
+// Supabase: con la tabla vacia no resuelve ningun alimento contra la biblioteca y cada foto
+// vuelve a estimar macros desde cero — justo la debilidad de Caltrack que este diseño existe
+// para corregir. Sintoma que lo delato: `public.exercises` con 0 filas durante meses.
+// v11.55 arregla la causa raiz (el guard mira la configuracion, no el cliente: F-1), pero el
+// orden se mantiene y se sigue vigilando: es gratis y no depende de un solo guard.
 console.log('');
 console.log('10. Orden de la semilla respecto a la auth');
 const iAuth = APP.indexOf('await checkAuth()');
 const iSeed = APP.indexOf('seedFoods()');
 yes(iAuth > 0 && iSeed > 0, 'se localizan checkAuth() y seedFoods() en init()');
 yes(iSeed > iAuth, 'seedFoods() corre DESPUES de checkAuth(), o la semilla no sincroniza');
-yes(/if \(!supabaseClient\) return;/.test(SYNC),
-  'enqueueSync() sigue descartando en silencio sin cliente (la razon del orden anterior)');
+yes(/if \(!SUPABASE_URL \|\| !SUPABASE_ANON_KEY\) return;/.test(SYNC),
+  'enqueueSync() gatea por configuracion, no por cliente (v11.55: la causa raiz, arreglada)');
 
 // ── 11. Sub-vistas (Hoy / Tendencias / Alimentos) ─────────────────────
 // La regla que oculta grupos inactivos esta scopeada a #view-stats, asi que esta vista

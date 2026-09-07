@@ -3,10 +3,11 @@
 Estado vivo del esquema IndexedDB de la PWA y reglas de rollback seguro. Actualizar al cambiar
 `DB_VERSION` o agregar/quitar stores. Crítico para no romper la app en dispositivos ya migrados.
 
-## Estado actual (Nutrición v2, v11.49)
+## Estado actual (Coach v2 · cimientos, v11.55)
 
-- **DB version actual:** **v11** (`app/app.js` → `const DB_VERSION = 11`).
-- **Stores más recientes:** `foods` y `meals` (v11, Nutrición v2). Antes: `sessions` (v10, T1).
+- **DB version actual:** **v12** (`app/app.js` → `const DB_VERSION = 12`).
+- **Stores más recientes:** `coach_reviews` y `decisions` (v12, Coach v2). Antes: `foods` y
+  `meals` (v11, Nutrición v2); `sessions` (v10, T1).
 - **Estado de `sessions`:** activo. T2a loguea recovery-walk / cardio non-run.
 - **Sync:** **CONECTADO (T2b, v11.24)** — tabla Supabase `public.sessions` creada (PK
   `(user_id, record_id)`, RLS por `auth.uid()`, mismo patrón que `wellness`/`steps`) y `sessions`
@@ -122,6 +123,69 @@ ese RLS, así que además comprueba en código que `photoPath` empiece por el ui
 
 > Sigue en pie el caveat de rollback: **nunca bajar `DB_VERSION`**. Ahora el suelo es **11**.
 
+## v11.55 (2026-09-07) — Coach v2: `coach_reviews` y `decisions`
+
+**DB version: v11 → v12.** Dos stores nuevos, aditivos, ambos con keyPath `id`. Es el
+incremento 1 ("Cimientos de datos") de `docs/architecture/coach-v2-implementation-plan.md`.
+
+- **`coach_reviews`** (keyPath `id`, formato `'2026-W37#1'` = semana ISO + intento) — una
+  fila por revisión semanal del coach: el facts pack que se le mandó, la salida del modelo
+  (briefing, decisiones, **propuesta de plan**), los guardarraíles, el uso/coste y el estado
+  (`running` | `proposed` | `applied` | `rejected` | `expired` | `failed`). Forma completa en
+  el plan **§A.2**. Sustituye a `weekly_reviews` + `latest.json`; `weekly_reviews` se dejará
+  de escribir pero **no se borra** (regla de "no borrar stores").
+- **`decisions`** (keyPath `id` = `uid()`) — el registro de decisiones que da memoria al
+  coach: `{id, ts, date, weekKey, source, type, what, why, ruleIds[], evidence{}, ref{},
+  outcome}`. Forma completa en el plan **§B.7**. Un registro por decisión (una lectura de
+  sesión lleva su detalle en `evidence.perExercise`), **nunca uno por set**.
+
+### Por qué las propuestas NO viven en `plans`
+
+`loadActivePlan()` toma `max(version)` y `createNewPlanVersion()` hace `Math.max(...versions)`:
+una fila `proposed` con versión N+1 sería el plan vivo en cualquier dispositivo, incluidos los
+que corren código viejo. La propuesta vive en `coach_reviews[id].output.proposal` y sólo se
+copia a `plans` al aplicarla. En el mismo release `createNewPlanVersion(modifications)` acepta
+`modifications.meta` y lo esparce (para `schema`/`status`/`author`/`basedOn`/`weekKey`/
+`reviewId`/`block`/`running`/`seedRev`); `id`, `version` y `createdAt` se reafirman **después**
+del spread, así que `meta` no puede pisar la identidad de la fila.
+
+### Sync y la regla de la tabla previa
+
+Las dos tablas Supabase se crearon **antes** de añadir los stores a la lista de sync,
+migración `supabase/migrations/20260907_coach_reviews_and_decisions.sql`
+(`coach_reviews_and_decisions` en el proyecto): mismo patrón genérico que `foods`/`meals` —
+`(user_id, record_id)` único + `data jsonb` + `updated_at` + RLS `auth.uid() = user_id`, más
+el índice `(user_id, updated_at)` porque el pull filtra por ahí. Los dos stores entran además
+en `BACKUP_STORES`: un backup sin ellos deja el plan sin la explicación de por qué es así.
+
+`pruneDecisions()` recorta `decisions` a 500 filas **en local y sólo en local** (`dbDelete`,
+no `smartDelete`): la nube conserva el historial completo, que es lo que el facts pack
+necesita para decir "te propuse 95 en banca, hiciste 92,5".
+
+### El guard de `enqueueSync`, arreglado en el mismo release
+
+Change 1 del audit del 2026-09-05 (**F-1**): `enqueueSync()` empezaba con
+`if (!supabaseClient) return;` y descartaba en silencio **toda** escritura anterior a
+`initSupabase()` (paso ~20 de `init()`), es decir los seeds, el ancla del deload,
+`applyIdealPlan` y las migraciones. Causa raíz común de tres incidentes: `public.exercises`
+con 0 filas durante meses, la cola congelada siete semanas (2026-06-30) y la semilla de
+`foods` (detectada antes de desplegar). Ahora gatea por **configuración**
+(`SUPABASE_URL && SUPABASE_ANON_KEY`, constantes disponibles desde la primera línea); la cola
+vive en IndexedDB y no necesita cliente. `drainSyncQueue()` y `syncAll()` conservan su guard
+sobre el cliente. `backfillSeedStoresToCloud()` queda como saneamiento único de los
+dispositivos que ya arrancaron con el bug.
+
+**Tablas Supabase (15):** `bodyweight` · **`coach_reviews`** · **`decisions`** · `exercises` ·
+`foods` · `meals` · `mobility_sessions` · `nutrition` · `plans` · `runs` · `sessions` ·
+`settings` · `steps` · `wellness` · `workouts`.
+
+### Stores IndexedDB (v12)
+`workouts` · `runs` · `nutrition` · `settings` · `sync_queue` · `bodyweight` · `trash` · `plans` ·
+`exercises` · `mobility_sessions` · `weekly_reviews` · `steps` · `wellness` · `sessions` (v10) ·
+`foods` · `meals` (v11) · **`coach_reviews`** · **`decisions`** (v12).
+
+> Caveat de rollback actualizado: **nunca bajar `DB_VERSION`**. El suelo pasa a ser **12**.
+
 ## Caveat de rollback (IMPORTANTE)
 
 **Revert de commit ≠ rollback limpio una vez que el browser subió la DB.**
@@ -135,8 +199,8 @@ DB local quedó en v10. Si después se despliega código viejo que llama `indexe
 
 ## Estrategia de rollback seguro
 
-1. **Nunca bajar `DB_VERSION`.** Mantener `DB_VERSION >= 11` en todo rollback futuro, aunque se
-   desactive el uso de `sessions` u otros stores nuevos.
+1. **Nunca bajar `DB_VERSION`.** Mantener `DB_VERSION >= 12` en todo rollback futuro, aunque se
+   desactive el uso de `sessions`, `coach_reviews`, `decisions` u otros stores nuevos.
 2. **Para "apagar" una feature (T1/T2):** dejar de escribir/leer su store y ocultar su UI. El store
    vacío es **inerte** y no rompe nada.
 3. **No borrar stores** en un downgrade de código (borrar un store también requiere subir versión).

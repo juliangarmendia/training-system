@@ -1045,17 +1045,27 @@ function resolveSessionExercises(sessionId, exercises) {
 }
 
 // Create a new plan version (for weekly updates)
+//
+// `modifications.meta` (Coach v2, v11.55) es el sobre de metadatos del plan v2:
+// `schema`, `status`, `author`, `basedOn`, `weekKey`, `reviewId`, `block`, `running`,
+// `seedRev`. Se esparce DESPUÉS de los campos base para que el coach pueda estamparlos, y
+// `id`/`version`/`createdAt` se reafirman después del spread: son la identidad de la fila y
+// el invariante del que cuelga todo lo demás ("plan activo = versión más alta"). Un `meta`
+// que pudiera pisar `version` convertiría cualquier propuesta en el plan vivo de todos los
+// dispositivos, incluidos los que corren código viejo.
 async function createNewPlanVersion(modifications) {
   const plans = await dbGetAll('plans');
   const currentVersion = Math.max(...plans.map(p => p.version), 0);
+  const meta = (modifications && typeof modifications.meta === 'object' && modifications.meta) || {};
   const newPlan = {
-    id: `plan_v${currentVersion + 1}`,
-    version: currentVersion + 1,
-    createdAt: new Date().toISOString(),
     weekNumber: modifications.weekNumber || getWeekNumber(),
     label: modifications.label || activePlan.label,
     sessions: JSON.parse(JSON.stringify(modifications.sessions || activePlan.sessions)),
     weekTemplate: JSON.parse(JSON.stringify(modifications.weekTemplate || activeWeekTemplate)),
+    ...meta,
+    id: `plan_v${currentVersion + 1}`,
+    version: currentVersion + 1,
+    createdAt: new Date().toISOString(),
   };
   await smartPut('plans', newPlan);
   activePlan = newPlan;
@@ -1174,7 +1184,7 @@ async function applyReentryPlan() {
 
 // ==================== DATABASE ====================
 const DB_NAME = 'TrainingApp';
-const DB_VERSION = 11;
+const DB_VERSION = 12;
 let db = null;
 
 function openDB() {
@@ -1217,6 +1227,16 @@ function openDB() {
         const st = d.createObjectStore('meals', { keyPath: 'id' });
         st.createIndex('date', 'date', { unique: false });
       }
+      // Coach v2 — DB v12 (v11.55, 2026-09-07). `coach_reviews` (id = '2026-W37#1') guarda
+      // una fila por revisión semanal del coach: facts pack, salida del modelo, propuesta de
+      // plan y estado. Las propuestas viven AQUÍ y nunca en `plans`: `loadActivePlan()` toma
+      // la versión más alta, así que una fila `proposed` en `plans` sería el plan vivo en
+      // cualquier dispositivo con código viejo. `decisions` (id = uid) es el registro de
+      // decisiones (coach / regla / readiness / usuario) que da memoria al coach: "te
+      // propuse 95 en banca, hiciste 92,5". Ambos aditivos; ambas tablas Supabase creadas
+      // antes (supabase/migrations/20260907_coach_reviews_and_decisions.sql).
+      if (!d.objectStoreNames.contains('coach_reviews')) d.createObjectStore('coach_reviews', { keyPath: 'id' });
+      if (!d.objectStoreNames.contains('decisions')) d.createObjectStore('decisions', { keyPath: 'id' });
     };
     req.onsuccess = (e) => { db = e.target.result; resolve(db); };
     req.onerror = (e) => reject(e);
@@ -1502,6 +1522,92 @@ async function ensureDeloadAnchor() {
   state.settings.deloadAnchorWeek = getWeekNumber();
   try { await smartPut('settings', { key: 'userSettings', data: state.settings }); } catch (e) {}
   console.log(`[Deload] Anchored to week ${state.settings.deloadAnchorWeek}; next deload in ${DELOAD_BLOCK_WEEKS - 1} weeks`);
+}
+
+// ==================== COACH V2 · OBJETIVOS ====================
+//
+// Siembra `settings.goals` la primera vez, con `COACH_GOALS_DEFAULT` (coach-engine.js).
+// Hasta ahora los objetivos vivían en `docs/goals.md`, en el prompt del cron y en la cabeza
+// del usuario: tres copias que se desincronizan y ninguna que la app pueda leer. Desde
+// v11.55 son un dato de `userSettings`, así que el facts pack y `goalProgress` (incremento 6)
+// leen lo mismo que ve el usuario.
+//
+// Copia profunda a propósito: `COACH_GOALS_DEFAULT` es una constante compartida del módulo;
+// guardar una referencia y dejar que el usuario edite el rango de peso mutaría el default
+// para el resto de la sesión.
+//
+// No sobreescribe nunca lo que ya haya: si el usuario (o el coach) ajustó un objetivo, el
+// arranque no puede devolverlo al valor de fábrica. Misma forma que `ensureDeloadAnchor()`,
+// y la misma ruta de escritura (`smartPut` en `userSettings`) — que desde v11.55 sí llega a
+// la nube aunque corra antes de la auth (`enqueueSync` gatea por configuración).
+async function ensureGoals() {
+  if (state.settings.goals) return;
+  if (typeof COACH_GOALS_DEFAULT === 'undefined') {   // coach-engine.js no cargó
+    console.warn('[Coach] COACH_GOALS_DEFAULT no disponible; objetivos sin sembrar');
+    return;
+  }
+  state.settings.goals = JSON.parse(JSON.stringify(COACH_GOALS_DEFAULT));
+  state.settings.goals.updatedAt = new Date().toISOString();
+  try { await smartPut('settings', { key: 'userSettings', data: state.settings }); } catch (e) {}
+  console.log('[Coach] Objetivos sembrados desde COACH_GOALS_DEFAULT');
+}
+
+// ==================== COACH V2 · DECISIONS ====================
+//
+// El registro de decisiones (store/tabla `decisions`, DB v12, v11.55). Es la memoria del
+// coach: sin él, cada revisión semanal empieza de cero y el sistema no puede decir "te
+// propuse 95 en banca, hiciste 92,5×8/8/7" ni retirar una decisión que no funcionó. El
+// facts pack (incremento 7) lee las últimas 30 filas.
+//
+// UN REGISTRO POR DECISIÓN, no por set: una lectura de sesión (`session-readout`) lleva su
+// detalle por ejercicio en `evidence.perExercise`. Granularidad por set inundaría la cola de
+// sync y no añadiría nada que el store `workouts` no tenga ya.
+//
+// Nadie llama a `logDecision` todavía: los llamantes llegan con la progresión (incremento 3,
+// `session-readout`), el ajuste por recuperación (incremento 5) y la aprobación de propuestas
+// (incremento 9). Los cimientos van primero para que el esquema y el sync estén probados
+// antes de que haya datos que migrar.
+//
+// `smartPut` y no `dbPut`: es dato de usuario y tiene tabla en Supabase. Escribirlo crudo
+// repetiría el bug de `exercises` (F-1), que estuvo meses con 0 filas en la nube.
+async function logDecision(d) {
+  const date = (d && d.date) || today();
+  const rec = {
+    id: uid(),
+    ts: Date.now(),
+    date,
+    weekKey: typeof isoWeekKey === 'function' ? isoWeekKey(date) : null,
+    source: 'rule',
+    type: 'other',
+    what: '',
+    why: '',
+    ruleIds: [],
+    evidence: {},
+    ref: {},
+    outcome: null,
+    ...(d || {}),
+  };
+  try {
+    await smartPut('decisions', rec);
+    await pruneDecisions();
+  } catch (e) { console.warn('[Coach] logDecision:', e); }
+  return rec;
+}
+
+// Poda LOCAL, y sólo local, a propósito: la nube conserva el historial completo (el borrado
+// va con `dbDelete`, no con `smartDelete`, así que no encola ningún delete). El teléfono no
+// necesita más de 500 decisiones —el facts pack usa 30— y una tabla local que crece sin techo
+// acaba costando tiempo de arranque en cada `dbGetAll`.
+async function pruneDecisions(max = 500) {
+  try {
+    const all = await dbGetAll('decisions');
+    if (!all || all.length <= max) return 0;
+    const sobra = all.slice().sort((a, b) => (a.ts || 0) - (b.ts || 0)).slice(0, all.length - max);
+    for (const r of sobra) {
+      try { await dbDelete('decisions', r.id); } catch (e) {}
+    }
+    return sobra.length;
+  } catch (e) { return 0; }
 }
 
 // Which calendar week (from getWeekNumber) is the next deload?
@@ -10258,6 +10364,9 @@ async function renderSyncWarning() {
 const BACKUP_STORES = [
   'workouts', 'runs', 'sessions', 'nutrition', 'bodyweight', 'mobility_sessions',
   'steps', 'wellness', 'plans', 'exercises', 'weekly_reviews', 'settings', 'sync_queue',
+  // Coach v2 (v11.55): las revisiones del coach y el registro de decisiones son el historial
+  // de por qué el plan es como es. Un backup sin ellos deja el plan sin su explicación.
+  'coach_reviews', 'decisions',
 ];
 
 async function exportJSON() {
@@ -11547,6 +11656,7 @@ async function init() {
   await ensureExerciseLibrarySeeded();
   await loadActivePlan();
   await ensureDeloadAnchor(); // v11.35: D1 — anchor the 5-week deload block (first one 4 wks out)
+  await ensureGoals();        // v11.55: Coach v2 — settings.goals desde COACH_GOALS_DEFAULT
   await applyIdealPlan();     // T5: install the ideal plan as the live default (replaces re-entry ramp)
   await loadExerciseLibrary();
   await loadExerciseOverrides(); // T5.2: persistent exercise swaps
@@ -11578,11 +11688,13 @@ async function init() {
   // Nutricion v2: la biblioteca de alimentos. Idempotente por id, asi que no duplica al
   // reinstalar la PWA ni pisa lo que el usuario haya editado.
   //
-  // VA DESPUES DE LA AUTH A PROPOSITO. `enqueueSync()` hace `if (!supabaseClient) return`,
+  // VA DESPUES DE LA AUTH A PROPOSITO. Hasta v11.55 `enqueueSync()` hacia `if (!supabaseClient) return`,
   // asi que sembrar antes de initSupabase() dejaria los 55 alimentos SOLO en IndexedDB. Y la
   // edge function `parse-meal-photo` lee `foods` de Supabase: con la tabla vacia no podria
   // resolver ningun alimento contra la biblioteca y cada foto volveria a estimar macros desde
   // cero, que es exactamente la debilidad de Caltrack que este diseño existe para corregir.
+  // v11.55 arreglo la causa raiz (el guard mira la configuracion, no el cliente: F-1), asi que
+  // el orden ya no es critico. Se mantiene igual: no depender de un solo guard sale gratis.
   if (typeof seedFoods === 'function') {
     try { await seedFoods(); } catch (e) { console.warn('[Nutricion] seed:', e); }
   }
