@@ -18,3 +18,15 @@ enabled = true
 verify_jwt = true
 import_map = "./functions/parse-meal-photo/deno.json"
 entrypoint = "./functions/parse-meal-photo/index.ts"
+
+[functions.coach-weekly-review]
+enabled = true
+# verify_jwt: la PWA llama con la sesion de Supabase del usuario. La funcion escribe filas de
+# `coach_reviews` con la service role (que ignora el RLS), asi que necesita saber de quien es
+# la revision antes de escribirla. Sin esto cualquiera podria gastar $0,60 en la cuenta ajena.
+verify_jwt = true
+import_map = "./functions/coach-weekly-review/deno.json"
+entrypoint = "./functions/coach-weekly-review/index.ts"
+# rules-compact.json NO va en static_files: se importa con `with { type: "json" }`, asi que
+# entra en el grafo de modulos y el deploy lo empaqueta solo. En static_files se serviria dos
+# veces y la copia servida podria desincronizarse de la importada.
