@@ -464,7 +464,7 @@ yes(/delete from public\.integration_events where received_at < now\(\) - interv
 // ── 17. A-5 · _shared/withings-sync.ts ─────────────────────────────────────────────────────
 console.log('17. _shared/withings-sync.ts');
 yes(/action: "getmeas"/.test(WISYNC), 'action=getmeas');
-yes(/MEASTYPES = "1,5,6,8,76,77,88"/.test(WISYNC), 'los siete meastypes de la Body+');
+yes(/MEASTYPES = Object\.keys\(MEAS_TYPES\)/.test(WISYNC), 'los meastypes se derivan de MEAS_TYPES (Body Smart: 11, 170, 226, 227 incluidos)');
 yes(/CATEGORY = "1"/.test(WISYNC), 'category=1 (medidas reales, no objetivos)');
 yes(/body\.more === 1/.test(WISYNC) && /form\.set\("offset"/.test(WISYNC), 'sigue more/offset');
 yes(/lastupdate/.test(WISYNC), 'admite la ventana barata `lastupdate` para el cron');

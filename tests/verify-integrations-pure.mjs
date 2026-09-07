@@ -117,6 +117,30 @@ eq(MEAS_TYPES[8], 'fatMassKg', 'tipo 8 = masa grasa');
 eq(MEAS_TYPES[76], 'muscleKg', 'tipo 76 = músculo');
 eq(MEAS_TYPES[77], 'waterKg', 'tipo 77 = agua');
 eq(MEAS_TYPES[88], 'boneKg', 'tipo 88 = hueso');
+// Body Smart (2026-09-08): pulso, grasa visceral, metabolismo basal y edad metabólica también
+// viajan por getmeas; sin estos códigos la báscula quedaría reducida a peso + % grasa.
+eq(MEAS_TYPES[11], 'heartRateBpm', 'tipo 11 = pulso en la báscula');
+eq(MEAS_TYPES[170], 'visceralFat', 'tipo 170 = grasa visceral (índice)');
+eq(MEAS_TYPES[226], 'bmrKcal', 'tipo 226 = metabolismo basal');
+eq(MEAS_TYPES[227], 'metabolicAge', 'tipo 227 = edad metabólica');
+eq(MEAS_TYPES[168], 'extracellularWaterKg', 'tipo 168 = agua extracelular');
+eq(MEAS_TYPES[169], 'intracellularWaterKg', 'tipo 169 = agua intracelular');
+eq(MEAS_TYPES[155], 'vascularAge', 'tipo 155 = edad vascular');
+{
+  // La lista que se pide a la API se deriva del mapa: no puede pedirse un tipo que no se decodifica
+  // ni decodificarse uno que no se pide.
+  const g = [{ grpid: 9, attrib: 0, date: 1757311500, measures: [
+    { type: 1, value: 84350, unit: -3 }, { type: 11, value: 58, unit: 0 }, { type: 170, value: 7, unit: 0 },
+    { type: 226, value: 1812, unit: 0 }, { type: 227, value: 34, unit: 0 }, { type: 999, value: 1, unit: 0 },
+  ] }];
+  const rows = groupByDay(g, 'Europe/Madrid');
+  const row = rows[Object.keys(rows)[0]];
+  eq(row.heartRateBpm, 58, 'el pulso de la báscula entra en la fila');
+  eq(row.visceralFat, 7, 'la grasa visceral entra como índice');
+  eq(row.bmrKcal, 1812, 'el metabolismo basal entra en kcal/día');
+  eq(row.metabolicAge, 34, 'la edad metabólica entra en años');
+  yes(!Object.values(row).includes(1) || row.withingsN === 1, 'un tipo desconocido (999) no crea clave alguna');
+}
 
 // ── 6. groupByDay ──────────────────────────────────────────────────────────────────────────
 console.log('6. groupByDay · la más temprana del día, sin las medidas de otra persona');

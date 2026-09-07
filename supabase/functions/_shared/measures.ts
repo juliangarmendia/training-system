@@ -38,6 +38,13 @@ export interface BodyweightRow {
   muscleKg?: number;
   waterKg?: number;
   boneKg?: number;
+  heartRateBpm?: number;
+  visceralFat?: number;
+  bmrKcal?: number;
+  metabolicAge?: number;
+  extracellularWaterKg?: number;
+  intracellularWaterKg?: number;
+  vascularAge?: number;
   weightWithings?: number;
   withingsTimestamp?: number;
   withingsGrpId?: number;
@@ -45,15 +52,26 @@ export interface BodyweightRow {
   [k: string]: unknown;
 }
 
-/** meastype → clave de la fila de `bodyweight`. Códigos de la API `getmeas` de Withings. */
+/** meastype → clave de la fila de `bodyweight`. Códigos de la API `getmeas` de Withings
+ *  (verificados contra el enum MeasurementType de aiowithings, 2026-09-08). La Body Smart
+ *  reporta, además de la composición clásica, pulso en pie (11), grasa visceral (170, índice
+ *  sin unidad), metabolismo basal (226, kcal/día) y edad metabólica (227, años). 168/169 y 155
+ *  son de Body Comp/Cardio: si no llegan, no pasa nada; si llegan, se guardan. */
 export const MEAS_TYPES: Record<number, string> = {
   1: "weight", // kg
   5: "ffmKg", // masa libre de grasa
   6: "fatPct", // % de grasa
   8: "fatMassKg", // masa grasa
+  11: "heartRateBpm", // pulso medido en la báscula (de pie, en reposo)
   76: "muscleKg",
   77: "waterKg",
   88: "boneKg",
+  155: "vascularAge", // Body Cardio
+  168: "extracellularWaterKg",
+  169: "intracellularWaterKg",
+  170: "visceralFat", // índice 1-30 de Withings, sin unidad
+  226: "bmrKcal", // metabolismo basal estimado por la báscula (kcal/día)
+  227: "metabolicAge", // años
 };
 
 /** Claves de composición que un dato de báscula aporta a una pesada manual del mismo día. */
@@ -65,6 +83,13 @@ export const COMPOSITION_KEYS = [
   "muscleKg",
   "waterKg",
   "boneKg",
+  "heartRateBpm",
+  "visceralFat",
+  "bmrKcal",
+  "metabolicAge",
+  "extracellularWaterKg",
+  "intracellularWaterKg",
+  "vascularAge",
 ] as const;
 
 /** `value × 10^unit`, redondeado a 3 decimales para no arrastrar el ruido del binario. */

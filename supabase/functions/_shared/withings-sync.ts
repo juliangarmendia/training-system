@@ -11,14 +11,18 @@ import { clip } from "./http.ts";
 import {
   buildBodyweightPatch,
   groupByDay,
+  MEAS_TYPES,
   type BodyweightRow,
   type WithingsGroup,
 } from "./measures.ts";
 import { markSynced, serviceClient, type Supa, withProviderFetch } from "./tokens.ts";
 import { readWithingsBody, WITHINGS_API_BASE, withingsCallbackUrl } from "./withings.ts";
 
-/** Peso, masa libre de grasa, % grasa, masa grasa, músculo, agua, hueso. */
-export const MEASTYPES = "1,5,6,8,76,77,88";
+/** Todo lo que la Body Smart reporta por la API: peso (1), masa libre de grasa (5), % grasa (6),
+ *  masa grasa (8), pulso (11), músculo (76), agua (77), hueso (88), grasa visceral (170),
+ *  metabolismo basal (226) y edad metabólica (227); 155/168/169 por si algún día hay una Body
+ *  Comp/Cardio en la cuenta. Derivado de `MEAS_TYPES` para que no puedan desincronizarse. */
+export const MEASTYPES = Object.keys(MEAS_TYPES).map(Number).sort((a, b) => a - b).join(",");
 /** `category=1` = medidas reales (2 sería objetivos). */
 const CATEGORY = "1";
 const MAX_PAGES = 20;
