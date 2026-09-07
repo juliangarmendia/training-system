@@ -1,6 +1,6 @@
 # Integraciones de servidor — WHOOP y Withings
 
-> Estado: **en producción** (2026-09-08, Coach v2.1 · A-1 a A-5). A-6 (borrar `whoop-auth`) pendiente.
+> Estado: **en producción** (2026-09-08, Coach v2.1 · A-1 a A-6). `whoop-auth` borrado (función y bloque) el 2026-09-08.
 > Plan completo: [`coach-v2.1-implementation-plan.md`](coach-v2.1-implementation-plan.md) § Parte A.
 
 ## Por qué existe

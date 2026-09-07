@@ -78,7 +78,7 @@ Los tokens de WHOOP y Withings viven en Supabase, no en el teléfono. Detalle en
 | A-3 | **La PWA deja de hacer OAuth.** `app/integrations.js`, `whoop.js` adelgazado, `pullStore`, tarjeta **Ajustes › Integraciones**, `whoop-callback.html` borrado | hecho |
 | A-4 | `pg_cron` + `pg_net` + Vault: pull programado como red bajo los webhooks | desplegado |
 | A-5 | Withings Body+: `withings-sync`, `withings-webhook`, suscripción; pill "Withings" en el peso | desplegado |
-| A-6 | **Limpieza pendiente:** borrar la edge function **`whoop-auth`** (el proxy OAuth del cliente: hoy es un relé abierto con la clave anon que firma con nuestro secreto) y su bloque en `config.toml`; comprobar que `grep -rn "whoop-auth\|whoop-callback" app/ supabase/` da 0 | **pendiente** |
+| A-6 | **Limpieza pendiente:** borrar la edge function **`whoop-auth`** (el proxy OAuth del cliente: hoy es un relé abierto con la clave anon que firma con nuestro secreto) y su bloque en `config.toml`; comprobar que `grep -rn "whoop-auth|whoop-callback" app/ supabase/` da 0 | **hecho 2026-09-08** (función borrada del proyecto; quedan sólo los marcadores negativos de los tests) |\|whoop-callback" app/ supabase/` da 0 | **pendiente** |
 
 ### Lo que queda para Julian (no lo puede hacer Claude)
 
