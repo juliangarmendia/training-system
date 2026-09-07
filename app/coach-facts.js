@@ -233,12 +233,16 @@ function _ss(v) {
 
 // ==================== CONSTANTES DEL PACK ====================
 
-const FACTS_SCHEMA = 1;                 // versión del esquema del pack (viaja en `meta`)
+const FACTS_SCHEMA = 2;                 // versión del esquema del pack (viaja en `meta`)
 const FACTS_WEEKS = 4;                  // ventana de semanas ISO (§A.4)
 const FACTS_LONG_WINDOW_DAYS = 28;      // ventana larga para baselines y nutrición
 const FACTS_MAX_LIFT_SESSIONS = 4;      // ≤4 sesiones por ejercicio
 const FACTS_MAX_RUNS = 10;              // ≤10 carreras
-const FACTS_MAX_REVIEWS = 3;            // ≤3 revisiones previas
+// Revisiones previas: 6, pero sólo las 3 más recientes van completas (con extracto y
+// decisiones); las 4-6 viajan COMPACTAS. El coach necesita memoria larga para no repetir un
+// experimento que ya falló hace dos meses, y no necesita releer la prosa de aquella semana.
+const FACTS_MAX_REVIEWS = 6;            // ≤6 revisiones previas (3 completas + 3 compactas)
+const FACTS_FULL_REVIEWS = 3;           // las N más recientes van con extracto y decisiones
 const FACTS_MAX_DECISIONS = 30;         // ≤30 decisiones
 const FACTS_MAX_ANOMALIES = 5;
 const FACTS_EXCERPT_CHARS = 1200;       // extracto de una revisión previa
@@ -278,6 +282,26 @@ const FACTS_DELOAD_WASHOUT_DAYS = 5;
 // Tendencia por e1RM: ±2 % sobre 4 sesiones. Por debajo de eso es la fórmula de Epley
 // respondiendo a una rep de diferencia, no la fuerza moviéndose.
 const FACTS_TREND_PCT = 2;
+
+// ---- TRAYECTORIA (B.2 del plan v2.1) ----------------------------------------------------
+// El coach semanal tiene que leer TODO EL RECORRIDO, no las últimas 4 semanas: cómo viene
+// entrenando, cuánto ha avanzado hacia el objetivo, y qué hizo y qué no. Las ventanas de
+// abajo son el compromiso entre memoria y tamaño del prompt.
+const FACTS_TRAJ_WEEKS = 12;             // km/semana y adherencia: 12 semanas ISO
+const FACTS_TRAJ_Z2_WEEKS = 8;           // cumplimiento Z2 por semana: 8
+const FACTS_TRAJ_PHASE_HISTORY = 8;      // fases de carrera registradas: ≤8
+const FACTS_TRAJ_FOLLOWUP = 6;           // decisiones de coach/plan a revisar: ≤6
+const FACTS_TRAJ_WHAT_CHARS = 120;       // el `what` de una decisión en el seguimiento
+const FACTS_TRAJ_MAX_BLOCKS = 24;        // guarda del bucle de bloques (≈2 años)
+const FACTS_BLOCK_WEEKS_DEFAULT = 5;     // 4 de carga + 1 de descarga (LOAD-004)
+// Pendiente desde el inicio: mínimos cuadrados sobre pesadas MEDIDAS. Con menos de 6 puntos
+// repartidos en meses, la recta la decide la primera pesada; eso no es una tendencia.
+const FACTS_TRAJ_MIN_SLOPE_POINTS = 6;
+// Programa corto: por debajo de 8 semanas las pendientes desde el inicio son orientativas.
+const FACTS_TRAJ_MIN_WEEKS = 8;
+// "Lo que no se hizo tres veces no se recuerda": ≥3 saltos en las últimas ≤6 exposiciones.
+const FACTS_TRAJ_SKIP_WINDOW = 6;
+const FACTS_TRAJ_SKIP_MIN = 3;
 
 // Patrones de EMPUJE, para contar exposiciones de press por semana (STR-002). El dato bueno
 // es `exercisesLibrary[id].movementPattern`; la lista de ids es el fallback para cuando la
@@ -366,6 +390,7 @@ function buildCoachFacts(input, deps) {
     goals: _factsGoals(ctx),
     progress: _factsProgress(ctx),
     block: _factsBlock(ctx),
+    trajectory: _factsTrajectory(ctx),
     plan: _factsPlan(ctx),
     adherence: _factsAdherence(ctx),
     lifts: _factsLifts(ctx),
@@ -400,6 +425,14 @@ function _mkDeps(deps) {
     weeklyDeficits: typeof p.weeklyDeficits === 'function' ? p.weeklyDeficits : null,
     z2Ceiling: _n(p.z2Ceiling),
     hasConvert: typeof p.convertWeight === 'function',
+    // Helpers PUROS del motor (`coach-engine.js`). Se aceptan por `deps` para que un test
+    // pueda inyectarlos, y si no vienen se cogen del global del motor — que es como este
+    // fichero ya usa `blockWeekFromDates`/`isoWeekKey`/`mondayOf`. Nunca se llama a nada de
+    // `app.js`: `computeReadiness()` toca `state` y IndexedDB; `computeReadinessFrom` no.
+    computeReadinessFrom: typeof p.computeReadinessFrom === 'function' ? p.computeReadinessFrom
+      : (typeof computeReadinessFrom === 'function' ? computeReadinessFrom : null),
+    blockWeekFromDates: typeof p.blockWeekFromDates === 'function' ? p.blockWeekFromDates
+      : (typeof blockWeekFromDates === 'function' ? blockWeekFromDates : null),
   };
 }
 
@@ -450,7 +483,8 @@ function _factsMeta(ctx) {
     rounding: { kg: 0.5, bodyweightKg: 0.1, slopeKgWeek: 0.01, km: 0.1, min: 1, pct: 1, ms: 1 },
     caps: {
       liftSessions: FACTS_MAX_LIFT_SESSIONS, runs: FACTS_MAX_RUNS,
-      priorReviews: FACTS_MAX_REVIEWS, decisions: FACTS_MAX_DECISIONS,
+      priorReviews: FACTS_MAX_REVIEWS, priorReviewsFull: FACTS_FULL_REVIEWS,
+      decisions: FACTS_MAX_DECISIONS, trajectoryWeeks: FACTS_TRAJ_WEEKS,
     },
   };
 }
@@ -529,6 +563,411 @@ function _deloadIntervals(ctx, from, to) {
   return { intervals: out, known: true };
 }
 
+// ---------- trajectory · TODO EL RECORRIDO ----------
+//
+// EL FALLO QUE IMPIDE. Hasta el esquema 1 el pack sólo enseñaba 4 semanas, así que el coach
+// no podía responder a "cómo viene entrenando" ni a "cuánto ha avanzado hacia el objetivo":
+// cada domingo empezaba de cero, y una sesión que lleva tres meses sin tocarse parecía
+// exactamente igual de nueva que la de la semana pasada. Esta sección es la memoria larga —
+// compacta a propósito (<12.000 chars de `stableStringify`): agregados por bloque, por
+// semana y por ancla, nunca filas crudas.
+//
+// Todo lo que hay aquí es el MISMO dato que ya usa el resto del pack, agregado en otra
+// ventana: las pesadas MEDIDAS (nunca el forward-fill), las carreras DEDUPEADAS, los kg
+// convertidos con `deps.convertWeight`. Un número que aquí saliera distinto del de
+// `progress` sería una segunda contabilidad, y el modelo citaría la que le conviniera.
+
+function _factsTrajectory(ctx) {
+  return {
+    program: _trajProgram(ctx),
+    weight: _trajWeight(ctx),
+    anchors: _trajAnchors(ctx),
+    running: _trajRunning(ctx),
+    adherenceByWeek: _trajAdherence(ctx),
+    // Declarado una vez para toda la sección: lo planificado de una semana de hace dos meses
+    // se proyecta desde la PLANTILLA ACTUAL. El plan de entonces no se guarda por semana.
+    plannedIsApprox: true,
+    skippedPatterns: _trajSkipped(ctx),
+    decisionsFollowUp: _trajFollowUp(ctx),
+  };
+}
+
+/** Semanas ISO que abarca [from, to], ambas incluidas. 1 = la misma semana. */
+function _weeksSpan(from, to) {
+  const a = _cfMonday(from), b = _cfMonday(to);
+  if (!a || !b) return null;
+  const d = _cfDiff(a, b);
+  return d == null ? null : Math.floor(d / 7) + 1;
+}
+
+/**
+ * El programa: desde cuándo, cuánto se ha entrenado y en qué bloque cae cada tramo.
+ *
+ * El índice 0 (`pre-bloque`) es todo lo anterior al ancla de descarga. No es un bloque de
+ * verdad y por eso no se numera: `blockWeekFromDates` devuelve `index: null` antes del ancla
+ * a propósito (no se extrapola hacia atrás), pero el coach sí necesita saber que ahí hubo
+ * entrenamiento y cuánto.
+ */
+function _trajProgram(ctx) {
+  const dates = ctx.workouts.map(w => _cfDate(w.date)).filter(Boolean).sort();
+  const firstWorkoutDate = dates.length ? dates[0] : null;
+  const anchor = _cfDate(ctx.settings.deloadAnchorDate);
+  const blockWeeks = _n(ctx.settings.deloadBlockWeeks)
+    || _n((ctx.inp.block || {}).weeksTotal) || FACTS_BLOCK_WEEKS_DEFAULT;
+  const weeksSince = firstWorkoutDate ? _weeksSpan(firstWorkoutDate, ctx.todayStr) : null;
+
+  const count = (from, to) => {
+    const runs = ctx.runs.filter(r => _inWindow(r.date, from, to));
+    return {
+      strengthSessions: ctx.workouts.filter(w => _inWindow(w.date, from, to)).length,
+      runs: runs.length,
+      km: _rKm(_sum(runs.map(r => _n(r.distance)))),
+    };
+  };
+  const mk = (index, label, from, to) => Object.assign(
+    { index, label, from, to, weeks: _weeksSpan(from, to) }, count(from, to));
+
+  const blocks = [];
+  if (!anchor) {
+    // Sin ancla no hay bloques: el recorrido entero es un tramo suelto. El hueco lo declara
+    // `validWindow.reasons`; aquí no se inventa una numeración que no existe.
+    if (firstWorkoutDate) blocks.push(mk(0, 'pre-bloque', firstWorkoutDate, ctx.todayStr));
+  } else {
+    // El `pre-bloque` sólo existe si de verdad hubo entrenamiento antes del ancla.
+    if (firstWorkoutDate && firstWorkoutDate < anchor) {
+      blocks.push(mk(0, 'pre-bloque', firstWorkoutDate, _cfShift(anchor, -1)));
+    }
+    let from = _cfMonday(anchor);
+    for (let i = 1; from && from <= ctx.todayStr && i <= FACTS_TRAJ_MAX_BLOCKS; i++) {
+      const end = _cfShift(from, blockWeeks * 7 - 1);
+      const to = end <= ctx.todayStr ? end : ctx.todayStr;
+      const row = mk(i, `B${i}`, from, to);
+      if (from <= ctx.todayStr && ctx.todayStr <= end) row.isCurrent = true;
+      blocks.push(row);
+      from = _cfShift(end, 1);
+    }
+  }
+
+  const total = dates.length;
+  return {
+    firstWorkoutDate,
+    weeksSince,
+    totalStrengthSessions: total,
+    sessionsPerWeekAvg: weeksSince ? _round(total / weeksSince, 0.1) : null,
+    anchorDate: anchor,
+    blockWeeks,
+    blocks,
+  };
+}
+
+/**
+ * Peso desde el inicio del programa: cuánto se ha movido y a qué ritmo.
+ *
+ * SÓLO PESADAS MEDIDAS, igual que `progress.weight` (el forward-fill de intervals.icu es una
+ * recta y aplana cualquier regresión). La pendiente que pilota el ETA es la de 28 días si
+ * existe — es la que describe el déficit de AHORA; la de todo el recorrido se queda como
+ * contexto, porque incluye descargas, diet breaks y el rebote del principio.
+ */
+function _trajWeight(ctx) {
+  const g = (ctx.settings.goals || {}).primary || {};
+  const startKg = _rBw(g.startWeightKg);
+  const startDate = _cfDate(g.startDate);
+  const measured = _weightDays(ctx).measured;
+  const since = startDate ? measured.filter(r => r.date >= startDate) : measured.slice();
+  const first = since.length ? since[0] : null;
+
+  // La media de 7 días es la MISMA que la de `progress.weight.mean7`: mismo filtro, misma
+  // ventana. Dos medias distintas del mismo peso en el mismo pack es cómo el modelo acaba
+  // citando la que le conviene.
+  const m7 = measured.filter(r => { const dd = _cfDiff(r.date, ctx.todayStr); return dd != null && dd >= 0 && dd < 7; });
+  const latest7dMean = _rBw(_mean(m7.map(r => r.kg)));
+  const base = startKg != null ? startKg : (first ? _rBw(first.kg) : null);
+  const deltaKg = (latest7dMean != null && base != null) ? _rBw(latest7dMean - base) : null;
+
+  const slopeSince = since.length >= FACTS_TRAJ_MIN_SLOPE_POINTS ? _rSlope(_slopePerWeek(since)) : null;
+  const slope28 = _rSlope(_slopePerWeek(measured.filter(r => {
+    const dd = _cfDiff(r.date, ctx.todayStr); return dd != null && dd >= 0 && dd < FACTS_LONG_WINDOW_DAYS;
+  })));
+  const slopeUsedForEta = slope28 != null ? '28d' : (slopeSince != null ? 'sinceStart' : null);
+  const slope = slopeUsedForEta === '28d' ? slope28 : (slopeUsedForEta === 'sinceStart' ? slopeSince : null);
+
+  // ETA sólo si de verdad se está bajando. Con pendiente ≥0 la división da un número negativo
+  // y el modelo lo leería como "faltan −12 semanas".
+  const eta = (target) => {
+    const t = _n(target);
+    if (t == null || slope == null || slope >= 0 || latest7dMean == null) return null;
+    if (latest7dMean <= t) return 0;
+    return _round((latest7dMean - t) / -slope, 0.1);
+  };
+  const band = g.targetWeightKg;
+  const targetHi = Array.isArray(band) ? _n(band[band.length - 1]) : _n(band);
+
+  const notes = [];
+  if (startKg == null && !first) notes.push('sin peso de partida ni pesadas medidas: no hay recorrido que medir');
+  if (since.length && since.length < FACTS_TRAJ_MIN_SLOPE_POINTS) {
+    notes.push(`sólo ${since.length} pesadas medidas desde el inicio (gate ${FACTS_TRAJ_MIN_SLOPE_POINTS}): la pendiente del recorrido va a null`);
+  }
+  if (slopeUsedForEta === 'sinceStart') {
+    notes.push('el ETA usa la pendiente de TODO el recorrido (no hay 28 días con pesadas): incluye descargas y diet breaks');
+  }
+  if (slope != null && slope >= 0) notes.push('la pendiente no baja: no hay ETA hasta que lo haga');
+
+  return {
+    startKg, startDate,
+    firstMeasured: first ? { kg: _rBw(first.kg), date: first.date } : null,
+    nMeasuredSinceStart: since.length,
+    latest7dMean,
+    deltaKg,
+    slopeSinceStartKgPerWeek: slopeSince,
+    slopeUsedForEta,
+    weeksToMilestoneAtCurrentSlope: eta(g.milestoneKg),
+    weeksToTargetAtCurrentSlope: eta(targetHi),
+    note: notes.length ? _trunc(notes.join('; '), FACTS_NOTE_CHARS) : null,
+  };
+}
+
+/** ¿Es un ejercicio de peso corporal? (biblioteca primero, registro después) */
+function _trajIsBw(ctx, id, records) {
+  const lib = ctx.library[id];
+  if (lib && lib.bw === true) return true;
+  return (records || []).some(r => r && r.ex && r.ex.bw === true);
+}
+
+/**
+ * Las anclas de fuerza (`goals.preserve.anchorLifts`) a lo largo de TODO el historial.
+ *
+ * Es lo que contesta "¿la fuerza se mantiene en el déficit?" con la ventana correcta: 4
+ * semanas no distinguen una meseta de una caída, y el objetivo declarado (preservar magra)
+ * se mide en meses. Un ancla con 0 exposiciones NO se calla: sale con `exposures: 0` y su
+ * línea en `dataGaps`, porque "no ha bajado" y "no lo has tocado" no son lo mismo.
+ *
+ * TODO EN KG (`deps.convertWeight`): los registros anteriores a la mudanza van en lb, y un
+ * 205 lb al lado de un 95 kg parece una caída del 54 %.
+ */
+function _trajAnchors(ctx) {
+  const d = ctx.d;
+  const ids = ((ctx.settings.goals || {}).preserve || {}).anchorLifts || [];
+  const from12w = _cfShift(_cfMonday(ctx.todayStr), -7 * (FACTS_TRAJ_WEEKS - 1));
+  const out = [];
+
+  for (const id of (Array.isArray(ids) ? ids : [])) {
+    const records = [];
+    for (const w of ctx.workouts) {
+      const ex = (w.exercises || []).find(e => e && (e.exerciseId || e.id) === id);
+      if (!ex) continue;
+      const date = _cfDate(w.date);
+      if (!date) continue;
+      records.push({ date, ex, unit: w.unit || 'kg', workout: w });
+    }
+    const isBw = _trajIsBw(ctx, id, records);
+    const lib = ctx.library[id] || null;
+    const entries = [];
+    for (const r of records) {
+      const sets = (r.ex.sets || []).filter(s => s && s.done === true);
+      if (!sets.length) continue;
+      const toKg = (v) => { const x = _n(v); return x == null ? null : _n(d.convertWeight(x, r.unit, 'kg')); };
+      let top = null;
+      for (const s of sets) {
+        const reps = _n(s.reps) || 0;
+        const kg = toKg(_n(s.weight) || 0) || 0;
+        const better = !top || (isBw
+          ? (reps > top.reps || (reps === top.reps && kg > top.kg))
+          : (kg > top.kg || (kg === top.kg && reps > top.reps)));
+        if (better) top = { kg, reps };
+      }
+      if (!top) continue;
+      entries.push({
+        date: r.date,
+        kg: _rKg(top.kg),
+        reps: top.reps || null,
+        // Peso corporal: la Epley sobre el LASTRE describe una fuerza que no es la del atleta.
+        e1rm: isBw ? null : _rKg(d.estimate1RM(top.kg, top.reps)),
+        workout: r.workout,
+      });
+    }
+    entries.sort((a, b) => a.date.localeCompare(b.date));
+
+    const row = {
+      id,
+      name: (lib && lib.name) || id,
+      kind: isBw ? 'bw' : 'load',
+      first: null, best: null, latest: null,
+      exposures: entries.length,
+      exposures12w: entries.filter(e => e.date >= from12w).length,
+      daysSinceLast: null,
+      trendSinceStartPct: null,
+    };
+    if (entries.length) {
+      const plain = (e) => ({ date: e.date, kg: e.kg, reps: e.reps, e1rm: e.e1rm });
+      const metric = (e) => (isBw ? _n(e.reps) : _n(e.e1rm));
+      const first = entries[0];
+      const last = entries[entries.length - 1];
+      const best = entries.reduce((b, e) => ((metric(e) || 0) > (metric(b) || 0) ? e : b), first);
+      row.first = plain(first);
+      row.best = plain(best);
+      row.latest = plain(last);
+      const ro = last.workout && last.workout.readout;
+      if (ro && Array.isArray(ro.items)) {
+        const it = ro.items.find(x => x && x.exerciseId === id);
+        if (it && it.outcome) row.latest.outcome = it.outcome;
+      }
+      row.daysSinceLast = _cfDiff(last.date, ctx.todayStr);
+      const a = metric(first), b = metric(last);
+      if (entries.length >= 2 && a != null && b != null && a > 0) row.trendSinceStartPct = _rPct(((b - a) / a) * 100);
+      // En peso corporal la "tendencia" son REPS, no kg: decirlo evita que el modelo lea el
+      // porcentaje como si fuera carga.
+      if (isBw) row.trendBasis = 'reps (peso corporal: no hay e1RM sobre el lastre)';
+    }
+    out.push(row);
+  }
+  return out;
+}
+
+/**
+ * Carrera a 12 semanas: volumen, el largo de toda la historia, cumplimiento de Z2 y las fases
+ * que el motor fue registrando. Las carreras entran DEDUPEADAS (F-10) y el domingo cuenta en
+ * SU semana ISO.
+ */
+function _trajRunning(ctx) {
+  const monNow = _cfMonday(ctx.todayStr);
+  const weekKeys = [];
+  const weeklyKm = [];
+  const z2 = [];
+  for (let i = FACTS_TRAJ_WEEKS - 1; i >= 0; i--) {
+    const mon = _cfShift(monNow, -7 * i);
+    const sun = _cfShift(mon, 6);
+    const runs = ctx.runs.filter(r => _inWindow(r.date, mon, sun));
+    weekKeys.push(_cfIsoWeek(mon));
+    weeklyKm.push(_rKm(_sum(runs.map(r => _n(r.distance)))));
+    if (i < FACTS_TRAJ_Z2_WEEKS) {
+      const judged = runs.filter(r => _z2Compliant(r, ctx.z2Ceiling.bpm) != null);
+      // Fracción, no porcentaje: ocupa la mitad y dice lo mismo. `null` = esa semana no hubo
+      // carreras con FC, que no es lo mismo que un 0.
+      z2.push(judged.length
+        ? _round(judged.filter(r => _z2Compliant(r, ctx.z2Ceiling.bpm) === true).length / judged.length, 0.01)
+        : null);
+    }
+  }
+
+  let longest = null;
+  for (const r of ctx.runs) {
+    const km = _n(r.distance);
+    if (km == null || km <= 0) continue;
+    if (!longest || km > longest.km) longest = { km: _rKm(km), date: _cfDate(r.date), avgHR: _rMin(r.avgHR) };
+  }
+
+  const phaseHistory = [];
+  const seenWeeks = new Set();
+  for (const x of ctx.decisions) {
+    if (!x || x.type !== 'running-week') continue;
+    const phase = (x.evidence && x.evidence.phase) || x.phase || null;
+    const wk = x.weekKey || (_cfDate(x.date) ? _cfIsoWeek(_cfDate(x.date)) : null);
+    if (!phase || !wk || seenWeeks.has(wk)) continue;
+    seenWeeks.add(wk);
+    phaseHistory.push({ weekKey: wk, phase: String(phase) });
+    if (phaseHistory.length >= FACTS_TRAJ_PHASE_HISTORY) break;
+  }
+
+  return {
+    weekKeys,
+    weeklyKm,
+    longestRunEver: longest,
+    z2ComplianceByWeek: z2,
+    z2WeekKeys: weekKeys.slice(-FACTS_TRAJ_Z2_WEEKS),
+    phaseHistory,
+    note: 'weeklyKm y weekKeys van de la semana MÁS ANTIGUA a la actual, con 0 en las semanas sin carreras. z2ComplianceByWeek es la FRACCIÓN de carreras con FC media ≤ techo Z2 + tolerancia (null = ninguna carrera con FC esa semana).',
+  };
+}
+
+/**
+ * Adherencia semana a semana, 12 semanas. `planned` son las sesiones de FUERZA de la
+ * plantilla activa proyectada hacia atrás — aproximado y declarado (`plannedIsApprox`).
+ */
+function _trajAdherence(ctx) {
+  const monNow = _cfMonday(ctx.todayStr);
+  const rows = [];
+  for (let i = FACTS_TRAJ_WEEKS - 1; i >= 0; i--) {
+    const mon = _cfShift(monNow, -7 * i);
+    const sun = _cfShift(mon, 6);
+    const upTo = sun <= ctx.todayStr ? sun : ctx.todayStr;
+    const runs = ctx.runs.filter(r => _inWindow(r.date, mon, sun));
+    rows.push({
+      weekKey: _cfIsoWeek(mon),
+      planned: _plannedForWeek(ctx, { monday: mon, sunday: sun }, upTo).gym,
+      done: ctx.workouts.filter(w => _inWindow(w.date, mon, sun)).length,
+      kmDone: _rKm(_sum(runs.map(r => _n(r.distance)))),
+      runs: runs.length,
+    });
+  }
+  return rows;
+}
+
+/**
+ * Lo que se salta de verdad: ≥3 saltos en las ÚLTIMAS ≤6 exposiciones de las 12 semanas.
+ *
+ * Distinto de `skipped` (4 semanas, ≥2 saltos y ≥50 %): aquí manda la RECENCIA. Un ejercicio
+ * que se saltó tres veces en junio y se hace desde entonces no es un patrón; uno que se salta
+ * las tres últimas veces que aparece, sí. §C.2 paso 3: se reordena o se quita, no se
+ * "recuerda".
+ */
+function _trajSkipped(ctx) {
+  const planned = _plannedSetsByExercise(ctx);
+  const from = _cfShift(_cfMonday(ctx.todayStr), -7 * (FACTS_TRAJ_WEEKS - 1));
+  const acc = {};
+  // `ctx.workouts` va descendente: se recorre al revés para tener las exposiciones en orden.
+  for (const w of ctx.workouts.slice().reverse()) {
+    if (!_inWindow(w.date, from, ctx.todayStr)) continue;
+    const sid = w.session || w.sessionName;
+    const ids = new Set(Object.keys(planned[sid] || {}));
+    for (const ex of (w.exercises || [])) if (ex && (ex.exerciseId || ex.id)) ids.add(ex.exerciseId || ex.id);
+    for (const id of ids) {
+      const rec = (w.exercises || []).find(e => (e.exerciseId || e.id) === id);
+      const done = !!(rec && (rec.sets || []).some(s => s && s.done === true));
+      if (!acc[id]) acc[id] = [];
+      acc[id].push({ date: _cfDate(w.date), done });
+    }
+  }
+  const out = [];
+  for (const [id, list] of Object.entries(acc)) {
+    const last = list.slice(-FACTS_TRAJ_SKIP_WINDOW);
+    const skipped = last.filter(x => !x.done);
+    if (skipped.length < FACTS_TRAJ_SKIP_MIN) continue;
+    const lib = ctx.library[id];
+    out.push({
+      id, name: (lib && lib.name) || id,
+      skips: skipped.length, exposures: last.length,
+      lastSkipped: skipped[skipped.length - 1].date,
+    });
+  }
+  return out.sort((a, b) => b.skips - a.skips || String(a.id).localeCompare(String(b.id)));
+}
+
+/**
+ * Las decisiones del COACH (y las de plan) que hay que revisar: el "te dije X el {fecha}".
+ * Las de `source: 'rule'` (readouts automáticos) no entran: nadie tiene que rendir cuentas de
+ * ellas y llenarían los 6 huecos con la misma frase.
+ */
+function _trajFollowUp(ctx) {
+  const out = [];
+  for (const x of ctx.decisions) {
+    const type = x.type || 'other';
+    if (x.source !== 'coach' && !/^plan-/.test(String(type))) continue;
+    const reviewOn = _cfDate(x.reviewOn || (x.evidence || {}).reviewOn);
+    out.push({
+      id: x.id || null,
+      weekKey: x.weekKey || (_cfDate(x.date) ? _cfIsoWeek(_cfDate(x.date)) : null),
+      type,
+      what: _trunc(x.what, FACTS_TRAJ_WHAT_CHARS),
+      reviewOn,
+      dueForReview: !!(reviewOn && reviewOn <= ctx.todayStr),
+      outcome: x.outcome || null,
+      source: x.source || null,
+    });
+    if (out.length >= FACTS_TRAJ_FOLLOWUP) break;
+  }
+  return out;
+}
+
 // ---------- progress ----------
 
 function _factsProgress(ctx) {
@@ -548,9 +987,14 @@ function _factsProgress(ctx) {
  * es una línea recta: mete pendiente 0 en la regresión los días que no hubo báscula y hace
  * que el piloto del déficit lea "el peso no baja" cuando lo que pasó es que no te pesaste.
  */
-function _factsWeight(ctx) {
-  // Una fila por día, preferiendo la pesada medida. `wellness.weightMeasured` es la misma
-  // medida vista desde el otro store: si el store `bodyweight` no la tiene, cuenta igual.
+/**
+ * Una fila de peso por día, ascendente, preferiendo la pesada MEDIDA.
+ * `wellness.weightMeasured` es la misma medida vista desde el otro store: si el store
+ * `bodyweight` no la tiene, cuenta igual. La usan `_factsWeight` y `trajectory.weight`, y
+ * tiene que ser la MISMA convención en los dos sitios: si la trayectoria contase el
+ * forward-fill, el `deltaKg` desde el inicio diría que el peso no se mueve.
+ */
+function _weightDays(ctx) {
   const byDate = new Map();
   for (const r of ctx.bodyweight) {
     const date = _cfDate(r.date), kg = _n(r.weight);
@@ -566,7 +1010,13 @@ function _factsWeight(ctx) {
     if (!prev || !prev.measured) byDate.set(date, { date, kg, measured: true, source: 'intervals.icu' });
   }
   const all = [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
-  const measured = all.filter(r => r.measured);
+  return { all, measured: all.filter(r => r.measured) };
+}
+
+function _factsWeight(ctx) {
+  const days = _weightDays(ctx);
+  const all = days.all;
+  const measured = days.measured;
   const inLast = (rows, days) => rows.filter(r => _cfDiff(r.date, ctx.todayStr) < days && _cfDiff(r.date, ctx.todayStr) >= 0);
 
   const m7 = inLast(measured, 7), m14 = inLast(measured, 14), m28 = inLast(measured, 28);
@@ -1220,7 +1670,41 @@ function _factsReadiness(ctx) {
     pressExposuresPerWeek: _pressExposures(ctx),
     setsPerMuscle: _setsPerMuscle(ctx),
     anomalies: _readinessAnomalies(ctx, scores28, colorOf),
+    // El veredicto del motor, no una segunda lectura. `computeReadinessFrom` es PURO (vive en
+    // `coach-engine.js` y no toca `state` ni IndexedDB) y es el mismo que pinta Stats: si el
+    // pack recalculase el declive por su cuenta, la app y el coach podrían decir cosas
+    // distintas del mismo día. `deloadHint` es un declive SOSTENIDO (READ-008 + LOAD-004), no
+    // un mal día — y sigue siendo INFORMACIÓN: la recuperación no dosifica (decisión del
+    // usuario, 2026-09-07).
+    ...(_readinessVerdict(ctx)),
   };
+}
+
+/** `{deloadHint, firedSignals}` desde `computeReadinessFrom`. Sin el motor, nulls honestos. */
+function _readinessVerdict(ctx) {
+  const fn = ctx.d.computeReadinessFrom;
+  if (typeof fn !== 'function') return { deloadHint: null, firedSignals: [], readinessColor: null };
+  try {
+    const todayRow = ctx.wellness.find(r => _cfDate(r.date) === ctx.todayStr) || null;
+    const score = todayRow ? _n(todayRow.readiness) : null;
+    const res = fn({
+      today: ctx.todayStr,
+      wellness: ctx.wellness,
+      // El dato de HOY o NINGUNO (F-6): aquí nunca se coge "el último que haya".
+      whoopToday: score != null ? { score, source: todayRow.readinessSource || null } : null,
+      whoopMissingReason: score == null ? 'Sin dato de recuperación de hoy en `wellness`' : undefined,
+      workouts: ctx.workouts,
+      cutoffs: { green: FACTS_GREEN, yellow: FACTS_YELLOW },
+    }) || {};
+    return {
+      deloadHint: !!res.deloadHint,
+      firedSignals: (res.signals || []).filter(s => s && s.fired).map(s => s.id),
+      readinessColor: res.color || null,
+    };
+  } catch (e) {
+    // Un motor que cambie de firma no puede tumbar el pack entero.
+    return { deloadHint: null, firedSignals: [], readinessColor: null };
+  }
 }
 
 /** Carga interna propia por semana: Σ budgetWeight + Σ(duración × RPE) de fuerza. Ordinal. */
@@ -1507,27 +1991,36 @@ function _factsPriorReviews(ctx) {
     .sort((a, b) => String(b.weekKey).localeCompare(String(a.weekKey)) || (_n(b.attempt) || 0) - (_n(a.attempt) || 0))
     .filter(r => r.weekKey !== ctx.weekKey)
     .slice(0, FACTS_MAX_REVIEWS)
-    .map(r => {
+    // Las 3 más recientes, completas; las 4-6 COMPACTAS (sin extracto ni decisiones). El
+    // coach necesita saber que en W32 ya se probó bajar la frecuencia de empuje; no necesita
+    // releer los 1.200 caracteres con los que se dijo. Tres extractos más serían ~3,6 KB de
+    // prosa vieja compitiendo con los hechos de esta semana.
+    .map((r, i) => {
       const out = r.output || {};
       const br = out.briefing || {};
-      return {
+      const head = {
         kind: 'review',
         id: r.id || null, weekKey: r.weekKey, attempt: _n(r.attempt), status: r.status || null,
         applied: r.status === 'applied',
-        appliedPlanId: r.appliedPlanId || null,
         priorities: Array.isArray(br.priorities) ? br.priorities.slice(0, 3).map(p => _trunc(p, FACTS_NOTE_CHARS)) : [],
+      };
+      if (i >= FACTS_FULL_REVIEWS) return Object.assign(head, { compact: true });
+      return Object.assign(head, {
+        appliedPlanId: r.appliedPlanId || null,
         decisions: Array.isArray(out.decisions) ? out.decisions.slice(0, 8).map(x => ({
           id: x.id || null, type: x.type || null, what: _trunc(x.what, FACTS_NOTE_CHARS),
           ruleIds: Array.isArray(x.ruleIds) ? x.ruleIds.slice(0, 6) : [],
         })) : [],
         excerpt: _trunc(br.nextWeek || br.lastWeek, FACTS_EXCERPT_CHARS),
-      };
+      });
     });
 
   // Primera vez: la voz del cron de W36 entra como una entrada `legacy`, para que la primera
   // revisión del coach pueda retirar o mantener explícitamente lo que dijo la anterior.
+  // El gate sigue siendo 3 (no 6): la legacy es prosa sin Rule IDs y sólo tiene sentido
+  // mientras el coach in-app apenas tenga historial propio.
   const legacy = ctx.inp.legacyLatest;
-  if (legacy && rows.length < FACTS_MAX_REVIEWS) {
+  if (legacy && rows.length < FACTS_FULL_REVIEWS) {
     const cv = legacy.coachVoice || {};
     const np = legacy.nextWeekPlan || {};
     rows.push({
@@ -1599,6 +2092,21 @@ function _factsGaps(ctx, facts) {
   for (const [name, s] of Object.entries(facts.staleness || {})) {
     if (s.stale && s.n > 0) gaps.push(`Dato viejo en \`${name}\`: el último es de ${s.lastDate} (${s.daysAgo} días).`);
     if (s.n === 0) gaps.push(`El store \`${name}\` viene vacío en el pack: no hay nada que leer ahí.`);
+  }
+  // ---- Huecos de la TRAYECTORIA (esquema 2) ----
+  const tr = facts.trajectory || null;
+  const prog = tr && tr.program;
+  if (prog) {
+    if (prog.weeksSince != null && prog.weeksSince < FACTS_TRAJ_MIN_WEEKS) {
+      gaps.push(`Trayectoria corta (${prog.weeksSince} semanas, <${FACTS_TRAJ_MIN_WEEKS}): pendientes orientativas, no señal.`);
+    }
+    const sinceAnchor = (prog.blocks || []).filter(b => _n(b.index) != null && _n(b.index) >= 1);
+    if (sinceAnchor.length === 1) {
+      gaps.push('Un solo bloque desde el ancla: no hay bloque anterior con el que comparar.');
+    }
+  }
+  for (const a of (tr && tr.anchors) || []) {
+    if (!a.exposures) gaps.push(`Ancla \`${a.id}\` con 0 exposiciones registradas: no se puede decir si se mantiene.`);
   }
   // Dedupe conservando el orden: el mismo hueco dicho dos veces le baja el peso a los demás.
   return [...new Set(gaps)];
@@ -2552,10 +3060,14 @@ if (typeof module !== 'undefined' && module.exports) {
     stableStringify,
     // Constantes (el test comprueba los umbrales, no los reescribe)
     FACTS_SCHEMA, FACTS_WEEKS, FACTS_MAX_LIFT_SESSIONS, FACTS_MAX_RUNS, FACTS_MAX_REVIEWS,
+    FACTS_FULL_REVIEWS,
     FACTS_MAX_DECISIONS, FACTS_Z2_CEILING_DEFAULT, FACTS_Z2_TOLERANCE, FACTS_STALE_DAYS,
     FACTS_MIN_WORKOUTS, FACTS_MIN_WELLNESS_DAYS_7, FACTS_MIN_NUTRITION_DAYS_28,
     FACTS_MIN_NUTRITION_DAYS_14, FACTS_MIN_MEASURED_WEIGHTS, FACTS_DELOAD_WASHOUT_DAYS,
     FACTS_TREND_PCT, FACTS_GREEN, FACTS_YELLOW, FACTS_PRESS_IDS, FACTS_CARDIO_BW,
+    FACTS_TRAJ_WEEKS, FACTS_TRAJ_Z2_WEEKS, FACTS_TRAJ_FOLLOWUP, FACTS_TRAJ_MIN_WEEKS,
+    FACTS_TRAJ_MIN_SLOPE_POINTS, FACTS_TRAJ_SKIP_WINDOW, FACTS_TRAJ_SKIP_MIN,
+    FACTS_BLOCK_WEEKS_DEFAULT,
     VP_FLOORS, VP_MAX_SETS_PER_MUSCLE, VP_MAX_HARD_CARDIO, VP_MAX_BUDGET,
     VP_MAX_PRESS_EXPOSURES, VP_MAX_SESSION_MIN, VP_MAX_PLYO_CONTACTS,
     VP_MAX_STRUCTURAL_CHANGES, VP_MIN_STRENGTH_SESSIONS, VP_MIN_MOBILITY_SLOTS,
@@ -2564,7 +3076,7 @@ if (typeof module !== 'undefined' && module.exports) {
     VP_ANCHOR_SWAPS, VP_ANCHORS,
     // Internos que los tests usan para no re-implementar aritmética
     _cfShift, _cfDiff, _cfIsoWeek, _cfMonday, _durMin, _paceSec, _fmtPace,
-    _slopePerWeek, _liftTrend, _z2Compliant, _sanitize,
+    _slopePerWeek, _liftTrend, _z2Compliant, _sanitize, _weeksSpan, _weightDays,
     _vpSetsPerMuscle, _vpSessionMin, _vpPlyoExercises, _vpMobilitySlots, _vpHardCardio,
   };
 }

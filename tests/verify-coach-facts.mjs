@@ -25,6 +25,11 @@
 //     la app paga otra revisión de $0,50-0,70.
 //   · `undefined`/`NaN` en el JSON: `JSON.stringify` los convierte en `null` sin avisar y el
 //     modelo los cita como si fueran hechos.
+//   · Mirar sólo 4 semanas (esquema 2 · `trajectory`): sin el recorrido, un ancla que lleva
+//     dos meses sin tocarse parece mantenida, una sesión que se salta desde julio parece
+//     nueva, y el progreso hacia el objetivo (−1,2 kg desde 87,1) no existe. Y el mismo
+//     filtro de siempre: si el forward-fill entrase en `deltaKg`, el recorrido se reduciría
+//     a la mitad.
 //
 // Ejecutar desde la raíz del repo: node tests/verify-coach-facts.mjs
 
@@ -111,6 +116,24 @@ const S = (kg, reps, rpe, n) => Array.from({ length: n }, () => ({ weight: kg, r
 const SKIP = (n) => Array.from({ length: n }, () => ({ weight: 0, reps: 0, rpe: null, done: false }));
 
 const WORKOUTS = [
+  // ── El RECORRIDO (esquema 2). Dos sesiones muy anteriores al ancla (2026-09-07), fuera de
+  // las ventanas de 4 semanas y de 55 días: no tocan `lifts` ni `adherence`, y son las que
+  // dan a `trajectory` un `pre-bloque` y un `first` de cada ancla en LIBRAS.
+  {
+    id: 'w0a', date: '2026-06-29', session: 'upperA', sessionName: 'Upper A', unit: 'lb',
+    planVersion: 12, duration: '61:00', family: 'strength', subtype: 'upper', budgetWeight: 1,
+    exercises: [
+      { exerciseId: 'bench-press', sets: [{ weight: 185, reps: 5, rpe: 8, done: true }, { weight: 185, reps: 5, rpe: 8, done: true }] },
+      { exerciseId: 'barbell-row', sets: S(135, 8, 7, 3) },
+    ],
+  },
+  {
+    id: 'w0b', date: '2026-07-06', session: 'lowerA', sessionName: 'Lower A', unit: 'kg',
+    planVersion: 12, duration: '58:00', family: 'strength', subtype: 'lower', budgetWeight: 2,
+    exercises: [
+      { exerciseId: 'back-squat', sets: S(95, 5, 8, 4) },
+    ],
+  },
   // W35 · 3 días con EMPUJE en 6 días: el patrón de W35 (frecuencia, no carga).
   {
     id: 'w1', date: '2026-08-25', session: 'upperA', sessionName: 'Upper A', unit: 'lb',
@@ -253,6 +276,9 @@ const DECISIONS = [
   { id: 'd1', ts: Date.UTC(2026, 8, 7), date: '2026-09-07', weekKey: '2026-W37', source: 'rule', type: 'session-readout', what: 'Banca 95×6/6/6', why: 'Doble progresión', ruleIds: ['STR-001'], evidence: { numbers: { topKg: 95 } }, ref: { sessionId: 'lowerA' }, outcome: 'done' },
   { id: 'd2', ts: Date.UTC(2026, 8, 1), date: '2026-09-01', weekKey: '2026-W36', source: 'coach', type: 'progression', what: 'Banca sube a 95', why: 'Todas al tope', ruleIds: ['STR-001', 'STR-002'], evidence: { numbers: { from: 92.5, to: 95 } }, reviewOn: '2026-09-07' },
   { id: 'd3', ts: Date.UTC(2026, 7, 31), date: '2026-08-31', weekKey: '2026-W36', source: 'coach', type: 'running', what: 'Sin rampa de km esta semana', why: 'Z2 no cumplida en 2 de 4', ruleIds: ['END-003'], evidence: { numbers: { z2Pct: 50 } } },
+  // La fase de carrera que el motor registra cada semana (`_logRunningWeekOnce`). Es `rule`,
+  // no `coach`: alimenta `trajectory.running.phaseHistory` y NO el seguimiento de decisiones.
+  { id: 'd4', ts: Date.UTC(2026, 7, 30), date: '2026-08-30', weekKey: '2026-W35', source: 'rule', type: 'running-week', what: 'Base: 3 salidas Z2', why: 'Fallback determinista', ruleIds: ['END-003'], evidence: { phase: 'base', weeklyKmTarget: 12 }, outcome: 'done' },
 ];
 
 const REVIEWS = [
@@ -363,6 +389,8 @@ const facts = buildCoachFacts(mkInput(), DEPS);
 sec('meta y ventana ISO (la frontera domingo/lunes)');
 // ════════════════════════════════════════════════════════════════════════════════════
 eq(facts.meta.weekKey, SEMANA, 'weekKey = 2026-W37');
+eq(facts.meta.factsSchema, 2, 'esquema 2 del pack (trae `trajectory`)');
+eq(facts.meta.caps.priorReviews, 6, 'el tope de revisiones previas es 6 (3 completas + 3 compactas)');
 eq(facts.meta.window.weeks.join(' '), '2026-W34 2026-W35 2026-W36 2026-W37', 'ventana de 4 semanas ISO, la actual al final');
 eq(facts.meta.window.from, '2026-08-17', 'la ventana empieza el lunes de hace 3 semanas');
 eq(facts.meta.unit, 'kg', 'todo el pack va en kg');
@@ -571,7 +599,7 @@ ok(facts.staleness.mobility.stale === false, 'ayer no es viejo (el umbral son >2
 // ════════════════════════════════════════════════════════════════════════════════════
 sec('decisions y priorReviews · topes y legacy');
 // ════════════════════════════════════════════════════════════════════════════════════
-eq(facts.decisions.length, 3, 'las 3 decisiones del fixture');
+eq(facts.decisions.length, 4, 'las 4 decisiones del fixture');
 eq(facts.decisions[0].id, 'd1', 'la más reciente primero');
 eq(facts.decisions[1].claim, 'Banca sube a 95', '`what` viaja como `claim` (el "te dije X")');
 eq(facts.decisions[1].dueForReview, true, 'y una con `reviewOn` vencido se marca dueForReview');
@@ -599,8 +627,8 @@ const factsCaps = buildCoachFacts(mkInput({
   stores: Object.assign({}, mkInput().stores, { decisions: many, coachReviews: manyReviews }),
 }), DEPS);
 eq(factsCaps.decisions.length, 30, 'tope de 30 decisiones');
-eq(factsCaps.priorReviews.length, 3, 'tope de 3 revisiones previas');
-eq(factsCaps.priorReviews.filter(r => r.kind === 'legacy').length, 0, 'con 3 revisiones reales, la legacy no entra');
+eq(factsCaps.priorReviews.length, 5, '5 revisiones caben enteras bajo el tope de 6');
+eq(factsCaps.priorReviews.filter(r => r.kind === 'legacy').length, 0, 'con 3 revisiones reales o mas, la legacy no entra');
 const manyRuns = Array.from({ length: 20 }, (_, i) => ({
   id: `r${i}`, date: `2026-09-0${(i % 7) + 1}`, distance: 5, duration: 30 + i, avgHR: 140, avgPace: '6:00', source: 'manual',
 }));
@@ -609,6 +637,226 @@ const factsRuns = buildCoachFacts(mkInput({
 }), DEPS);
 eq(factsRuns.cardio.runs.length, 10, 'tope de 10 carreras');
 ok(Object.values(facts.lifts).every(l => l.sessions.length <= 4), 'tope de 4 sesiones por ejercicio');
+
+// ════════════════════════════════════════════════════════════════════════════════════
+sec('trajectory · TODO EL RECORRIDO (esquema 2)');
+// ════════════════════════════════════════════════════════════════════════════════════
+// EL FALLO QUE ESTA SECCIÓN EXISTE PARA IMPEDIR: un coach que cada domingo empieza de cero.
+// Con una ventana de 4 semanas no se puede contestar "cómo viene entrenando", "cuánto ha
+// avanzado hacia el objetivo" ni "qué hizo y qué no": una sesión que lleva tres meses sin
+// tocarse parece igual de nueva que la de la semana pasada, y un ancla que se ha dejado de
+// hacer parece mantenida. Todo lo de abajo es memoria larga con la MISMA aritmética que el
+// resto del pack (pesadas medidas, carreras dedupeadas, kg convertidos).
+
+const tr = facts.trajectory;
+ok(!!tr, 'el pack trae la sección `trajectory`');
+
+// ---- program ----
+eq(tr.program.firstWorkoutDate, '2026-06-29', 'firstWorkoutDate = la sesión más antigua del historial, no la de la ventana de 4 semanas');
+eq(tr.program.weeksSince, 11, '11 semanas ISO desde la primera sesión hasta hoy');
+eq(tr.program.totalStrengthSessions, 8, '8 sesiones de fuerza en todo el recorrido (la ventana de 4 semanas sólo ve 6)');
+eq(tr.program.sessionsPerWeekAvg, 0.7, '8 sesiones / 11 semanas = 0,7 por semana');
+eq(tr.program.anchorDate, '2026-09-07', 'el ancla del bloque es la de `settings.deloadAnchorDate`');
+
+eq(tr.program.blocks.length, 2, 'dos tramos: lo anterior al ancla y B1');
+const pre = tr.program.blocks[0];
+eq(pre.index, 0, 'el tramo anterior al ancla va con índice 0');
+eq(pre.label, 'pre-bloque', 'y se llama `pre-bloque`: no es un bloque numerado (blockWeekFromDates devuelve null antes del ancla)');
+eq(pre.from, '2026-06-29', 'empieza en la primera sesión');
+eq(pre.to, '2026-09-06', 'y acaba el día antes del ancla');
+eq(pre.weeks, 10, '10 semanas ISO');
+eq(pre.strengthSessions, 7, '7 sesiones de fuerza antes del ancla');
+eq(pre.runs, 4, '4 carreras (DEDUPEADAS: las 5 filas incluyen la de COROS duplicada)');
+eq(pre.km, 20.5, '20,5 km');
+const b1 = tr.program.blocks[1];
+eq(b1.index, 1, 'el primer bloque desde el ancla es el 1');
+eq(b1.label, 'B1', 'etiquetado B1');
+eq(b1.from, '2026-09-07', 'arranca EN el ancla');
+eq(b1.to, '2026-09-07', 'y se corta en hoy, no en el final teórico del bloque');
+eq(b1.isCurrent, true, 'es el bloque en curso');
+eq(b1.strengthSessions, 1, 'con la sesión de hoy dentro');
+ok(tr.program.blocks.filter(b => b.isCurrent).length === 1, 'exactamente un bloque marcado como actual');
+
+// ---- weight · SÓLO pesadas medidas ----
+// El mismo fallo que en `progress.weight`, pero con más consecuencias: el forward-fill de
+// intervals.icu (90,0 kg repetido) haría que el recorrido desde 87,1 kg pareciera la mitad.
+const tw = tr.weight;
+eq(tw.startKg, 87.1, 'el peso de partida sale de `goals.primary.startWeightKg`');
+eq(tw.startDate, '2026-08-19', 'con su fecha');
+eq(tw.firstMeasured.kg, 86.8, 'la primera pesada MEDIDA desde el inicio: 86,8 kg');
+eq(tw.firstMeasured.date, '2026-08-26', 'del 26-ago');
+eq(tw.nMeasuredSinceStart, 8, '8 pesadas medidas desde el inicio (las 2 forward-filled no cuentan)');
+eq(tw.latest7dMean, 85.9, 'media de 7 días = la misma que `progress.weight.mean7`');
+eq(tw.deltaKg, -1.2, 'delta desde el inicio = 85,9 − 87,1 = −1,2 kg');
+eq(factsFake.trajectory.weight.nMeasuredSinceStart, 10, 'con las 10 filas marcadas como medidas, n sube a 10');
+eq(factsFake.trajectory.weight.deltaKg, -0.6, 'y el delta pasa a −0,6: una fila forward-filled dentro se come la mitad del recorrido');
+ok(tw.slopeSinceStartKgPerWeek < 0, `la pendiente desde el inicio es negativa (${tw.slopeSinceStartKgPerWeek} kg/sem)`);
+eq(tw.slopeUsedForEta, '28d', 'el ETA usa la pendiente de 28 días cuando existe (describe el déficit de AHORA)');
+ok(tw.weeksToMilestoneAtCurrentSlope > 0, `hito de 82 kg en ~${tw.weeksToMilestoneAtCurrentSlope} semanas`);
+ok(tw.weeksToTargetAtCurrentSlope > tw.weeksToMilestoneAtCurrentSlope, 'y el objetivo final queda más lejos que el hito');
+
+// Con menos de 6 pesadas medidas la pendiente del recorrido NO se publica: con 3 puntos la
+// recta la decide la primera pesada, y eso no es una tendencia.
+const factsPocas = buildCoachFacts(mkInput({
+  stores: Object.assign({}, mkInput().stores, { bodyweight: BODYWEIGHT.slice(0, 4) }),
+}), DEPS);
+eq(factsPocas.trajectory.weight.nMeasuredSinceStart, 3, 'con 4 filas (3 medidas) desde el inicio');
+eq(factsPocas.trajectory.weight.slopeSinceStartKgPerWeek, null, 'la pendiente del recorrido va a null (gate de 6 puntos)');
+ok(/pendiente del recorrido va a null/.test(factsPocas.trajectory.weight.note || ''), 'y la nota lo dice');
+
+// ---- anchors · las 6 anclas de goals.preserve, con lb → kg ----
+const anchorsById = Object.fromEntries(tr.anchors.map(a => [a.id, a]));
+eq(tr.anchors.length, 6, 'una fila por ancla de `goals.preserve.anchorLifts`');
+const aBench = anchorsById['bench-press'];
+eq(aBench.kind, 'load', 'la banca es carga');
+eq(aBench.first.date, '2026-06-29', 'su primera exposición es la del 29-jun');
+// 185 lb × 0,453592 = 83,91 kg → 84,0 al paso de 0,5. Sin convertir entraría un "185" al lado
+// de un 95 y el recorrido diría que la banca se ha desplomado un 49 %.
+eq(aBench.first.kg, 84, '185 lb → 84,0 kg (convertWeight, no el número crudo)');
+eq(aBench.first.e1rm, 98, 'y su e1RM sobre los kg convertidos');
+eq(aBench.best.date, '2026-08-27', 'el mejor e1RM del recorrido es el del 27-ago (92,5×8)');
+eq(aBench.best.e1rm, 117, '117 kg de e1RM: más que el 95×6 del 1-sep');
+eq(aBench.latest.date, '2026-09-01', 'la última exposición es la del 1-sep');
+eq(aBench.latest.e1rm, 114, 'con e1RM 114');
+eq(aBench.latest.outcome, 'progressed', 'y el outcome del readout de esa sesión');
+eq(aBench.exposures, 4, '4 exposiciones en todo el recorrido');
+eq(aBench.exposures12w, 4, 'las 4 dentro de las últimas 12 semanas');
+eq(aBench.daysSinceLast, 6, 'hace 6 días de la última');
+eq(aBench.trendSinceStartPct, 16, 'e1RM de 98 → 114 = +16 % desde el inicio');
+
+const aChin = anchorsById.chinups;
+eq(aChin.kind, 'bw', 'las dominadas son peso corporal');
+eq(aChin.latest.e1rm, null, 'y no llevan e1RM: la Epley sobre el lastre no describe al atleta');
+eq(aChin.latest.kg, 2.5, 'el número es el LASTRE');
+eq(aChin.trendSinceStartPct, null, 'con una sola exposición no hay tendencia');
+
+// Un ancla que NO se ha tocado no se calla: "no ha bajado" y "no lo has hecho" no son lo mismo.
+const aSumo = anchorsById['sumo-dl'];
+eq(aSumo.exposures, 0, 'sumo-dl no tiene ninguna exposición registrada');
+eq(aSumo.first, null, 'sin primera');
+eq(aSumo.latest, null, 'sin última');
+ok(facts.dataGaps.some(g => /sumo-dl/.test(g) && /0 exposiciones/.test(g)),
+  'y el hueco se declara en dataGaps ("ancla con 0 exposiciones")');
+
+// ---- running · 12 semanas, el largo de siempre, Z2 por semana y las fases ----
+const trr = tr.running;
+eq(trr.weeklyKm.length, 12, 'weeklyKm trae 12 semanas');
+eq(trr.weekKeys.length, 12, 'y sus 12 claves de semana');
+eq(trr.weekKeys[11], '2026-W37', 'de la más antigua a la ACTUAL (la última es esta semana)');
+eq(trr.weekKeys[0], '2026-W26', 'y la primera es la de hace 11 semanas');
+eq(trr.weeklyKm[10], 11, 'W36 = 11,0 km (el domingo 6-sep cuenta en SU semana)');
+eq(trr.weeklyKm[0], 0, 'las semanas sin carreras van con 0, no se omiten');
+eq(trr.longestRunEver.km, 6, 'el largo de todo el historial: 6,0 km');
+eq(trr.longestRunEver.date, '2026-09-06', 'con su fecha');
+eq(trr.longestRunEver.avgHR, 141, 'y su FC media (sin ella no se sabe si el largo fue en Z2)');
+eq(trr.z2ComplianceByWeek.length, 8, 'cumplimiento de Z2 de las 8 últimas semanas');
+eq(trr.z2ComplianceByWeek[6], 1, 'W36: las 2 carreras en Z2 → 1');
+eq(trr.z2ComplianceByWeek[5], 0, 'W35: la de 146 bpm no cumple → 0');
+eq(trr.z2ComplianceByWeek[7], null, 'W37 sin carreras → null, que NO es un 0');
+eq(trr.phaseHistory.length, 1, 'una fase de carrera registrada');
+eq(trr.phaseHistory[0].weekKey, '2026-W35', 'de W35');
+eq(trr.phaseHistory[0].phase, 'base', 'fase base (sale de `evidence.phase` de la decisión running-week)');
+
+// ---- adherenceByWeek · 12 semanas, planificado APROXIMADO y declarado ----
+eq(tr.adherenceByWeek.length, 12, '12 filas de adherencia');
+eq(tr.plannedIsApprox, true, 'y la sección declara que lo planificado es aproximado (la plantilla actual proyectada hacia atrás)');
+const adhTr = Object.fromEntries(tr.adherenceByWeek.map(a => [a.weekKey, a]));
+eq(adhTr['2026-W36'].planned, 4, 'W36: 4 sesiones de fuerza planificadas');
+eq(adhTr['2026-W36'].done, 2, 'y 2 hechas');
+eq(adhTr['2026-W36'].kmDone, 11, 'con 11,0 km');
+eq(adhTr['2026-W36'].runs, 2, 'en 2 carreras');
+eq(adhTr['2026-W37'].done, 1, 'W37 lleva 1 sesión');
+
+// ---- skippedPatterns · ≥3 saltos en las últimas ≤6 exposiciones ----
+// Es la regla "lo que no se hizo tres veces no se recuerda: se reordena o se quita". El
+// umbral importa: con 2 el coach reescribiría la sesión por ruido.
+const skById = Object.fromEntries(tr.skippedPatterns.map(x => [x.id, x]));
+ok(!!skById['leg-curl-a'], 'leg-curl-a aparece: 3 saltos de 3 exposiciones');
+eq(skById['leg-curl-a'].skips, 3, '3 saltos');
+eq(skById['leg-curl-a'].exposures, 3, 'sobre 3 exposiciones');
+eq(skById['leg-curl-a'].lastSkipped, '2026-09-07', 'y la fecha del último salto');
+eq(skById['face-pull'].skips, 4, 'face-pull: 4 saltos en las últimas 4 exposiciones de 12 semanas');
+
+const conLegCurl = WORKOUTS.map(w => (w.id === 'w0b'
+  ? Object.assign({}, w, { exercises: w.exercises.concat([{ exerciseId: 'leg-curl-a', sets: S(35, 12, 7, 3) }]) })
+  : w));
+const factsMenosSkips = buildCoachFacts(mkInput({
+  stores: Object.assign({}, mkInput().stores, { workouts: conLegCurl }),
+}), DEPS);
+const skMenos = factsMenosSkips.trajectory.skippedPatterns.map(x => x.id);
+ok(skMenos.indexOf('leg-curl-a') === -1, 'con 2 saltos (uno de los tres hecho) leg-curl-a YA NO es un patrón: el umbral es 3');
+ok(skMenos.indexOf('face-pull') !== -1, 'y face-pull, que sigue en 4, se queda');
+
+// ---- decisionsFollowUp · sólo coach/plan-*, con lo que vence hoy ----
+const fu = tr.decisionsFollowUp;
+eq(fu.length, 2, 'las 2 decisiones del coach (las de `source: rule` no entran: nadie rinde cuentas de un readout)');
+ok(fu.every(x => x.source === 'coach' || /^plan-/.test(x.type)), 'todas son del coach o de plan-*');
+ok(!fu.some(x => x.id === 'd4'), 'la decisión `running-week` (source rule) se queda fuera del seguimiento');
+eq(fu[0].id, 'd2', 'la más reciente primero');
+eq(fu[0].dueForReview, true, 'con `reviewOn` = hoy → toca revisarla');
+eq(fu[0].what, 'Banca sube a 95', 'y el "te dije X" viaja recortado a 120 chars');
+eq(fu[1].dueForReview, false, 'la que no tiene `reviewOn` no vence');
+
+// ---- readiness · el veredicto del motor, no una segunda lectura ----
+ok(typeof facts.readiness.deloadHint === 'boolean',
+  `readiness.deloadHint viene de computeReadinessFrom (${facts.readiness.deloadHint})`);
+ok(Array.isArray(facts.readiness.firedSignals),
+  `y las señales disparadas van por id (${JSON.stringify(facts.readiness.firedSignals)})`);
+// Con dos sesiones a RPE 9 el motor pide descarga: la señal existe y el pack la transporta
+// TAL CUAL. El pack no decide nada con ella — la recuperación es información (2026-09-07).
+const duras = WORKOUTS.map(w => (w.id === 'w5' || w.id === 'w6'
+  ? Object.assign({}, w, { exercises: w.exercises.map(ex => Object.assign({}, ex, { sets: (ex.sets || []).map(s => Object.assign({}, s, { rpe: s.rpe == null ? null : 9.5 })) })) })
+  : w));
+const factsDuras = buildCoachFacts(mkInput({
+  stores: Object.assign({}, mkInput().stores, { workouts: duras }),
+}), DEPS);
+eq(factsDuras.readiness.deloadHint, true, 'con RPE ≥9 en las 2 últimas sesiones, deloadHint pasa a true');
+ok(factsDuras.readiness.firedSignals.indexOf('rpe2') !== -1, 'y `rpe2` aparece entre las señales disparadas');
+
+// ---- dataGaps de la trayectoria ----
+const gapsTr = facts.dataGaps.join(' | ');
+ok(/[Uu]n solo bloque desde el ancla/.test(gapsTr), 'con sólo B1 desde el ancla, el hueco se declara');
+ok(!/[Tt]rayectoria corta/.test(gapsTr), 'con 11 semanas NO se declara trayectoria corta');
+const factsCorto = buildCoachFacts(mkInput({
+  stores: Object.assign({}, mkInput().stores, { workouts: WORKOUTS.slice(2) }),
+}), DEPS);
+eq(factsCorto.trajectory.program.weeksSince, 3, 'sin las dos sesiones viejas el programa tiene 3 semanas');
+ok(factsCorto.dataGaps.some(g => /[Tt]rayectoria corta/.test(g) && /orientativas/.test(g)),
+  'y entonces sí: "trayectoria corta (<8 semanas): pendientes orientativas"');
+
+// ---- tamaño de la sección ----
+const trChars = stableStringify(tr).length;
+console.log(`       tamaño de trajectory: ${trChars} chars`);
+ok(trChars < 12000, `la trayectoria cabe en 12.000 chars (${trChars})`);
+
+// ════════════════════════════════════════════════════════════════════════════════════
+sec('priorReviews · 6 = 3 completas + 3 compactas');
+// ════════════════════════════════════════════════════════════════════════════════════
+// El coach necesita saber que en W22 ya se probó bajar la frecuencia de empuje; no necesita
+// releer los 1.200 caracteres con los que se dijo. Tres extractos más serían ~3,6 KB de prosa
+// vieja compitiendo con los hechos de esta semana.
+eq(F.FACTS_MAX_REVIEWS, 6, 'el tope de revisiones previas es 6');
+eq(F.FACTS_FULL_REVIEWS, 3, 'y sólo las 3 más recientes van completas');
+const ochoReviews = Array.from({ length: 8 }, (_, i) => ({
+  id: `2026-W${20 + i}#1`, weekKey: `2026-W${20 + i}`, attempt: 1, status: 'applied', appliedPlanId: `plan_${i}`,
+  output: {
+    briefing: { priorities: ['Frecuencia de press a 2'], nextWeek: 'N'.repeat(2000), lastWeek: 'L' },
+    decisions: [{ id: `z${i}`, type: 'structure', what: 'Press 2×/sem', ruleIds: ['STR-002'] }],
+  },
+}));
+const factsRev = buildCoachFacts(mkInput({
+  stores: Object.assign({}, mkInput().stores, { coachReviews: ochoReviews }),
+}), DEPS);
+const pr = factsRev.priorReviews;
+eq(pr.length, 6, '8 revisiones → 6 en el pack');
+eq(pr[0].weekKey, '2026-W27', 'la más reciente primero');
+ok(pr.slice(0, 3).every(r => typeof r.excerpt === 'string' && Array.isArray(r.decisions)),
+  'las 3 primeras van completas: extracto y decisiones estructuradas');
+ok(pr.slice(3).every(r => r.compact === true), 'las 4-6 van marcadas `compact: true`');
+ok(pr.slice(3).every(r => r.excerpt === undefined && r.decisions === undefined),
+  'y sin extracto ni decisiones: sólo semana, estado y prioridades');
+ok(pr.slice(3).every(r => Array.isArray(r.priorities)), 'las prioridades sí sobreviven (es lo que se dijo, en una línea)');
+eq(pr.filter(r => r.kind === 'legacy').length, 0, 'con historial propio, la entrada legacy no entra');
 
 // ════════════════════════════════════════════════════════════════════════════════════
 sec('stableStringify · el hash no depende del orden de las claves');
@@ -621,6 +869,10 @@ eq(stableStringify([3, 1, 2]), '[3,1,2]', 'los arrays conservan su orden (es inf
 eq(stableStringify({ a: NaN, b: Infinity }), '{"a":null,"b":null}', 'NaN e Infinity → null, nunca "NaN"');
 eq(stableStringify({ a: undefined, b: 1 }), '{"b":1}', 'las claves undefined no entran');
 eq(stableStringify(buildCoachFacts(mkInput(), DEPS)), stableStringify(facts), 'dos builds del mismo input → el mismo string (factsHash estable)');
+// La trayectoria recorre Maps, Sets y `Object.entries`: si alguno de esos órdenes dependiera
+// del orden de inserción de los stores, dos packs con los MISMOS hechos darían hashes
+// distintos y cada apertura de la app pagaría otra revisión.
+eq(stableStringify(buildCoachFacts(mkInput(), DEPS).trajectory), stableStringify(tr), 'y la trayectoria también es determinista (mismo string dos veces)');
 
 // ════════════════════════════════════════════════════════════════════════════════════
 sec('el pack es JSON limpio y cabe en el prompt');
@@ -637,7 +889,7 @@ eq(bad.length, 0, `sin undefined ni NaN en ninguna rama${bad.length ? ` — ${ba
 const json = JSON.stringify(facts);
 const kb = Buffer.byteLength(json, 'utf8') / 1024;
 console.log(`       tamaño del pack: ${kb.toFixed(1)} KB`);
-ok(kb < 40, 'el pack pesa <40 KB (objetivo 25-35 KB, ~8-10k tokens)');
+ok(kb < 50, 'el pack pesa <50 KB (objetivo 30-43 KB con `trajectory`, ~10-12k tokens)');
 ok(json.indexOf('undefined') === -1, 'la palabra "undefined" no aparece en el JSON');
 ok(json.indexOf('NaN') === -1, 'ni "NaN"');
 

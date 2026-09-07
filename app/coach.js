@@ -446,7 +446,7 @@ async function renderGoalsCard(containerId = 'coach-goals') {
 // LA VERSIÓN DE LA APP viaja al servidor (`clientVersion`) y al pack (`meta.appVersion`), que
 // es lo que permite luego saber qué código produjo una revisión rara.
 // `verify-coach-wiring.mjs` comprueba que coincide con la de index.html y con `CACHE_NAME`.
-const COACH_APP_VERSION = 'v11.61';
+const COACH_APP_VERSION = 'v11.63';
 
 const COACH_MAX_SESSION_IDS = 12;   // el tope que valida la edge function
 const COACH_MAX_EXERCISE_IDS = 150; // idem
@@ -580,6 +580,10 @@ async function buildCoachFactsFromStores({ todayStr = today(), weekKey } = {}) {
     nutRollingWeight: (typeof nutRollingWeight === 'function') ? nutRollingWeight : undefined,
     weeklyDeficits: (typeof weeklyDeficits === 'function') ? weeklyDeficits : undefined,
     z2Ceiling: _coachZ2Ceiling(),
+    // v11.63 (trajectory): el pack los resuelve también por el global del motor, pero pasarlos
+    // explícitos deja la dependencia a la vista y hace el pack testeable sin globals.
+    computeReadinessFrom: (typeof computeReadinessFrom === 'function') ? computeReadinessFrom : undefined,
+    blockWeekFromDates: (typeof blockWeekFromDates === 'function') ? blockWeekFromDates : undefined,
   };
   return buildCoachFacts(input, deps);
 }
@@ -654,13 +658,14 @@ function _coachCurrentPlan() {
   };
 }
 
-/** Las 3 últimas revisiones, compactas: qué dijo, qué decidió y si se aplicó. */
+/** Las 6 últimas revisiones, compactas: qué dijo, qué decidió y si se aplicó (v11.63: 3 → 6,
+ *  el mismo tope que MAX_PRIOR_REVIEWS en la función; el coach necesita ver el recorrido). */
 function _coachPriorReviews(rows) {
   return (rows || [])
     .filter((r) => r && r.output)
     .sort((a, b) => String(b.weekKey || '').localeCompare(String(a.weekKey || ''))
       || (Number(b.attempt || 0) - Number(a.attempt || 0)))
-    .slice(0, 3)
+    .slice(0, 6)
     .map((r) => ({
       weekKey: r.weekKey || null,
       status: r.status || null,

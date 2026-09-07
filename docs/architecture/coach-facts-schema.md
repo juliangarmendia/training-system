@@ -6,6 +6,14 @@ incremento 9) y quien escriba **la edge function** (`supabase/functions/coach-we
 incremento 8). Las reglas citadas (`STR-*`, `END-*`…) viven en
 [`../../research/evidence-to-rules.md`](../../research/evidence-to-rules.md), única fuente de verdad.
 
+> **`FACTS_SCHEMA = 2`** (incremento B-2 de
+> [`coach-v2.1-implementation-plan.md`](coach-v2.1-implementation-plan.md) §B.2). Respecto al
+> esquema 1: sección **[`trajectory`](#trajectory--todo-el-recorrido-esquema-2)** con todo el
+> recorrido (bloques, peso desde el inicio, anclas de siempre, 12 semanas de carrera y
+> adherencia, patrones de salto y decisiones a revisar), `readiness.deloadHint` /
+> `firedSignals`, **`priorReviews` de 3 → 6** (3 completas + 3 compactas) y el techo del test
+> de 40 → **50 KB**. Todo lo del esquema 1 sigue igual: es aditivo.
+
 ## Qué es y por qué
 
 `buildCoachFacts()` convierte los stores de IndexedDB en un documento de **hechos ya calculados**.
@@ -95,6 +103,13 @@ suponer una fecha (ver *Lo que no se puede calcular hoy*).
 | `nutRollingWeight` | `(rows, date, win)` · **opcional** | no se usa hoy (el pack calcula su media sobre filas medidas) |
 | `weeklyDeficits` | `(days) => rows` · **opcional** | `nutrition.weeklyDeficits: null` |
 | `z2Ceiling` | `number` (143 por defecto) | 143, y `cardio.z2Ceiling.source = 'declarado'` |
+| `computeReadinessFrom` | `(inputs) => {color, signals, deloadHint…}` · **opcional** | el global del motor; si tampoco está, `readiness.deloadHint: null` |
+| `blockWeekFromDates` | `(date, anchor, weeks)` · **opcional** | el global del motor (mismo patrón que `isoWeekKey`/`mondayOf`) |
+
+Los dos últimos son helpers **puros de `coach-engine.js`**, no de `app.js`: se aceptan por
+`deps` para que un test pueda inyectarlos, y si no vienen se cogen del global del motor. Nunca
+se llama a `computeReadiness()` de `app.js` (toca `state` e IndexedDB); `computeReadinessFrom`
+sí es pura.
 
 Llamada tipo desde la app:
 
@@ -116,20 +131,27 @@ const factsHash = await sha256(stableStringify(facts));
 | pendientes | **0,01 kg/semana** | es la magnitud con la que se pilota el déficit (−0,30…−0,70) |
 | km | 0,1 · min 1 · % 1 · ms 1 | §A.4 |
 
-Topes: **≤4** sesiones por ejercicio · **≤10** carreras · **≤3** revisiones previas · **≤30**
-decisiones · **≤5** anomalías de recuperación · extractos ≤1200 chars · notas ≤240 chars.
-Tamaño real con datos de 4 semanas: **~22-30 KB** (~6-8k tokens). `tests/verify-coach-facts.mjs`
-falla por encima de 40 KB.
+Topes: **≤4** sesiones por ejercicio · **≤10** carreras · **≤6** revisiones previas (las 3 más
+recientes completas, las 4-6 compactas) · **≤30** decisiones · **≤6** decisiones en el
+seguimiento de `trajectory` · **≤5** anomalías de recuperación · **12** semanas de trayectoria
+(8 de cumplimiento Z2) · extractos ≤1200 chars · notas ≤240 chars · el `what` del seguimiento
+≤120 chars.
+
+Tamaño real con datos de 4 semanas: **~28-43 KB** (~8-12k tokens), de los cuales `trajectory`
+son 5-12 KB. `tests/verify-coach-facts.mjs` falla por encima de **50 KB** (era 40 en el
+esquema 1) y por encima de **12.000 chars** de `stableStringify(facts.trajectory)`. El tope
+del servidor (200 KB) no se toca.
 
 ## Secciones del pack
 
 ### `meta`
 ```js
-{ factsSchema: 1, weekKey: '2026-W37', todayStr: '2026-09-07', generatedAt: '…',
+{ factsSchema: 2, weekKey: '2026-W37', todayStr: '2026-09-07', generatedAt: '…',
   window: { from: '2026-08-17', to: '2026-09-07', weeks: ['2026-W34','2026-W35','2026-W36','2026-W37'] },
   window28: { from: '2026-08-11', to: '2026-09-07' },
   appVersion: 'v11.61', seedRev: 8, unit: 'kg',
-  rounding: {…}, caps: { liftSessions: 4, runs: 10, priorReviews: 3, decisions: 30 } }
+  rounding: {…}, caps: { liftSessions: 4, runs: 10, priorReviews: 6, priorReviewsFull: 3,
+                         decisions: 30, trajectoryWeeks: 12 } }
 ```
 
 ### `goals`
@@ -163,6 +185,140 @@ antes de la primera fecha elegible.
 
 ### `block`
 `{ index, weeksTotal, phase, isDeload, weeksIntoBlock, blockStartMonday, deloadMonday, deloadAnchorDate, weekNumber }`
+
+### `trajectory` — todo el recorrido (esquema 2)
+
+Añadida en `FACTS_SCHEMA = 2` (incremento B-2 de
+[`coach-v2.1-implementation-plan.md`](coach-v2.1-implementation-plan.md) §B.2). **El fallo que
+corrige:** con una ventana de 4 semanas el coach empieza de cero cada domingo. No puede
+contestar "cómo viene entrenando", "cuánto ha avanzado hacia el objetivo" ni "qué hizo y qué
+no": un ancla que lleva dos meses sin tocarse parece mantenida, un ejercicio que se salta
+desde julio parece nuevo, y el progreso desde 87,1 kg no existe. Julian lo dijo con esas
+palabras el 2026-09-07.
+
+Es **memoria larga y compacta**: agregados por bloque, por semana y por ancla, nunca filas
+crudas. Y usa la MISMA aritmética que el resto del pack — pesadas MEDIDAS (nunca el
+forward-fill), carreras DEDUPEADAS, kg convertidos con `deps.convertWeight`. Un número que
+aquí saliera distinto del de `progress` sería una segunda contabilidad y el modelo citaría la
+que le conviniera.
+
+```js
+trajectory: {
+  program: { firstWorkoutDate: '2026-06-29', weeksSince: 11, totalStrengthSessions: 8,
+             sessionsPerWeekAvg: 0.7, anchorDate: '2026-09-07', blockWeeks: 5,
+             blocks: [{ index: 0, label: 'pre-bloque', from, to, weeks, strengthSessions, runs, km },
+                      { index: 1, label: 'B1', from: '2026-09-07', to, weeks,
+                        strengthSessions, runs, km, isCurrent: true }] },
+  weight: { startKg: 87.1, startDate: '2026-08-19', firstMeasured: { kg: 86.8, date: '2026-08-26' },
+            nMeasuredSinceStart: 8, latest7dMean: 85.9, deltaKg: -1.2,
+            slopeSinceStartKgPerWeek: -0.7, slopeUsedForEta: '28d'|'sinceStart'|null,
+            weeksToMilestoneAtCurrentSlope: 5.6, weeksToTargetAtCurrentSlope: 7, note },
+  anchors: [{ id, name, kind: 'load'|'bw', first: {date,kg,reps,e1rm}, best: {…},
+              latest: {…, outcome}, exposures, exposures12w, daysSinceLast,
+              trendSinceStartPct, trendBasis? }],
+  running: { weekKeys: [12], weeklyKm: [12], longestRunEver: { km, date, avgHR },
+             z2ComplianceByWeek: [8], z2WeekKeys: [8],
+             phaseHistory: [{ weekKey, phase }], note },
+  adherenceByWeek: [{ weekKey, planned, done, kmDone, runs }],   // 12
+  plannedIsApprox: true,
+  skippedPatterns: [{ id, name, skips, exposures, lastSkipped }],
+  decisionsFollowUp: [{ id, weekKey, type, what, reviewOn, dueForReview, outcome, source }],
+}
+```
+
+#### `program`
+
+| campo | qué es |
+|---|---|
+| `firstWorkoutDate` | la sesión de fuerza más antigua del store, sin ventana |
+| `weeksSince` | semanas ISO desde esa fecha hasta hoy, ambas incluidas |
+| `totalStrengthSessions` · `sessionsPerWeekAvg` | total y media (0,1) sobre `weeksSince` |
+| `anchorDate` | `settings.deloadAnchorDate` — el lunes que ancla los bloques |
+| `blockWeeks` | `settings.deloadBlockWeeks` → `block.weeksTotal` → 5 |
+| `blocks[]` | un tramo por bloque, con `strengthSessions`, `runs` y `km` dentro de `[from, to]` |
+
+El **índice 0 (`pre-bloque`)** es todo lo anterior al ancla, y no se numera a propósito:
+`blockWeekFromDates` devuelve `index: null` antes del ancla (no se extrapola hacia atrás),
+pero el coach sí necesita saber que ahí hubo entrenamiento y cuánto. Desde el ancla van `B1`,
+`B2`… de `blockWeeks` semanas cada uno; el último se **corta en hoy** (`to = todayStr`, no el
+final teórico) y lleva `isCurrent: true`. Sin `deloadAnchorDate` sale un único tramo
+`pre-bloque` con todo el recorrido: no se inventa una numeración que no existe.
+
+#### `weight`
+
+`startKg`/`startDate` salen de `goals.primary`; `firstMeasured` es la primera pesada MEDIDA
+en o después de `startDate`. `deltaKg` = `latest7dMean − startKg` (si no hay `startKg`,
+`− firstMeasured.kg`), y `latest7dMean` es **el mismo número** que `progress.weight.mean7`.
+
+`slopeSinceStartKgPerWeek` son mínimos cuadrados sobre las pesadas medidas desde el inicio, y
+va a **`null` con menos de 6 puntos**: con 3, la recta la decide la primera pesada.
+
+`slopeUsedForEta` dice de dónde sale el ETA: **`'28d'` cuando existe** (es la que describe el
+déficit de AHORA), `'sinceStart'` como respaldo — con la advertencia en `note` de que incluye
+descargas y diet breaks —, `null` si no hay ninguna. Los dos ETA (hito `goals.primary.milestoneKg`
+= 82 kg y objetivo = el extremo alto de `targetWeightKg`) sólo se publican si la pendiente
+**baja**: con pendiente ≥0 la división daría "faltan −12 semanas". `note` (≤240 chars,
+castellano) recoge los motivos por los que la pendiente no es fiable; `null` si no hay ninguno.
+
+#### `anchors[]`
+
+Una fila por id de `goals.preserve.anchorLifts`, sobre **todo el historial**. Cuatro semanas no
+distinguen una meseta de una caída, y el objetivo declarado (preservar magra) se mide en meses.
+
+* `first`/`best`/`latest`: `{date, kg, reps, e1rm}` del top set de esa sesión, siempre en kg
+  vía `deps.convertWeight(w, workout.unit, 'kg')` — los registros anteriores a la mudanza van
+  en lb y un 185 lb al lado de un 95 kg parece una caída del 49 %.
+* `best` es el mejor **e1RM** (en `kind: 'bw'`, las mejores reps), que no tiene por qué ser el
+  último: en el fixture el mejor es 92,5×8 (e1RM 117) y el último 95×6 (114).
+* `latest.outcome` sale del `readout` de esa sesión (`progressed`/`held`/…) si lo hubo.
+* `kind: 'bw'` (dominadas, ab wheel): `kg` es el **lastre** y `e1rm` va a `null` — la Epley
+  sobre el lastre describe una fuerza que no es la del atleta. En ese caso
+  `trendSinceStartPct` se calcula sobre **reps** y lo declara en `trendBasis`.
+* `exposures` (todo el historial) vs `exposures12w`; `trendSinceStartPct` es `null` con una
+  sola exposición.
+* **Un ancla con 0 exposiciones no se calla**: sale con `exposures: 0`, `first/best/latest`
+  a `null` y su línea en `dataGaps`. "No ha bajado" y "no lo has hecho" no son lo mismo.
+
+#### `running`
+
+`weekKeys` y `weeklyKm` son 12 semanas ISO **de la más antigua a la actual**, con `0` en las
+semanas sin carreras (omitirlas convertiría un parón en un hueco invisible). `longestRunEver`
+es el largo de todo el historial con su FC media — sin ella no se sabe si fue en Z2.
+
+`z2ComplianceByWeek` son las **8** últimas semanas (`z2WeekKeys` las nombra) y es una
+**fracción** 0-1, no un porcentaje: la de carreras con `avgHR ≤ cardio.z2Ceiling.bpm + 2`
+(misma tolerancia que `cardio`). `null` = esa semana no hubo carreras con FC, que no es un 0.
+
+`phaseHistory` (≤8) sale de las decisiones `type: 'running-week'` (`evidence.phase`), una por
+semana, de la más reciente hacia atrás.
+
+#### `adherenceByWeek` + `plannedIsApprox`
+
+12 filas. `planned` son las sesiones de **fuerza** de la plantilla activa proyectadas hacia
+atrás (con los overrides de `weekSchedule` de esa semana). Es una aproximación declarada una
+sola vez para toda la sección con **`plannedIsApprox: true`**: el plan de hace dos meses no se
+guarda por semana, y un porcentaje de adherencia contra un plan que no era el de esa semana es
+un número que parece medido y no lo es.
+
+#### `skippedPatterns[]`
+
+Ejercicios saltados **≥3 veces en sus últimas ≤6 exposiciones** de las 12 semanas. Distinto de
+`skipped` (4 semanas, ≥2 saltos y ≥50 %): aquí manda la **recencia**. Un ejercicio saltado tres
+veces en junio y hecho desde entonces no es un patrón; uno que se salta las tres últimas veces
+que aparece, sí. La regla del prompt es "lo que no se hizo tres veces no se recuerda: se
+reordena o se quita". Con el umbral en 2 el coach reescribiría la sesión por ruido.
+
+"Exposición" y "salto" son los mismos de `skipped`: el ejercicio estaba en la sesión
+registrada (o en la plantilla de esa sesión) y no tiene ni una serie con `done: true`.
+
+#### `decisionsFollowUp[]`
+
+Las ≤6 decisiones más recientes con `source: 'coach'` **o** `type` que empiece por `plan-`.
+Las de `source: 'rule'` (readouts automáticos, `running-week`) se quedan fuera: nadie tiene que
+rendir cuentas de ellas y llenarían los seis huecos con la misma frase. `what` va recortado a
+**120 chars** y `dueForReview` marca las que ya vencieron (`reviewOn <= todayStr`) — es el
+"te dije X el {fecha}, los datos dicen Y" que el briefing tiene obligación de cerrar.
+
 
 ### `plan`
 Plan activo compacto: identidad (`id`, `version`, `schema`, `status`, `author`, `weekKey`,
@@ -242,7 +398,8 @@ actual hacia atrás y se declara — en la fila **y** en `dataGaps`.
   pressExposuresPerWeek: [{ weekKey, exposures, exerciseIds }],
   setsPerMuscle: [{ weekKey, done: { Chest: 3, Back: 6, … } }],
   anomalies: [{ date, readiness, deltaVsMean28, sleepHrs, alcoholG,
-                prevDay: { date, strengthSessions, cardioSessions, budgetWeight, atl } }] }
+                prevDay: { date, strengthSessions, cardioSessions, budgetWeight, atl } }],
+  deloadHint: false, firedSignals: ['rpe2'], readinessColor: 'green' }
 ```
 * Baselines **propias**: 7d vs 28d de los datos del usuario (READ-004), nunca umbrales de literatura.
 * `pressExposuresPerWeek` es el hecho que explica W35 (5 exposiciones de press en 10 días y la banca
@@ -252,6 +409,13 @@ actual hacia atrás y se declara — en la fila **y** en `dataGaps`.
   para poder distinguir un **evento puntual** (READ-007, cambia el día) de una **semana mala**
   (READ-002, cambia la semana).
 * **Nunca** viajan filas crudas de `wellness`.
+* `deloadHint`, `firedSignals` y `readinessColor` (esquema 2) son el veredicto de
+  **`computeReadinessFrom`** (`coach-engine.js`, puro), el mismo que pinta Stats — no una
+  segunda lectura del pack: si el pack recalculase el declive por su cuenta, la app y el coach
+  podrían decir cosas distintas del mismo día. `deloadHint` es un declive **sostenido**
+  (READ-008 + LOAD-004: ≥3 señales, o RPE ≥9 en las dos últimas sesiones, o HRV+RHR+calidad),
+  no un mal día. Sigue siendo **información**: la recuperación no dosifica (decisión del
+  usuario, 2026-09-07). Sin el motor disponible → `deloadHint: null`, `firedSignals: []`.
 
 ### `nutrition`
 ```js
@@ -277,14 +441,23 @@ actual hacia atrás y se declara — en la fila **y** en `dataGaps`.
 `claim` es el `what` del store: es lo que permite el *"te dije X el {fecha}, los datos dicen Y"*.
 `dueForReview` marca las decisiones cuyo `reviewOn` ya venció — el briefing tiene que revisarlas.
 
-### `priorReviews` — ≤3
+### `priorReviews` — ≤6, en **3 + 3**
 ```js
+// las 3 MÁS RECIENTES, completas:
 { kind: 'review', id, weekKey, attempt, status, applied, appliedPlanId,
   priorities: [≤3], decisions: [{id, type, what, ruleIds}], excerpt: '≤1200 chars' }
+// las 4-6, COMPACTAS (sin `excerpt`, sin `decisions`, sin `appliedPlanId`):
+{ kind: 'review', id, weekKey, attempt, status, applied, priorities: [≤3], compact: true }
 { kind: 'legacy', id: 'legacy:2026-W36', weekKey, status: 'legacy', excerpt, planSummary, note }
 ```
+El tope pasó de 3 a **6** en el esquema 2, pero sólo las **3 más recientes** van completas
+(`FACTS_FULL_REVIEWS`). El coach necesita saber que en W22 ya se probó bajar la frecuencia de
+empuje; no necesita releer los 1.200 caracteres con los que se dijo. Tres extractos más serían
+~3,6 KB de prosa vieja compitiendo con los hechos de esta semana.
+
 La entrada `legacy` sale de `input.legacyLatest` (el `latest.json` de W36) y sólo entra si hay menos
-de 3 revisiones reales. No lleva decisiones estructuradas ni Rule IDs: es prosa, y su `note` lo dice.
+de **3** revisiones reales — el gate NO subió a 6: es prosa sin Rule IDs y sólo tiene sentido
+mientras el coach in-app apenas tenga historial propio. Su `note` lo dice.
 
 ### `staleness`
 `{ [store]: { lastDate, daysAgo, n, stale } }` para los 9 stores. `stale` = `daysAgo > 2` (o sin
@@ -304,6 +477,9 @@ Lo que el prompt obliga al modelo a repetir. Los que se generan hoy:
 - deriva de FC no disponible → "`hrDrift` va a null — no la infieras"
 - cualquier fuente con `>2` días de retraso, o un store vacío
 - sin `settings.goals`, sin plan activo, sin revisiones previas, sin `deps.convertWeight`
+- **(esquema 2)** programa de `<8` semanas → "trayectoria corta: pendientes orientativas, no señal"
+- **(esquema 2)** un solo bloque desde el ancla → "no hay bloque anterior con el que comparar"
+- **(esquema 2)** una línea por cada ancla con `exposures: 0` → "no se puede decir si se mantiene"
 
 ### `confidence`
 `{ overall: 'none'|'low'|'medium'|'high', bySection: { strength, cardio, weight, nutrition, readiness, mobility }, gapCount }`
@@ -464,7 +640,7 @@ node scripts/build-rules-compact.mjs --check    # exit 1 si está desincronizado
 
 | Test | El fallo que existe para impedir |
 |---|---|
-| `tests/verify-coach-facts.mjs` | aritmética del LLM sobre filas crudas · lb/kg mezclados · carreras duplicadas COROS/Strava · peso forward-filled en la pendiente · `form ≠ ctl − atl` · EA de días abiertos · `dataGaps` ausente con <14 días de nutrición · frontera domingo/lunes · `stableStringify` inestable · `undefined`/`NaN` en el JSON · topes |
+| `tests/verify-coach-facts.mjs` | aritmética del LLM sobre filas crudas · lb/kg mezclados · carreras duplicadas COROS/Strava · peso forward-filled en la pendiente · `form ≠ ctl − atl` · EA de días abiertos · `dataGaps` ausente con <14 días de nutrición · frontera domingo/lunes · `stableStringify` inestable · `undefined`/`NaN` en el JSON · topes · **(esquema 2)** un coach que empieza de cero cada domingo: `trajectory` con `firstWorkoutDate`/`weeksSince`, bloques `pre-bloque`/`B1`, `deltaKg` sólo de pesadas medidas, anclas `first/best/latest` con lb→kg y un ancla a 0 exposiciones + su `dataGap`, `weeklyKm[12]`, umbral de `skippedPatterns` (2 no, 3 sí), `dueForReview`, `priorReviews` 3+3, `deloadHint`, pack <50 KB y `trajectory` <12.000 chars |
 | `tests/verify-plan-validator.mjs` | un guardarraíl que nunca dispara o que bloquea (positivo y negativo por id, `hard` vs `warn`, números en el texto, `RUN-BEFORE-LEGS` domingo→lunes, suelo de +1 km y tope de reentrada, `diffPlanVersions` idéntico → `structural: 0`, `mergeProposal` byte a byte + warmup, `ctx` vacío sin lanzar) |
 | `tests/verify-rules-compact.mjs` | corpus del prompt desincronizado de `evidence-to-rules.md` |
 
