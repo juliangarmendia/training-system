@@ -1,5 +1,80 @@
 # Nutrition Plan — Cut Phase 1
 
+## 2026-09-07 — Del macroplan del coach (B1-B4)
+
+> Añade cuatro cosas al pilotaje por báscula de abajo, que sigue siendo la regla de decisión. Salen del
+> macroplan aprobado el 7-sep ([`../docs/architecture/coach-v2-implementation-plan.md`](../docs/architecture/coach-v2-implementation-plan.md),
+> §C.1) y de las anclas del coach semanal. **Nada de esto sustituye la regla de la pendiente**: la
+> corrige en los bordes.
+
+### 1. El día del largo come más — no es un premio, es disponibilidad energética
+
+Cuando la carrera larga llega a **≥8 km**, ese día las kcal suben con la distancia:
+
+> **kcal del día de largo = 2.700 + 90 × (km − 6)**
+
+10 km → **~3.060**. 8 km → ~2.880. Es un **suelo para mantener la EA ≥30 kcal/kg de masa magra en el
+día en que se gasta más** (REC-008): un largo de 10 km a 82-85 kg quema ~700-800 kcal, y restarlas de
+un día de 2.700 deja la EA por debajo del umbral. Los 90 kcal/km son el coste aproximado de correr un
+kilómetro a este peso, no una constante de laboratorio. La proteína no cambia: **185 g**, siempre.
+
+Antes de los 8 km de largo (todo B1, y parte de B2) esto no aplica: el arco arranca **por tiempo**, con
+run/walk, y el gasto extra cabe dentro del día de entreno normal.
+
+### 2. Suelos duros — no se bajan por ninguna razón
+
+| | |
+|---|---|
+| Día de entreno | **≥ 2.500 kcal** |
+| Día de descanso | **≥ 2.300 kcal** |
+| Proteína | **185 g/día** |
+
+Son guardarraíles del coach (`KCAL-FLOOR`, `PROTEIN-FLOOR`, REC-001/REC-008): una propuesta que los
+cruce es inválida y la app la pinta en rojo. El punto de partida (2.700 / 2.400) tiene por tanto **un
+solo recorte de −200 kcal de margen** antes de tocar el suelo. Cuando el margen se agote, la palanca
+deja de ser la comida: son los pasos, el volumen o el plazo.
+
+### 3. El diet break es la semana de deload, y su ventana no cuenta
+
+**Deload y mantenimiento van juntos** — no hay deload en déficit ni diet break sin deload. En la semana
+de descarga las kcal van a mantenimiento (**~3.000 entreno / 2.700 descanso**), la proteína no se mueve
+y el volumen baja un 50 %. Primera: **semana del 5-oct**.
+
+- **Esperar +0,5-1 kg transitorio** (glucógeno y agua, no grasa).
+- **Ventana de exclusión: esa semana + los 5 días siguientes no cuentan para la pendiente.** Meter una
+  recarga de glucógeno en una regresión de 14 días produce una pendiente falsa y, detrás, un recorte de
+  calorías que no hacía falta.
+- Honestidad del grado: **REC-005 está graduada `weak_extrapolated`**. Que un diet break de una semana
+  cada cinco mejore la adherencia y proteja el metabolismo es razonable y es lo que hace todo el mundo,
+  pero la evidencia directa es débil. Está aquí porque el coste es bajo y encaja con el deload que ya
+  toca por calendario, no porque esté demostrado.
+
+### 4. El orden de las palancas cuando el peso se estanca
+
+La pendiente > −0,30 kg/semana **no** dispara un recorte de calorías directamente. En orden:
+
+1. **¿La cintura baja?** ≥1 cm en 2 semanas → **no se toca nada**. La báscula puede estar plana mientras
+   la recomposición avanza; la cintura es la métrica del objetivo real.
+2. **¿El registro llega a 10 de 14 días?** Si no, el problema es la adherencia al registro, no las
+   calorías. Ajustar sobre 5 días registrados es ajustar sobre ruido.
+3. **Pasos: 8.000 → 9-10.000/día** (REC-009). **Es la primera palanca**, antes de la comida: sube el
+   gasto sin tocar la recuperación, sin coste de fatiga y sin quitarle comida a un déficit que ya
+   funciona.
+4. **Sólo entonces, −200 kcal/día** — y respetando los suelos de arriba.
+
+Y en el otro sentido: pendiente < −0,70 kg/semana → **+150 kcal** (REC-002), que protege masa magra.
+**Primer ajuste posible: 24-sep** (10 de 14 días de registro + 14 días desde el anclaje). Antes de esa
+fecha no hay señal.
+
+### El hito, con el plazo honesto
+
+**−5 kg → 82 kg.** A 0,45-0,55 kg/semana son **10-11 semanas** (finales de noviembre), ya descontada la
+pausa de dieta de la semana del 5-oct. Ir más rápido (hasta ~0,8 kg/sem, dentro de la banda de REC-002)
+es posible, pero cuesta fuerza, carrera y energía disponible. Y **siempre con condición**: 82 kg a
+finales de noviembre *si la pendiente aguanta*. Los 79-81 finales quedan detrás, hacia enero.
+
+---
+
 ## ⚖️ PILOTAJE POR BÁSCULA — 2026-09-03 (manda sobre todo lo demás)
 
 > Julian reformuló el objetivo el 3-sep: **bajar de peso para reducir cintura** (*"me queda todo

@@ -1,5 +1,28 @@
 # Training Plan — Cut Phase 1
 
+> ## 📍 DÓNDE ESTÁ EL PLAN VIVO (2026-09-07)
+>
+> **El plan es dato, no documento.** Vive en la tabla/store **`plans`** (Supabase + IndexedDB): la
+> fila con la **`version` más alta** es el plan activo, y no hay ningún campo que lo decida. Este
+> fichero es referencia de razonamiento y **no lo lee ningún código**.
+>
+> | Qué | Dónde sale |
+> |---|---|
+> | La semana (qué día, qué sesión) | `plans` → `weekTemplate`. Semilla y fallback: `IDEAL_BLOCK_V1` (`app/app.js`), variante 3/4/5/6 días elegida por Julian |
+> | Las sesiones y los ejercicios | `plans` → `sessions[id].exercises[]` |
+> | **Los kg de cada serie** | `suggestSetTarget` (`app/coach-engine.js`, v11.57), prioridad **coach > regla > último**. La tarjeta del ejercicio los pinta con un chip que dice de dónde salen |
+> | Cambios estructurales | propuestas semanales del coach en **`coach_reviews`**, que Julian aprueba con un toque (v11.61) |
+> | Bloque y descarga | bloques de 5 semanas (4 carga + 1 descarga) anclados al **lunes 2026-09-07**; **primer deload: semana del 2026-10-05**. Ancla: `settings.deloadAnchorDate` |
+> | Ajuste por recuperación | `computeReadinessFrom` + `adjustSessionForReadiness` (v11.59): quita accesorios y capa el RPE, **nunca cambia los kg** |
+>
+> Esquema, flujo de aprobación y reglas de prioridad:
+> [`../docs/architecture/plan-v2-schema.md`](../docs/architecture/plan-v2-schema.md). Macroplan
+> B1-B4: [`../docs/architecture/coach-v2-implementation-plan.md`](../docs/architecture/coach-v2-implementation-plan.md) §C.1.
+>
+> **Sigue vigente aquí abajo** (y por eso no se borra): los esquemas de series/reps/RPE, los
+> descansos, la progresión doble, el protocolo de estancamiento, los warm-ups y la **tabla de
+> sustituciones** — es de donde salen los swaps. Lo caducado está marcado en el aviso de agosto.
+
 > ## ⚠️ PARCIALMENTE OBSOLETO — leer esto primero (2026-08-16)
 >
 > **El plan vivo ya no es este documento.** Desde v11.28 (2026-06-30) la semana la genera

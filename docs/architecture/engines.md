@@ -1,13 +1,61 @@
-# Engine Architecture — pipeline en cascada
+# Engine Architecture — 3 motores implementados + 7 decisiones de diseño
 
-Diseño de la lógica de decisión para programación atlética híbrida. **Esto es un spec de diseño, no
-código.** No describe el generador actual (`app/app.js`, hardcodeado); describe los motores que lo
-reemplazarán en una fase posterior, una vez aprobado.
+Actualizado el **2026-09-07**. La cascada de 10 motores de más abajo se escribió en junio de 2026 como
+spec de diseño. El audit del 2026-09-05 (§13.7) concluyó que **sólo 3 de los 10 hacen falta como
+código** para una persona con un objetivo fijo; los otros 7 están resueltos **en tiempo de diseño** por
+`IDEAL_BLOCK_V1`, la tabla de sustituciones, `ALT_LIBRARY` y el juicio del coach semanal. Construirlos
+sería fabricar maquinaria para un problema que no existe. Esta cabecera existe para que nadie vuelva a
+leer el documento como un backlog de diez.
 
 Todas las reglas referenciadas (`STR-*`, `INT-*`, etc.) viven en
 [`../../research/evidence-to-rules.md`](../../research/evidence-to-rules.md), única fuente de verdad.
 
-## Principios de arquitectura (invariantes)
+## Cómo leer este documento ahora
+
+Las dos tablas de esta cabecera dicen **qué existe y dónde**. Todo lo que viene después del separador
+es el **spec original de 2026-06**: sigue siendo la mejor descripción de *qué decide cada capa y con qué
+reglas* —y por eso no se borra—, pero **no es un plan de trabajo** y su nota final ("orden sugerido de
+construcción") quedó superada por
+[`coach-v2-implementation-plan.md`](coach-v2-implementation-plan.md).
+
+### Lo que es código hoy (3)
+
+| Motor | Función | Dónde | Versión |
+|---|---|---|---|
+| **7 · Progression** | `suggestSetTarget(ex, history, opts)` → `{kg, reps, rpe, source, reason}`, prioridad **coach > regla > último**; `sessionReadout` compara objetivo vs. hecho | `app/coach-engine.js` (puro) + `computeSessionTargets` en `app/app.js` | v11.57 |
+| **2 · Readiness** (+ **8 · Recovery** como su salida) | `computeReadinessFrom(...)` → color por **≥2 señales concordantes** (READ-002) y `adjustSessionForReadiness(...)` → `keep\|modify\|replace\|recovery`, que nunca toca kg | `app/coach-engine.js` (puro) | v11.59 |
+| **0b · Block Planner (mínimo)** | `blockWeekFromDates(fecha, anclaLunes, 5)` → semana 1..5 del bloque + `isDeload`; `progressCardioMin(...)` sube los minutos dentro del bloque (END-003); `suggestRunningWeek(...)` da la semana de carrera por fases run/walk → base → build → ready10k | `app/coach-engine.js` (puro) | v11.56 · v11.60 |
+| **+ el coach semanal (LLM)** | hace de Block Planner completo, Goal y Selection una vez por semana: `buildCoachFacts` / `validatePlanVersion` (`app/coach-facts.js`) → edge function `coach-weekly-review` (Opus 5) → propuesta de plan v2 que Julian aprueba | `app/coach-facts.js` + `supabase/functions/coach-weekly-review/` | v11.61 / inc. 8 |
+
+Los tres motores son **puros y testeados** (`tests/verify-set-target.mjs`,
+`verify-readiness-trend.mjs`, `verify-session-adjust.mjs`, `verify-block-week.mjs`,
+`verify-running-week.mjs`, `verify-coach-facts.mjs`, `verify-plan-validator.mjs`): sin DOM, sin
+IndexedDB, sin `fetch`.
+
+### Lo que son decisiones de diseño, ya tomadas (7)
+
+| Motor del spec | Dónde está resuelto |
+|---|---|
+| **1 · Goal Engine** | `IDEAL_BLOCK_V1`: cada día de cada variante ya declara su `kind`/`subtype`. El objetivo dominante del bloque lo fija el macroplan B1-B4 (§C.1 del plan) y lo revisa el coach semanal |
+| **3 · Interference** | resuelto en la plantilla: plyo primero en pierna A, cinta en tren superior, bici/ski en pierna, remo nunca tras bisagra, nada duro <24 h antes de pierna. Se **verifica**, no se calcula: `validatePlanVersion` (`RUN-BEFORE-LEGS`, `PLYO-PLACEMENT`, `HARD-CARDIO`) |
+| **4 · Modality** | `CARDIO_LIBRARY` + el slot del día. `progressCardioMin` mueve minutos y **nunca** zona ni intensidad (END-002) |
+| **5a/5b/5c · generadores** | no hacen falta: las sesiones son datos versionados (`plans`), no salida de un generador. El coach reescribe las que cambian |
+| **6 · Exercise Selection** | `EXERCISE_ALTERNATIVES` + los swaps del usuario + la tabla de sustituciones de `plans/training-plan.md`. Los anchors **no rotan**; los accesorios rotan en la semana 1 del bloque (STR-010, `expert`) |
+| **9 · Evidence** | no es un motor: los Rule IDs viajan **en el dato**. `decisions[].ruleIds` (store `decisions`), `target.evidence[]` en el plan v2 y `guardrails[].ruleIds` en `coach_reviews`. El corpus llega al coach como `rules-compact.json` |
+| **0 · State Store** | IndexedDB (15 stores, DB v12) + Supabase (15 tablas). Ver [`db-schema-state.md`](db-schema-state.md) |
+
+**Lo que sí sigue faltando** y no es un motor nuevo: nada de esto progresa por sí solo si el dato no
+entra. El cuello de botella medido del sistema fue siempre la adherencia de registro, no la falta de
+capas de decisión.
+
+---
+
+*Lo que sigue es el spec original de 2026-06, conservado íntegro.*
+
+## Principios de arquitectura (invariantes) *(spec original, 2026-06)*
+
+Los cinco siguen vigentes y gobiernan el código que sí existe: readiness es compuerta upstream
+(v11.59), nada deriva dosis de un score compuesto (READ-003), y cada decisión sale con su Rule ID.
 
 1. **Readiness es compuerta upstream**, no un ajuste posterior. Modula el objetivo de la sesión antes
    de que los motores de dominio generen nada (READ-007).
@@ -19,7 +67,7 @@ Todas las reglas referenciadas (`STR-*`, `INT-*`, etc.) viven en
 5. **Sin falsa precisión**: ningún motor deriva dosis numéricas exactas de un score compuesto
    (READ-003). Los buckets cualitativos son cualitativos.
 
-## Flujo
+## Flujo *(spec original, 2026-06)*
 
 ```
 [State/Profile Store]
@@ -48,7 +96,7 @@ Todas las reglas referenciadas (`STR-*`, `INT-*`, etc.) viven en
 
 ---
 
-## 0. State / Profile Store
+## 0. State / Profile Store *(spec original, 2026-06)*
 - **Inputs:** perfil (`docs/profile.md`), goals, logs de workouts (IDB/Supabase), datos Whoop/Intervals, inventario de equipamiento, historial de lesiones.
 - **Outputs:** estado consolidado y consultable por todos los motores.
 - **Decide:** nada — es almacenamiento + lectura.
@@ -142,7 +190,13 @@ Todas las reglas referenciadas (`STR-*`, `INT-*`, etc.) viven en
 
 ---
 
-## Notas de implementación futura (NO ejecutar aún)
+## Notas de implementación futura *(spec original, 2026-06 — superadas)*
+
+> **Superadas el 2026-09-07.** La ruta que se tomó no es la de este apartado: en vez de reemplazar el
+> generador por la cascada, el plan pasó a ser **dato versionado** (`plans`, esquema v2) que reescribe
+> el coach semanal, con tres motores puros in-app para lo diario. Ver la cabecera y
+> [`coach-v2-implementation-plan.md`](coach-v2-implementation-plan.md).
+
 - El generador actual (`PLAN` + `WEEK_TEMPLATE` hardcodeados en `app/app.js`) sería reemplazado por
   este pipeline leyendo `evidence-to-rules.md` + los schemas. **No se toca en esta fase.**
 - El State Store ya existe parcialmente (IDB `workouts`/`plans`/`exercises` + Supabase + Whoop/Intervals).

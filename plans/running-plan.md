@@ -1,5 +1,45 @@
 # Running Plan — Cut Phase 1
 
+> ## 📍 DÓNDE ESTÁ EL PLAN VIVO DE CARRERA (2026-09-07)
+>
+> **La carrera también es dato.** Sale de la fila de **`plans`** con la `version` más alta:
+>
+> | Qué | Dónde sale |
+> |---|---|
+> | La semana de carrera | `plans` → `running` cuando el coach la fijó; si no, **`suggestRunningWeek`** (`app/coach-engine.js`, v11.60) como fallback — coach > regla > base |
+> | La duración del cardio del día | `progressCardioMin` (v11.56): los minutos suben dentro del bloque (END-003) sobre la base de `IDEAL_BLOCK_V1`. La intensidad **nunca** progresa (END-002) |
+> | El techo de Z2 | `settings.icuZones` → **143 bpm** hoy (`icuZones.z.zone2`). No 140: ese número era de tres sitios que no coincidían |
+> | Bloque y descarga | anclado al **lunes 2026-09-07**; **primer deload: semana del 2026-10-05** (el volumen de carrera baja ~30 %) |
+> | Lo que llega al reloj | el DSL lo genera `_generateCardioDsl` desde el plan y se empuja a intervals.icu → COROS. Ya **no** lo escribe ningún cron |
+>
+> **El dato de partida manda**: las cuatro últimas carreras (1,9 / 3,2 / 5,0 / 4,1 km) fueron a 152,
+> 149, 155 y 147 bpm de media sobre una Z2 que acaba en 143 — **cero carreras en Z2**. El problema no
+> es el volumen, es la intensidad. Por eso el arco arranca en **run/walk por tiempo**, no en
+> kilómetros.
+>
+> ### Arco B1-B4 — del run/walk al 10k cómodo (§C.1 del plan de Coach v2)
+>
+> | Bloque | Semanas | Dominante | Miércoles | Sábado (largo) | km/sem | Duras |
+> |---|---|---|---|---|---|---|
+> | **B1** Reentrada y base | W37-41 | Déficit + hábito. Correr: **cumplir Z2**, no volumen | 30-40' run/walk por FC (END-006) | 35' → 50' run/walk | ~11 → 15,5 (por tiempo) · deload ~7 | **0** |
+> | **B2** Base aeróbica | W42-46 | Déficit + volumen de carrera | 5-5,5 km Z2 | 6 → 7,5 km | 16 → 18 · deload 9 | **0** |
+> | **B3** Largo hacia 10 km | W47-51 | Déficit + largo | 5-6 km | 8 → **10 km (test W50)** | 19 → 20,5 · deload 9 | **0** |
+> | **B4** Consolidación | W52-W03 | Cierre del déficit o mantenimiento; 10k consolidado | 5-6 km | 10 km Z2, o ≤1 dura con criterios | 20-24 | **≤1/sem** (END-004), sábado |
+>
+> **Rampa:** +5'/semana en el largo (B1) → +0,5 km/semana (~7-8 %) en B2-B3. El **10 %/semana de
+> END-003 es tope prudente, no un hallazgo validado** (Buist 2008, n=532, no encontró diferencia entre
+> 10,5 % y 23,7 %). **Cuando el déficit y la carrera chocan, cede la carrera** (decisión de Julian,
+> 6-sep): primero se congela el ramp de km, luego sale el híbrido, luego −1 serie en accesorios, y sólo
+> al final se afloja el déficit.
+>
+> **"10k cómodo"** = 10 km continuos, FC media ≤143, deriva de la 2ª mitad <5 bpm, RPE ≤5, sin dolor,
+> RHR al día siguiente ≤ +3. Primer intento **W50** si la adherencia va ≥80 % y no hay semanas rojas;
+> **lo probable es W02-W04 de 2027**, ya a mantenimiento — llega a la vez que los 79-81 kg.
+>
+> Detalle del motor y sus cuatro honestidades:
+> [`../docs/architecture/ideal-plan-engine-v1.md`](../docs/architecture/ideal-plan-engine-v1.md)
+> (sección v11.60).
+
 > ## 🛑 OBSOLETO — su tesis central ya no es la del sistema (2026-08-16)
 >
 > Es el documento más desfasado del repo. Se conserva por su valor de razonamiento, pero **no

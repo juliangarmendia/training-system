@@ -6,7 +6,7 @@
 > El *por qué* de cada cosa vive en [`../assessments/2026-08-16_system-audit.md`](../assessments/2026-08-16_system-audit.md).
 > Aquí está el *qué sigue*.
 >
-> Última actualización: **2026-08-20** (v11.43 · sección de analítica)
+> Última actualización: **2026-09-07** (Coach v2 · incrementos 1-5, 7, 8 y 10 desplegados)
 
 ## Regla de trabajo
 
@@ -14,6 +14,81 @@ Un punto a la vez, en orden. **Solo interrumpe algo que esté perdiendo datos** 
 SkiErg el 18 de agosto, que se estaba descartando en silencio.
 
 Antes de cada tanda de trabajo: leer esta lista. Al cerrar un punto: actualizarla.
+
+---
+
+## Coach v2 (2026-09-07) — de plantilla fija a entrenador que decide
+
+El audit del 5-sep concluyó que la app era *"una plantilla fija con libreta"*: sesiones estáticas, kg
+sin prescribir, cardio a 40/50 min constantes desde junio, y un coach semanal cuya prescripción moría
+en una tarjeta de Stats. El plan aprobado
+([`architecture/coach-v2-implementation-plan.md`](architecture/coach-v2-implementation-plan.md)) son 10
+incrementos. Estado de hoy:
+
+### Desplegado hoy
+
+| # | Versión | Qué |
+|---|---|---|
+| 1 | v11.55 | **Cimientos.** `enqueueSync` gatea por configuración y no por cliente (descartaba en silencio todo lo escrito antes de `initSupabase`); DB v12 con `coach_reviews` y `decisions` + sus dos tablas Supabase; `settings.goals`; `logDecision` |
+| 2 | v11.56 | **Semana del bloque y cardio que progresa.** `blockWeekFromDates` + `progressCardioMin`: "Semana 3/5 · build" y los minutos suben dentro del bloque (40 → 45 → 50 → 55 → 30). Ancla por **fecha** (`deloadAnchorDate`), que ya no se mueve al editar `startDate` |
+| 3 | v11.57 | **La app prescribe el kg del set.** `suggestSetTarget` (coach > regla > último), objetivo con chip en la tarjeta, ese kg como placeholder de todas las series, marcar una serie sin peso lo acepta, y la "Lectura del coach" al terminar. `generateCoachNote` borrado |
+| 4 | v11.58 | **El dato de recuperación es de hoy o no existe.** WHOOP directo para hoy, intervals.icu para el histórico; fechas en local. Y `toSession` clasifica desde `IDEAL_BLOCK_V1`, no por regex (`fullA`/`hybrid1`/`travelA` estaban mal en 6 de 10) |
+| 5 | v11.59 | **Un readiness para todo.** `computeReadinessFrom` (8 señales, ≥2 concordantes) + `adjustSessionForReadiness`; se acabaron los tres cálculos que discrepaban y el "Push hard today" derivado de un score |
+| 7 | — | **Facts pack.** `app/coach-facts.js`: `buildCoachFacts`, `validatePlanVersion` (32 avisos con Rule ID), `diffPlanVersions`, `mergeProposal` + `rules-compact.json`. Cero cambio visible, cero coste |
+| 8 | — | **Edge function `coach-weekly-review` desplegada y ACTIVA** (Opus 5, ~$0,50-0,70 por revisión). Nunca escribe `plans` |
+| 10 | — | **Retiro y docs** (esto): el cron pasa a [`/coach-deep-dive`](../.claude/commands/coach-deep-dive.md) manual, `engines.md` reescrito como "3 motores + 7 decisiones de diseño", nuevo [`plan-v2-schema.md`](architecture/plan-v2-schema.md) |
+
+### En marcha
+
+- **Incremento 6 (v11.60) — carrera hacia el 10k.** `suggestRunningWeek`: fases run/walk → base →
+  build → ready10k, con el DSL de trote/caminata que llega al reloj. Arranca en run/walk porque las
+  cuatro últimas carreras fueron a 147-155 bpm sobre una Z2 que acaba en 143: **cero en Z2**.
+- **Incremento 9 (v11.61) — vista Coach y aprobación.** Tarjeta del lunes, diff de la propuesta,
+  avisos, y **[Aplicar] [Ajustar] [Rechazar]**.
+
+### Lo que queda para Julian (no lo puede hacer Claude)
+
+**1 · Desprogramar la tarea de los domingos.** El cron `/weekly-review-auto` **no vive en el repo**:
+vive en el programador de Claude Code, así que renombrar el fichero no lo apaga. Si no se quita, el
+domingo a las 21:30 EDT un agente ejecutará un playbook que ya no existe.
+
+> Abrir Claude Code → panel de tareas programadas (`/schedule`, o el listado de *scheduled tasks* /
+> `/tasks`) → localizar el trabajo de los **domingos 21:30 EDT** que invoca `/weekly-review-auto` →
+> **eliminarlo**. Si aparece un `.claude/scheduled_tasks.lock` suelto en el repo, es un residuo del
+> proceso y se puede borrar; **no** es la programación.
+
+**2 · Reconectar WHOOP OAuth en Ajustes.** La lectura de la mañana depende de la ruta directa de
+WHOOP: intervals.icu a las 7:00 todavía tiene el readiness de **ayer**, y usarlo para decidir el
+entreno de hoy es exactamente el fallo F-6. Sin OAuth el sistema degrada a tendencias 7d + check-in de
+2 toques y **lo dice** — no inventa el dato, pero la señal es peor. El audit no pudo confirmar que la
+app OAuth siga viva; hay que abrir Ajustes → WHOOP → conectar y comprobar que la tarjeta dice
+"WHOOP 07:42" y no "sin dato de hoy".
+
+**3 · La primera ejecución del coach, el lunes.** Con v11.61 desplegado: abrir la app el lunes, ver
+"El coach está revisando W37…", leer el briefing y el diff, y **aprobar o rechazar**. Esa primera
+propuesta trae el bloque **B1** del macroplan (ancla 7-sep, primer deload la semana del 5-oct) y es
+una decisión de plan, no de código. Si en 3-4 semanas el coach se gana la confianza, se puede pasar
+`coachAutoApply` a `auto-if-clean` desde Ajustes.
+
+**4 · Checklist manual en el iPhone (v11.57 + v11.59).** Una sesión real completa; son las diez
+comprobaciones que ningún test cubre porque viven en la pantalla más usada:
+
+1. Upper A: cada ejercicio muestra **una** línea "Objetivo" con su chip; el box jump de Lower A **sin
+   kg**.
+2. El placeholder de cada serie es el kg objetivo; "Last: …" y "Est. 1RM" siguen ahí.
+3. Marcar una serie **sin escribir peso** → se guarda el objetivo (antes se guardaba 0 y desaparecía
+   del historial). Con peso escrito, no lo pisa.
+4. Cambiar un ejercicio (swap) → el objetivo es el del **sustituto**, con su propio historial.
+5. Semana de descarga: ×0,9, "RPE 5-6", series a la mitad y "(Deload)" en la cabecera.
+6. Cerrar la app a mitad de la sesión y reabrir → vuelven las series, los ajustes y los objetivos.
+7. Terminar → Home, toast de PR, tarjeta "Lectura del coach" con ✕; cerrada, **no reaparece**.
+8. Home en amarillo: **los dos botones arrancan**; la ajustada va sin box jump ni gemelo y con
+   "RPE tope 7", mismos kg.
+9. Rojo + día de pierna: "Registrar la alternativa" crea la sesión; "Hacer la planificada igual"
+   arranca la completa. Ninguno se deshabilita.
+10. **Por la mañana temprano**, antes de que intervals.icu tenga el día: la tarjeta dice "Sin dato de
+    hoy" o "WHOOP 07:42" — **nunca** pinta el score de ayer como si fuera de hoy. Al reabrir a
+    mediodía, la tarjeta ha cambiado sola.
 
 ---
 
