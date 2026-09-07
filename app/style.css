@@ -1087,6 +1087,20 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
 .bw-h-weight { font-size: 14px; font-weight: 600; }
 .bw-h-delta { font-size: 13px; font-weight: 600; min-width: 56px; text-align: right; }
 .bw-h-delta.muted { color: var(--text3); font-weight: 500; }
+/* Origen de la pesada (A-5): una pesada de la báscula Withings trae hora y composición; una
+   manual, no. Sin la pill las dos se leen igual y la tendencia parece más fiable de lo que es. */
+.bw-source-pill {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text3);
+  vertical-align: middle;
+}
 
 /* ========== Daily Steps card ========== */
 .steps-card-wrap { padding: 12px 14px; margin-bottom: 12px; }
@@ -1150,6 +1164,38 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
   min-width: 110px;
   font-size: 12px;
   padding: 8px 10px;
+}
+
+/* ========== Settings: Integraciones de servidor (Coach v2.1 · A-3) ========== */
+.integrations-card .integ-row + .integ-row {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.integ-head { display: flex; align-items: center; gap: 8px; }
+.integ-name { font-size: 14px; font-weight: 700; }
+.integ-pill {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text3);
+}
+.integ-pill.ok { color: var(--accent); border-color: var(--accent); }
+.integ-pill.warn { color: #fdd506; border-color: #fdd506; }
+.integ-pill.off { color: var(--text3); }
+.integ-meta { font-size: 11px; color: var(--text3); margin-top: 4px; line-height: 1.5; }
+.integ-err { font-size: 11px; color: var(--red); margin-top: 4px; line-height: 1.5; opacity: 0.85; }
+.integ-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.integ-actions .integ-btn {
+  flex: 1;
+  min-width: 120px;
+  font-size: 12px;
+  padding: 8px 10px;
+  text-align: center;
 }
 
 /* ========== Body Weight chart legend ========== */
@@ -2630,3 +2676,44 @@ body[data-tab="home"] .home-scroll-v2 { padding-top: calc(var(--safe-top) + 10px
 
 /* Resumen de 2 líneas en Stats › Today (el resto vive en la vista Coach). */
 .wcc-summary { margin-top: 8px; font-size: var(--fs-sm); color: var(--text); line-height: 1.45; }
+
+/* ============================================================
+   COACH v2.1 · B-4 (v11.65) — la Home que explica la semana
+   ============================================================
+   Bloque AÑADIDO AL FINAL a propósito: en el mismo push hay otro carril tocando la zona de
+   Ajustes en mitad del fichero, y dos ediciones en el mismo tramo se pisan. Todo lo de aquí
+   es texto apagado y desplegables: cero animaciones, cero color por estado. */
+
+/* Línea de objetivo en Home: cómo viene el peso, la carrera y las anclas. */
+.coach-goal-line { margin-top: 8px; padding: 8px 2px 2px; cursor: pointer; }
+.coach-goal-line .cgl-row { font-size: var(--fs-xs); color: var(--text3); line-height: 1.5; font-variant-numeric: tabular-nums; }
+.coach-goal-line .cgl-row + .cgl-row { margin-top: 2px; }
+
+/* Tarjeta del coach: foco, bloques con etiqueta, bullets y desplegables. */
+.cwc-focus { margin-top: 8px; font-size: var(--fs-sm); color: var(--text); line-height: 1.45; }
+.cwc-block { margin-top: 12px; }
+.cwc-label { font-family: var(--font-mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--text3); }
+.cwc-line { margin-top: 4px; font-size: var(--fs-sm); color: var(--text); line-height: 1.45; }
+.cwc-bullets { margin: 4px 0 0; padding-left: 16px; font-size: var(--fs-sm); color: var(--text2); line-height: 1.5; }
+.cwc-bullets li { margin: 2px 0; }
+.cwc-foot { margin-top: 10px; font-family: var(--font-mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text3); }
+.cwc-why { margin-top: 12px; }
+.cwc-why > summary { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text3); cursor: pointer; }
+.cwc-ws { margin-top: 10px; }
+.cwc-ws > summary { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text3); cursor: pointer; }
+.cwc-ws-table { margin-top: 6px; }
+
+/* Una fila por sesión de la semana: chip de estado, nombre y motivo. */
+.ws-row { display: flex; align-items: baseline; gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--border); font-size: var(--fs-xs); }
+.ws-row:last-of-type { border-bottom: none; }
+.ws-name { color: var(--text2); white-space: nowrap; }
+.ws-line { flex: 1; min-width: 0; color: var(--text3); line-height: 1.45; }
+.ws-chip { font-family: var(--font-mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em; padding: 2px 6px; border-radius: 20px; background: var(--surface2); color: var(--text3); white-space: nowrap; }
+.ws-chip.kept { background: var(--surface2); color: var(--text3); }
+.ws-chip.changed { background: var(--accent-dim); color: var(--accent); }
+.ws-chip.new { background: var(--tint-teal); color: var(--teal); }
+.ws-chip.removed { background: var(--surface3); color: var(--text2); }
+
+/* "Cerrar semana y pedir la próxima": el gesto del domingo. */
+.coach-close-week { white-space: nowrap; }
+.coach-close-week[disabled] { opacity: 0.6; cursor: default; }

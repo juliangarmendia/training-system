@@ -176,15 +176,20 @@
           <div id="home-topbar"></div>
           <div id="plan-selector"></div>
           <div id="week-calendar"></div>
+          <!-- Revisión semanal del coach (v11.61, reordenada en v11.65). Sube por encima de
+               "Today's session" porque el coach manda sobre la semana y la semana manda sobre
+               el día: primero qué pasó y qué toca esta semana, después la sesión de hoy.
+               SIEMPRE presente desde v11.65 (sin revisión pinta el estado "primera semana"
+               con el botón de cerrar), así que ya no arranca en `hidden`. -->
+          <div id="coach-week-card"></div>
+          <!-- Cómo viene el objetivo (v11.65): una o dos líneas apagadas con peso, pendiente,
+               hito, carrera y anclas. Un toque abre la vista Coach; no hay más gestos. -->
+          <div id="coach-goal-line"></div>
           <div class="home-sec-row" style="margin-top:24px">
             <h2 class="home-h2">Today's session</h2>
             <span class="home-link-mono" id="todays-detail">Detail</span>
           </div>
           <div id="coach-readout" class="hidden"></div>
-          <!-- Revisión semanal del coach (v11.61): propuesta, avisos y Aplicar de un toque.
-               Va ENTRE la lectura de la sesión y el plan de hoy: primero qué pasó, luego qué
-               cambia la semana, y por último qué toca hacer hoy. Vacía cuando no hay revisión. -->
-          <div id="coach-week-card" class="hidden"></div>
           <div id="todays-plan-card"></div>
           <!-- Recuperación como INFORMACIÓN (v11.62). Dos líneas apagadas: rendimiento
                (anclas + última carrera) y tendencias de 7 días. Sin color de estado, sin
@@ -654,6 +659,16 @@
             <p class="muted" style="font-size:13px;margin:0">Loading...</p>
           </div>
 
+          <!-- Integraciones de servidor (Coach v2.1 · A-3). Los tokens de WHOOP y Withings
+               viven en Supabase (`integration_tokens`, sólo service role): esta tarjeta lee el
+               espejo `integration_status` y dispara authorize / sincronizar / desconectar. La
+               pinta app/integrations.js. El <details> legacy de WHOOP (OAuth en el cliente,
+               tokens en localStorage) se borró aquí: era la causa de las desconexiones. -->
+          <div class="section-label" style="margin-top:24px">Integraciones</div>
+          <div class="card integrations-card" id="integrations-card">
+            <p class="muted" style="font-size:13px;margin:0">Cargando…</p>
+          </div>
+
           <div class="section-label" style="margin-top:24px">Plan</div>
           <div class="card">
             <p class="muted" style="font-size:13px;margin:0 0 10px">Tu <b>plan ideal evidence-based</b> es el plan vivo. Elegí los <b>días (3/4/5/6)</b> según la semana — cambia solo hacia adelante, tus sesiones registradas quedan intactas.</p>
@@ -695,12 +710,7 @@
             <summary class="section-label" style="cursor:pointer">Legacy connections (advanced)</summary>
             <p class="muted" style="font-size:11px;margin:8px 0 12px">Pre-intervals.icu setup. Kept for fallback only — the unified Sync card above replaces all of these. Don't enable unless intervals.icu fails.</p>
 
-            <div class="section-label" style="margin-top:8px">WHOOP (legacy OAuth)</div>
-            <div class="card" id="whoop-section">
-              <p class="muted" style="font-size:13px;margin:0">Loading...</p>
-            </div>
-
-            <div class="section-label" style="margin-top:16px">Strava (legacy COROS bridge)</div>
+            <div class="section-label" style="margin-top:8px">Strava (legacy COROS bridge)</div>
             <div class="card" id="strava-section">
               <p class="muted" style="font-size:13px;margin:0">Loading...</p>
             </div>
@@ -781,7 +791,7 @@
           </div>
           <div class="section-label" style="margin-top:24px">App</div>
           <div class="card">
-            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v11.63<br>Data stored locally + cloud sync.<br>Works offline.</p>
+            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v11.64<br>Data stored locally + cloud sync.<br>Works offline.</p>
             <button id="btn-force-update" class="btn-secondary btn-full" style="text-align:center">Force Update App</button>
           </div>
         </div>
@@ -837,6 +847,7 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="supabase-sync.js"></script>
+  <script src="integrations.js"></script>
   <script src="whoop.js"></script>
   <script src="strava.js"></script>
   <script src="bloodwork.js"></script>

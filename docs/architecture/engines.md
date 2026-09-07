@@ -27,21 +27,23 @@ reglas* —y por eso no se borra—, pero **no es un plan de trabajo** y su nota
 construcción") quedó superada por
 [`coach-v2-implementation-plan.md`](coach-v2-implementation-plan.md).
 
-### Lo que es código hoy (3)
+### Lo que es código hoy (3 motores + los ayudantes de calendario)
 
 | Motor | Función | Dónde | Versión |
 |---|---|---|---|
 | **7 · Progression** | `suggestSetTarget(ex, history, opts)` → `{kg, reps, rpe, source, reason}`, prioridad **coach > regla > último**; `sessionReadout` compara objetivo vs. hecho | `app/coach-engine.js` (puro) + `computeSessionTargets` en `app/app.js` | v11.57 |
 | **2 · Readiness** (+ **8 · Recovery** como su salida) | `computeReadinessFrom(...)` → color por **≥2 señales concordantes** (READ-002) sobre **6 señales**. **Informativo desde v11.62**: se muestra (línea de Home + Stats), se sella en el registro (`readinessAtStart`) y viaja al coach semanal; **no ajusta la sesión** — la función que lo hacía se borró | `app/coach-engine.js` (puro) | v11.59 · v11.62 |
 | **7b · Reporte del día** | `sessionReadout(...)` (objetivo vs. hecho, por ejercicio) y `performanceLine(workouts, runs, opts)` → `"Rendimiento: banca 95×8 ↑ · sentadilla 105×8 → · Z2 5,1 km @141"`. Es la mitad que cierra el lazo y la que pone el **rendimiento primero** en Home | `app/coach-engine.js` (puro) | v11.57 · v11.62 |
-| **0b · Block Planner (mínimo)** | `blockWeekFromDates(fecha, anclaLunes, 5)` → semana 1..5 del bloque + `isDeload`; `progressCardioMin(...)` sube los minutos dentro del bloque (END-003); `suggestRunningWeek(...)` da la semana de carrera por fases run/walk → base → build → ready10k | `app/coach-engine.js` (puro) | v11.56 · v11.60 |
+| **0b · Block Planner (mínimo)** | `blockWeekFromDates(fecha, anclaLunes, 5)` → semana 1..5 del bloque + `isDeload`; `blockLabel(fecha, anclaLunes, 5)` → `'B1'`, `'B2'`… (misma numeración que `facts.trajectory.program.blocks`); `progressCardioMin(...)` sube los minutos dentro del bloque (END-003); `suggestRunningWeek(...)` da la semana de carrera por fases run/walk → base → build → ready10k | `app/coach-engine.js` (puro) | v11.56 · v11.60 · v11.65 |
+| **0c · Semana del coach** | `isoWeekKey(fecha)` → `'2026-W37'` (la clave canónica del sistema); `coachTargetWeekKey(fecha)` → la semana **PARA la que** se pide una revisión: **domingo → la siguiente, lunes-sábado → la actual**, porque cerrar el domingo es escribir la semana que empieza mañana; `PHASE_ES` traduce las 5 fases del contrato v2 (`base`/`build`/`intensify`/`deload`/`maintenance`) | `app/coach-engine.js` (puro) | v11.55 · v11.65 |
 | **+ el coach semanal (LLM)** | hace de Block Planner completo, Goal y Selection una vez por semana: `buildCoachFacts` / `validatePlanVersion` (`app/coach-facts.js`) → edge function `coach-weekly-review` (Opus 5) → propuesta de plan v2 que Julian aprueba | `app/coach-facts.js` + `supabase/functions/coach-weekly-review/` | v11.61 / inc. 8 |
 
 Los tres motores son **puros y testeados** (`tests/verify-set-target.mjs`,
 `verify-readiness-trend.mjs`, `verify-performance-line.mjs`, `verify-block-week.mjs`,
 `verify-running-week.mjs`, `verify-coach-facts.mjs`, `verify-plan-validator.mjs`): sin DOM, sin
 IndexedDB, sin `fetch`. El cableado a pantalla lo vigila `verify-coach-wiring.mjs`, cuya §16 fija
-que el ajuste diario no vuelva.
+que el ajuste diario no vuelva y cuya §17 fija el orden de Home, el `coachBrief` en el plan y las
+tres fechas de `coachTargetWeekKey`.
 
 ### Lo que son decisiones de diseño, ya tomadas (7)
 

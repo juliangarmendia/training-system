@@ -2626,6 +2626,26 @@ function validatePlanVersion(plan, ctx) {
         `${priorities} prioridades en el briefing: el tope son 3. Más de tres prioridades no son prioridades.`,
         ['GEN-001']);
     }
+    // ---- G-S14 · WEEK-SUMMARY (GEN-001) — v11.65 ----
+    //
+    // El contrato v2 obliga a UNA FILA POR CADA SESIÓN del plan, también las que no cambian:
+    // la Home tiene que poder decir "por qué sigue igual", y una sesión sin fila es
+    // exactamente el hueco por el que vuelve la rutina que cambia sin motivo.
+    //
+    // BLANDO Y SÓLO CON `coachBrief`: un plan de la semilla o del usuario no tiene por qué
+    // llevar resumen, y avisar ahí sería ruido en cada `setIdealVariant`.
+    const cb = p.coachBrief || c.coachBrief || null;
+    if (cb) {
+      const filas = Array.isArray(cb.weekSummary) ? cb.weekSummary : [];
+      const cubiertas = _vpSet(filas.map((r) => (r && r.sessionId) || null).filter(Boolean));
+      for (const [sid, s] of Object.entries(sessions)) {
+        if (cubiertas && cubiertas.has(sid)) continue;
+        add('WEEK-SUMMARY', 'warn',
+          `${(s && s.name) || sid}: sin fila en el resumen de la semana. Cada sesión lleva su motivo, también las que se mantienen.`,
+          ['GEN-001']);
+      }
+    }
+
     const changes = _vpStructuralChanges(sessions);
     if (changes.total > VP_MAX_STRUCTURAL_CHANGES) {
       add('CHURN', 'warn',

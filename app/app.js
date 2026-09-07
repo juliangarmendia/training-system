@@ -5269,9 +5269,14 @@ async function loadAndRenderWeeklyCoach() {
     const ES = (typeof COACH_STATUS_ES !== 'undefined' && COACH_STATUS_ES) || {};
     const wk = (review && review.weekKey) || (legacy && legacy.weekKey) || '';
     const estado = review ? (ES[review.status] || review.status || '') : 'revisión antigua';
-    const prios = review ? ((((review.output || {}).briefing) || {}).priorities || []) : [];
+    const rBrief = review ? (((review.output || {}).briefing) || {}) : {};
+    const prios = rBrief.priorities || [];
     const primeraLinea = (md) => String(md || '').split('\n').map(l => l.replace(/^[#*\-\s]+/, '').trim()).find(l => l) || '—';
-    const linea = prios.length
+    // v11.65: el titular de la semana es `focus` (contrato v2). Las prioridades son el
+    // fallback para las revisiones v1, que no lo traían.
+    const linea = rBrief.focus
+      ? rBrief.focus
+      : prios.length
       ? prios[0]
       : (review && review.status === 'running'
         ? 'El coach está revisando la semana…'
@@ -5452,7 +5457,6 @@ async function renderSyncCard() {
   const apiKey = (state.settings && state.settings.intervalsIcuApiKey) || '';
   const athleteId = (state.settings && state.settings.intervalsIcuAthleteId) || '';
   const configured = !!(apiKey && athleteId);
-  const lastWellness = localStorage.getItem('whoop_last_sync') || null;
   const lastRuns = localStorage.getItem('intervalsicu_last_sync') || null;
   const lastRunsDate = lastRuns ? new Date(parseInt(lastRuns)).toLocaleString() : 'Never';
 
@@ -5560,11 +5564,10 @@ async function runFullSync({ silent = true } = {}) {
     runsResult = await intervalsIcuSync();
   } catch (e) { console.warn('[sync] runs failed:', e); }
   try {
-    // Force-bypass cache by clearing the wellness cache key. También la marca del intento del
-    // dato de hoy: "Sync Now" tiene que volver a probar la ruta directa de WHOOP, sin esperar
-    // los 10 min de la ventana de reintento (§B.2.b).
-    localStorage.removeItem('whoop_cache');
-    localStorage.removeItem('whoop_today_attempt');
+    // Se salta la caché de 10 min a propósito: "Sync now" tiene que volver a pedirle el dato de
+    // hoy al servidor sin esperar a la ventana de reintento (§B.2.b). A-3: la caché vive en
+    // memoria dentro de whoop.js, ya no en localStorage.
+    if (typeof whoopResetCache === 'function') whoopResetCache();
     if (typeof whoopSyncData === 'function') {
       wellnessResult = await whoopSyncData();
       invalidateReadiness();   // v11.59: puede haber llegado el dato de hoy
@@ -8169,9 +8172,12 @@ async function renderHomeView() {
     // Lectura del coach de la sesión de hoy (app/coach.js, v11.57). Con `typeof` porque el
     // módulo se carga por <script> aparte: si no cargó, Home se pinta igual.
     (typeof renderCoachReadout === 'function' ? renderCoachReadout() : Promise.resolve()),
-    // Revisión semanal del coach (v11.61): propuesta con diff y avisos, o su estado. Se pinta
-    // sola sólo cuando hay algo que decir; sin revisión no ocupa sitio en Home.
+    // Revisión semanal del coach (v11.61 · v11.65): qué pasó la semana pasada, en qué etapa
+    // estoy, cuál es el foco y por qué cambia o por qué sigue igual. Desde v11.65 SIEMPRE
+    // pinta: sin revisión ofrece "Cerrar semana ahora", que es de donde sale la primera.
     (typeof renderCoachWeekCard === 'function' ? renderCoachWeekCard() : Promise.resolve()),
+    // Cómo viene el objetivo (v11.65): peso, pendiente, hito, carrera y anclas en dos líneas.
+    (typeof renderCoachGoalLine === 'function' ? renderCoachGoalLine() : Promise.resolve()),
     renderTodaysPlan(),
     // Recuperación como INFORMACIÓN (v11.62): rendimiento primero, tendencias de 7 días
     // después. Sin color de estado y sin botones — la app no propone nada para hoy.
@@ -9122,6 +9128,10 @@ async function _applyVariantOverCoachPlan(n) {
       block: (typeof blockWeek === 'function') ? blockWeek() : null,
       running: (prev && prev.running) || null,
       seedRev: PLAN_REV,
+      // v11.65: el brief del coach viaja con el contenido. Cambiar de 6 a 4 días es una
+      // decisión de AGENDA; dejar la versión nueva sin `coachBrief` vaciaría la Home ("por
+      // qué cambia / por qué se mantiene") por haber tocado el calendario.
+      coachBrief: (prev && prev.coachBrief) || null,
     },
   });
   if (prev && prev.id) {
@@ -10714,6 +10724,16 @@ function renderBodyWeightMetrics(entries, host) {
   host.innerHTML = totalTile + loggedTile;
 }
 
+// Origen de la pesada (A-5). Una fila de la báscula Withings trae hora y composición; una
+// manual sólo el número. Se marca para no leerlas como si fueran lo mismo. `fatPct` es el % de
+// grasa del dispositivo (bioimpedancia), que sustituye al Navy del día.
+function _bwSourcePill(e) {
+  if (!e || e.source !== 'withings') return '';
+  const fat = (typeof e.fatPct === 'number' && e.fatPct > 0)
+    ? ` · ${e.fatPct.toFixed(1).replace('.', ',')} % grasa` : '';
+  return `<span class="bw-source-pill">Withings</span>${fat}`;
+}
+
 // Render last 7 entries newest-first, with delta vs previous entry.
 function renderBodyWeightHistory(entries, host) {
   if (!host) return;
@@ -10732,7 +10752,7 @@ function renderBodyWeightHistory(entries, host) {
       deltaHTML = `<span class="bw-h-delta" style="color:${color}">${arrow} ${Math.abs(delta).toFixed(1)}</span>`;
     }
     rows.push(`<div class="bw-h-row">
-      <span class="bw-h-date">${formatDate(e.date)}</span>
+      <span class="bw-h-date">${formatDate(e.date)} ${_bwSourcePill(e)}</span>
       <span class="bw-h-weight">${e.weight} kg</span>
       ${deltaHTML}
     </div>`);
@@ -10808,6 +10828,12 @@ function renderBodyWeightInsights(entries, nudgeEl, etaEl, plateauEl) {
         etaEl.innerHTML = `🎯 <span class="bw-line-label">Tendencia 30d:</span> need 4+ logs · goal <strong>${goal} kg</strong> (${Math.abs(remaining).toFixed(1)} kg a ${remaining > 0 ? 'bajar' : 'subir'}).`;
       }
     }
+  }
+
+  // Origen de la última pesada (A-5): si viene de la báscula Withings se dice, con el % de
+  // grasa del dispositivo cuando lo trae. Una línea; ni gráfico nuevo ni tarjeta nueva.
+  if (etaEl && latest && latest.source === 'withings') {
+    etaEl.innerHTML += `<div style="margin-top:4px">Última pesada: ${_bwSourcePill(latest)}</div>`;
   }
 
   // Plateau: 7-day avg now vs 7-day avg from 14d ago. If |delta| < 0.3 kg over
@@ -12515,8 +12541,15 @@ async function init() {
   // Unified Sync card (v10.28) — primary surface for intervals.icu connection
   renderSyncCard();
 
+  // Integraciones de servidor (A-3): WHOOP y Withings. Los tokens viven en Supabase; esta
+  // tarjeta sólo lee `integration_status` y dispara authorize / sync / disconnect.
+  // `integrationsHandleReturn()` va DESPUÉS de switchTab(): parsea `#settings?connected=…` y
+  // abre Ajustes, y hacerlo antes lo pisaría el tab inicial. Va también después de checkAuth():
+  // sin sesión no hay estado que leer.
+  if (typeof integrationsHandleReturn === 'function') integrationsHandleReturn().catch(() => {});
+  if (typeof renderIntegrationsCard === 'function') renderIntegrationsCard().catch(() => {});
+
   // Legacy connection cards inside collapsible "Legacy connections" section
-  if (window.renderWhoopUI) renderWhoopUI();
   renderStravaUI();
   renderIntervalsIcuUI();
 

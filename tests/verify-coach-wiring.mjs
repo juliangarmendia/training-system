@@ -596,14 +596,20 @@ yes(E.blockWeekFromDates('2026-09-07', '2026-09-07', 5).index === 1
   && E.blockWeekFromDates('2026-09-13', '2026-09-07', 5).isDeload === false,
   'con el ancla nueva: 7-sep = semana 1, 13-sep sigue en semana 1, 5-oct = deload');
 
-// ── 12. Inc 4 — clasificación desde el dato y frescura del dato de hoy (v11.58) ───────────────
-// Los fallos que impide, todos silenciosos: `whoopFetchTodayRecovery` definida pero nunca
-// llamada desde `whoopSyncData` (la ruta directa no se ejecutaría jamás y a la mañana seguiría
-// el dato de ayer); un `toISOString()` que vuelva a colar la fecha UTC como "hoy" (F-14, la app
-// ya pagó una migración por esto); `getWhoopContext` volviendo a coger el último elemento del
-// array; `toSession` sin la tabla SESSION_CLASS (F-7); `finishWorkout` sin la instantánea.
+// ── 12. Inc 4 — clasificación desde el dato y frescura del dato de hoy (v11.58 · A-3) ─────────
+// Los fallos que impide, todos silenciosos: la ruta que trae el dato de HOY definida pero nunca
+// llamada desde `whoopSyncData` (a la mañana seguiría el dato de ayer); un `toISOString()` que
+// vuelva a colar la fecha UTC como "hoy" (F-14, la app ya pagó una migración por esto);
+// `getWhoopContext` volviendo a coger el último elemento del array; `toSession` sin la tabla
+// SESSION_CLASS (F-7); `finishWorkout` sin la instantánea.
+//
+// A-3 (Coach v2.1) cambió QUIÉN trae el dato de hoy, no la garantía: ya no es un fetch OAuth
+// desde el navegador (`whoopFetchTodayRecovery` con los tokens en localStorage — la causa de
+// las desconexiones), sino el servidor: el webhook escribe `wellness[hoy]` con
+// `readinessSource:'whoop'` y, si aún no ha llegado, la app pide `integrationsSync('whoop')`.
+// Lo que sigue protegido es lo mismo: el dato de hoy es de hoy, y si falta se dice por qué.
 console.log('');
-console.log('12. Inc 4 · clasificación por dato + dato de hoy fresco (v11.58)');
+console.log('12. Inc 4 · clasificación por dato + dato de hoy fresco (v11.58 · A-3)');
 const WHOOPJS = readFileSync('app/whoop.js', 'utf8');
 const whoopFn = (decl) => {
   const i = WHOOPJS.indexOf(decl);
@@ -611,23 +617,42 @@ const whoopFn = (decl) => {
   const j = WHOOPJS.indexOf('\n}', i);
   return WHOOPJS.slice(i, j < 0 ? WHOOPJS.length : j);
 };
-yes(/async function whoopFetchTodayRecovery\(/.test(WHOOPJS), 'whoop.js define whoopFetchTodayRecovery()');
-yes(/window\.whoopFetchTodayRecovery = whoopFetchTodayRecovery/.test(WHOOPJS), 'y la expone en window');
 const WSD_SRC = whoopFn('async function whoopSyncData() {');
-yes(/_whoopEnsureTodayFresh\(/.test(WSD_SRC), 'whoopSyncData llama al paso de frescura del dato de hoy');
-const ETF_SRC = whoopFn('async function _whoopEnsureTodayFresh(');
-yes(/whoopFetchTodayRecovery\(/.test(ETF_SRC), 'y ese paso llama a whoopFetchTodayRecovery()');
-yes(/todaySource = 'whoop-direct'/.test(ETF_SRC) && /todaySource = 'missing'/.test(ETF_SRC),
-  "marca todaySource 'whoop-direct' o 'missing'");
-yes(/_whoopTodayMissingReason\(\)/.test(ETF_SRC), 'y adjunta el motivo concreto cuando falta');
-const TMR_SRC = whoopFn('function _whoopTodayMissingReason()');
-yes(/aún tiene el de ayer/.test(TMR_SRC) && /no puntuó la noche/.test(TMR_SRC) && /reconectarse en Ajustes/.test(TMR_SRC),
-  'los tres motivos: sin ruta directa / hay que reconectar / WHOOP no ha puntuado');
-yes(/_whoopPersistTodayWellness\(/.test(ETF_SRC), 'persiste el dato de hoy en el store wellness');
-const PTW_SRC = whoopFn('async function _whoopPersistTodayWellness(');
-yes(/smartPut\('wellness'/.test(PTW_SRC), 'y lo hace con smartPut (mismo camino que intervals → sube a Supabase)');
-yes(/Object\.assign\(\{\}, existing/.test(PTW_SRC), 'mezclando con la fila existente (no pisa peso/pasos/CTL)');
-yes(/readinessSource: 'whoop-direct'|readinessSource = 'whoop-direct'/.test(PTW_SRC), "y marca readinessSource:'whoop-direct'");
+yes(/pullStore\('wellness'\)/.test(WSD_SRC), 'whoopSyncData baja primero lo que escribió el servidor (pullStore wellness)');
+yes(/intervalsFetchWellness\(\)/.test(WSD_SRC), 'y luego el histórico de intervals.icu');
+yes(/integrationsSync\('whoop', \{ days: 2 \}\)/.test(WSD_SRC),
+  'si falta el dato de hoy le pide al servidor que sincronice (integrationsSync)');
+yes(/integrationsIsActive\('whoop'\)/.test(WSD_SRC),
+  'y sólo si la integración está ACTIVA (pedirlo con needs_reconnect sería quemar una llamada)');
+yes(/_whoopServerSyncAt = Date\.now\(\)/.test(WSD_SRC),
+  'la marca del intento se pone ANTES del await: dos renders no piden dos veces');
+yes(/_whoopBuildFromWellness\(/.test(WSD_SRC), 'el payload se construye desde el store wellness');
+const BFW_SRC = whoopFn('async function _whoopBuildFromWellness(');
+yes(/readinessSource === 'whoop'/.test(BFW_SRC), "distingue las filas del servidor por readinessSource==='whoop'");
+yes(/'whoop-direct'/.test(BFW_SRC) && /'intervals'/.test(BFW_SRC), "y marca source 'whoop-direct' | 'intervals'");
+yes(/whoopSyncedAt/.test(BFW_SRC), 'con fetchedAt sacado de whoopSyncedAt (la hora real del dato)');
+yes(/todaySource = 'missing'/.test(BFW_SRC) && /todayMissingReason/.test(BFW_SRC),
+  "si no hay fila de HOY con score: todaySource 'missing' + motivo (nunca hereda el de ayer)");
+const TMR_SRC = whoopFn('async function _whoopTodayMissingReason()');
+yes(/integrationsGetStatus\(\)/.test(TMR_SRC), 'el motivo sale de integration_status, no de una bandera local');
+yes(/no conectado/.test(TMR_SRC) && /no puntuó la noche/.test(TMR_SRC) && /reconectarse en Ajustes/.test(TMR_SRC),
+  'los tres motivos: no conectado / hay que reconectar / WHOOP no ha puntuado');
+// Precedencia (plan A.4): intervals.icu no puede pisar lo que escribió WHOOP.
+const IFW_SRC = WHOOPJS.slice(WHOOPJS.indexOf('async function intervalsFetchWellness()'),
+  WHOOPJS.indexOf('// ==================== EL DATO DE HOY'));
+yes(/readinessSource === 'whoop'/.test(IFW_SRC),
+  "intervalsFetchWellness respeta la fila del servidor (readinessSource === 'whoop')");
+yes(/WHOOP_OWNED_KEYS/.test(WHOOPJS) && /'sleepRemSecs'/.test(WHOOPJS),
+  'la lista de claves que son de WHOOP está declarada y es testeable');
+yes(/_whoopRowsEqual\(compact, prev\)/.test(IFW_SRC),
+  'y no reescribe una fila idéntica (mata el churn de updated_at en cada render)');
+yes(/source === 'withings'/.test(IFW_SRC),
+  'ni pisa una pesada de la báscula Withings con el eco de intervals.icu');
+// Ni un token ni una llamada directa a la API de WHOOP quedan en el cliente.
+for (const marca of ['whoop_access_token', 'whoop_refresh_token', 'whoop_token_expiry',
+                     'whoop_needs_reconnect', 'api.prod.whoop.com', 'whoop-auth']) {
+  yes(!WHOOPJS.includes(marca), `whoop.js sin \`${marca}\` (los tokens viven en el servidor)`);
+}
 // F-14: ni un solo "hoy" derivado de UTC en whoop.js. Se cuentan usos REALES (las líneas de
 // comentario que explican el bug histórico no cuentan).
 const WHOOP_CODE = WHOOPJS.split('\n').filter(l => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
@@ -635,16 +660,11 @@ const isoUses = (WHOOP_CODE.match(/toISOString\(\)/g) || []).length;
 eq(isoUses, 0, 'whoop.js no usa toISOString() en ninguna fecha (F-14: todo local)');
 yes(/function _whoopLocalDateStr\(/.test(WHOOPJS), 'define _whoopLocalDateStr() (whoop.js carga antes que app.js)');
 // La caché de 10 min no puede tapar la falta del dato de hoy.
-yes(/_whoopTodayAttemptFresh\(/.test(WSD_SRC), 'la comprobación de caché mira la ventana de reintento del dato de hoy');
 yes(/hasToday/.test(WSD_SRC), 'y si al payload cacheado le falta hoy, se resincroniza');
-const FTR_SRC = whoopFn('async function whoopFetchTodayRecovery(');
-yes(/whoopOAuthConnected\(\)/.test(FTR_SRC), 'whoopFetchTodayRecovery exige OAuth');
-yes(/whoopGetRecoveryCollection\(/.test(FTR_SRC), 'pide /v2/recovery de los últimos 2 días');
-yes(/whoopGetSleep\(/.test(FTR_SRC), 'y el sueño de anoche');
-yes(/score_state === 'SCORED'/.test(FTR_SRC), 'sólo acepta registros SCORED');
-yes(/return null/.test(FTR_SRC) && /catch/.test(FTR_SRC), 'y ante cualquier error devuelve null (nunca lanza)');
-yes(/whoop_today_attempt/.test(WHOOPJS), 'la marca del intento por día vive en localStorage');
-yes(/localStorage\.removeItem\('whoop_today_attempt'\)/.test(APP), '"Sync Now" borra la marca para reintentar ya');
+yes(/_whoopServerSyncAt\) < WHOOP_CACHE_MS/.test(WSD_SRC),
+  'la comprobación de caché mira la ventana de reintento contra el servidor');
+yes(/function whoopResetCache\(/.test(WHOOPJS), 'whoopResetCache() existe para saltarse la ventana a mano');
+yes(/whoopResetCache\(\)/.test(APP), '"Sync now" la llama para reintentar ya');
 // app.js: hoy es hoy.
 const GWC = fnSrc('async function getWhoopContext()');
 yes(!/recovery\[[^\]]*length - 1\]/.test(GWC), 'getWhoopContext NO usa recovery[recovery.length - 1] (F-6)');
@@ -894,9 +914,11 @@ yes(/async function renderGoalsCard\(containerId = 'coach-goals'\)/.test(COACHJS
   'renderGoalsCard(containerId) vive en coach.js');
 // ACOTADO a la propia función: antes iba hasta el final del fichero, y desde v11.61 detrás hay
 // 800 líneas de coach semanal que sí citan Rule IDs (en `title=`, que es donde se permiten).
+// v11.65: el cálculo se extrajo a `_coachGoalProgressFromStores()` (lo comparten la tarjeta y
+// la línea de Home), así que el tramo empieza ahí. Sigue acotado por delante del coach semanal.
 const RGC_SRC = COACHJS.slice(
-  COACHJS.indexOf('async function renderGoalsCard('),
-  COACHJS.indexOf('// ============================================================\n// COACH SEMANAL'));
+  COACHJS.indexOf('async function _coachGoalProgressFromStores('),
+  COACHJS.indexOf('// ==================== LÍNEA DE OBJETIVO'));
 yes(/goalProgress\(/.test(RGC_SRC), 'y delega TODO el cálculo en goalProgress (nada de números en el renderer)');
 yes(/measured === false/.test(RGC_SRC), 'sólo pesadas medidas (los forward-fill meterían pendiente 0)');
 yes(/weightMeasured/.test(RGC_SRC), 'incluyendo las de wellness');
@@ -1000,10 +1022,12 @@ for (const id of ['view-coach', 'coach-week-card', 'coach-week', 'coach-briefing
                   'btn-export-facts', 'setting-coach-auto-apply', 'btn-open-coach']) {
   yes(HTML.indexOf(`id="${id}"`) > 0, `index.html tiene #${id}`);
 }
-yes(HTML.indexOf('id="coach-week-card"') > HTML.indexOf('id="coach-readout"'),
-  '#coach-week-card va después de #coach-readout');
+// v11.65 (§B.5): la tarjeta SUBE por encima de "Today's session". El coach manda sobre la
+// semana y la semana manda sobre el día. El orden completo de Home se fija en §17.
+yes(HTML.indexOf('id="coach-week-card"') < HTML.indexOf('id="coach-readout"'),
+  '#coach-week-card va ANTES de #coach-readout (la semana antes que el día)');
 yes(HTML.indexOf('id="coach-week-card"') < HTML.indexOf('id="todays-plan-card"'),
-  'y antes de #todays-plan-card (§A.7)');
+  'y antes de #todays-plan-card');
 // El selector con los tres modos, y `ask` primero (es el valor por defecto).
 for (const v of ['ask', 'auto-if-clean', 'auto']) {
   yes(HTML.includes(`value="${v}"`), `el selector ofrece coachAutoApply="${v}"`);
@@ -1421,8 +1445,375 @@ eq(cardCtx.buildExerciseCard(EX_FIXTURE, 1, null, { data: {} }, { data: {} }, fa
   { id: 'upperA' }, [], null).innerHTML, GOLDEN_V1156,
   'la tarjeta sin objetivo sigue siendo byte a byte la de v11.56 tras la retirada');
 
+// ── 17. Inc B-4 — LA HOME EXPLICA LA SEMANA (v11.65) ─────────────────────────────────────────
+//
+// EL FALLO QUE ESTA SECCIÓN EXISTE PARA IMPEDIR. Julian pidió el 2026-09-07, con estas
+// palabras: *"El coach tiene que darme feedback de la semana pasada, decirme en qué etapa
+// estoy, cómo viene el objetivo y cuál es el enfoque de la semana — por qué cambia o por qué
+// sigue igual."* La edge function ya devuelve todo eso (contrato v2). Las formas de que no
+// llegue a la pantalla son cinco, y las cinco son silenciosas:
+//
+//   1. **El brief se queda en la revisión.** `coach_reviews` se poda y la fila de W36 no
+//      describe el plan de W38. Sin `coachBrief` DENTRO de la versión del plan, "¿por qué mi
+//      Upper A sigue igual?" deja de tener respuesta en cuanto la revisión desaparece.
+//   2. **El brief se pierde al deshacer o al cambiar de variante.** Las dos rutas copian una
+//      versión a otra; si no arrastran `coachBrief`, un toque en "Deshacer" o un cambio de 6 a
+//      4 días vacía la Home sin que nadie lo note.
+//   3. **La semana equivocada.** Cerrar el domingo y escribir la propuesta con la clave de la
+//      semana que ACABA de terminar: `_coachExpireIfStale` la declara vencida el lunes a las
+//      00:00 y el trabajo del coach muere antes de que nadie lo aplique. De ahí
+//      `coachTargetWeekKey` (domingo → semana siguiente) y su test con las tres fechas.
+//   4. **El callejón sin salida del estado vacío.** Hasta v11.64, sin revisión la tarjeta no
+//      se pintaba — y no había ningún sitio desde el que pedir la primera. El estado vacío era
+//      también el único camino cerrado.
+//   5. **El gate del coste aplicado al camino manual.** El gate de `maybeRunWeeklyCoach`
+//      (cualquier fila de la semana corta el disparo) existe para no quemar $0,60 en cada
+//      arranque. Copiado al botón, convertiría una revisión `failed` en una semana sin coach.
+//
+// Y el orden de Home, que es la petición literal: la semana antes que el día.
+console.log('');
+console.log('17. B-4 · la Home explica la semana (v11.65)');
+
+// 17.a El orden de Home, id a id
+const HOME_HTML = HTML.slice(HTML.indexOf('id="view-home"'), HTML.indexOf('id="view-gym"'));
+const HOME_IDS = [...HOME_HTML.matchAll(/id="([a-z0-9-]+)"/g)].map(m => m[1]);
+const HOME_ESPERADO = [
+  'view-home', 'home-scroll',
+  'resume-workout-banner', 'resume-mobility-banner',
+  'home-topbar', 'plan-selector', 'week-calendar',
+  'coach-week-card', 'coach-goal-line',
+  'todays-detail',                    // la fila "Today's session"
+  'coach-readout', 'todays-plan-card', 'coach-recovery-line',
+  'home-stat-trio',
+  'queue-ahead',                      // la fila "This week"
+  'home-queue',
+];
+eq(HOME_IDS.join(' > '), HOME_ESPERADO.join(' > '), 'el orden de Home es exactamente el de §B.5');
+yes(HOME_IDS.indexOf('coach-week-card') < HOME_IDS.indexOf('todays-detail'),
+  'la tarjeta del coach va ANTES de "Today\'s session" (la semana manda sobre el día)');
+yes(!/<div id="coach-week-card" class="hidden">/.test(HTML),
+  '#coach-week-card ya no arranca oculto (siempre hay algo que decir, aunque sea "cierra la semana")');
+
+// 17.b Lo que B-1 se llevó de Home no vuelve, y el presupuesto sigue en Stats
+for (const id of ['training-advisory', 'recovery-hero', 'deload-reminder']) {
+  yes(!HOME_HTML.includes(`id="${id}"`), `Home sigue sin #${id}`);
+  yes(!HTML.includes(`id="${id}"`), `y no está en ninguna otra vista`);
+}
+yes(!HOME_HTML.includes('id="hard-day-budget"'), 'el presupuesto de días duros no vuelve a Home');
+yes(/id="hard-day-budget" data-group="today"/.test(HTML), 'sigue en Stats › Today');
+
+// coach-facts.js en su propio sandbox, para probar el validador nuevo sin tocar el de §15.
+const F17 = (() => {
+  const sb = { module: { exports: {} }, console };
+  sb.exports = sb.module.exports;
+  vm.createContext(sb);
+  new vm.Script(ENGINE).runInContext(sb);
+  sb.module = { exports: {} }; sb.exports = sb.module.exports;
+  new vm.Script(FACTSJS).runInContext(sb);
+  return sb.module.exports;
+})();
+
+// 17.c El motor: la semana PARA la que se pide la revisión
+yes(typeof E.coachTargetWeekKey === 'function', 'coach-engine exporta coachTargetWeekKey()');
+eq(E.coachTargetWeekKey('2026-09-13'), '2026-W38', "domingo 13-sep → '2026-W38' (la que empieza mañana)");
+eq(E.coachTargetWeekKey('2026-09-09'), '2026-W37', "miércoles 9-sep → '2026-W37' (la de ahora)");
+eq(E.coachTargetWeekKey('2026-09-07'), '2026-W37', "lunes 7-sep → '2026-W37'");
+eq(E.coachTargetWeekKey('2026-09-12'), '2026-W37', 'y el sábado todavía es la de ahora');
+eq(E.coachTargetWeekKey('basura'), null, 'con una entrada que no es fecha devuelve null');
+eq(Object.keys(E.PHASE_ES || {}).length, 5, 'PHASE_ES tiene las 5 fases del contrato v2');
+eq(E.PHASE_ES.build, 'construcción', "y las traduce ('build' → construcción)");
+eq(E.PHASE_ES.deload, 'descarga', "('deload' → descarga)");
+yes(typeof E.blockLabel === 'function', 'coach-engine exporta blockLabel()');
+eq(E.blockLabel('2026-09-07', '2026-09-07'), 'B1', 'el bloque que empieza en el ancla es B1');
+eq(E.blockLabel('2026-10-05', '2026-09-07'), 'B1', 'la semana de descarga sigue siendo B1 (5 semanas)');
+eq(E.blockLabel('2026-10-12', '2026-09-07'), 'B2', 'y la siguiente ya es B2');
+eq(E.blockLabel('2026-09-01', '2026-09-07'), null, 'antes del ancla no se extrapola: null');
+eq(E.blockLabel('2026-09-07', null), null, 'y sin ancla tampoco');
+
+// 17.d `coachBrief` se estampa al aplicar y se arrastra en variante y rollback
+const ACP17 = COACHJS.slice(COACHJS.indexOf('async function applyCoachProposal('),
+  COACHJS.indexOf('async function rejectCoachProposal('));
+yes(/coachBrief/.test(ACP17), 'applyCoachProposal construye el coachBrief');
+yes(/coachBriefFromReview\(/.test(ACP17), 'con coachBriefFromReview() (una sola fuente, con fallback v1)');
+yes(/coachBrief,/.test(ACP17), 'y lo estampa en el `meta` de la versión nueva');
+yes(ACP17.indexOf('coachBriefFromReview(') < ACP17.indexOf('validatePlanVersion('),
+  'el brief se construye ANTES de validar (si no, WEEK-SUMMARY no podría dispararse nunca)');
+yes(/appliedAt: Date\.now\(\)/.test(ACP17), 'con appliedAt');
+for (const k of ['focus:', 'phase:', 'kept:', 'changed:']) {
+  yes(ACP17.includes(k), `la decisión plan-apply lleva ${k.replace(':', '')}`);
+}
+const RBK17 = COACHJS.slice(COACHJS.indexOf('async function rollbackPlanVersion('),
+  COACHJS.indexOf('async function _coachReconcileOverrides('));
+yes(/coachBrief: old\.coachBrief/.test(RBK17), 'rollbackPlanVersion arrastra el coachBrief de la versión que copia');
+const AVO17 = fnSrc('async function _applyVariantOverCoachPlan(');
+yes(/coachBrief: \(prev && prev\.coachBrief\)/.test(AVO17),
+  '_applyVariantOverCoachPlan también (cambiar de calendario no borra el porqué)');
+
+// El contrato del brief, campo a campo.
+const CBR17 = COACHJS.slice(COACHJS.indexOf('function coachBriefFromReview('),
+  COACHJS.indexOf('// ==================== EL PACK DE HECHOS'));
+for (const k of ['reviewId', 'weekKey', 'appliedAt', 'focus', 'phase', 'whyChanged', 'whyKept',
+                 'priorities', 'lastWeekSummary', 'weekSummary']) {
+  // `[,:]` porque el objeto usa taquigrafía (`priorities,`) en la mitad de los campos.
+  yes(new RegExp(`\\b${k}[,:]`).test(CBR17), `el brief lleva ${k}`);
+}
+yes(/diff/.test(CBR17), 'y el fallback v1 se deriva del diff');
+
+// 17.e El validador: una sesión sin fila avisa, y sólo con brief
+yes(/'WEEK-SUMMARY': '[^']+'/.test(COACHJS), "COACH_GUARD_ES traduce 'WEEK-SUMMARY' (nada de ids crudos)");
+yes(/'WEEK-SUMMARY'/.test(FACTSJS), 'coach-facts.js emite el aviso WEEK-SUMMARY');
+{
+  const planSinResumen = {
+    sessions: { upperA: { id: 'upperA', name: 'Upper A', exercises: [] }, upperB: { id: 'upperB', name: 'Upper B', exercises: [] } },
+    coachBrief: { weekSummary: [{ sessionId: 'upperA', status: 'kept', line: 'sin cambios' }] },
+  };
+  const res = F17.validatePlanVersion(planSinResumen, {});
+  const ws = res.filter(r => r.id === 'WEEK-SUMMARY');
+  eq(ws.length, 1, 'con una sesión sin fila, un aviso y sólo uno');
+  eq(ws[0].level, 'warn', 'y es BLANDO (nada bloquea)');
+  yes(/Upper B/.test(ws[0].text), 'que nombra la sesión que falta');
+  const completo = JSON.parse(JSON.stringify(planSinResumen));
+  completo.coachBrief.weekSummary.push({ sessionId: 'upperB', status: 'changed', line: 'sube el remo' });
+  eq(F17.validatePlanVersion(completo, {}).filter(r => r.id === 'WEEK-SUMMARY').length, 0,
+    'con todas las filas, callado');
+  const sinBrief = { sessions: planSinResumen.sessions };
+  eq(F17.validatePlanVersion(sinBrief, {}).filter(r => r.id === 'WEEK-SUMMARY').length, 0,
+    'y sin coachBrief no dice nada (un plan de la semilla no lleva resumen)');
+}
+
+// 17.f El camino manual no se bloquea por filas de esa semana
+const RWC17 = COACHJS.slice(COACHJS.indexOf('async function runWeeklyCoach('),
+  COACHJS.indexOf('async function _coachMirror('));
+yes(!/if \(mine\.length\) return/.test(RWC17),
+  'runWeeklyCoach NO copia el gate del disparo automático (failed/rejected/expired no bloquean)');
+yes(/force/.test(RWC17), 'acepta `force`');
+yes(/status === 'running'/.test(RWC17), "una fila `running` de esa semana retoma el polling");
+yes(/status === 'proposed'/.test(RWC17), 'y una `proposed` navega a ella en vez de volver a pagar');
+yes(/openCoachView\(\)/.test(RWC17), 'con openCoachView()');
+for (const st of ["'failed'", "'rejected'", "'expired'"]) {
+  yes(!RWC17.includes(`r.status === ${st}`), `${st} no aparece como condición de corte`);
+}
+// El gate del coste SIGUE en su sitio: el disparo automático.
+const MRW17 = COACHJS.slice(COACHJS.indexOf('async function maybeRunWeeklyCoach('),
+  COACHJS.indexOf('async function runWeeklyCoach('));
+yes(/if \(mine\.length\) return/.test(MRW17),
+  'el gate por coste sigue INTACTO en maybeRunWeeklyCoach (una llamada por semana)');
+
+// 17.g El botón "Cerrar semana y pedir la próxima"
+yes(/coach-close-week/.test(COACHJS), 'existe el botón #coach-close-week');
+yes(/const COACH_CLOSE_WEEK_ES = 'Cerrar semana y pedir la próxima'/.test(COACHJS),
+  'con el texto que pidió Julian');
+const CBW17 = COACHJS.slice(COACHJS.indexOf('function _coachBindCloseWeek('),
+  COACHJS.indexOf('// ==================== TARJETA DE HOME'));
+yes(/_cTargetWeek\(today\(\)\)/.test(CBW17), 'pide la revisión PARA la semana objetivo (domingo → la siguiente)');
+yes(/b\.disabled = true/.test(CBW17) && /Cerrando la semana…/.test(CBW17),
+  'y se marca en marcha en el propio botón (60-180 s sin marca = doble pulsación)');
+yes(/coach-close-week-view/.test(COACHJS),
+  'la vista Coach usa un id propio (dos elementos con el mismo id: getElementById sólo ve uno)');
+yes(/_coachBindCloseWeek\('coach-close-week-view'\)/.test(COACHJS), 'y se cablea allí');
+yes(/coachAutoApplyMode/.test(COACHJS) && /: 'ask'/.test(COACHJS), "coachAutoApply sigue en 'ask'");
+
+// 17.h La línea de objetivo en Home
+yes(/async function renderCoachGoalLine\(\)/.test(COACHJS), 'renderCoachGoalLine() vive en coach.js');
+yes(/async function _coachGoalProgressFromStores\(/.test(COACHJS),
+  'con el cálculo compartido en _coachGoalProgressFromStores()');
+const CGL17 = COACHJS.slice(COACHJS.indexOf('async function renderCoachGoalLine('),
+  COACHJS.indexOf('// ============================================================\n// COACH SEMANAL'));
+yes(/_coachGoalProgressFromStores\(\)/.test(CGL17), 'la línea reusa ese cálculo (no reimplementa la pendiente)');
+yes(!/goalProgress\(/.test(CGL17), 'y no vuelve a llamar a goalProgress por su cuenta');
+yes(/sin señal/.test(CGL17), 'con el fallback honesto "sin señal (N pesadas en 14 d)"');
+yes(/openCoachView\(\)/.test(CGL17), 'un toque abre la vista Coach');
+yes(!/<button/.test(CGL17), 'y no hay más botones que ese toque');
+yes(/_cNum\(/.test(CGL17), 'los números salen con coma decimal (helper _cNum)');
+const HOME17 = fnSrc('async function renderHomeView(');
+yes(/renderCoachGoalLine\(\)/.test(HOME17), 'renderHomeView llama renderCoachGoalLine()');
+yes(/typeof renderCoachGoalLine === 'function'/.test(HOME17), 'con guarda typeof');
+yes(/renderCoachWeekCard\(\)/.test(HOME17) && /renderRecoveryLine\(\)/.test(HOME17),
+  'y sigue llamando a la tarjeta del coach y a la línea de recuperación');
+for (const fn of ['renderCoachGoalLine', 'coachBriefFromReview']) {
+  yes(COACHJS.slice(COACHJS.indexOf('module.exports')).includes(fn), `${fn} está exportada`);
+}
+
+// 17.i La vista Coach y el teaser de Stats hablan el contrato v2
+const RBRIEF17 = COACHJS.slice(COACHJS.indexOf('async function _coachRenderBriefing('),
+  COACHJS.indexOf('async function _coachRenderProposal('));
+for (const t of ['Foco', 'Fase', 'Por qué cambia', 'Por qué se mantiene']) {
+  yes(RBRIEF17.includes(t), `la vista Coach pinta "${t}"`);
+}
+yes(/_coachWsRowHtml\(/.test(RBRIEF17), 'y la tabla de sesiones fila a fila');
+const LWC17 = fnSrc('async function loadAndRenderWeeklyCoach(');
+yes(/rBrief\.focus/.test(LWC17), 'el teaser de Stats usa `focus` cuando lo hay');
+yes(/prios\[0\]/.test(LWC17), 'y las prioridades como fallback para las revisiones v1');
+
+// 17.j CSS nueva, al final del fichero y sin animaciones
+for (const clase of ['.coach-goal-line', '.cgl-row', '.cwc-focus', '.cwc-block', '.cwc-label',
+                     '.cwc-line', '.cwc-bullets', '.cwc-why', '.cwc-ws', '.ws-row', '.ws-chip',
+                     '.ws-name', '.ws-line', '.coach-close-week']) {
+  yes(new RegExp(`\\${clase}[\\s,{:.\\[]`).test(CSS), `${clase} existe en style.css`);
+}
+for (const st of ['kept', 'changed', 'new', 'removed']) {
+  yes(CSS.includes(`.ws-chip.${st}`), `.ws-chip.${st} tiene su color`);
+}
+yes(!/@keyframes cwc-|animation:[^;]*cwc-/.test(CSS), 'y cero animaciones nuevas');
+
+// 17.k LA TARJETA, RENDERIZADA DE VERDAD (DOM stub)
+//
+// Los greps de arriba no pueden ver el HTML. Esto lo pinta con `coach.js` entero dentro de un
+// `vm`: los tres estados que importan (`none`, `applied` v2 y `applied` con una revisión v1)
+// tienen que producir texto, no una excepción tragada por el try/catch — que es exactamente
+// cómo esta tarjeta se quedaría en blanco sin que nadie se entere.
+{
+  const nodes = {};
+  const mkNode = (id) => ({
+    id, innerHTML: '', textContent: '', disabled: false, dataset: {},
+    classList: { add() {}, remove() {}, contains() { return false; } },
+    addEventListener() {}, querySelector() { return null; }, querySelectorAll() { return []; },
+  });
+  for (const id of ['coach-week-card', 'coach-goal-line', 'coach-week', 'coach-briefing']) nodes[id] = mkNode(id);
+
+  const store = { coach_reviews: [], bodyweight: [], plans: [] };
+  const ctx = {
+    console,
+    module: { exports: {} },
+    setTimeout, clearTimeout,
+    document: {
+      getElementById: (id) => nodes[id] || null,
+      createElement: () => mkNode(''),
+      addEventListener() {},
+      visibilityState: 'visible',
+    },
+    navigator: { onLine: true },
+    today: () => '2026-09-07',
+    dateStr: (d) => new Date(d).toISOString().slice(0, 10),
+    dbGetAll: async (s) => (store[s] || []).map(r => JSON.parse(JSON.stringify(r))),
+    dbGet: async () => null,
+    dbPut: async () => {},
+    smartPut: async () => {},
+    escapeHtml: (s) => String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'),
+    DELOAD_BLOCK_WEEKS: 5,
+    blockWeek: () => E.blockWeekFromDates('2026-09-14', '2026-09-07', 5),
+    getExerciseName: (id) => id,
+    exerciseLibrary: {},
+    state: { settings: { deloadAnchorDate: '2026-09-07' }, currentView: 'home' },
+    activePlan: null,
+  };
+  ctx.exports = ctx.module.exports;
+  vm.createContext(ctx);
+  new vm.Script(ENGINE).runInContext(ctx);
+  ctx.module = { exports: {} }; ctx.exports = ctx.module.exports;
+  new vm.Script(FACTSJS).runInContext(ctx);
+  ctx.module = { exports: {} }; ctx.exports = ctx.module.exports;
+  new vm.Script(COACHJS).runInContext(ctx);
+  const C = ctx.module.exports;
+  yes(typeof C.renderCoachWeekCard === 'function', 'coach.js carga en vm y exporta renderCoachWeekCard');
+  yes(!!(C.COACH_GUARD_ES || {})['WEEK-SUMMARY'], "y COACH_GUARD_ES['WEEK-SUMMARY'] tiene etiqueta");
+  eq(Object.keys(C.COACH_WS_STATUS_ES || {}).sort().join(','), 'changed,kept,new,removed',
+    'los cuatro estados de una sesión tienen su chip');
+
+  // --- Estado `none`: no hay ninguna revisión todavía ---
+  store.coach_reviews = [];
+  ctx.activePlan = null;
+  await C.renderCoachWeekCard();
+  const NONE = nodes['coach-week-card'].innerHTML;
+  yes(NONE.includes('Primera semana con el coach'), 'estado `none`: "Primera semana con el coach"');
+  yes(NONE.includes('coach-close-week'), 'estado `none`: con el botón para cerrar la semana');
+  yes(NONE.includes('Cerrar semana ahora'), 'y su texto');
+  yes(NONE.includes('Coach · W37'), 'con la semana objetivo en la cabecera (lunes 7-sep → W37)');
+  yes(NONE.length > 0, 'la tarjeta ya NO se queda vacía sin revisión');
+
+  // --- Estado `applied` con un brief v2 completo ---
+  const WS = [
+    { sessionId: 'upperA', status: 'kept', line: '8/8/7 @7,5 el 1-sep: un dato más antes de subir' },
+    { sessionId: 'upperB', status: 'changed', line: 'OHP 55 → 57,5 kg tras dos sesiones a RPE 7' },
+    { sessionId: 'lowerA', status: 'kept', line: 'sentadilla 105 se mantiene: la rodilla va justa' },
+    { sessionId: 'lowerB', status: 'new', line: 'entra el peso muerto trap-bar' },
+  ];
+  ctx.activePlan = {
+    id: 'plan_v15', version: 15, basedOn: 'plan_v14', reviewId: '2026-W38#1',
+    author: 'coach-llm', weekKey: '2026-W38',
+    sessions: {
+      upperA: { id: 'upperA', name: 'Upper A' }, upperB: { id: 'upperB', name: 'Upper B' },
+      lowerA: { id: 'lowerA', name: 'Lower A' }, lowerB: { id: 'lowerB', name: 'Lower B' },
+    },
+    coachBrief: {
+      reviewId: '2026-W38#1', weekKey: '2026-W38', appliedAt: 1,
+      focus: 'mantener los 6 anclas y sumar el largo a 6,5 km',
+      phase: 'build',
+      whyKept: 'Upper A igual: 8/8/7 @7,5 el 1-sep, un dato más antes de subir.',
+      whyChanged: '',
+      priorities: ['Sumar el largo', 'Sostener la banca', 'Dormir 7 h'],
+      lastWeekSummary: ['3 de 4 sesiones · banca 95×8 ↑', '12,1 km en 2 carreras, ambas en Z2'],
+      weekSummary: WS,
+    },
+  };
+  store.coach_reviews = [{
+    id: '2026-W38#1', weekKey: '2026-W38', attempt: 1, status: 'applied',
+    createdAt: 1, guardrails: [], output: { briefing: {}, proposal: {} },
+  }];
+  await C.renderCoachWeekCard();
+  const APPL = nodes['coach-week-card'].innerHTML;
+  yes(APPL.includes('SEMANA PASADA'), 'estado `applied`: bloque SEMANA PASADA');
+  yes(APPL.includes('3 de 4 sesiones'), 'con los bullets de la semana pasada');
+  yes(APPL.includes('ESTA SEMANA'), 'bloque ESTA SEMANA');
+  yes(APPL.includes('Semana 2/5'), 'con la semana del bloque');
+  yes(APPL.includes('B1'), 'la etiqueta del bloque');
+  yes(APPL.includes('fase construcción'), 'la fase EN CASTELLANO (build → construcción)');
+  yes(APPL.includes('Foco: mantener los 6 anclas'), 'y el foco de la semana');
+  yes(APPL.includes('POR QUÉ SE MANTIENE'), 'bloque POR QUÉ SE MANTIENE');
+  yes(!APPL.includes('POR QUÉ CAMBIA'), 'y sin POR QUÉ CAMBIA cuando whyChanged viene vacío');
+  yes(/<div class="cwc-block"><div class="cwc-label">POR QUÉ SE MANTIENE/.test(APPL),
+    'que va ABIERTO (no plegado) cuando es lo único que hay que leer');
+  yes(APPL.includes('Qué cambia (2 sesiones)'), 'desplegable "Qué cambia" con las 2 que no son `kept`');
+  yes(APPL.includes('Todas las sesiones (4)'), 'y "Todas las sesiones" con las 4');
+  for (const w of WS) {
+    yes(APPL.includes(ctx.escapeHtml(w.line)), `la fila de ${w.sessionId} lleva su motivo`);
+  }
+  yes(APPL.includes('Upper A') && APPL.includes('Lower B'), 'con los nombres de sesión del plan');
+  yes(APPL.includes('plan v15'), 'la cabecera dice la versión del plan');
+  yes(APPL.includes('Ver todo'), 'y ofrece "Ver todo ›"');
+  yes(APPL.includes('coach-week-undo'), 'con el Deshacer en su sitio');
+  yes(!/undefined|\[object Object\]/.test(APPL), 'y sin "undefined" ni objetos en pantalla');
+
+  // --- Revisión v1 (sin weekSummary, sin whyKept): el fallback pinta y no lanza ---
+  ctx.activePlan = {
+    id: 'plan_v9', version: 9, basedOn: 'plan_v8', reviewId: '2026-W20#1',
+    sessions: { upperA: { id: 'upperA', name: 'Upper A' }, upperB: { id: 'upperB', name: 'Upper B' } },
+  };
+  store.coach_reviews = [{
+    id: '2026-W20#1', weekKey: '2026-W20', attempt: 1, status: 'applied', createdAt: 1,
+    output: {
+      briefing: { lastWeek: 'Semana floja.', nextWeek: 'Subimos el remo.', priorities: ['Sostener la banca'] },
+      proposal: { phase: 'build', sessions: [{ id: 'upperB', exercises: [] }] },
+    },
+  }];
+  nodes['coach-week-card'].innerHTML = '';
+  await C.renderCoachWeekCard();
+  const V1 = nodes['coach-week-card'].innerHTML;
+  yes(V1.length > 0, 'una revisión v1 sigue pintando la tarjeta (fallback, no excepción)');
+  yes(V1.includes('Foco: Sostener la banca'), 'el foco v1 sale de la primera prioridad');
+  yes(V1.includes('Todas las sesiones (2)'), 'y las filas se derivan del plan');
+  yes(V1.includes('sin cambios'), 'las sesiones que no toca la propuesta salen como "sin cambios"');
+  yes(!V1.includes('POR QUÉ SE MANTIENE'), 'sin whyKept no se inventa un motivo');
+
+  // El brief puro, sin DOM: la forma que se estampa en el plan.
+  const b1 = C.coachBriefFromReview(store.coach_reviews[0], { prev: ctx.activePlan, next: ctx.activePlan });
+  eq(b1.phase, 'base', "la fase binaria v1 ('build') se mapea a 'base'");
+  eq(b1.whyKept, '', 'y whyKept queda vacío (v1 nunca justificó lo que mantenía)');
+  eq(b1.weekSummary.length, 2, 'con una fila por sesión del plan');
+  eq(b1.weekSummary.filter(w => w.status === 'changed').length, 1, 'y sólo la tocada sale como `changed`');
+  const b2 = C.coachBriefFromReview({
+    id: 'x', weekKey: '2026-W38',
+    output: { briefing: { focus: 'f', phase: 'intensify', whyKept: 'k', whyChanged: 'c', lastWeekSummary: ['a', 'b', 'c', 'd'] },
+      proposal: { weekSummary: WS } },
+  });
+  eq(b2.phase, 'intensify', 'una revisión v2 conserva su fase del enum');
+  eq(b2.lastWeekSummary.length, 3, 'y lastWeekSummary se acota a 3 líneas');
+  eq(b2.weekSummary.length, 4, 'con las filas que dio el coach');
+}
+
 console.log('');
 console.log(failed === 0
-  ? '✅ Coach v2.1 cableado: módulos, stores, sync, plan, bloque, readiness informativo y cero ajuste del día.'
+  ? '✅ Coach v2.1 cableado: módulos, stores, sync, plan, bloque, readiness informativo, cero ajuste del día y una Home que explica la semana.'
   : `❌ ${failed} comprobación(es) fallaron.`);
 process.exit(failed === 0 ? 0 : 1);

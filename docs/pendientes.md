@@ -6,7 +6,7 @@
 > El *por qué* de cada cosa vive en [`../assessments/2026-08-16_system-audit.md`](../assessments/2026-08-16_system-audit.md).
 > Aquí está el *qué sigue*.
 >
-> Última actualización: **2026-09-07** (Coach v2 · incrementos 1-5, 7, 8 y 10 desplegados)
+> Última actualización: **2026-09-08** (Coach v2.1: carril B hasta B-4 e integraciones de servidor hasta A-5)
 
 ## Regla de trabajo
 
@@ -46,6 +46,40 @@ incrementos. Estado de hoy:
 - **Incremento 9 (v11.61) — vista Coach y aprobación.** Tarjeta del lunes, diff de la propuesta,
   avisos, y **[Aplicar] [Ajustar] [Rechazar]**.
 
+---
+
+## Coach v2.1 · Carril B — el coach manda sobre la semana, no sobre el día (2026-09-08)
+
+Julian revisó Coach v2 en uso el 7-sep y corrigió la dirección: *"nada de ajustar el entrenamiento
+del día por WHOOP"* y *"el coach tiene que darme feedback de la semana pasada, decirme en qué etapa
+estoy, cómo viene el objetivo y cuál es el enfoque de la semana — por qué cambia o por qué sigue
+igual"*. Plan completo en
+[`architecture/coach-v2.1-implementation-plan.md`](architecture/coach-v2.1-implementation-plan.md).
+
+| Paso | Qué | Estado |
+|---|---|---|
+| B-1 | **Retirada del ajuste diario.** Fuera el consejo del día, el hero de WHOOP, el check-in de 2 toques y el banner de descarga; entra `renderRecoveryLine` (rendimiento primero, tendencias después) y el presupuesto de días duros se muda a Stats | hecho |
+| B-2 | **`trajectory` en el facts pack.** Todo el recorrido: programa, bloques, peso desde el inicio, anclas, adherencia, patrones saltados. `FACTS_SCHEMA 2`, `priorReviews` 6 | hecho |
+| B-3 | **Contrato v2 de la edge function.** `focus`, `phase` (5 fases), `whyChanged`, `whyKept`, `lastWeekSummary` y `weekSummary` con **una fila por CADA sesión**, también las que no cambian | desplegado |
+| B-4 | **La Home explica la semana.** `coachBrief` estampado en la versión del plan (y arrastrado en Deshacer y en el cambio de variante), `coachTargetWeekKey` (domingo → semana siguiente), botón **"Cerrar semana y pedir la próxima"**, Home reordenada (la semana antes que el día) con `#coach-goal-line`, y la vista Coach con Foco / Fase / Por qué / tabla de sesiones | hecho |
+| B-5 | **Primera semana cerrada de verdad** (domingo 2026-09-13): leer la propuesta real, comprobar que cita ≥1 número desde el inicio del programa y ajustar el prompt si hace falta. Sin código nuevo | **pendiente** |
+
+---
+
+## Coach v2.1 · Integraciones de servidor (2026-09-08)
+
+Los tokens de WHOOP y Withings viven en Supabase, no en el teléfono. Detalle en
+[`architecture/integrations.md`](architecture/integrations.md).
+
+| Paso | Qué | Estado |
+|---|---|---|
+| A-1 | Tablas (`integration_tokens`, `integration_status`, `oauth_states`, `integration_events`), lease-lock de refresco, `integrations-oauth` + `integrations-callback` | desplegado |
+| A-2 | `whoop-sync` + `whoop-webhook`: el recovery entra solo | desplegado |
+| A-3 | **La PWA deja de hacer OAuth.** `app/integrations.js`, `whoop.js` adelgazado, `pullStore`, tarjeta **Ajustes › Integraciones**, `whoop-callback.html` borrado | hecho |
+| A-4 | `pg_cron` + `pg_net` + Vault: pull programado como red bajo los webhooks | desplegado |
+| A-5 | Withings Body+: `withings-sync`, `withings-webhook`, suscripción; pill "Withings" en el peso | desplegado |
+| A-6 | **Limpieza pendiente:** borrar la edge function **`whoop-auth`** (el proxy OAuth del cliente: hoy es un relé abierto con la clave anon que firma con nuestro secreto) y su bloque en `config.toml`; comprobar que `grep -rn "whoop-auth\|whoop-callback" app/ supabase/` da 0 | **pendiente** |
+
 ### Lo que queda para Julian (no lo puede hacer Claude)
 
 **1 · Desprogramar la tarea de los domingos.** El cron `/weekly-review-auto` **no vive en el repo**:
@@ -57,18 +91,26 @@ domingo a las 21:30 EDT un agente ejecutará un playbook que ya no existe.
 > **eliminarlo**. Si aparece un `.claude/scheduled_tasks.lock` suelto en el repo, es un residuo del
 > proceso y se puede borrar; **no** es la programación.
 
-**2 · Reconectar WHOOP OAuth en Ajustes.** La lectura de la mañana depende de la ruta directa de
-WHOOP: intervals.icu a las 7:00 todavía tiene el readiness de **ayer**, y usarlo para decidir el
-entreno de hoy es exactamente el fallo F-6. Sin OAuth el sistema degrada a tendencias 7d + check-in de
-2 toques y **lo dice** — no inventa el dato, pero la señal es peor. El audit no pudo confirmar que la
-app OAuth siga viva; hay que abrir Ajustes → WHOOP → conectar y comprobar que la tarjeta dice
-"WHOOP 07:42" y no "sin dato de hoy".
+**2 · Conectar WHOOP una vez con el flujo nuevo (A-3).** Ajustes → **Integraciones** → *Conectar*
+en WHOOP. La autorización se abre fuera de la PWA y vuelve por Safari: cerrar Safari y volver a la
+app; la tarjeta debe decir "Conectado · último sync hh:mm". A partir de ahí los tokens se refrescan
+en el servidor y la conexión no se pierde al reinstalar la PWA.
 
-**3 · La primera ejecución del coach, el lunes.** Con v11.61 desplegado: abrir la app el lunes, ver
-"El coach está revisando W37…", leer el briefing y el diff, y **aprobar o rechazar**. Esa primera
-propuesta trae el bloque **B1** del macroplan (ancla 7-sep, primer deload la semana del 5-oct) y es
-una decisión de plan, no de código. Si en 3-4 semanas el coach se gana la confianza, se puede pasar
-`coachAutoApply` a `auto-if-clean` desde Ajustes.
+La lectura de la mañana depende de esto: intervals.icu a las 7:00 todavía tiene el readiness de
+**ayer**, y usarlo para hablar de hoy es exactamente el fallo F-6. Sin la integración activa el
+sistema degrada a tendencias 7d y **lo dice** ("WHOOP no conectado"); no inventa el dato.
+Requisito previo: en el panel de WHOOP, la redirect URI `…/functions/v1/integrations-callback/whoop`,
+el webhook `…/functions/v1/whoop-webhook` y los scopes con `offline` y `read:cycles`.
+
+**3 · Cerrar la primera semana, el domingo 2026-09-13.** En Home (o en la vista Coach) pulsar
+**"Cerrar semana y pedir la próxima"**: la revisión se pide para **2026-W38** —el domingo, la
+propuesta es para la semana que empieza mañana— y tarda 60-180 s. Leer el briefing y el diff, y
+**aprobar o rechazar**. Si se prefiere esperar al lunes, se dispara sola en la primera apertura.
+
+Esa primera propuesta trae el bloque **B1** del macroplan (ancla 7-sep, primer deload la semana del
+5-oct) y es una decisión de plan, no de código. Al aplicarla, la Home pasa a mostrar SEMANA PASADA /
+ESTA SEMANA (semana n/5 · B1 · fase) / POR QUÉ SE MANTIENE con sus desplegables. Si en 3-4 semanas
+el coach se gana la confianza, se puede pasar `coachAutoApply` a `auto-if-clean` desde Ajustes.
 
 **4 · Checklist manual en el iPhone (v11.57 + v11.59).** Una sesión real completa; son las diez
 comprobaciones que ningún test cubre porque viven en la pantalla más usada:

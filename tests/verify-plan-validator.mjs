@@ -542,6 +542,52 @@ fires(run(null, { decisions: [{ id: 'c2', type: 'recovery', what: 'Deload reacti
 silent(base, 'CTL-FOR-STRENGTH', 'la decisión se apoya en RPE y top set');
 
 // ════════════════════════════════════════════════════════════════════════════════════
+sec('G-S14 · WEEK-SUMMARY (warn) — el contrato v2, v11.65');
+// ════════════════════════════════════════════════════════════════════════════════════
+// El fallo que impide: que el coach entregue una semana con sesiones sin motivo. El contrato
+// v2 obliga a UNA FILA POR CADA SESIÓN, también las que no cambian — es la mitad "por qué
+// sigue igual" de la petición de Julian. Sin este aviso, una sesión sin fila desaparece de la
+// Home en silencio y la rutina vuelve a cambiar (o a no cambiar) sin explicación.
+{
+  const conBrief = (rows) => Object.assign(clone(PLAN_OK), {
+    coachBrief: { focus: 'f', phase: 'build', whyKept: 'k', whyChanged: '', weekSummary: rows },
+  });
+  const todas = ['upperA', 'upperB', 'lowerA', 'lowerB']
+    .map((sid) => ({ sessionId: sid, status: 'kept', line: 'sin cambios' }));
+  fires(validatePlanVersion(conBrief(todas.slice(0, 3)), CTX_OK), 'WEEK-SUMMARY', 'warn',
+    ['Lower B'], 'una sesión del plan sin fila en weekSummary');
+  eq(pick(validatePlanVersion(conBrief([]), CTX_OK), 'WEEK-SUMMARY').length, 4,
+    'con el resumen vacío, un aviso por cada sesión');
+  silent(validatePlanVersion(conBrief(todas), CTX_OK), 'WEEK-SUMMARY', 'con todas las filas');
+  // Un plan de la semilla o del usuario no lleva brief: avisar ahí sería ruido en cada
+  // `setIdealVariant`, que crea una versión sin pasar por el coach.
+  silent(base, 'WEEK-SUMMARY', 'un plan sin coachBrief no dice nada');
+}
+
+// ════════════════════════════════════════════════════════════════════════════════════
+sec('El catálogo de ids: 33 y ni uno suelto');
+// ════════════════════════════════════════════════════════════════════════════════════
+// Cuenta los ids que el validador puede emitir, leyendo su propio fuente. Sirve para dos
+// cosas: que añadir un aviso obligue a mirar esta línea (y a traducirlo en `COACH_GUARD_ES`),
+// y que borrar uno no pase inadvertido. Eran 32 hasta v11.64; WEEK-SUMMARY hace 33.
+{
+  const src = readFileSync('app/coach-facts.js', 'utf8');
+  const i = src.indexOf('function validatePlanVersion(');
+  const j = src.indexOf('// ---------- helpers del validador ----------');
+  const cuerpo = src.slice(i, j);
+  const emitidos = new Set([
+    ...[...cuerpo.matchAll(/add\('([A-Z0-9-]+)'/g)].map(m => m[1]),
+    ...[...cuerpo.matchAll(/out\.push\(\{ id: '([A-Z0-9-]+)'/g)].map(m => m[1]),
+  ]);
+  eq(emitidos.size, 33, `el validador emite 33 ids distintos (${[...emitidos].sort().join(', ')})`);
+  ok(emitidos.has('WEEK-SUMMARY'), 'y WEEK-SUMMARY es el nuevo');
+  // Todos traducidos en la pantalla: un id crudo en un chip no se entiende.
+  const coachjs = readFileSync('app/coach.js', 'utf8');
+  const sinTraducir = [...emitidos].filter(id => !new RegExp(`'${id}':|\\b${id}:`).test(coachjs));
+  eq(sinTraducir.join(', ') || 'ninguno', 'ninguno', 'y todos tienen etiqueta en COACH_GUARD_ES');
+}
+
+// ════════════════════════════════════════════════════════════════════════════════════
 sec('Nada bloquea y nada revienta');
 // ════════════════════════════════════════════════════════════════════════════════════
 ok(run().every(r => r.level === 'hard' || r.level === 'warn'), 'todos los avisos son `hard` o `warn`: no existe un nivel que bloquee');

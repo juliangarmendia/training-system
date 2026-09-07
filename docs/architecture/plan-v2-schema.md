@@ -61,8 +61,61 @@ funcionando como plantilla.
   block:   { id, weekIndex:1..5, weeksTotal:5, phase:'build'|'deload', emphasis:[…], deloadAnchor },
   running: { weeklyKmTarget, longRunKm, hardSessions,
              plan:[{ id, dow, distanceKm, durationMin, subtype, hrZone, note }] },
+  coachBrief: { … },                             // v11.65 — ver abajo
   seedRev: 8 }                                   // v2 — el PLAN_REV con el que se generó
 ```
+
+### `coachBrief` — por qué esta semana es así (v11.65, plan v2.1 §B.4)
+
+```js
+coachBrief: {
+  reviewId: '2026-W38#1', weekKey: '2026-W38', appliedAt: 1757800000000,
+  focus: 'mantener los 6 anclas y sumar el largo a 6,5 km',   // ≤160
+  phase: 'base'|'build'|'intensify'|'deload'|'maintenance',
+  whyChanged: '',                                             // markdown ≤600, '' si nada cambia
+  whyKept: 'Upper A igual: 8/8/7 @7,5 el 1-sep, un dato más antes de subir.',
+  priorities: [≤3],
+  lastWeekSummary: [≤3],                                      // hecho vs planificado
+  weekSummary: [≤12],                                         // {sessionId, status, line} por CADA sesión
+}
+```
+
+**Por qué vive en el plan y no sólo en la revisión.** El plan es la fila que sobrevive:
+`coach_reviews` se poda y la revisión de W36 no describe el plan de W38. Con el brief dentro,
+*"¿por qué mi Upper A sigue igual?"* tiene respuesta mientras ese plan esté activo. Lo estampa
+`applyCoachProposal` por `modifications.meta` (que se esparce al nivel superior de la versión;
+`id`/`version`/`createdAt` se reafirman después y no se pueden pisar), y lo **arrastran**
+`rollbackPlanVersion` y `_applyVariantOverCoachPlan`: deshacer o cambiar de calendario no puede
+vaciar la Home.
+
+**Fallback para las revisiones v1** (`coachBriefFromReview`, `app/coach.js`): sin
+`proposal.weekSummary`, las filas se derivan de `diffPlanVersions(prev, next)` — `changed` para
+las que difieren, `kept` con `'sin cambios'` para el resto —, `focus` sale de `priorities[0]`, la
+fase binaria vieja (`build`|`deload`) se mapea a `base`|`deload`, y `whyKept` queda **vacío**: v1
+nunca justificó lo que mantenía e inventar un motivo aquí sería justo lo que el contrato v2 viene
+a impedir.
+
+**Aviso blando `WEEK-SUMMARY`** (`validatePlanVersion`, el id nº 33): una sesión del plan sin
+fila en `weekSummary`, y sólo cuando hay `coachBrief` — un plan de la semilla o del usuario no
+lleva resumen. La decisión `plan-apply` gana `{focus, phase, kept, changed}` en su `evidence`.
+
+### "Cerrar semana y pedir la próxima" — la semana de una revisión
+
+> **La revisión es PARA `weekKey` y SOBRE lo anterior.**
+
+`coachTargetWeekKey(hoy)` (motor puro, `app/coach-engine.js`) decide cuál: **domingo → la semana
+ISO siguiente; lunes-sábado → la actual**. El domingo por la tarde, cerrar la semana significa
+mirar la que termina y escribir la que empieza mañana. Sin esa regla, una propuesta creada el
+domingo llevaría la clave de la semana que acaba de terminar, `_coachExpireIfStale` la declararía
+`expired` el lunes a las 00:00 y el trabajo del coach moriría antes de aplicarse.
+
+El botón `#coach-close-week` (Home en los estados `none`/`expired`/`rejected`, y la vista Coach
+siempre, allí con id `coach-close-week-view`) llama a `runWeeklyCoach({weekKey:
+coachTargetWeekKey(today())})`. **El camino manual no se bloquea por filas existentes de esa
+semana**: `failed`, `rejected` y `expired` no cortan nada (eran justo los tres estados en los que
+uno quiere volver a pedirla); una fila `running` retoma el polling y una `proposed` navega a
+ella, y ninguno de los dos atajos cuesta dinero. El gate por coste sigue **intacto** donde debe
+estar: en `maybeRunWeeklyCoach`, el disparo automático de la primera apertura de cada semana ISO.
 
 ### Los cinco detalles que han costado un bug antes
 
@@ -177,8 +230,12 @@ sube de 4 a **6** (el coach razona sobre el recorrido, y con 4 no se ve un bloqu
 
 **Lo que lee la PWA:** `briefing.focus` · `briefing.phase` · `briefing.whyChanged` ·
 `briefing.whyKept` · `briefing.lastWeekSummary` · `proposal.weekSummary`. Al aplicar, esos campos se
-estampan en la versión nueva del plan como `coachBrief` (§B.4 del plan v2.1), con fallback derivado de
-`diffPlanVersions` para revisiones v1.
+estampan en la versión nueva del plan como [`coachBrief`](#coachbrief--por-qué-esta-semana-es-así-v1165-plan-v21-b4)
+(§B.4 del plan v2.1), con fallback derivado de `diffPlanVersions` para revisiones v1. La Home los
+pinta en la tarjeta `#coach-week-card` (estado `applied`: SEMANA PASADA · ESTA SEMANA · POR QUÉ
+CAMBIA / POR QUÉ SE MANTIENE · los dos desplegables de sesiones) y la vista Coach en el briefing
+completo con la tabla de `weekSummary`; el teaser de Stats usa `focus` con `priorities[0]` como
+fallback v1.
 
 ## `decisions` — la memoria
 
@@ -226,8 +283,8 @@ limpian **sólo** si cambió el `weekTemplate`.
 **Guardarraíles: avisan, nunca bloquean.** `validatePlanVersion` devuelve `[{id, level:'hard'|'warn',
 text, ruleIds}]`. Los `hard` restringen **al coach** (la edge function le pide **una** regeneración con
 el aviso; si insiste, la app lo pinta en rojo); los `warn` son chips ámbar. **Ningún botón se
-deshabilita nunca**: Julian puede aplicar una propuesta con avisos rojos. Tabla completa de los 32 ids
-en [`coach-facts-schema.md`](coach-facts-schema.md).
+deshabilita nunca**: Julian puede aplicar una propuesta con avisos rojos. Tabla completa de los 33 ids
+(32 + `WEEK-SUMMARY` desde v11.65) en [`coach-facts-schema.md`](coach-facts-schema.md).
 
 **Política `settings.coachAutoApply`:** `'ask'` (**default**, decisión de Julian) ·
 `'auto-if-clean'` (0 avisos y ninguna decisión de tipo `structure`) · `'auto'`. `'auto'` **no se

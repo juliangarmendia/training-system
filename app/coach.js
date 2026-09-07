@@ -290,69 +290,90 @@ const GOALS_WEIGH_DAYS = 90;
 const GOALS_RUN_DAYS = 28;
 const GOALS_WORKOUT_DAYS = 56;
 
+/**
+ * Los tres objetivos, calculados una sola vez desde los stores (v11.65).
+ *
+ * POR QUÉ SE EXTRAJO. La misma cuenta la necesitan ahora tres sitios: la tarjeta de Stats, la
+ * misma tarjeta en la vista Coach y la LÍNEA de Home (`renderCoachGoalLine`). Con el cálculo
+ * dentro del renderer, la línea de Home habría acabado con su propia versión del peso y su
+ * propia pendiente — que es exactamente el bug que `goalProgress` vino a cerrar (tres sitios
+ * calculando la recuperación y discrepando, audit F-5).
+ *
+ * Devuelve también `weighins` y `todayStr` porque la línea necesita el TAMAÑO DE MUESTRA para
+ * su fallback honesto ("sin señal (3 pesadas en 14 d)"), y ese dato no está en `gp`.
+ *
+ * @returns {Promise<{gp, goals, weighins, todayStr}|null>} null si el motor no cargó.
+ */
+async function _coachGoalProgressFromStores() {
+  if (typeof goalProgress !== 'function') return null;
+  const ds = today();
+  const desde = (d) => dateStr(new Date(Date.parse(ds + 'T12:00:00') - d * 86400000));
+  const desdePeso = desde(GOALS_WEIGH_DAYS);
+  const desdeRun = desde(GOALS_RUN_DAYS);
+  const desdeWk = desde(GOALS_WORKOUT_DAYS);
+
+  const [bw, wellness, runs, workouts] = await Promise.all([
+    dbGetAll('bodyweight').catch(() => []),
+    dbGetAll('wellness').catch(() => []),
+    (typeof getRunsDeduped === 'function' ? getRunsDeduped() : dbGetAll('runs')).catch(() => []),
+    dbGetAll('workouts').catch(() => []),
+  ]);
+
+  // `measured !== false` y no `measured === true`: las filas que escribe `logBodyWeight` no
+  // llevan el campo y son pesadas reales. Las de intervals.icu sí lo llevan, y las
+  // rellenadas hacia delante llegan con `measured: false` — ésas son las que sobran.
+  const pesadas = [];
+  for (const r of (bw || [])) {
+    if (!r || !r.date || r.date < desdePeso || r.date > ds) continue;
+    if (r.measured === false || !(Number(r.weight) > 0)) continue;
+    pesadas.push({ date: r.date, kg: Number(r.weight) });
+  }
+  for (const w of (wellness || [])) {
+    if (!w || !w.date || w.date < desdePeso || w.date > ds) continue;
+    if (!(Number(w.weightMeasured) > 0)) continue;
+    pesadas.push({ date: w.date, kg: Number(w.weightMeasured) });
+  }
+
+  const runs4w = (runs || [])
+    .filter(r => r && r.date && r.date >= desdeRun && r.date <= ds)
+    .map(r => ({
+      date: r.date, km: Number(r.distance) || 0, min: Number(r.duration) || null,
+      avgHR: r.avgHR != null ? Number(r.avgHR) : null,
+      decoupling: r.decoupling != null ? Number(r.decoupling) : null,
+      modality: r.modality || null,
+    }));
+
+  const workouts8w = (workouts || []).filter(w => w && w.date && w.date >= desdeWk && w.date <= ds);
+
+  const goals = (state.settings && state.settings.goals)
+    || (typeof COACH_GOALS_DEFAULT !== 'undefined' ? COACH_GOALS_DEFAULT : {});
+
+  const gp = goalProgress(goals, {
+    today: ds,
+    bodyweight: pesadas,
+    runs4w,
+    workouts8w,
+    zones: (typeof _runningZones === 'function') ? _runningZones() : null,
+    e1rm: estimate1RM,
+    exName: (id) => (typeof getExerciseName === 'function' ? getExerciseName(id) : id),
+    toKg: (v, unit) => (String(unit).toLowerCase() === 'lb'
+      ? (typeof convertWeight === 'function' ? convertWeight(Number(v), 'lb', 'kg') : Number(v) * 0.45359237)
+      : Number(v)),
+    block: (typeof blockWeek === 'function') ? blockWeek() : null,
+    readiness: (state._readinessCache && state._readinessCache.value) || null,
+  });
+
+  return { gp, goals, weighins: pesadas, todayStr: ds };
+}
+
 async function renderGoalsCard(containerId = 'coach-goals') {
   const el = document.getElementById(containerId);
   if (!el) return;
   if (typeof goalProgress !== 'function') { el.innerHTML = ''; return; }
   try {
-    const ds = today();
-    const desde = (d) => dateStr(new Date(Date.parse(ds + 'T12:00:00') - d * 86400000));
-    const desdePeso = desde(GOALS_WEIGH_DAYS);
-    const desdeRun = desde(GOALS_RUN_DAYS);
-    const desdeWk = desde(GOALS_WORKOUT_DAYS);
-
-    const [bw, wellness, runs, workouts] = await Promise.all([
-      dbGetAll('bodyweight').catch(() => []),
-      dbGetAll('wellness').catch(() => []),
-      (typeof getRunsDeduped === 'function' ? getRunsDeduped() : dbGetAll('runs')).catch(() => []),
-      dbGetAll('workouts').catch(() => []),
-    ]);
-
-    // `measured !== false` y no `measured === true`: las filas que escribe `logBodyWeight` no
-    // llevan el campo y son pesadas reales. Las de intervals.icu sí lo llevan, y las
-    // rellenadas hacia delante llegan con `measured: false` — ésas son las que sobran.
-    const pesadas = [];
-    for (const r of (bw || [])) {
-      if (!r || !r.date || r.date < desdePeso || r.date > ds) continue;
-      if (r.measured === false || !(Number(r.weight) > 0)) continue;
-      pesadas.push({ date: r.date, kg: Number(r.weight) });
-    }
-    for (const w of (wellness || [])) {
-      if (!w || !w.date || w.date < desdePeso || w.date > ds) continue;
-      if (!(Number(w.weightMeasured) > 0)) continue;
-      pesadas.push({ date: w.date, kg: Number(w.weightMeasured) });
-    }
-
-    const runs4w = (runs || [])
-      .filter(r => r && r.date && r.date >= desdeRun && r.date <= ds)
-      .map(r => ({
-        date: r.date, km: Number(r.distance) || 0, min: Number(r.duration) || null,
-        avgHR: r.avgHR != null ? Number(r.avgHR) : null,
-        decoupling: r.decoupling != null ? Number(r.decoupling) : null,
-        modality: r.modality || null,
-      }));
-
-    const workouts8w = (workouts || []).filter(w => w && w.date && w.date >= desdeWk && w.date <= ds);
-
-    const gp = goalProgress(
-      (state.settings && state.settings.goals)
-        || (typeof COACH_GOALS_DEFAULT !== 'undefined' ? COACH_GOALS_DEFAULT : {}),
-      {
-        today: ds,
-        bodyweight: pesadas,
-        runs4w,
-        workouts8w,
-        zones: (typeof _runningZones === 'function') ? _runningZones() : null,
-        e1rm: estimate1RM,
-        exName: (id) => (typeof getExerciseName === 'function' ? getExerciseName(id) : id),
-        toKg: (v, unit) => (String(unit).toLowerCase() === 'lb'
-          ? (typeof convertWeight === 'function' ? convertWeight(Number(v), 'lb', 'kg') : Number(v) * 0.45359237)
-          : Number(v)),
-        block: (typeof blockWeek === 'function') ? blockWeek() : null,
-        readiness: (state._readinessCache && state._readinessCache.value) || null,
-      },
-    );
-
+    const calc = await _coachGoalProgressFromStores();
+    if (!calc) { el.innerHTML = ''; return; }
+    const gp = calc.gp;
     // Estado por fila. `-na` (gris) es un estado de primera clase: "no hay señal" no se pinta
     // ni de verde ni de rojo, porque no es ninguna de las dos cosas.
     const WSTATE = {
@@ -419,6 +440,92 @@ async function renderGoalsCard(containerId = 'coach-goals') {
   }
 }
 
+// ==================== LÍNEA DE OBJETIVO (Home, v11.65) ====================
+//
+// LA PREGUNTA QUE FALTABA EN HOME. La tarjeta "Objetivos" existe desde v11.60, pero vive en
+// Stats › Today y en la vista Coach — dos toques desde donde se decide entrenar. Julian pidió
+// (2026-09-07) que la Home dijera también **cómo viene el objetivo**. Esto es esa respuesta en
+// una o dos líneas apagadas, con su tamaño de muestra al lado y sin un solo botón.
+//
+//   Peso 85,9 · −0,42 kg/sem · hito 82 kg en ~9 sem
+//   10k: fase base · 12,1 km/sem · Z2 3/4 · Fuerza 5/6 anclas
+//
+// NO CALCULA NADA: todo sale de `_coachGoalProgressFromStores()` → `goalProgress`, que es puro
+// y con test (`verify-goal-progress.mjs`). La regla de la casa: los números no se calculan en
+// el renderer, y menos aún dos veces con dos redondeos distintos.
+//
+// EL FALLBACK ES HONESTO, no un guion: "sin señal (3 pesadas en 14 d)" dice por qué no hay
+// número. Un "—" haría pensar que el sistema no mira el peso.
+
+/** Número en castellano: coma decimal y el menos tipográfico (−), no el guion. */
+function _cNum(v, dec) {
+  const n = Number(v);
+  if (v == null || !isFinite(n)) return '—';
+  const s = (typeof _rwFmt === 'function') ? _rwFmt(Math.abs(n), dec) : String(Math.abs(n)).replace('.', ',');
+  return (n < 0 ? '−' : '') + s;
+}
+
+async function renderCoachGoalLine() {
+  const el = document.getElementById('coach-goal-line');
+  if (!el) return;
+  el.innerHTML = '';
+  try {
+    const calc = await _coachGoalProgressFromStores();
+    if (!calc) return;
+    const { gp, goals, weighins, todayStr } = calc;
+
+    // ---- Línea 1: peso -------------------------------------------------------------------
+    const desde14 = dateStr(new Date(Date.parse(todayStr + 'T12:00:00') - 13 * 86400000));
+    const n14 = new Set((weighins || []).filter((w) => w.date >= desde14).map((w) => w.date)).size;
+    const w = gp.weight || {};
+    const peso = [];
+    if (w.status === 'insufficient' || w.trend7d == null) {
+      peso.push(`Peso sin señal (${n14} pesada${n14 === 1 ? '' : 's'} en 14 d)`);
+    } else {
+      peso.push(`Peso ${_cNum(w.trend7d, 1)}`);
+      if (w.slope != null) peso.push(`${_cNum(w.slope, 2)} kg/sem`);
+      const hito = Number(((goals || {}).primary || {}).milestoneKg);
+      const banda = (((goals || {}).primary || {}).targetWeightKg) || [];
+      if (w.etaMilestoneWeeks != null && w.etaMilestoneWeeks > 0 && isFinite(hito)) {
+        peso.push(`hito ${_cNum(hito, 0)} kg en ~${_cNum(w.etaMilestoneWeeks, 0)} sem`);
+      } else if (w.etaWeeks != null && w.etaWeeks > 0 && banda.length === 2) {
+        peso.push(`${_cNum(banda[1], 0)} kg en ~${_cNum(w.etaWeeks, 0)} sem`);
+      }
+    }
+
+    // ---- Línea 2: carrera + fuerza -------------------------------------------------------
+    const r = gp.running || {};
+    const s = gp.strength || {};
+    const otros = [];
+    if (r.runCount === 0) {
+      otros.push('10k: sin carreras en 4 semanas');
+    } else {
+      const fase = (typeof RW_PHASE_ES !== 'undefined' && RW_PHASE_ES[r.phase]) || r.phase;
+      otros.push(`10k: fase ${fase}`);
+      otros.push(`${_cNum(r.weeklyKm, 1)} km/sem`);
+      if (r.z2Sample > 0) otros.push(`Z2 ${r.z2Compliance}/${r.z2Sample}`);
+    }
+    const anclas = s.anchors || [];
+    const conDato = anclas.filter((a) => a.maintained !== null);
+    otros.push(conDato.length
+      ? `Fuerza ${conDato.filter((a) => a.maintained).length}/${anclas.length} anclas`
+      : `Fuerza sin señal (0 de ${anclas.length} anclas con dato)`);
+
+    el.innerHTML =
+      `<div class="coach-goal-line" role="button" tabindex="0">` +
+      `<div class="cgl-row">${_cEsc(peso.join(' · '))}</div>` +
+      `<div class="cgl-row">${_cEsc(otros.join(' · '))}</div>` +
+      `</div>`;
+    // Un toque lleva al detalle. Es el único gesto: aquí no se decide nada.
+    const box = el.querySelector('.coach-goal-line');
+    if (box) box.addEventListener('click', () => { try { openCoachView(); } catch (e) {} });
+  } catch (e) {
+    // Patrón `renderHomeView`: cada sección con su try/catch. Una línea no tumba Home.
+    console.warn('[Coach] renderCoachGoalLine:', e);
+    el.innerHTML = '';
+  }
+}
+
 // ============================================================
 // COACH SEMANAL (v11.61, incremento 9)
 // ============================================================
@@ -446,7 +553,7 @@ async function renderGoalsCard(containerId = 'coach-goals') {
 // LA VERSIÓN DE LA APP viaja al servidor (`clientVersion`) y al pack (`meta.appVersion`), que
 // es lo que permite luego saber qué código produjo una revisión rara.
 // `verify-coach-wiring.mjs` comprueba que coincide con la de index.html y con `CACHE_NAME`.
-const COACH_APP_VERSION = 'v11.63';
+const COACH_APP_VERSION = 'v11.64';
 
 const COACH_MAX_SESSION_IDS = 12;   // el tope que valida la edge function
 const COACH_MAX_EXERCISE_IDS = 150; // idem
@@ -496,6 +603,9 @@ const COACH_GUARD_ES = {
   'SUMMER-PACE': 'ritmo en verano', 'Z2-CEILING': 'techo de Z2', CHURN: 'demasiados cambios',
   ROTATION: 'rotación fuera de semana 1', 'CTL-FOR-STRENGTH': 'ctl/atl para fuerza',
   'VALIDATOR-ERROR': 'validador incompleto',
+  // v11.65 (contrato v2): una sesión del plan sin fila en `weekSummary`. Blando: el coach
+  // debe justificar también lo que mantiene, pero un hueco no impide aplicar.
+  'WEEK-SUMMARY': 'sesión sin resumen',
 };
 const COACH_DOW_ES = { 0: 'Dom', 1: 'Lun', 2: 'Mar', 3: 'Mié', 4: 'Jue', 5: 'Vie', 6: 'Sáb' };
 
@@ -520,6 +630,112 @@ function _cMd(md) {
 function _cWeekKey(ds) { return (typeof isoWeekKey === 'function') ? isoWeekKey(ds || today()) : null; }
 /** "W37" a partir de "2026-W37": el año sobra en una tarjeta de esta semana. */
 function _cWeekShort(wk) { const m = String(wk || '').match(/W(\d{2})$/); return m ? `W${m[1]}` : String(wk || ''); }
+/** La semana PARA la que se pide la revisión: domingo → la siguiente (motor, con test). */
+function _cTargetWeek(ds) {
+  return (typeof coachTargetWeekKey === 'function') ? coachTargetWeekKey(ds || today()) : _cWeekKey(ds);
+}
+function _cPhaseEs(p) {
+  const M = (typeof PHASE_ES !== 'undefined' && PHASE_ES) || {};
+  return M[String(p || '')] || (p ? String(p) : null);
+}
+/** 'B1', 'B2'… desde el ancla del usuario. El motor hace la cuenta; aquí sólo se lee settings. */
+function _cBlockLabel(ds) {
+  try {
+    if (typeof blockLabel !== 'function') return null;
+    const anchor = (typeof state !== 'undefined' && state.settings && state.settings.deloadAnchorDate) || null;
+    const n = (typeof DELOAD_BLOCK_WEEKS !== 'undefined') ? DELOAD_BLOCK_WEEKS : 5;
+    return blockLabel(ds || today(), anchor, n);
+  } catch (e) { return null; }
+}
+
+// ==================== EL BRIEF DE LA SEMANA (contrato v2, v11.65) ====================
+//
+// QUÉ ES. Los seis campos que la Home nueva lee para poder decir **qué pasó la semana pasada,
+// en qué etapa estoy, cuál es el enfoque y por qué cambia o por qué sigue igual** (petición de
+// Julian, 2026-09-07). Viven en `coach_reviews[…].output` mientras la propuesta está viva, y
+// al APLICAR se estampan en la versión del plan como `coachBrief`.
+//
+// POR QUÉ SE COPIAN AL PLAN Y NO SE LEEN SIEMPRE DE LA REVISIÓN. El plan es la fila que
+// sobrevive: la revisión se puede podar, y la vieja de W36 no describe el plan de W38. Con el
+// brief dentro del plan, "¿por qué mi Upper A sigue igual?" tiene respuesta mientras ese plan
+// esté activo, aunque la revisión ya no esté en el dispositivo.
+//
+// FALLBACK PARA REVISIONES v1 (las que ya existen, sin `weekSummary`): las filas se derivan
+// del diff — `changed` para las sesiones que difieren, `kept` con "sin cambios" para el resto.
+// El `focus` sale de la primera prioridad, la fase del campo binario viejo (`build`|`deload`)
+// mapeado a `base`|`deload`, y `whyKept` queda vacío: v1 nunca justificó lo que mantenía, y
+// inventar un motivo aquí sería exactamente lo que este contrato viene a impedir.
+
+const COACH_PHASES = ['base', 'build', 'intensify', 'deload', 'maintenance'];
+const COACH_MAX_WEEK_SUMMARY = 12;
+const COACH_WS_STATUS_ES = { kept: 'sigue', changed: 'cambia', new: 'nueva', removed: 'fuera' };
+const _COACH_V1_LINE = {
+  kept: 'sin cambios',
+  changed: 'cambia (revisión v1: el coach no dio el motivo)',
+  new: 'sesión nueva',
+  removed: 'sesión fuera',
+};
+
+/**
+ * El `coachBrief` de una revisión, con fallback para v1.
+ *
+ * @param {object} review  la fila de `coach_reviews`
+ * @param {object} [opts]  `{ prev, next, diff }` — `next` es el plan resultante (mergeado o ya
+ *                         aplicado) y `diff` el `diffPlanVersions(prev, next)` si se tiene.
+ *                         Sin `diff`, las filas v1 se deducen de `proposal.sessions`.
+ */
+function coachBriefFromReview(review, opts = {}) {
+  const r = review || {};
+  const out = r.output || {};
+  const brief = out.briefing || {};
+  const prop = out.proposal || {};
+  const next = opts.next || null;
+  const diff = opts.diff || null;
+  const esV2 = Array.isArray(prop.weekSummary) && prop.weekSummary.length > 0;
+
+  let weekSummary;
+  if (esV2) {
+    weekSummary = prop.weekSummary.slice(0, COACH_MAX_WEEK_SUMMARY).map((w) => ({
+      sessionId: (w && w.sessionId) || null,
+      status: (w && COACH_WS_STATUS_ES[w.status]) ? w.status : 'kept',
+      line: (w && w.line) ? String(w.line) : '',
+    }));
+  } else {
+    const sesiones = (next && next.sessions) || ((opts.prev || {}).sessions) || {};
+    const tocadas = {};
+    for (const s of (prop.sessions || [])) if (s && s.id) tocadas[s.id] = 1;
+    const dSess = (diff && diff.sessions) || null;
+    const ids = Object.keys(sesiones);
+    if (dSess) for (const sid of Object.keys(dSess)) if (ids.indexOf(sid) === -1) ids.push(sid);
+    weekSummary = ids.slice(0, COACH_MAX_WEEK_SUMMARY).map((sid) => {
+      const d = dSess ? dSess[sid] : null;
+      let status = 'kept';
+      if (d) status = d.sessionAdded ? 'new' : (d.sessionRemoved ? 'removed' : 'changed');
+      else if (tocadas[sid]) status = 'changed';
+      return { sessionId: sid, status, line: _COACH_V1_LINE[status] };
+    });
+  }
+
+  const priorities = (brief.priorities || []).slice(0, 3);
+  const fase = esV2
+    ? (COACH_PHASES.indexOf(brief.phase) !== -1 ? brief.phase : null)
+    // v1: el campo era binario ('build'|'deload'). "No es descarga" en el vocabulario v2 es
+    // `base`, que es el que menos promete.
+    : (String(prop.phase || '') === 'deload' ? 'deload' : 'base');
+
+  return {
+    reviewId: r.id || null,
+    weekKey: r.weekKey || null,
+    appliedAt: null,
+    focus: (esV2 && brief.focus) ? String(brief.focus) : (priorities[0] || null),
+    phase: fase,
+    whyChanged: esV2 ? String(brief.whyChanged || '') : '',
+    whyKept: esV2 ? String(brief.whyKept || '') : '',
+    priorities,
+    lastWeekSummary: esV2 ? (brief.lastWeekSummary || []).slice(0, 3) : [],
+    weekSummary,
+  };
+}
 
 // ==================== EL PACK DE HECHOS DESDE LOS STORES ====================
 //
@@ -721,10 +937,29 @@ async function maybeRunWeeklyCoach() {
  * `mode:'async'`: el modelo tarda 60-180 s con `effort:'high'` e iOS suspende la PWA en
  * segundo plano, así que la función devuelve 202 con el `reviewId` y sigue trabajando bajo
  * `EdgeRuntime.waitUntil()`. Aquí se guarda un ESPEJO local `running` y se hace polling.
+ *
+ * EL CAMINO MANUAL NO SE BLOQUEA POR FILAS EXISTENTES (v11.65). El gate del coste vive en
+ * `maybeRunWeeklyCoach` (el disparo AUTOMÁTICO); aquí, si Julian pulsa "Cerrar semana y pedir
+ * la próxima", una fila `failed`, `rejected` o `expired` de esa semana no puede impedirlo —
+ * eran justo los tres estados en los que uno quiere volver a pedirla. Sólo hay dos atajos, y
+ * ninguno cuesta dinero: una fila `running` retoma el polling y una `proposed` navega a ella
+ * (pedirla otra vez daría la misma respuesta con `cached:true`, que además es gratis).
+ * `force` los salta, y `regenerate` también (es una decisión explícita del usuario).
  */
-async function runWeeklyCoach({ weekKey, userNote, regenerate } = {}) {
+async function runWeeklyCoach({ weekKey, userNote, regenerate, force } = {}) {
   const wk = weekKey || _cWeekKey(today());
   if (_coachInvoking) { if (typeof toast === 'function') toast('El coach ya está trabajando'); return null; }
+  if (!force && !regenerate) {
+    const previas = ((await dbGetAll('coach_reviews').catch(() => [])) || []).filter((r) => r && r.weekKey === wk);
+    const enMarcha = previas.find((r) => r.status === 'running');
+    if (enMarcha) {
+      pollCoachReview(enMarcha.id);
+      if (typeof toast === 'function') toast('El coach ya está con esa semana');
+      return { status: 'running', reviewId: enMarcha.id };
+    }
+    const propuesta = previas.find((r) => r.status === 'proposed');
+    if (propuesta) { try { openCoachView(); } catch (e) {} return propuesta; }
+  }
   if (typeof navigator !== 'undefined' && navigator.onLine === false) {
     if (typeof toast === 'function') toast('Sin conexión: se intentará al volver');
     return null;
@@ -1014,9 +1249,18 @@ async function applyCoachProposal(review) {
     const prev = (typeof activePlan !== 'undefined') ? activePlan : null;
     const merged = mergeProposal(prev, review.output.proposal);
     const ctx = await _coachValidateCtx(review, prev);
-    let guardrails = [];
-    try { guardrails = validatePlanVersion(merged, ctx) || []; } catch (e) { console.warn('[Coach] validador:', e); }
     const diff = diffPlanVersions(prev || {}, merged);
+    // EL BRIEF SE CONSTRUYE ANTES DE VALIDAR, a propósito: `WEEK-SUMMARY` comprueba que cada
+    // sesión del plan lleve su fila, y sin el brief dentro del objeto que se valida ese aviso
+    // no podría dispararse nunca.
+    const coachBrief = Object.assign(
+      coachBriefFromReview(review, { prev, next: merged, diff }),
+      { appliedAt: Date.now() },
+    );
+    let guardrails = [];
+    try {
+      guardrails = validatePlanVersion(Object.assign({}, merged, { coachBrief }), ctx) || [];
+    } catch (e) { console.warn('[Coach] validador:', e); }
     const blk = (typeof blockWeek === 'function') ? blockWeek() : null;
 
     const nuevo = await createNewPlanVersion({
@@ -1033,6 +1277,10 @@ async function applyCoachProposal(review) {
         phase: merged.phase || null,
         running: merged.running || null,
         seedRev: (typeof PLAN_REV !== 'undefined') ? PLAN_REV : null,
+        // v11.65: el brief viaja DENTRO del plan. `meta` se esparce al nivel superior de la
+        // versión (`createNewPlanVersion`), así que queda como `activePlan.coachBrief`;
+        // `id`/`version`/`createdAt` se reafirman después del spread y no se pueden pisar.
+        coachBrief,
       },
     });
 
@@ -1069,6 +1317,12 @@ async function applyCoachProposal(review) {
         why: 'Aprobado con un toque',
         ruleIds,
         evidence: {
+          // v11.65: el foco, la fase y el reparto sigue/cambia entran en la decisión. Sin
+          // esto, el registro decía "plan v15 aplicado" y no de qué iba la semana.
+          focus: coachBrief.focus || 'sin foco declarado',
+          phase: coachBrief.phase || 'sin fase',
+          kept: (coachBrief.weekSummary || []).filter((w) => w.status === 'kept').length,
+          changed: (coachBrief.weekSummary || []).filter((w) => w.status !== 'kept').length,
           sesionesTocadas: (merged.touched || []).join(', ') || 'ninguna',
           cambiosEstructurales: diff.structural,
           diasDeTemplate: (diff.weekTemplate || []).length,
@@ -1158,6 +1412,10 @@ async function rollbackPlanVersion(toId) {
         block: (typeof blockWeek === 'function') ? blockWeek() : null,
         running: old.running || null,
         seedRev: (typeof PLAN_REV !== 'undefined') ? PLAN_REV : null,
+        // v11.65: el brief viaja con la versión que se copia. Deshacer no puede dejar el plan
+        // sin explicación: si la v13 tenía su "por qué se mantiene", la v15 que la restaura
+        // también lo tiene. Sin esto, un Deshacer vaciaría la Home.
+        coachBrief: old.coachBrief || null,
       },
     });
     if (prev && prev.id) {
@@ -1347,7 +1605,9 @@ async function _coachPreviewGuardrails(review, prev, merged) {
   if (_coachGuardCache.has(key)) return _coachGuardCache.get(key);
   try {
     const ctx = await _coachValidateCtx(review, prev);
-    const out = validatePlanVersion(merged, ctx) || [];
+    // Con el brief dentro, para que `WEEK-SUMMARY` se vea ANTES de aplicar y no después.
+    const brief = coachBriefFromReview(review, { prev, next: merged, diff: diffPlanVersions(prev || {}, merged) });
+    const out = validatePlanVersion(Object.assign({}, merged, { coachBrief: brief }), ctx) || [];
     _coachGuardCache.set(key, out);
     // Un par de entradas bastan (la revisión de esta semana y la anterior); el mapa no crece.
     if (_coachGuardCache.size > 4) _coachGuardCache.delete(_coachGuardCache.keys().next().value);
@@ -1358,39 +1618,91 @@ async function _coachPreviewGuardrails(review, prev, merged) {
   }
 }
 
+// ==================== CERRAR LA SEMANA ====================
+//
+// EL BOTÓN QUE FALTABA. Hasta v11.64 la única forma de tener una revisión era esperar a que la
+// app se abriera un lunes (`maybeRunWeeklyCoach`). Julian entrena el domingo y quiere cerrar la
+// semana cuando la termina, no cuando el calendario lo diga. "Cerrar semana y pedir la próxima"
+// es ese gesto: la revisión es PARA `coachTargetWeekKey(hoy)` —el domingo, la que viene— y
+// SOBRE todo lo anterior.
+//
+// El estado `running` va en el propio botón (texto + `disabled`) y no en un spinner aparte:
+// la respuesta tarda 60-180 s y sin marca visible el usuario pulsa dos veces.
+
+const COACH_CLOSE_WEEK_ES = 'Cerrar semana y pedir la próxima';
+
+function _coachCloseWeekBtn(id, label) {
+  return `<button class="coach-btn coach-close-week" id="${id || 'coach-close-week'}">${_cEsc(label || COACH_CLOSE_WEEK_ES)}</button>`;
+}
+
+function _coachBindCloseWeek(id) {
+  const b = document.getElementById(id || 'coach-close-week');
+  if (!b) return;
+  b.addEventListener('click', async () => {
+    if (b.dataset && b.dataset.running === '1') return;
+    const antes = b.textContent;
+    if (b.dataset) b.dataset.running = '1';
+    b.disabled = true;
+    b.textContent = 'Cerrando la semana…';
+    try {
+      await runWeeklyCoach({ weekKey: _cTargetWeek(today()) });
+    } finally {
+      // La tarjeta se repinta sola al terminar; restaurar el botón sólo importa si sigue vivo.
+      if (b.dataset) b.dataset.running = '0';
+      b.disabled = false;
+      b.textContent = antes;
+    }
+  });
+}
+
 // ==================== TARJETA DE HOME ====================
 //
-// Estados (§A.7): `running` con su contador · `proposed` con las 3 prioridades, el plan de la
-// semana plegado, el diff por sesión, los chips de aviso y los tres botones · `applied` con la
-// versión y el Deshacer · `failed` con la causa · `expired`/`rejected` con una línea. Sin
-// revisión, la tarjeta no se pinta: un hueco vacío en Home es peor que no tener tarjeta.
+// Estados: `none` (primera semana, con el botón de cerrar) · `running` con su contador ·
+// `proposed` con el foco, las 3 prioridades, el porqué, el diff, los chips y los tres botones ·
+// `applied` con SEMANA PASADA / ESTA SEMANA / POR QUÉ y los desplegables · `failed` con la
+// causa · `expired`/`rejected` con una línea y el botón de cerrar.
+//
+// v11.65: LA TARJETA SIEMPRE SE PINTA. Antes, sin revisión, Home no decía nada del coach y no
+// había forma de pedirle la primera — el estado vacío era también el callejón sin salida.
+//
+// DE DÓNDE SALE EL TEXTO. Si el plan activo viene de ESTA revisión (`activePlan.reviewId ===
+// review.id`), del `coachBrief` que se estampó al aplicar; si no, del `output` de la revisión
+// con el fallback para v1. El plan manda porque es lo que está vigente: la revisión se puede
+// podar y el plan no.
 async function renderCoachWeekCard(opts = {}) {
   const el = document.getElementById('coach-week-card');
   if (!el) return;
   try {
+    el.classList.remove('hidden');
+    const objetivo = _cTargetWeek(today());
     if (opts.pending) {
-      el.classList.remove('hidden');
       el.innerHTML = `<div class="card coach-week-card">
-        <div class="coach-week-head"><span class="coach-week-title">Coach · ${_cEsc(_cWeekShort(_cWeekKey(today())))}</span></div>
+        <div class="coach-week-head"><span class="coach-week-title">Coach · ${_cEsc(_cWeekShort(objetivo))}</span></div>
         <div class="coach-week-line">Preparando los hechos de la semana…</div>
       </div>`;
       return;
     }
     let review = await _coachLatestReview();
     review = await _coachExpireIfStale(review);
-    if (!review) { el.classList.add('hidden'); el.innerHTML = ''; return; }
 
-    const wkTxt = _cEsc(_cWeekShort(review.weekKey));
-    const head = (extra) => `<div class="coach-week-head">
-        <span class="coach-week-title">Coach · ${wkTxt}</span>
-        ${extra || ''}
-        <button class="coach-week-open" id="coach-week-open">Coach ›</button>
+    const wkTxt = _cEsc(_cWeekShort((review && review.weekKey) || objetivo));
+    const plan = (typeof activePlan !== 'undefined' && activePlan) ? activePlan : null;
+    const head = (extra, abrir) => `<div class="coach-week-head">
+        <span class="coach-week-title">Coach · ${wkTxt}${extra || ''}</span>
+        <button class="coach-week-open" id="coach-week-open">${_cEsc(abrir || 'Coach ›')}</button>
       </div>`;
 
+    let cabecera = head();
     let cuerpo = '';
     let acciones = '';
+    let cerrar = null;   // id del botón "cerrar semana" a cablear, si lo hay
 
-    if (review.status === 'running') {
+    if (!review) {
+      // ESTADO `none` — la primera semana, y el único sitio desde el que se puede arrancar.
+      cuerpo = '<div class="coach-week-line">Primera semana con el coach. El domingo cierra la semana, interpreta el recorrido y propone la siguiente. Hasta entonces la rutina no cambia.</div>';
+      acciones = _coachCloseWeekBtn('coach-close-week', 'Cerrar semana ahora');
+      cerrar = 'coach-close-week';
+    } else if (review.status === 'running') {
       const desde = (_coachPoll && _coachPoll.reviewId === review.id) ? _coachPoll.started : Number(review.createdAt || Date.now());
       const rendido = _coachPollGaveUp === review.id;
       cuerpo = rendido
@@ -1399,15 +1711,21 @@ async function renderCoachWeekCard(opts = {}) {
       if (rendido) acciones = '<button class="coach-btn" id="coach-week-regen">Regenerar</button>';
       else if (!_coachPoll || _coachPoll.reviewId !== review.id) pollCoachReview(review.id);
     } else if (review.status === 'proposed') {
-      const prev = (typeof activePlan !== 'undefined') ? activePlan : {};
+      const prev = plan || {};
       const merged = (typeof mergeProposal === 'function') ? mergeProposal(prev, (review.output || {}).proposal || {}) : null;
       const { groups } = merged ? coachDiffGroups(prev, merged) : { groups: [] };
       const guardrails = merged ? await _coachPreviewGuardrails(review, prev, merged) : [];
-      const brief = (review.output || {}).briefing || {};
-      const prios = (brief.priorities || []).slice(0, 3);
+      const brief = coachBriefFromReview(review, {
+        prev, next: merged,
+        diff: merged ? diffPlanVersions(prev, merged) : null,
+      });
+      const nextWeek = ((review.output || {}).briefing || {}).nextWeek;
+      const prios = brief.priorities;
       cuerpo = `
+        ${brief.focus ? `<div class="cwc-focus">Foco: ${_cEsc(brief.focus)}</div>` : ''}
         ${prios.length ? `<ol class="coach-week-prios">${prios.map((p) => `<li>${_cEsc(p)}</li>`).join('')}</ol>` : ''}
-        ${brief.nextWeek ? `<details class="coach-week-next"><summary>La semana que viene</summary><div class="coach-week-md">${_cMd(brief.nextWeek)}</div></details>` : ''}
+        ${_coachWhyHtml(brief, { plegado: true })}
+        ${nextWeek ? `<details class="coach-week-next"><summary>La semana que viene</summary><div class="coach-week-md">${_cMd(nextWeek)}</div></details>` : ''}
         <div class="coach-week-diff">${_coachDiffHtml(groups, 8)}</div>
         ${_coachGuardChipsHtml(guardrails)}`;
       // NINGÚN BOTÓN DESHABILITADO, tampoco con avisos duros: los duros restringen al coach,
@@ -1417,10 +1735,15 @@ async function renderCoachWeekCard(opts = {}) {
         <button class="coach-btn" id="coach-week-reject">Rechazar</button>
         <button class="coach-btn" id="coach-week-regen-note">Regenerar con nota</button>`;
     } else if (review.status === 'applied') {
-      const ver = (typeof activePlan !== 'undefined' && activePlan && activePlan.version != null) ? activePlan.version : null;
-      const n = (review.guardrails || []).length;
-      cuerpo = `<div class="coach-week-line">Plan ${wkTxt} activo${ver != null ? ` (v${ver})` : ''} · ${n ? `${n} aviso${n === 1 ? '' : 's'}` : 'sin avisos'}</div>`;
-      const volver = (typeof activePlan !== 'undefined' && activePlan && activePlan.basedOn) || null;
+      const ver = (plan && plan.version != null) ? plan.version : null;
+      // El brief del PLAN si el plan salió de esta revisión; si no, el de la revisión (con el
+      // fallback v1 dentro). El plan manda porque es lo que está vigente.
+      const brief = (plan && plan.coachBrief && plan.reviewId === review.id)
+        ? plan.coachBrief
+        : coachBriefFromReview(review, { prev: plan, next: plan });
+      cabecera = head(ver != null ? ` · plan v${ver}` : '', 'Ver todo ›');
+      cuerpo = _coachAppliedHtml(brief, plan, review);
+      const volver = (plan && plan.basedOn) || null;
       if (volver) acciones = `<button class="coach-btn" id="coach-week-undo" data-plan="${_cEsc(volver)}">Deshacer</button>`;
     } else if (review.status === 'failed') {
       const kind = (review.error && review.error.kind) || 'api';
@@ -1428,39 +1751,136 @@ async function renderCoachWeekCard(opts = {}) {
       acciones = '<button class="coach-btn" id="coach-week-regen">Regenerar</button>';
     } else if (review.status === 'expired' || review.status === 'rejected') {
       cuerpo = `<div class="coach-week-line">Propuesta de ${wkTxt} ${review.status === 'expired' ? 'vencida (era de una semana anterior)' : 'rechazada'}.</div>`;
-      acciones = '<button class="coach-btn" id="coach-week-regen">Regenerar</button>';
+      acciones = `${_coachCloseWeekBtn('coach-close-week')}<button class="coach-btn" id="coach-week-regen">Regenerar</button>`;
+      cerrar = 'coach-close-week';
     } else {
-      el.classList.add('hidden'); el.innerHTML = ''; return;
+      cuerpo = '<div class="coach-week-line">Sin revisión utilizable de esta semana.</div>';
+      acciones = _coachCloseWeekBtn('coach-close-week');
+      cerrar = 'coach-close-week';
     }
 
-    el.classList.remove('hidden');
     el.innerHTML = `<div class="card coach-week-card">
-      ${head()}
+      ${cabecera}
       ${cuerpo}
       ${acciones ? `<div class="coach-actions">${acciones}</div>` : ''}
     </div>`;
 
     const on = (id, fn) => { const b = document.getElementById(id); if (b) b.addEventListener('click', fn); };
     on('coach-week-open', () => openCoachView());
-    on('coach-week-apply', async () => { await applyCoachProposal(review); });
-    on('coach-week-reject', async () => {
-      const why = (typeof prompt === 'function') ? prompt('¿Por qué la rechazas? (opcional)') : null;
-      if (why === null) return;   // Cancelar no rechaza
-      await rejectCoachProposal(review, (why || '').trim() || null);
-    });
-    on('coach-week-regen', () => runWeeklyCoach({ weekKey: _cWeekKey(today()), regenerate: true }));
-    on('coach-week-regen-note', () => {
-      const nota = (typeof prompt === 'function') ? prompt('¿Qué debería tener en cuenta? (una o dos frases)') : null;
-      if (!nota) return;
-      return runWeeklyCoach({ weekKey: _cWeekKey(today()), userNote: nota.trim(), regenerate: true });
-    });
-    on('coach-week-undo', (e) => rollbackPlanVersion(e.currentTarget.dataset.plan));
+    if (cerrar) _coachBindCloseWeek(cerrar);
+    if (review) {
+      on('coach-week-apply', async () => { await applyCoachProposal(review); });
+      on('coach-week-reject', async () => {
+        const why = (typeof prompt === 'function') ? prompt('¿Por qué la rechazas? (opcional)') : null;
+        if (why === null) return;   // Cancelar no rechaza
+        await rejectCoachProposal(review, (why || '').trim() || null);
+      });
+      on('coach-week-regen', () => runWeeklyCoach({ weekKey: _cWeekKey(today()), regenerate: true }));
+      on('coach-week-regen-note', () => {
+        const nota = (typeof prompt === 'function') ? prompt('¿Qué debería tener en cuenta? (una o dos frases)') : null;
+        if (!nota) return;
+        return runWeeklyCoach({ weekKey: _cWeekKey(today()), userNote: nota.trim(), regenerate: true });
+      });
+      on('coach-week-undo', (e) => rollbackPlanVersion(e.currentTarget.dataset.plan));
+    }
   } catch (e) {
     // Patrón `renderHomeView`: cada sección con su try/catch.
     console.warn('[Coach] renderCoachWeekCard:', e);
     el.classList.add('hidden');
     el.innerHTML = '';
   }
+}
+
+/** El nombre visible de una sesión, del plan activo o del propio id. */
+function _coachSessionName(sid, plan) {
+  const p = plan || ((typeof activePlan !== 'undefined' && activePlan) ? activePlan : null);
+  const s = ((p || {}).sessions || {})[sid];
+  return (s && s.name) || sid || '';
+}
+
+/**
+ * "POR QUÉ CAMBIA" y "POR QUÉ SE MANTIENE".
+ *
+ * EL ORDEN NO ES DECORATIVO: si algo cambia, lo primero que hay que leer es por qué; si no
+ * cambia nada (`whyChanged === ''`, que el contrato v2 garantiza cuando la semana sigue igual),
+ * lo único que hay que leer es por qué se mantiene, y va ABIERTO. Nunca se pintan los dos
+ * abiertos: serían 1.200 caracteres de markdown en la pantalla que se mira antes de entrenar.
+ */
+function _coachWhyHtml(brief, opts = {}) {
+  const b = brief || {};
+  const cambia = String(b.whyChanged || '').trim();
+  const mantiene = String(b.whyKept || '').trim();
+  if (!cambia && !mantiene) return '';
+  if (opts.plegado) {
+    return `<details class="cwc-why"><summary>Por qué cambia · por qué se mantiene</summary>
+      ${cambia ? `<div class="cwc-label">POR QUÉ CAMBIA</div><div class="coach-week-md">${_cMd(cambia)}</div>` : ''}
+      ${mantiene ? `<div class="cwc-label">POR QUÉ SE MANTIENE</div><div class="coach-week-md">${_cMd(mantiene)}</div>` : ''}
+    </details>`;
+  }
+  const bloqueCambia = cambia
+    ? `<div class="cwc-block"><div class="cwc-label">POR QUÉ CAMBIA</div><div class="coach-week-md">${_cMd(cambia)}</div></div>`
+    : '';
+  if (!mantiene) return bloqueCambia;
+  const bloqueMantiene = cambia
+    ? `<details class="cwc-why"><summary>POR QUÉ SE MANTIENE</summary><div class="coach-week-md">${_cMd(mantiene)}</div></details>`
+    : `<div class="cwc-block"><div class="cwc-label">POR QUÉ SE MANTIENE</div><div class="coach-week-md">${_cMd(mantiene)}</div></div>`;
+  return bloqueCambia + bloqueMantiene;
+}
+
+/** Una fila de `weekSummary`: chip de estado + nombre de la sesión + su motivo. */
+function _coachWsRowHtml(w, plan) {
+  const st = (w && COACH_WS_STATUS_ES[w.status]) ? w.status : 'kept';
+  return `<div class="ws-row">
+    <span class="ws-chip ${_cEsc(st)}">${_cEsc(COACH_WS_STATUS_ES[st])}</span>
+    <span class="ws-name">${_cEsc(_coachSessionName(w && w.sessionId, plan))}</span>
+    <span class="ws-line">${_cEsc((w && w.line) || '')}</span>
+  </div>`;
+}
+
+/**
+ * El cuerpo del estado `applied`: qué pasó la semana pasada, en qué etapa estoy, cuál es el
+ * foco y por qué cambia o por qué sigue igual. Es la petición literal de Julian del
+ * 2026-09-07, en el orden en que él la dijo.
+ *
+ * EL DETALLE ACOTADO: aquí sólo caben 3 bullets y dos desplegables. El texto completo
+ * (`lastWeek`, `nextWeek`, las decisiones con sus reglas) vive en la vista Coach, a un toque
+ * de "Ver todo ›". Una Home de tres pantallas de scroll no se lee antes de entrenar.
+ */
+function _coachAppliedHtml(brief, plan, review) {
+  const b = brief || {};
+  const rows = Array.isArray(b.weekSummary) ? b.weekSummary : [];
+  const cambian = rows.filter((w) => w && w.status !== 'kept');
+
+  const pasada = (b.lastWeekSummary || []).slice(0, 3);
+  const bloquePasada = pasada.length
+    ? `<div class="cwc-block"><div class="cwc-label">SEMANA PASADA</div>
+       <ul class="cwc-bullets">${pasada.map((l) => `<li>${_cEsc(l)}</li>`).join('')}</ul></div>`
+    : '';
+
+  const blk = (typeof blockWeek === 'function') ? blockWeek() : null;
+  const total = (typeof DELOAD_BLOCK_WEEKS !== 'undefined') ? DELOAD_BLOCK_WEEKS : 5;
+  const bits = [];
+  if (blk && blk.index) bits.push(`Semana ${blk.index}/${total}`);
+  const bl = _cBlockLabel(today());
+  if (bl) bits.push(bl);
+  const fase = _cPhaseEs(b.phase);
+  if (fase) bits.push(`fase ${fase}`);
+  if (b.focus) bits.push(`Foco: ${b.focus}`);
+  const bloqueEsta = bits.length
+    ? `<div class="cwc-block"><div class="cwc-label">ESTA SEMANA</div>
+       <div class="cwc-line">${_cEsc(bits.join(' · '))}</div></div>`
+    : '';
+
+  const n = ((review || {}).guardrails || []).length;
+  const pie = `<div class="cwc-foot">${n ? `${n} aviso${n === 1 ? '' : 's'}` : 'sin avisos'}</div>`;
+
+  return `
+    ${bloquePasada}
+    ${bloqueEsta}
+    ${_coachWhyHtml(b)}
+    ${cambian.length ? `<details class="cwc-ws"><summary>Qué cambia (${cambian.length} ${cambian.length === 1 ? 'sesión' : 'sesiones'})</summary>${cambian.map((w) => _coachWsRowHtml(w, plan)).join('')}</details>` : ''}
+    ${rows.length ? `<details class="cwc-ws"><summary>Todas las sesiones (${rows.length})</summary>${rows.map((w) => _coachWsRowHtml(w, plan)).join('')}</details>` : ''}
+    ${pie}`;
 }
 
 // ==================== VISTA COACH ====================
@@ -1514,15 +1934,33 @@ async function _coachRenderWeek(el, review) {
     <div class="coach-week-line">${bloque}</div>
     ${review ? `<div class="coach-week-status">Revisión ${_cEsc(COACH_STATUS_ES[review.status] || review.status || '—')}${review.attempt ? ` · intento ${review.attempt}` : ''}</div>` : '<div class="coach-week-status">Aún no hay revisión de esta semana.</div>'}
     ${prios.length ? `<ol class="coach-week-prios">${prios.slice(0, 3).map((p) => `<li>${_cEsc(p)}</li>`).join('')}</ol>` : ''}
+    <div class="coach-actions">${_coachCloseWeekBtn('coach-close-week-view')}</div>
   </div>`;
+  // Id propio y no `coach-close-week`: la tarjeta de Home vive en el mismo documento y dos
+  // elementos con el mismo id harían que `getElementById` sólo encontrase uno. La clase
+  // `.coach-close-week` es la que comparten.
+  _coachBindCloseWeek('coach-close-week-view');
 }
 
 async function _coachRenderBriefing(el, review) {
   const brief = (((review || {}).output) || {}).briefing || null;
-  if (brief && (brief.lastWeek || brief.nextWeek)) {
+  if (brief && (brief.lastWeek || brief.nextWeek || brief.focus)) {
+    // v11.65: el contrato v2 en su sitio largo. Foco y fase arriba (el titular), el porqué
+    // completo en medio y la tabla de sesiones abajo — una fila por cada una, también las que
+    // no cambian, que es el punto entero del contrato.
+    const plan = (typeof activePlan !== 'undefined' && activePlan) ? activePlan : null;
+    const cb = coachBriefFromReview(review, { prev: plan, next: plan });
+    const fase = _cPhaseEs(cb.phase);
+    const rows = cb.weekSummary || [];
     el.innerHTML = `<div class="card coach-brief">
-      ${brief.lastWeek ? `<div class="coach-brief-title">Qué pasó</div><div class="coach-week-md">${_cMd(brief.lastWeek)}</div>` : ''}
+      ${cb.focus ? `<div class="coach-brief-title">Foco</div><div class="cwc-line">${_cEsc(cb.focus)}</div>` : ''}
+      ${fase ? `<div class="coach-brief-title" style="margin-top:12px">Fase</div><div class="cwc-line">${_cEsc(fase)}</div>` : ''}
+      ${(cb.lastWeekSummary || []).length ? `<div class="coach-brief-title" style="margin-top:12px">Semana pasada</div><ul class="cwc-bullets">${cb.lastWeekSummary.map((l) => `<li>${_cEsc(l)}</li>`).join('')}</ul>` : ''}
+      ${brief.lastWeek ? `<div class="coach-brief-title" style="margin-top:12px">Qué pasó</div><div class="coach-week-md">${_cMd(brief.lastWeek)}</div>` : ''}
+      ${String(cb.whyChanged || '').trim() ? `<div class="coach-brief-title" style="margin-top:12px">Por qué cambia</div><div class="coach-week-md">${_cMd(cb.whyChanged)}</div>` : ''}
+      ${String(cb.whyKept || '').trim() ? `<div class="coach-brief-title" style="margin-top:12px">Por qué se mantiene</div><div class="coach-week-md">${_cMd(cb.whyKept)}</div>` : ''}
       ${brief.nextWeek ? `<div class="coach-brief-title" style="margin-top:12px">Qué cambio</div><div class="coach-week-md">${_cMd(brief.nextWeek)}</div>` : ''}
+      ${rows.length ? `<div class="coach-brief-title" style="margin-top:12px">Las sesiones de la semana (${rows.length})</div><div class="cwc-ws-table">${rows.map((w) => _coachWsRowHtml(w, plan)).join('')}</div>` : ''}
     </div>`;
     return;
   }
@@ -1719,7 +2157,10 @@ async function setCoachAutoApply(mode) {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     renderCoachReadout, renderReadinessSignals, renderRecoveryLine, renderGoalsCard,
+    renderCoachGoalLine, _coachGoalProgressFromStores,
     COACH_APP_VERSION, COACH_RULE_ES, COACH_EVIDENCE_ES, COACH_GUARD_ES, COACH_STATUS_ES,
+    COACH_PHASES, COACH_WS_STATUS_ES, COACH_CLOSE_WEEK_ES,
+    coachBriefFromReview, _coachAppliedHtml, _coachWhyHtml,
     buildCoachFactsFromStores, maybeRunWeeklyCoach, runWeeklyCoach, pollCoachReview,
     applyCoachProposal, rejectCoachProposal, rollbackPlanVersion,
     renderCoachWeekCard, renderCoachView, openCoachView, coachDiffGroups,

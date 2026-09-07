@@ -351,6 +351,63 @@ async function getSyncStatus() {
   } catch { return { total: 0, quarantined: 0, oldest: null }; }
 }
 
+// ==================== PULL DE UN STORE ====================
+// El bucle de bajada de `syncAll()` para UN store, extraído en A-3 (Coach v2.1) para que
+// `integrationsSync()` pueda bajar `wellness`/`bodyweight` justo después de que el servidor
+// las escriba, sin arrastrar los otros 13 stores ni esperar al siguiente `syncAll()`.
+//
+// SIEMPRE `dbPut`, NUNCA `smartPut`: estas filas VIENEN de la nube. Encolarlas las devolvería
+// tal cual, y con el último-que-escribe-gana una copia vieja del cliente podría pisar lo que
+// acaba de escribir el webhook. Misma razón por la que `steps` tiene su excepción documentada
+// en la línea base de tests/verify-sync-writes.mjs.
+//
+// `since` y `user` se pasan desde `syncAll()` para no repetir `auth.getUser()` 15 veces (es una
+// llamada de red). En solitario se resuelven aquí. No toca `lastSyncTimestamp`: ese avance es
+// de `syncAll()`, que es quien ha recorrido TODOS los stores.
+async function pullStore(store, { since, user } = {}) {
+  if (!supabaseClient || !navigator.onLine) return 0;
+  const u = user || await getUser();
+  if (!u) return 0;
+
+  let desde = since;
+  if (!desde) {
+    try {
+      const lastSync = await dbGet('settings', 'lastSyncTimestamp');
+      desde = lastSync ? lastSync.data : '1970-01-01T00:00:00Z';
+    } catch { desde = '1970-01-01T00:00:00Z'; }
+  }
+
+  let written = 0;
+  try {
+    const { data: remoteRows, error } = await supabaseClient
+      .from(store)
+      .select('*')
+      .eq('user_id', u.id)
+      .gte('updated_at', desde);
+
+    if (error) { console.warn(`[Sync] Pull error for ${store}:`, error); return 0; }
+    if (!remoteRows || remoteRows.length === 0) return 0;
+
+    for (const row of remoteRows) {
+      const localKey = row.data.id || row.data.date || row.data.key;
+      const local = await dbGet(store, localKey);
+
+      // Last-write-wins: compare updated_at
+      const remoteTime = new Date(row.updated_at).getTime();
+      const localTime = local && local._updated_at ? local._updated_at : 0;
+
+      if (remoteTime > localTime) {
+        const merged = { ...row.data, _updated_at: remoteTime };
+        await dbPut(store, merged);
+        written++;
+      }
+    }
+  } catch (e) {
+    console.warn(`[Sync] Error syncing ${store}:`, e);
+  }
+  return written;
+}
+
 // ==================== FULL SYNC ====================
 async function syncAll() {
   if (!supabaseClient || !navigator.onLine) return;
@@ -372,32 +429,7 @@ async function syncAll() {
   const since = lastSync ? lastSync.data : '1970-01-01T00:00:00Z';
 
   for (const store of stores) {
-    try {
-      const { data: remoteRows, error } = await supabaseClient
-        .from(store)
-        .select('*')
-        .eq('user_id', user.id)
-        .gte('updated_at', since);
-
-      if (error) { console.warn(`[Sync] Pull error for ${store}:`, error); continue; }
-      if (!remoteRows || remoteRows.length === 0) continue;
-
-      for (const row of remoteRows) {
-        const localKey = row.data.id || row.data.date || row.data.key;
-        const local = await dbGet(store, localKey);
-
-        // Last-write-wins: compare updated_at
-        const remoteTime = new Date(row.updated_at).getTime();
-        const localTime = local && local._updated_at ? local._updated_at : 0;
-
-        if (remoteTime > localTime) {
-          const merged = { ...row.data, _updated_at: remoteTime };
-          await dbPut(store, merged);
-        }
-      }
-    } catch (e) {
-      console.warn(`[Sync] Error syncing ${store}:`, e);
-    }
+    await pullStore(store, { since, user });
   }
 
   // Update last sync timestamp
@@ -430,6 +462,8 @@ window.syncedDelete = syncedDelete;
 window.renderAuthUI = renderAuthUI;
 window.supaSignOut = supaSignOut;
 window.syncAll = syncAll;
+// A-3: `integrations.js` baja `wellness`/`bodyweight` en cuanto el servidor las escribe.
+window.pullStore = pullStore;
 window.getSupaUser = getUser;
 window.getSyncStatus = getSyncStatus;
 // Nutricion v2 necesita Storage (subir la foto) y functions.invoke (parsearla). El

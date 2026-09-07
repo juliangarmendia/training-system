@@ -518,5 +518,152 @@ yes(/subscribeWithingsNotify\(userId, supa\)/.test(CALLBACK),
     'el callback suscribe las notificaciones al conectar Withings');
 yes(/syncWithings\(userId, \{ days: 90 \}\)/.test(CALLBACK), 'y vuelca 90 días de pesadas');
 
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// A-3 · LA PWA. Los silencios de este lado son distintos y todos acaban en la misma frase:
+// "WHOOP se ha vuelto a desconectar".
+//
+//   · Un solo `localStorage.setItem('whoop_refresh_token', …)` que sobreviva y volvemos al
+//     punto de partida: dos almacenamientos rotando el mismo token, `invalid_grant` al segundo.
+//   · `whoop-callback.html` en el repo (o en `APP_SHELL`) y la redirect URI vieja sigue
+//     resolviendo: el usuario "conecta" y los tokens acaban en un origen que la PWA instalada
+//     no ve — en iOS Safari y la PWA tienen almacenamiento separado.
+//   · `integrations.js` fuera de `APP_SHELL`: sin red la app carga sin `integrationsIsActive`,
+//     y entonces `whoopIsConnected()` miente.
+//   · El `<script>` en el orden equivocado: `whoop.js` se evalúa antes e `integrationsIsActive`
+//     no existe cuando `whoopIsConnected()` la necesita.
+//   · `integration_status` colado en la lista de stores de `syncAll`: no es una tabla genérica
+//     (no tiene `record_id`/`data`), así que la cola de salida se congelaría — el mismo bug que
+//     dejó `plans` parado siete semanas en v11.28.
+//   · `pullStore` escribiendo con `smartPut`: cada fila bajada de la nube se volvería a subir,
+//     y una copia vieja del cliente podría pisar lo que acaba de escribir el webhook.
+//   · `intervalsFetchWellness` sin el guard de precedencia: el readiness de intervals.icu llega
+//     horas más tarde y pisa el de WHOOP, que es justo el que la app dice tener "de hoy".
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+
+const WHOOPJS = read('app/whoop.js');
+const INTEGJS = read('app/integrations.js');
+const SYNCJS = read('app/supabase-sync.js');
+const APPJS = read('app/app.js');
+const INDEX = read('app/index.html');
+const SW = read('app/sw.js');
+
+console.log('19. app/whoop.js: ni un token, ni una llamada directa a la API');
+yes(!!WHOOPJS, 'app/whoop.js existe');
+for (const marca of ['whoop_access_token', 'whoop_refresh_token', 'whoop_token_expiry',
+                     'whoop_needs_reconnect', 'api.prod.whoop.com', 'whoop-auth']) {
+  yes(!WHOOPJS.includes(marca), `whoop.js sin \`${marca}\``);
+}
+yes(!/localStorage\.(set|get|remove)Item\(\s*['"]whoop/.test(WHOOPJS),
+    'whoop.js no guarda nada de WHOOP en localStorage');
+yes(/integrationsIsActive\('whoop'\)/.test(WHOOPJS),
+    "whoopIsConnected() = intervals configurado ∨ integrationsIsActive('whoop')");
+yes(/integrationsSync\('whoop'/.test(WHOOPJS), 'y el dato de hoy se pide con integrationsSync');
+yes(/pullStore\('wellness'\)/.test(WHOOPJS), 'las filas se bajan con pullStore(wellness)');
+const IFW = WHOOPJS.slice(WHOOPJS.indexOf('async function intervalsFetchWellness()'),
+                          WHOOPJS.indexOf('// ==================== EL DATO DE HOY'));
+yes(IFW.length > 500, 'se localiza intervalsFetchWellness');
+yes(/readinessSource === 'whoop'/.test(IFW),
+    "intervalsFetchWellness guarda la precedencia: `readinessSource === 'whoop'` manda");
+yes(/WHOOP_OWNED_KEYS/.test(WHOOPJS) && /'sleepRemSecs'/.test(WHOOPJS),
+    'con la lista de claves de WHOOP declarada y testeable');
+yes(/_whoopRowsEqual\(compact, prev\)/.test(IFW),
+    'y no reescribe una fila idéntica (mata el churn de updated_at en cada render)');
+yes(/source === 'withings'/.test(IFW),
+    'ni escribe un bodyweight sobre una pesada de la báscula Withings');
+
+console.log('20. whoop-callback.html borrado');
+yes(!existsSync('app/whoop-callback.html'), 'app/whoop-callback.html ya no existe');
+yes(!/whoop-callback/.test(SW), 'y no queda en sw.js');
+yes(!/whoop-callback/.test(INDEX), 'ni en index.html');
+
+console.log('21. sw.js e index.html: integrations.js cargado y cacheado');
+const shell = /const APP_SHELL = \[([\s\S]*?)\];/.exec(SW)?.[1] || '';
+yes(/'\.\/integrations\.js'/.test(shell), "APP_SHELL incluye './integrations.js'");
+yes(/'\.\/whoop\.js'/.test(shell), "y sigue incluyendo './whoop.js'");
+const iSync = INDEX.indexOf('src="supabase-sync.js"');
+const iInteg = INDEX.indexOf('src="integrations.js"');
+const iWhoop = INDEX.indexOf('src="whoop.js"');
+yes(iInteg > 0, 'index.html carga integrations.js');
+yes(iSync > 0 && iInteg > iSync, 'después de supabase-sync.js (necesita getSupaClient/pullStore)');
+yes(iWhoop > 0 && iInteg < iWhoop, 'y antes de whoop.js (que usa integrationsIsActive)');
+yes(/id="integrations-card"/.test(INDEX), 'existe el contenedor #integrations-card en Ajustes');
+yes(!/id="whoop-section"/.test(INDEX), 'y el bloque legacy de WHOOP en Ajustes ya no está');
+yes(!/renderWhoopUI/.test(INDEX) && !/renderWhoopUI/.test(APPJS),
+    'nadie llama a renderWhoopUI (la pintaba el <details> legacy)');
+yes(/integrationsHandleReturn\(\)/.test(APPJS), 'init() atiende la vuelta del OAuth');
+yes(/renderIntegrationsCard\(\)/.test(APPJS), 'y pinta la tarjeta de Integraciones');
+
+console.log('22. supabase-sync.js: pullStore extraído, 15 stores intactos');
+yes(/async function pullStore\(store/.test(SYNCJS), 'pullStore(store, {since, user}) existe');
+yes(/window\.pullStore = pullStore/.test(SYNCJS), 'y está expuesto en window');
+yes(/await pullStore\(store, \{ since, user \}\)/.test(SYNCJS), 'syncAll lo usa para cada store');
+const pullBody = SYNCJS.slice(SYNCJS.indexOf('async function pullStore(store'),
+                              SYNCJS.indexOf('// ==================== FULL SYNC'));
+yes(/await dbPut\(store, merged\)/.test(pullBody), 'pullStore escribe con dbPut');
+yes(!/smartPut/.test(pullBody),
+    'y NUNCA con smartPut: estas filas vienen de la nube, encolarlas las devolvería');
+const storesM = /const stores = \[([^\]]*)\]/.exec(SYNCJS);
+const syncStores = storesM ? [...storesM[1].matchAll(/'([a-z_]+)'/g)].map((x) => x[1]) : [];
+eq(syncStores.length, 15, `${syncStores.length} stores sincronizados (sigue en 15 tras A-3)`);
+yes(!syncStores.includes('integration_status'),
+    'integration_status NO entra en la lista (no es tabla genérica; la PWA la lee directa)');
+yes(syncStores.includes('wellness') && syncStores.includes('bodyweight'),
+    'wellness y bodyweight sí (son las que escriben las integraciones)');
+
+console.log('23. app/integrations.js: llama a las funciones y no guarda un solo token');
+yes(!!INTEGJS, 'app/integrations.js existe');
+yes(/functions\.invoke\('integrations-oauth'/.test(INTEGJS), "invoca 'integrations-oauth'");
+yes(/action: 'authorize'/.test(INTEGJS) && /action: 'disconnect'/.test(INTEGJS),
+    'con las dos acciones del contrato');
+yes(/'whoop-sync'/.test(INTEGJS) && /'withings-sync'/.test(INTEGJS),
+    "invoca 'whoop-sync' y 'withings-sync'");
+yes(/body: \{ days, mode: 'sync' \}/.test(INTEGJS), "con el cuerpo { days, mode:'sync' }");
+yes(/window\.location\.href = data\.url/.test(INTEGJS),
+    'el authorize navega a la URL que da el servidor (la PWA no construye ninguna)');
+yes(!/localStorage/.test(INTEGJS), 'integrations.js no toca localStorage en absoluto');
+// `no_refresh_token` es un CÓDIGO DE ERROR del callback (el proveedor no concedió `offline`),
+// no un token: se neutraliza antes de buscar nombres de credencial.
+const INTEG_SIN_CODIGOS = INTEGJS.replace(/no_refresh_token/g, 'sin_permiso_persistente');
+for (const marca of ['access_token', 'refresh_token', 'client_secret']) {
+  yes(!INTEG_SIN_CODIGOS.includes(marca), `integrations.js sin \`${marca}\``);
+}
+yes(/from\('integration_status'\)/.test(INTEGJS), 'lee integration_status (el espejo, sin tokens)');
+yes(!/from\('integration_tokens'\)/.test(INTEGJS), 'y jamás integration_tokens');
+yes(/INTEG_STATUS_TTL_MS = 60 \* 1000/.test(INTEGJS), 'caché de estado de 60 s');
+yes(/pullStore\('wellness'\)/.test(INTEGJS) && /pullStore\('bodyweight'\)/.test(INTEGJS),
+    'tras sincronizar baja wellness (y bodyweight para Withings)');
+yes(/invalidateReadiness\(\)/.test(INTEGJS), 'e invalida el readiness cacheado');
+yes(/status: 'needs_reconnect'/.test(INTEGJS),
+    'trata needs_reconnect como un estado que se pinta, no como una caída');
+yes(/Conectado/.test(INTEGJS) && /Reconectar/.test(INTEGJS) && /No conectado/.test(INTEGJS),
+    'la pill tiene los tres estados en castellano');
+yes(/integ-pill/.test(INTEGJS) && /\.ok|'ok'/.test(INTEGJS), 'con sus clases CSS');
+yes(/Sincronizar ahora/.test(INTEGJS) && /Desconectar/.test(INTEGJS) && />Conectar</.test(INTEGJS),
+    'y los tres botones');
+yes(/último sync \$\{/.test(INTEGJS) && /evento \$\{/.test(INTEGJS),
+    'la segunda línea dice último sync y último evento');
+yes(/'nunca'/.test(INTEGJS), 'con "nunca" cuando no hay marca');
+yes(/integ-err/.test(INTEGJS) && /last_error/.test(INTEGJS), 'y `last_error` tiene su hueco');
+yes(/Inicia sesión para conectar/.test(INTEGJS), 'sin sesión la tarjeta lo dice');
+yes(/status: 'offline'/.test(INTEGJS), "y las funciones devuelven { ok:false, status:'offline' }");
+yes(/connect_error/.test(INTEGJS) && /no_refresh_token/.test(INTEGJS),
+    'la vuelta del OAuth traduce los códigos de error al castellano');
+yes(/params\.get\('connected'\)/.test(INTEGJS) && /switchTab\('settings'\)/.test(INTEGJS),
+    'y al volver conectado abre Ajustes');
+yes(/visibilitychange/.test(INTEGJS),
+    'al volver a primer plano relee el estado (en iPhone la vuelta cae en Safari)');
+yes(/confirm\(/.test(INTEGJS), 'desconectar pide confirmación');
+const tryCount = (INTEGJS.match(/try \{/g) || []).length;
+const catchCount = (INTEGJS.match(/catch/g) || []).length;
+yes(tryCount >= 8 && catchCount >= tryCount,
+    `cada llamada a Supabase va envuelta (${tryCount} try / ${catchCount} catch)`);
+yes(/module\.exports/.test(INTEGJS), 'exporta para los tests como el resto de módulos');
+
+console.log('24. La pesada de Withings se distingue en pantalla');
+yes(/_bwSourcePill/.test(APPJS), 'hay una pill de origen para la fila de bodyweight');
+yes(/e\.source !== 'withings'/.test(APPJS), 'que sólo se pinta cuando la fila es de la báscula');
+yes(/fatPct/.test(APPJS), 'y añade el % de grasa del dispositivo cuando viene');
+yes(/\.bw-source-pill/.test(read('app/style.css')), 'con su CSS');
+
 console.log(failed === 0 ? '\nTODO OK' : `\n${failed} FALLOS`);
 process.exit(failed === 0 ? 0 : 1);

@@ -98,6 +98,43 @@ function isoWeekKey(dateStr) {
   return `${isoYear}-W${String(week).padStart(2, '0')}`;
 }
 
+/**
+ * La semana PARA LA QUE se pide una revisión (v11.65, plan v2.1 §B.4).
+ *
+ * LA SEMÁNTICA, que es lo que hay que entender antes que el código: **la revisión es PARA una
+ * semana y SOBRE lo anterior**. El domingo por la tarde, "cerrar la semana" significa mirar la
+ * que termina y escribir la que empieza mañana; de lunes a sábado significa la semana en curso
+ * (se llegó tarde, o se regenera con una nota).
+ *
+ * Por eso el domingo —y sólo el domingo— la clave que devuelve es la de la semana SIGUIENTE.
+ * Sin esto, cerrar el domingo escribiría una propuesta con la clave de la semana que acaba de
+ * terminar, `_coachExpireIfStale` la declararía vencida el lunes a las 00:00 y el trabajo del
+ * coach moriría antes de que nadie lo aplicase.
+ *
+ * @param {string} dateStr 'YYYY-MM-DD'
+ * @returns {string|null} 'YYYY-Www' o null si la entrada no es una fecha.
+ */
+function coachTargetWeekKey(dateStr) {
+  const s = String(dateStr == null ? '' : dateStr).slice(0, 10);
+  const t = _utcMs(s);
+  if (t == null) return null;
+  // getUTCDay(): domingo = 0. Aritmética en UTC como el resto del fichero.
+  return isoWeekKey(new Date(t).getUTCDay() === 0 ? _utcDayStr(t + 86400000) : s);
+}
+
+/**
+ * Las cinco fases del contrato v2 del coach, en castellano (plan v2.1 §B.3).
+ * Vive en el motor y no en el renderer: la usan la tarjeta de Home, la vista Coach y el
+ * teaser de Stats, y tres traducciones del mismo enum se desincronizan.
+ */
+const PHASE_ES = {
+  base: 'base',
+  build: 'construcción',
+  intensify: 'intensificación',
+  deload: 'descarga',
+  maintenance: 'mantenimiento',
+};
+
 // ==================== SEMANA DEL BLOQUE ====================
 //
 // El bloque es 4 semanas de carga + 1 de descarga (LOAD-004). Hasta v11.55 sólo existía la
@@ -184,6 +221,26 @@ function blockWeekFromDates(dateStr, anchorMondayStr, blockWeeks = 5) {
     blockStartMonday: _utcDayStr(blockStartMs),
     deloadMonday: _utcDayStr(blockStartMs + (n - 1) * 604800000),
   };
+}
+
+/**
+ * La etiqueta del bloque: 'B1', 'B2', 'B3'… contando desde el ancla (v11.65).
+ *
+ * MISMA NUMERACIÓN QUE `facts.trajectory.program.blocks` (`coach-facts.js`, `_trajProgram`):
+ * el bloque que empieza en el ancla es B1. Si la tarjeta de Home dijera "B2" y el pack que ve
+ * el coach dijera "B1", las dos mitades del sistema estarían hablando de semanas distintas.
+ *
+ * PARÁMETROS Y NO `settings`: el motor es puro (§Principios 1 del plan v2). El llamador pasa
+ * `state.settings.deloadAnchorDate`; el plan lo escribe como `blockLabel(todayStr)` porque en
+ * la app siempre se llama con el ancla del usuario.
+ *
+ * @returns {string|null} 'B<n>', o null antes del ancla o sin ancla (no se extrapola atrás).
+ */
+function blockLabel(dateStr, anchorMondayStr, blockWeeks = 5) {
+  const n = Math.max(2, Math.floor(Number(blockWeeks)) || 5);
+  const b = blockWeekFromDates(dateStr, anchorMondayStr, n);
+  if (!b || b.weeksIntoBlock == null || b.weeksIntoBlock < 0) return null;
+  return `B${Math.floor(b.weeksIntoBlock / n) + 1}`;
 }
 
 /**
@@ -2142,8 +2199,11 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     COACH_GOALS_DEFAULT,
     isoWeekKey,
+    coachTargetWeekKey,
+    PHASE_ES,
     mondayOf,
     blockWeekFromDates,
+    blockLabel,
     anchorDateFromWeek,
     roundStep,
     progressCardioMin,

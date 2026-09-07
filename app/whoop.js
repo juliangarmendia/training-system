@@ -1,15 +1,27 @@
 // ============================================================
-// WHOOP Integration Module — Training App v10.29
-// Primary path: intervals.icu wellness (no OAuth, no token refresh).
-// Fallback path: direct WHOOP OAuth (kept for rollback; deleted Phase 3).
+// WHOOP / wellness — lector, no cliente OAuth (Coach v2.1 · A-3)
 // ============================================================
-
-const WHOOP_CLIENT_ID = '2bc89171-9bab-46ec-94d2-0bb8d015f9c3';
-const WHOOP_AUTH_URL = 'https://api.prod.whoop.com/oauth/oauth2/auth';
-const WHOOP_API_BASE = 'https://api.prod.whoop.com/developer';
-const WHOOP_REDIRECT_URI = 'https://juliangarmendia.github.io/training-system/whoop-callback.html';
-const WHOOP_TOKEN_PROXY = 'https://ycfodifvpvosukepcxie.supabase.co/functions/v1/whoop-auth';
-const WHOOP_SCOPES = 'read:recovery read:sleep read:workout read:body_measurement read:profile';
+//
+// QUÉ HACE ESTE FICHERO AHORA. Consolida el estado de recuperación y sueño del store
+// `wellness` y lo entrega en la forma que consumen `renderWhoopRecoveryCard`,
+// `getWhoopContext`, `runFullSync` e `init`. Dos escritores alimentan ese store:
+//
+//   · **El servidor** (edge functions `whoop-sync` / `whoop-webhook`, A-1/A-2) escribe el
+//     readiness, HRV, FC en reposo y el desglose del sueño de WHOOP, marcados con
+//     `readinessSource:'whoop'`. Es EL DATO DE HOY: llega por webhook a los pocos minutos de
+//     que WHOOP puntúe la noche.
+//   · **intervals.icu** (`intervalsFetchWellness`, aquí abajo) escribe el HISTÓRICO y lo que
+//     WHOOP no da: CTL/ATL/rampRate, pasos, peso suavizado, macros. Tarda horas en reflejar el
+//     readiness del día, así que NO puede pisar las claves del servidor.
+//
+// LO QUE SE FUE EN A-3 y por qué. Hasta v11.63 este fichero hacía el OAuth de WHOOP: guardaba
+// los tokens en `localStorage` del navegador y los refrescaba contra un proxy sin estado (esa
+// función se borra en A-6). WHOOP **rota** el refresh token en cada refresco, así que dos almacenamientos
+// (la PWA instalada y Safari, que en iOS están separados) se pisaban y el segundo recibía
+// `invalid_grant`; el authorize además no pedía `offline`, e iOS desaloja `localStorage` de una
+// PWA que no se abre en unos días. Las tres causas de "WHOOP se ha vuelto a desconectar".
+// Ahora los tokens viven en el servidor y aquí no hay ni uno: la conexión se gestiona en
+// `app/integrations.js` (tarjeta de Ajustes) y el dato se pide con `integrationsSync('whoop')`.
 
 // ==================== FECHAS (F-14) ====================
 // Todo "hoy" de este fichero es LOCAL. Usaba `new Date().toISOString().split('T')[0]`, que es UTC:
@@ -33,204 +45,66 @@ function intervalsWellnessConfigured() {
     && state.settings.intervalsIcuAthleteId);
 }
 
-function whoopOAuthConnected() {
-  return !!(localStorage.getItem('whoop_access_token') || localStorage.getItem('whoop_refresh_token'));
-}
-
+// Hay wellness si CUALQUIERA de las dos vías está viva: intervals.icu (histórico) o la
+// integración de servidor de WHOOP (hoy). `integrationsIsActive` es síncrona a propósito: esto
+// se llama desde renders y no puede devolver una promesa.
 function whoopIsConnected() {
-  // Connected if EITHER intervals.icu (primary) OR OAuth (fallback) is set up
-  return intervalsWellnessConfigured() || whoopOAuthConnected();
-}
-
-function whoopNeedsReconnect() {
-  // Explicit flag set when refresh fails irrecoverably
-  return localStorage.getItem('whoop_needs_reconnect') === '1';
-}
-
-function whoopConnect() {
-  localStorage.removeItem('whoop_needs_reconnect');
-  const params = new URLSearchParams({
-    client_id: WHOOP_CLIENT_ID,
-    redirect_uri: WHOOP_REDIRECT_URI,
-    response_type: 'code',
-    scope: WHOOP_SCOPES,
-    state: Math.random().toString(36).slice(2),
-  });
-  window.location.href = `${WHOOP_AUTH_URL}?${params.toString()}`;
-}
-
-function whoopDisconnect() {
-  localStorage.removeItem('whoop_access_token');
-  localStorage.removeItem('whoop_refresh_token');
-  localStorage.removeItem('whoop_token_expiry');
-  localStorage.removeItem('whoop_last_sync');
-  localStorage.removeItem('whoop_cache');
-  localStorage.removeItem('whoop_needs_reconnect');
-}
-
-function whoopMarkReconnectNeeded(reason) {
-  console.warn('[WHOOP] Marking reconnect needed:', reason);
-  localStorage.setItem('whoop_needs_reconnect', '1');
-  localStorage.removeItem('whoop_access_token');
-  localStorage.removeItem('whoop_token_expiry');
-  // Keep refresh_token around in case user retries, but the flag drives UI
-}
-
-// Errors that mean the refresh token itself is dead — no point retrying.
-// Be conservative here: only mark reconnect needed when WHOOP explicitly says
-// the grant/token is invalid. Generic 400/403 (rate limit, malformed cursor,
-// brief proxy hiccup) are transient and should NOT throw away the session.
-function isFatalAuthError(status, errStr) {
-  const s = String(errStr || '').toLowerCase();
-  if (s.includes('invalid_grant') || s.includes('invalid_token') || s.includes('unauthorized') || s.includes('expired')) return true;
-  // 401 from the refresh endpoint = refresh token rejected → fatal.
-  // 400/403 = treat as transient unless paired with one of the strings above.
-  return status === 401;
-}
-
-async function whoopRefreshToken() {
-  const refresh = localStorage.getItem('whoop_refresh_token');
-  if (!refresh) {
-    whoopMarkReconnectNeeded('no refresh token');
-    return null;
-  }
-
+  if (intervalsWellnessConfigured()) return true;
   try {
-    const res = await fetch(WHOOP_TOKEN_PROXY, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-      },
-      body: JSON.stringify({ action: 'refresh', refresh_token: refresh }),
-    });
+    return (typeof integrationsIsActive === 'function') && integrationsIsActive('whoop');
+  } catch (e) { return false; }
+}
 
-    const data = await res.json().catch(() => ({}));
+// ==================== CLAVES QUE SON DE WHOOP ====================
+// Precedencia explícita (plan A.4). Si la fila de un día ya la escribió el servidor
+// (`readinessSource === 'whoop'`), intervals.icu NO puede tocar estas claves: su readiness llega
+// horas más tarde y es una copia degradada del mismo número, sin desglose de fases ni SpO2.
+// Lo que intervals.icu SÍ sigue mandando en esa misma fila: `ctl`, `atl`, `rampRate`, `steps`,
+// `weight` suavizado y las macros.
+const WHOOP_OWNED_KEYS = [
+  'readiness', 'hrv', 'restingHR', 'spO2', 'skinTemp',
+  'sleepSecs', 'sleepInBedSecs', 'sleepAwakeSecs', 'sleepRemSecs', 'sleepDeepSecs',
+  'sleepLightSecs', 'sleepScore', 'sleepEfficiency', 'sleepConsistency', 'respiration',
+  'sleepNeedSecs',
+];
 
-    if (!res.ok || data.error) {
-      if (isFatalAuthError(res.status, data.error)) {
-        whoopMarkReconnectNeeded(`refresh failed: ${res.status} ${data.error || ''}`);
-        return null;
-      }
-      // Transient network/proxy error — keep state, retry later
-      console.warn('[WHOOP] Transient refresh failure, will retry later:', res.status, data.error);
-      return null;
+function _whoopIsOwnedKey(k) {
+  return WHOOP_OWNED_KEYS.indexOf(k) >= 0 || /^whoop/.test(k) || k === 'readinessSource';
+}
+
+// Igualdad profunda "de datos" entre la fila compactada y la guardada, ignorando la marca de
+// tiempo. Sin esto, cada apertura de la app reescribía las siete filas de wellness con el mismo
+// contenido y un `ts` nuevo: siete `smartPut` → siete filas en la cola → siete `updated_at`
+// nuevos en Supabase por render. Churn puro.
+function _whoopRowsEqual(a, b) {
+  if (!a || !b) return false;
+  const strip = (o) => {
+    const c = {};
+    for (const k of Object.keys(o)) {
+      if (k === 'ts' || k === '_updated_at') continue;
+      const v = o[k];
+      if (v === null || v === undefined) continue;
+      c[k] = v;
     }
-
-    localStorage.setItem('whoop_access_token', data.access_token);
-    localStorage.setItem('whoop_refresh_token', data.refresh_token);
-    localStorage.setItem('whoop_token_expiry', String(Date.now() + data.expires_in * 1000));
-    localStorage.removeItem('whoop_needs_reconnect');
-    return data.access_token;
-  } catch (e) {
-    // Network error — don't mark as needing reconnect, this is likely offline
-    console.warn('[WHOOP] Network error during refresh:', e);
-    return null;
+    return c;
+  };
+  const A = strip(a), B = strip(b);
+  const ka = Object.keys(A).sort(), kb = Object.keys(B).sort();
+  if (ka.length !== kb.length) return false;
+  for (let i = 0; i < ka.length; i++) {
+    if (ka[i] !== kb[i]) return false;
+    const va = A[ka[i]], vb = B[ka[i]];
+    if (va && typeof va === 'object') {
+      if (JSON.stringify(va) !== JSON.stringify(vb)) return false;
+    } else if (va !== vb) return false;
   }
+  return true;
 }
 
-async function whoopGetToken() {
-  if (whoopNeedsReconnect()) return null;
-
-  const expiry = parseInt(localStorage.getItem('whoop_token_expiry') || '0');
-  const token = localStorage.getItem('whoop_access_token');
-
-  // If token is still valid (with 5 min buffer), use it
-  if (token && Date.now() < expiry - 300000) return token;
-
-  // Otherwise refresh
-  return await whoopRefreshToken();
-}
-
-// ==================== API CALLS (via proxy) ====================
-async function whoopFetch(endpoint, _retried = false) {
-  const token = await whoopGetToken();
-  if (!token) return null;
-
-  try {
-    console.log(`[WHOOP] Proxy call: ${endpoint}`);
-    const res = await fetch(WHOOP_TOKEN_PROXY, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-      },
-      body: JSON.stringify({ action: 'api', endpoint, access_token: token }),
-    });
-
-    const data = await res.json().catch(() => ({}));
-    console.log(`[WHOOP] ${endpoint} →`, res.status);
-
-    if (res.status === 401 && !_retried) {
-      // Stale access token — force a refresh and retry exactly once
-      console.warn('[WHOOP] 401, forcing refresh + retry:', endpoint);
-      localStorage.setItem('whoop_token_expiry', '0'); // invalidate
-      const newToken = await whoopRefreshToken();
-      if (!newToken) return null;
-      return await whoopFetch(endpoint, true);
-    }
-
-    if (!res.ok) {
-      if (res.status === 401) {
-        // Retry already failed → refresh token is dead
-        whoopMarkReconnectNeeded('API 401 after refresh retry');
-      }
-      return null;
-    }
-    return data;
-  } catch (e) {
-    console.warn('[WHOOP] Proxy error:', e);
-    return null;
-  }
-}
-
-async function whoopGetCycles(startDate, endDate) {
-  const params = new URLSearchParams({
-    start: `${startDate}T00:00:00.000Z`,
-    end: `${endDate}T23:59:59.999Z`,
-    limit: '25',
-  });
-  return await whoopFetch(`/v2/cycle?${params}`);
-}
-
-async function whoopGetRecoveryCollection(startDate, endDate) {
-  const params = new URLSearchParams({
-    start: `${startDate}T00:00:00.000Z`,
-    end: `${endDate}T23:59:59.999Z`,
-    limit: '25',
-  });
-  return await whoopFetch(`/v2/recovery?${params}`);
-}
-
-async function whoopGetRecoveryForCycle(cycleId) {
-  return await whoopFetch(`/v2/cycle/${cycleId}/recovery`);
-}
-
-async function whoopGetSleep(startDate, endDate) {
-  const params = new URLSearchParams({
-    start: `${startDate}T00:00:00.000Z`,
-    end: `${endDate}T23:59:59.999Z`,
-    limit: '25',
-  });
-  return await whoopFetch(`/v2/activity/sleep?${params}`);
-}
-
-async function whoopGetBodyMeasurement() {
-  // Try multiple paths — v2 moved this endpoint
-  const result = await whoopFetch(`/v2/body_measurement`);
-  if (result) return result;
-  return await whoopFetch(`/v2/user/body_measurement`);
-}
-
-async function whoopGetProfile() {
-  return await whoopFetch(`/v2/user/profile/basic`);
-}
-
-// ==================== INTERVALS.ICU WELLNESS (primary path) ====================
-// Reads daily wellness rows that intervals.icu auto-syncs from WHOOP. Returns
-// the same shape as whoopSyncData() so renderWhoopRecoveryCard() doesn't care
-// about the source. Logs unknown keys once per session for safety against
-// silent field-name drift.
+// ==================== INTERVALS.ICU WELLNESS (histórico) ====================
+// Lee las filas diarias de wellness que intervals.icu sincroniza desde WHOOP y las vuelca a los
+// stores `wellness`, `bodyweight` y `steps`. Logea las claves desconocidas una vez por sesión
+// como red contra un cambio silencioso de nombres.
 let _wellnessKeyLoggingDone = false;
 
 async function intervalsFetchWellness() {
@@ -293,8 +167,6 @@ async function intervalsFetchWellness() {
     _wellnessKeyLoggingDone = true;
   }
 
-  const recovery = [];
-  const sleep = [];
   let latestWeight = null;
   let weightWrites = 0;
   let stepsWrites = 0;
@@ -302,25 +174,6 @@ async function intervalsFetchWellness() {
 
   for (const r of rows) {
     if (!r || !r.id) continue;
-    if (r.readiness != null || r.hrv != null || r.restingHR != null) {
-      recovery.push({
-        date: r.id,
-        score: r.readiness != null ? Math.round(r.readiness) : null,
-        hrv: r.hrv != null ? Number(r.hrv) : null,
-        restingHR: r.restingHR != null ? Number(r.restingHR) : null,
-        spo2: r.spO2 != null ? Number(r.spO2) : null,
-        skinTemp: null,
-      });
-    }
-    if (r.sleepSecs != null && r.sleepSecs > 0) {
-      sleep.push({
-        date: r.id,
-        durationHrs: Math.round(r.sleepSecs / 3600 * 10) / 10,
-        qualityPct: r.sleepScore != null ? Math.round(r.sleepScore) : null,
-        remMs: 0,
-        deepMs: 0,
-      });
-    }
 
     // Body weight — only persist days with a REAL measurement (tempWeight is the
     // raw value entered that day; weight is the smoothed/forward-filled current
@@ -335,10 +188,20 @@ async function intervalsFetchWellness() {
     const projectedW = (typeof r.weight === 'number' && r.weight > 20 && r.weight < 300)
       ? Math.round(r.weight * 10) / 10
       : null;
+
+    // La pesada de la báscula Withings (A-5) gana SIEMPRE sobre el eco de intervals.icu: trae
+    // hora, composición y viene del dispositivo. Sobrescribirla con el número redondeado que
+    // intervals devuelve al día siguiente sería perder la medida buena.
+    let bwExisting = null;
+    if (typeof dbGet === 'function' && (measuredW !== null || projectedW !== null)) {
+      try { bwExisting = await dbGet('bodyweight', r.id); } catch { /* fila nueva */ }
+    }
+    const bwIsWithings = !!(bwExisting && bwExisting.source === 'withings');
+
     if (measuredW !== null) {
-      // Real measurement → always persist
+      // Real measurement → always persist (salvo que ya haya una pesada de la báscula)
       try {
-        if (typeof smartPut === 'function') {
+        if (typeof smartPut === 'function' && !bwIsWithings) {
           await smartPut('bodyweight', {
             date: r.id,
             weight: measuredW,
@@ -347,8 +210,8 @@ async function intervalsFetchWellness() {
             measured: true,
           });
           weightWrites++;
-          latestWeight = measuredW;
         }
+        latestWeight = bwIsWithings ? (bwExisting.weight != null ? bwExisting.weight : measuredW) : measuredW;
       } catch (e) { console.warn('[wellness] weight upsert failed for', r.id, e); }
     } else if (projectedW !== null) {
       // No raw measurement that day → only persist if it differs from the most
@@ -356,7 +219,7 @@ async function intervalsFetchWellness() {
       // real measurement that arrived without tempWeight populated).
       try {
         if (typeof dbGet === 'function') {
-          const existing = await dbGet('bodyweight', r.id);
+          const existing = bwExisting;
           const prevDate = (() => {
             // Mediodía local − 1 día, en local: la misma cuenta de siempre, sin pasar por UTC.
             const d = new Date(r.id + 'T12:00:00');
@@ -368,7 +231,7 @@ async function intervalsFetchWellness() {
           const isNewSignal = prevWeight === null || Math.abs(projectedW - prevWeight) >= 0.05;
           // Skip if the value matches the previous day's value AND we don't already
           // have a measured entry for this date (don't overwrite manual logs).
-          if (isNewSignal && !(existing && existing.measured)) {
+          if (isNewSignal && !(existing && existing.measured) && !bwIsWithings) {
             await smartPut('bodyweight', {
               date: r.id,
               weight: projectedW,
@@ -463,36 +326,57 @@ async function intervalsFetchWellness() {
           motivation: r.motivation != null ? Number(r.motivation) : null,
           comments: typeof r.comments === 'string' && r.comments.trim() ? r.comments.trim() : null,
           source: 'intervals.icu',
-          ts: Date.now(),
         };
         // Drop nulls to keep rows compact in Supabase jsonb
         const compact = {};
         for (const [k, v] of Object.entries(wellnessRow)) {
           if (v !== null && v !== undefined) compact[k] = v;
         }
-        // Always keep date + source + ts (smartPut needs date as the keyPath)
+        // Always keep date + source (smartPut needs date as the keyPath)
         compact.date = r.id;
         compact.source = 'intervals.icu';
-        compact.ts = Date.now();
 
         // v11.59: el check-in subjetivo de la app vive en la MISMA fila (`subjective`) y esta
         // escritura es un `put`, no un merge — sin esto, la primera sincronización de wellness
-        // se llevaría por delante el "dormí <6 h" que acabas de responder, y la señal duraría
-        // los minutos que tarda la app en refrescar. Sólo se conserva lo que intervals.icu no
-        // envía nunca: el resto de campos SÍ deben venir del histórico.
+        // se llevaría por delante lo que la app haya escrito en la fila del día.
+        //
+        // A-3: y lo mismo, con más motivo, para lo que escribió el SERVIDOR. Si la fila lleva
+        // `readinessSource === 'whoop'`, todas las claves de WHOOP se conservan tal cual y la
+        // versión de intervals.icu se descarta: llega horas tarde, sin fases de sueño ni SpO2.
+        let prev = null;
         if (typeof dbGet === 'function') {
-          try {
-            const prev = await dbGet('wellness', r.id);
-            if (prev && prev.subjective) compact.subjective = prev.subjective;
-            if (prev && prev.readinessSource && compact.readiness == null) compact.readinessSource = prev.readinessSource;
-          } catch { /* fila nueva */ }
+          try { prev = await dbGet('wellness', r.id); } catch { /* fila nueva */ }
+        }
+        if (prev) {
+          if (prev.subjective) compact.subjective = prev.subjective;
+          const whoopOwns = prev.readinessSource === 'whoop';
+          for (const k of Object.keys(prev)) {
+            if (k === '_updated_at' || k === 'ts') continue;
+            const v = prev[k];
+            if (v === null || v === undefined) continue;
+            // Las claves de contabilidad de WHOOP (`whoop*`) no las escribe nadie más: se
+            // conservan siempre. Las fisiológicas, sólo cuando la fila es suya — y sólo las que
+            // el servidor realmente escribió: donde WHOOP no dio nada, el valor de intervals.icu
+            // sigue siendo mejor que un hueco.
+            if (/^whoop/.test(k)) { compact[k] = v; continue; }
+            if (whoopOwns && _whoopIsOwnedKey(k)) compact[k] = v;
+          }
+          if (!whoopOwns && prev.readinessSource && compact.readiness == null) {
+            compact.readinessSource = prev.readinessSource;
+          }
         }
 
-        // Only write if there's at least one signal beyond the metadata
-        const signalCount = Object.keys(compact).length - 3;
+        // Only write if there's at least one signal beyond the metadata (date + source)
+        const signalCount = Object.keys(compact).length - 2;
         if (signalCount > 0) {
-          await smartPut('wellness', compact);
-          wellnessWrites++;
+          if (prev && _whoopRowsEqual(compact, prev)) {
+            // Idéntica a la guardada: no se escribe. Un `smartPut` aquí encolaría una fila sin
+            // un solo dato nuevo y movería `updated_at` en Supabase en cada render.
+          } else {
+            compact.ts = Date.now();
+            await smartPut('wellness', compact);
+            wellnessWrites++;
+          }
         }
       }
     } catch (e) { console.warn('[wellness] wellness upsert failed for', r.id, e); }
@@ -502,406 +386,191 @@ async function intervalsFetchWellness() {
     console.info(`[wellness] sync: ${wellnessWrites} wellness rows, ${weightWrites} weight, ${stepsWrites} steps`);
   }
 
-  // Sort by date ascending so renderWhoopRecoveryCard's slice(-7) gets latest.
-  recovery.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-  sleep.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-
   return {
     synced: true,
     syncDate: _whoopLocalDateStr(),
     source: 'intervals.icu',
-    recovery,
-    sleep,
+    rows: rows.length,
     bodyWeight: latestWeight,
   };
 }
 
-// ==================== EL DATO DE HOY, FRESCO (§B.2.b, v11.58) ====================
+// ==================== EL DATO DE HOY (§B.2.b, reescrito en A-3) ====================
 // Dos fuentes con roles distintos, no una principal y una de repuesto:
 //   · intervals.icu = HISTÓRICO. A la mañana está completo hasta ayer, que es justo lo que
 //     necesitan las tendencias 7d/28d. Tarda horas en reflejar el readiness del día.
-//   · WHOOP directo = EL DATO DE HOY. Se pide sólo si el histórico aún no lo trae.
-// Sin esto, a las 7:00 el array acaba en el registro de ayer y el advisory decide el entreno de
-// hoy con la noche de anteayer (F-6). Si la ruta directa no está o falla, el sistema lo DICE
-// (`todaySource:'missing'` + motivo); no rellena el hueco con el dato de ayer.
-const WHOOP_TODAY_ATTEMPT_KEY = 'whoop_today_attempt';
-const WHOOP_TODAY_RETRY_MS = 10 * 60 * 1000;
+//   · WHOOP por servidor = EL DATO DE HOY. Llega solo por webhook; y si no ha llegado y la
+//     integración está activa, se pide "sincroniza ahora" como mucho una vez cada 10 min.
+// Si el dato de hoy no está, el sistema lo DICE (`todaySource:'missing'` + motivo); no rellena
+// el hueco con el de ayer (F-6).
+const WHOOP_CACHE_MS = 10 * 60 * 1000;
+let _whoopCache = null;         // { ts, data } — en memoria, no en localStorage
+let _whoopServerSyncAt = 0;     // último `integrationsSync('whoop')` disparado desde aquí
 
-// El intento se marca POR DÍA: mientras no llegue el registro de hoy se reintenta cada 10 min,
-// cada vez que se abre la app. Marca también cuando no hay ruta OAuth: así el bypass de la caché
-// no dispara una resincronización completa en cada render.
-function _whoopTodayAttemptFresh(todayStr) {
-  try {
-    const raw = localStorage.getItem(WHOOP_TODAY_ATTEMPT_KEY);
-    if (!raw) return false;
-    const a = JSON.parse(raw);
-    return !!(a && a.date === todayStr && a.ts && (Date.now() - a.ts) < WHOOP_TODAY_RETRY_MS);
-  } catch { return false; }
+/** Fuerza que la próxima llamada rehaga el payload y vuelva a pedir el dato de hoy. */
+function whoopResetCache() {
+  _whoopCache = null;
+  _whoopServerSyncAt = 0;
 }
 
-function _whoopMarkTodayAttempt(todayStr) {
-  try { localStorage.setItem(WHOOP_TODAY_ATTEMPT_KEY, JSON.stringify({ date: todayStr, ts: Date.now() })); } catch { /* ignore */ }
+// La llama `integrationsSync('whoop')` cuando el servidor acaba de traer datos: invalida el
+// payload (para que la siguiente pintada lea las filas nuevas) y CONSUME la ventana de 10 min,
+// para que el render siguiente no dispare una segunda sincronización idéntica.
+function whoopNoteServerSync() {
+  _whoopCache = null;
+  _whoopServerSyncAt = Date.now();
 }
 
-// Devuelve el registro de recuperación de HOY desde la API de WHOOP, o null. Nunca lanza: si la
-// app OAuth está caída, el token no refresca o la respuesta cambia de forma, se degrada a null y
-// quien llama lo trata como "sin dato de hoy".
-async function whoopFetchTodayRecovery(todayStr) {
-  const day = todayStr || _whoopLocalDateStr();
-  if (!day) return null;
-  if (_whoopTodayAttemptFresh(day)) return null;
-  _whoopMarkTodayAttempt(day);            // antes del await: dos renders simultáneos no piden dos veces
-  if (!whoopOAuthConnected()) return null;
+async function _whoopTodayIsFromWhoop(todayStr) {
   try {
-    const yesterday = _whoopLocalDateStr(new Date(Date.now() - 86400000));
-    const [recCol, sleepCol] = await Promise.all([
-      whoopGetRecoveryCollection(yesterday, day),
-      whoopGetSleep(yesterday, day).catch(() => null),
-    ]);
-    const records = (recCol && Array.isArray(recCol.records)) ? recCol.records : [];
-    // La fecha del ciclo/creación se convierte a LOCAL (F-14): un registro de las 23:30 UTC-1 no
-    // es "mañana". Se coge el más reciente que sea de hoy y esté puntuado.
-    const mine = records
-      .filter(r => r && r.score_state === 'SCORED' && r.score)
-      .filter(r => _whoopLocalDateStr(r.created_at || r.updated_at) === day)
-      .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
-    const rec = mine[0];
-    if (!rec) return null;
+    if (typeof dbGet !== 'function') return false;
+    const row = await dbGet('wellness', todayStr);
+    return !!(row && row.readiness != null && row.readinessSource === 'whoop');
+  } catch (e) { return false; }
+}
 
-    // Sueño de anoche = el registro (no siesta) que TERMINA hoy.
-    let sleepHrs = null;
-    const sleeps = (sleepCol && Array.isArray(sleepCol.records)) ? sleepCol.records : [];
-    const night = sleeps
-      .filter(s => s && s.nap !== true && s.score && s.score.stage_summary)
-      .filter(s => _whoopLocalDateStr(s.end || s.start) === day)
-      .sort((a, b) => String(b.end || '').localeCompare(String(a.end || '')))[0];
-    if (night) {
-      const ms = night.score.stage_summary.total_in_bed_time_milli || 0;
-      if (ms > 0) sleepHrs = Math.round(ms / 3600000 * 10) / 10;
+// Por qué falta el dato de hoy, en castellano y distinguiendo los tres casos reales, ahora
+// leídos de `integration_status` (la verdad del servidor) y no de una bandera local. Decir "aún
+// no puntuó" cuando en realidad hay que reconectar sería mentir.
+async function _whoopTodayMissingReason() {
+  let st = null;
+  try {
+    if (typeof integrationsGetStatus === 'function') st = await integrationsGetStatus();
+  } catch (e) { /* sin red: se decide con lo que haya */ }
+  const w = st && st.whoop;
+  if (w && w.status === 'needs_reconnect') return 'WHOOP necesita reconectarse en Ajustes';
+  if (!w || w.status !== 'active') return 'WHOOP no conectado';
+  return 'WHOOP aún no puntuó la noche';
+}
+
+function _whoopMs(v) {
+  if (v == null) return null;
+  if (typeof v === 'number') return v;
+  const t = Date.parse(String(v));
+  return isNaN(t) ? null : t;
+}
+
+// Construye `recovery[]` y `sleep[]` desde los últimos 7 días del store `wellness`. Una sola
+// fuente de verdad: da igual quién escribió la fila, la app lee siempre de aquí.
+async function _whoopBuildFromWellness(todayStr, intervalsResult) {
+  let all = [];
+  try { if (typeof dbGetAll === 'function') all = (await dbGetAll('wellness')) || []; }
+  catch (e) { console.warn('[wellness] lectura local:', e); }
+
+  const from = _whoopLocalDateStr(new Date(Date.now() - 6 * 86400000));
+  const rows = all
+    .filter(r => r && r.date && r.date >= from && r.date <= todayStr)
+    .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+
+  const recovery = [];
+  const sleep = [];
+  let bodyWeight = (intervalsResult && intervalsResult.bodyWeight != null) ? intervalsResult.bodyWeight : null;
+
+  for (const r of rows) {
+    const direct = r.readinessSource === 'whoop';
+    const fetchedAt = direct ? _whoopMs(r.whoopSyncedAt) : null;
+    if (r.readiness != null || r.hrv != null || r.restingHR != null) {
+      recovery.push({
+        date: r.date,
+        score: r.readiness != null ? Math.round(r.readiness) : null,
+        hrv: r.hrv != null ? Number(r.hrv) : null,
+        restingHR: r.restingHR != null ? Number(r.restingHR) : null,
+        spo2: r.spO2 != null ? Number(r.spO2) : null,
+        skinTemp: r.skinTemp != null ? Number(r.skinTemp) : null,
+        source: direct ? 'whoop-direct' : 'intervals',
+        fetchedAt,
+      });
     }
-
-    return {
-      date: day,
-      score: rec.score.recovery_score != null ? Math.round(rec.score.recovery_score) : null,
-      hrv: rec.score.hrv_rmssd_milli != null ? Number(rec.score.hrv_rmssd_milli) : null,
-      restingHR: rec.score.resting_heart_rate != null ? Number(rec.score.resting_heart_rate) : null,
-      sleepHrs,
-      source: 'whoop-direct',
-      fetchedAt: Date.now(),
-    };
-  } catch (e) {
-    console.warn('[WHOOP] dato de hoy no disponible por la ruta directa:', e);
-    return null;
+    if (r.sleepSecs != null && r.sleepSecs > 0) {
+      sleep.push({
+        date: r.date,
+        durationHrs: Math.round(Number(r.sleepSecs) / 3600 * 10) / 10,
+        qualityPct: r.sleepScore != null ? Math.round(r.sleepScore) : null,
+        remMs: r.sleepRemSecs != null ? Math.round(Number(r.sleepRemSecs) * 1000) : 0,
+        deepMs: r.sleepDeepSecs != null ? Math.round(Number(r.sleepDeepSecs) * 1000) : 0,
+        source: direct ? 'whoop-direct' : 'intervals',
+      });
+    }
+    if (bodyWeight == null && r.weightMeasured != null) bodyWeight = Number(r.weightMeasured);
   }
-}
 
-// Guarda el dato de hoy en el store `wellness` MEZCLANDO con la fila que ya haya (la de
-// intervals.icu trae peso, pasos, CTL/ATL… y no se pierde). Mismo camino de escritura que la
-// ruta de intervals: `smartPut`, así que también sube a Supabase.
-async function _whoopPersistTodayWellness(fresh) {
-  if (!fresh || typeof smartPut !== 'function') return;
-  try {
-    let existing = null;
-    if (typeof dbGet === 'function') {
-      try { existing = await dbGet('wellness', fresh.date); } catch { /* fila nueva */ }
-    }
-    const row = Object.assign({}, existing || {}, { date: fresh.date });
-    if (fresh.score != null) row.readiness = Math.round(fresh.score);
-    if (fresh.hrv != null) row.hrv = Number(fresh.hrv);
-    if (fresh.restingHR != null) row.restingHR = Number(fresh.restingHR);
-    if (fresh.sleepHrs != null) row.sleepSecs = Math.round(fresh.sleepHrs * 3600);
-    row.readinessSource = 'whoop-direct';
-    row.ts = Date.now();
-    await smartPut('wellness', row);
-  } catch (e) { console.warn('[WHOOP] no se pudo guardar el wellness de hoy:', e); }
-}
+  const data = {
+    synced: true,
+    syncDate: todayStr,
+    source: 'wellness',
+    recovery,
+    sleep,
+    bodyWeight,
+  };
 
-// Marca de dónde sale el dato de hoy y, si falta, va a buscarlo a WHOOP.
-//   data.todaySource = 'intervals' | 'whoop-direct' | 'missing'
-//   data.todayMissingReason = por qué falta, en castellano y sin excusas
-async function _whoopEnsureTodayFresh(data) {
-  if (!data || !Array.isArray(data.recovery)) return data;
-  const todayStr = _whoopLocalDateStr();
-  const i = data.recovery.findIndex(r => r && r.date === todayStr);
-  if (i >= 0 && data.recovery[i].score != null) { data.todaySource = 'intervals'; return data; }
-
-  const fresh = await whoopFetchTodayRecovery(todayStr);
-  if (fresh && fresh.score != null) {
-    const merged = { date: fresh.date, source: 'whoop-direct', fetchedAt: fresh.fetchedAt };
-    if (fresh.score != null) merged.score = fresh.score;
-    if (fresh.hrv != null) merged.hrv = fresh.hrv;
-    if (fresh.restingHR != null) merged.restingHR = fresh.restingHR;
-    if (i >= 0) data.recovery[i] = Object.assign({}, data.recovery[i], merged);
-    else data.recovery.push(merged);
-    data.recovery.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-    if (fresh.sleepHrs != null && Array.isArray(data.sleep)) {
-      const j = data.sleep.findIndex(s => s && s.date === todayStr);
-      const sl = { date: todayStr, durationHrs: fresh.sleepHrs, source: 'whoop-direct' };
-      if (j >= 0) data.sleep[j] = Object.assign({}, data.sleep[j], sl);
-      else data.sleep.push(sl);
-      data.sleep.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-    }
-    data.todaySource = 'whoop-direct';
-    data.todayFetchedAt = fresh.fetchedAt;
-    await _whoopPersistTodayWellness(fresh);
+  // El dato de hoy es de HOY, o no hay dato (F-6). Nunca se hereda el de ayer.
+  const todayRec = recovery.find(r => r && r.date === todayStr && r.score != null) || null;
+  if (todayRec) {
+    data.todaySource = todayRec.source === 'whoop-direct' ? 'whoop-direct' : 'intervals';
+    data.todayFetchedAt = todayRec.fetchedAt || null;
   } else {
     data.todaySource = 'missing';
-    data.todayMissingReason = _whoopTodayMissingReason();
+    data.todayMissingReason = await _whoopTodayMissingReason();
   }
   return data;
 }
 
-// Por qué falta el dato de hoy, en castellano y distinguiendo los tres casos reales: no hay ruta
-// directa, la ruta existe pero el token murió (hay que reconectar en Ajustes), o WHOOP todavía no
-// ha puntuado la noche. Decir "aún no puntuó" cuando en realidad hay que reconectar sería mentir.
-function _whoopTodayMissingReason() {
-  if (!whoopOAuthConnected()) return 'intervals.icu aún tiene el de ayer; WHOOP directo no conectado';
-  if (whoopNeedsReconnect()) return 'WHOOP necesita reconectarse en Ajustes';
-  return 'WHOOP aún no puntuó la noche';
-}
-
 // ==================== SYNC DATA ====================
+// Conserva su forma de retorno (la consumen `renderWhoopRecoveryCard`, `getWhoopContext`,
+// `runFullSync` e `init`): `{synced, syncDate, source, recovery[], sleep[], bodyWeight,
+// todaySource, todayMissingReason, todayFetchedAt}`.
 async function whoopSyncData() {
-  if (!whoopIsConnected()) return null;
+  if (!whoopIsConnected()) {
+    // Puede que el estado de las integraciones aún no se haya leído nunca (la caché se llena en
+    // `init()`, pero de forma asíncrona). Se prima una vez antes de dar la conexión por muerta.
+    try { if (typeof integrationsGetStatus === 'function') await integrationsGetStatus(); } catch (e) {}
+    if (!whoopIsConnected()) return null;
+  }
+  const todayStr = _whoopLocalDateStr();
 
-  // Cache: 10 min (upstream intervals.icu already caches; no need for 30 min)
-  const cache = localStorage.getItem('whoop_cache');
-  if (cache) {
-    try {
-      const cached = JSON.parse(cache);
-      if (cached.timestamp && Date.now() - cached.timestamp < 10 * 60 * 1000) {
-        // La caché de 10 min NO puede tapar la falta del dato de hoy: si el payload guardado no
-        // tiene la fila de hoy y la ventana de reintento ya pasó, se vuelve a sincronizar para
-        // darle otra oportunidad a la ruta directa de WHOOP.
-        const todayStr = _whoopLocalDateStr();
-        const hasToday = Array.isArray(cached.data && cached.data.recovery)
-          && cached.data.recovery.some(r => r && r.date === todayStr && r.score != null);
-        if (hasToday || _whoopTodayAttemptFresh(todayStr)) return cached.data;
-      }
-    } catch { /* ignore */ }
+  // Caché de 10 min que NO puede tapar la falta del dato de hoy: si el payload guardado no trae
+  // hoy y la ventana para volver a pedírselo al servidor ya venció, se rehace igualmente.
+  if (_whoopCache && _whoopCache.data && (Date.now() - _whoopCache.ts) < WHOOP_CACHE_MS) {
+    const hasToday = Array.isArray(_whoopCache.data.recovery)
+      && _whoopCache.data.recovery.some(r => r && r.date === todayStr && r.score != null);
+    if (hasToday || (Date.now() - _whoopServerSyncAt) < WHOOP_CACHE_MS) return _whoopCache.data;
   }
 
-  // Primary path: intervals.icu wellness (no OAuth, no disconnects)
-  if (intervalsWellnessConfigured()) {
-    const data = await intervalsFetchWellness();
-    if (data) {
-      await _whoopEnsureTodayFresh(data);
-      localStorage.setItem('whoop_cache', JSON.stringify({ timestamp: Date.now(), data }));
-      localStorage.setItem('whoop_last_sync', data.syncDate);
-      return data;
-    }
-    // If intervals path fails AND OAuth is also not configured, give up
-    if (!whoopOAuthConnected()) return null;
-    // Otherwise fall through to OAuth fallback
-    console.warn('[wellness] intervals.icu path returned null, falling back to OAuth');
-  }
+  // 1. Lo que el servidor ya escribió (webhook de WHOOP + cron). Sin OAuth y sin tokens aquí.
+  try { if (typeof pullStore === 'function') await pullStore('wellness'); }
+  catch (e) { console.warn('[wellness] pull de wellness:', e); }
 
-  const today = _whoopLocalDateStr();
-  const weekAgo = _whoopLocalDateStr(new Date(Date.now() - 7 * 86400000));
+  // 2. El histórico de intervals.icu. Respeta las claves de WHOOP (ver WHOOP_OWNED_KEYS).
+  let intervalsResult = null;
+  try { intervalsResult = await intervalsFetchWellness(); }
+  catch (e) { console.warn('[wellness] intervals.icu:', e); }
 
-  const result = {
-    synced: true,
-    syncDate: today,
-    recovery: [],
-    sleep: [],
-    bodyWeight: null,
-  };
+  // 3. ¿Falta el readiness de HOY con origen WHOOP? Que lo traiga el servidor — como mucho una
+  //    vez cada 10 min, y sólo si la integración está activa (si hay que reconectar, pedirlo
+  //    sería quemar una llamada para recibir el mismo `needs_reconnect`).
+  let whoopActive = false;
+  try {
+    if (typeof integrationsGetStatus === 'function') await integrationsGetStatus();
+    whoopActive = (typeof integrationsIsActive === 'function') && integrationsIsActive('whoop');
+  } catch (e) { /* estado desconocido → no se pide nada */ }
 
-  // Fetch cycles, recovery collection, sleep, body in parallel
-  const [cycles, recoveryCollection, sleep, body] = await Promise.all([
-    whoopGetCycles(weekAgo, today),
-    whoopGetRecoveryCollection(weekAgo, today),
-    whoopGetSleep(weekAgo, today),
-    whoopGetBodyMeasurement(),
-  ]);
-
-  console.log('[WHOOP] Cycles:', cycles);
-  console.log('[WHOOP] Recovery collection:', recoveryCollection);
-  console.log('[WHOOP] Sleep:', sleep);
-  console.log('[WHOOP] Body:', body);
-
-  // Strategy 1: Use recovery collection endpoint directly
-  if (recoveryCollection && recoveryCollection.records && recoveryCollection.records.length > 0) {
-    for (const rec of recoveryCollection.records) {
-      if (rec.score_state === 'SCORED' && rec.score) {
-        result.recovery.push({
-          // Fecha LOCAL (F-14): un recovery creado a las 00:30 de Madrid es de hoy, no de ayer.
-          date: (rec.created_at && _whoopLocalDateStr(rec.created_at)) || today,
-          score: rec.score.recovery_score,
-          hrv: rec.score.hrv_rmssd_milli,
-          restingHR: rec.score.resting_heart_rate,
-          spo2: rec.score.spo2_percentage,
-          skinTemp: rec.score.skin_temp_celsius,
-        });
-      }
+  const faltaHoy = !(await _whoopTodayIsFromWhoop(todayStr));
+  if (faltaHoy) {
+    // La marca se pone SIEMPRE, haya o no a quién pedírselo, y ANTES del await: sin ella, un día
+    // sin dato de WHOOP haría que cada render rehiciera el fetch a intervals.icu, y dos renders
+    // simultáneos pedirían dos veces lo mismo al servidor.
+    _whoopServerSyncAt = Date.now();
+    if (whoopActive) {
+      try {
+        if (typeof integrationsSync === 'function') await integrationsSync('whoop', { days: 2 });
+      } catch (e) { console.warn('[wellness] whoop-sync:', e); }
     }
   }
 
-  // Strategy 2: If collection didn't work, try per-cycle recovery
-  if (result.recovery.length === 0 && cycles && cycles.records) {
-    for (const cycle of cycles.records) {
-      if (cycle.score_state === 'SCORED' && cycle.id) {
-        const rec = await whoopGetRecoveryForCycle(cycle.id);
-        if (rec && rec.score) {
-          result.recovery.push({
-            date: (cycle.start && _whoopLocalDateStr(cycle.start)) || today,
-            score: rec.score.recovery_score,
-            hrv: rec.score.hrv_rmssd_milli,
-            restingHR: rec.score.resting_heart_rate,
-            spo2: rec.score.spo2_percentage,
-            skinTemp: rec.score.skin_temp_celsius,
-          });
-        }
-      }
-    }
-  }
-
-  // Parse sleep data
-  if (sleep && sleep.records) {
-    result.sleep = sleep.records.map(s => {
-      const summary = s.score?.stage_summary;
-      if (!summary) return null;
-      const totalMs = summary.total_in_bed_time_milli || 0;
-      const durationHrs = totalMs > 0 ? Math.round(totalMs / 3600000 * 10) / 10 : null;
-      const qualityPct = totalMs > 0
-        ? Math.round(((summary.total_slow_wave_sleep_time_milli || 0) + (summary.total_rem_sleep_time_milli || 0)) / totalMs * 100)
-        : null;
-      return {
-        // La noche se etiqueta con el día en que te DESPIERTAS y en fecha local, igual que hace
-        // intervals.icu (`r.id` = el día de la fila). Antes usaba `s.start` en UTC, así que el
-        // sueño de anoche aparecía con la fecha de ayer y `sleep.find(date === hoy)` no lo veía.
-        date: _whoopLocalDateStr(s.end || s.start),
-        durationHrs,
-        qualityPct,
-        remMs: summary.total_rem_sleep_time_milli || 0,
-        deepMs: summary.total_slow_wave_sleep_time_milli || 0,
-      };
-    }).filter(s => s && s.durationHrs != null);
-  }
-
-  // Body measurement
-  if (body) {
-    result.bodyWeight = body.weight_kilogram || null;
-  }
-
-  // Ruta directa: aquí el dato de hoy YA viene de WHOOP, así que sólo hay que declararlo — o
-  // decir que la noche todavía no está puntuada (§B.2.b). Nunca se hereda el de ayer.
-  const todayRec = result.recovery.find(r => r && r.date === today && r.score != null) || null;
-  if (todayRec) {
-    todayRec.source = 'whoop-direct';
-    todayRec.fetchedAt = Date.now();
-    result.todaySource = 'whoop-direct';
-    result.todayFetchedAt = todayRec.fetchedAt;
-    const sl = result.sleep.find(s => s && s.date === today) || null;
-    await _whoopPersistTodayWellness({
-      date: today, score: todayRec.score, hrv: todayRec.hrv,
-      restingHR: todayRec.restingHR, sleepHrs: sl ? sl.durationHrs : null,
-    });
-    _whoopMarkTodayAttempt(today);
-  } else {
-    result.todaySource = 'missing';
-    result.todayMissingReason = _whoopTodayMissingReason();
-  }
-
-  // Cache result
-  localStorage.setItem('whoop_cache', JSON.stringify({ timestamp: Date.now(), data: result }));
-  localStorage.setItem('whoop_last_sync', today);
-  return result;
-}
-
-// ==================== UI ====================
-function renderWhoopUI() {
-  const container = document.getElementById('whoop-section');
-  if (!container) return;
-
-  const lastSync = localStorage.getItem('whoop_last_sync') || 'Never';
-
-  // PRIMARY PATH: intervals.icu wellness (no OAuth, no disconnects)
-  if (intervalsWellnessConfigured()) {
-    container.innerHTML = `
-      <div class="form-row inline">
-        <label style="font-size:13px;color:var(--accent)">WHOOP via intervals.icu ✓</label>
-      </div>
-      <p class="muted" style="font-size:11px;margin-top:4px;margin-bottom:8px">Wellness (recovery, HRV, RHR, sleep) syncs through intervals.icu — no OAuth needed. Manage WHOOP connection at <a href="https://intervals.icu/settings" target="_blank" rel="noopener">intervals.icu/settings</a> → Whoop.</p>
-      <div class="muted" style="font-size:11px;margin-bottom:8px">Last sync: ${lastSync}</div>
-      <button id="btn-whoop-sync" class="btn-secondary" style="width:100%;text-align:center">Sync Now</button>
-    `;
-    document.getElementById('btn-whoop-sync').addEventListener('click', async () => {
-      localStorage.removeItem('whoop_cache');
-      const btn = document.getElementById('btn-whoop-sync');
-      btn.textContent = 'Syncing...';
-      btn.disabled = true;
-      const data = await whoopSyncData();
-      if (data) {
-        if (typeof toast === 'function') toast(`Synced: ${data.recovery.length} recovery, ${data.sleep.length} sleep`);
-        renderWhoopUI();
-        await renderWhoopRecoveryCard();
-      } else {
-        if (typeof toast === 'function') toast('Sync failed — check intervals.icu API key + WHOOP connection there');
-        btn.textContent = 'Sync Now';
-        btn.disabled = false;
-      }
-    });
-    return;
-  }
-
-  // FALLBACK PATH: legacy OAuth (kept for rollback; deleted in Phase 3)
-  if (whoopNeedsReconnect()) {
-    container.innerHTML = `
-      <div class="form-row inline">
-        <label style="font-size:13px;color:var(--red)">WHOOP OAuth session expired</label>
-      </div>
-      <p class="muted" style="font-size:11px;margin-top:4px;margin-bottom:8px">Better path: configure intervals.icu API key (Settings → intervals.icu) and connect WHOOP there — no more OAuth refreshes.</p>
-      <button id="btn-whoop-reconnect" class="btn-secondary" style="width:100%;text-align:center;border-color:var(--red);color:var(--red)">Reconnect WHOOP (legacy OAuth)</button>
-    `;
-    document.getElementById('btn-whoop-reconnect').addEventListener('click', whoopConnect);
-    return;
-  }
-
-  if (whoopOAuthConnected()) {
-    container.innerHTML = `
-      <div class="form-row inline">
-        <label style="font-size:13px;color:var(--accent)">WHOOP Connected (legacy OAuth)</label>
-        <button id="btn-whoop-disconnect" class="btn-secondary" style="width:auto;padding:8px 16px">Disconnect</button>
-      </div>
-      <p class="muted" style="font-size:11px;margin-top:4px;margin-bottom:8px">Recommended: connect WHOOP via intervals.icu instead — no token refresh issues.</p>
-      <div class="muted" style="font-size:11px;margin-top:6px">Last sync: ${lastSync}</div>
-      <button id="btn-whoop-sync" class="btn-secondary" style="margin-top:8px;width:100%;text-align:center">Sync Now</button>
-    `;
-    document.getElementById('btn-whoop-disconnect').addEventListener('click', () => {
-      whoopDisconnect();
-      renderWhoopUI();
-      if (typeof toast === 'function') toast('WHOOP disconnected');
-    });
-    document.getElementById('btn-whoop-sync').addEventListener('click', async () => {
-      localStorage.removeItem('whoop_cache');
-      const btn = document.getElementById('btn-whoop-sync');
-      btn.textContent = 'Syncing...';
-      btn.disabled = true;
-      const data = await whoopSyncData();
-      if (data) {
-        if (typeof toast === 'function') toast(`Synced: ${data.recovery.length} recovery, ${data.sleep.length} sleep`);
-        renderWhoopUI();
-        await renderWhoopRecoveryCard();
-      } else {
-        if (typeof toast === 'function') toast('Sync failed — check connection');
-        btn.textContent = 'Sync Now';
-        btn.disabled = false;
-      }
-    });
-    return;
-  }
-
-  // Not configured at all — promote intervals.icu path, keep OAuth as escape hatch
-  container.innerHTML = `
-    <p class="muted" style="font-size:12px;margin-top:0;margin-bottom:8px">Pull recovery, HRV, RHR, and sleep from WHOOP via intervals.icu (recommended — no OAuth refreshes):</p>
-    <ol class="muted" style="font-size:11px;margin:0 0 10px 16px;padding:0">
-      <li>Settings → intervals.icu → enter API key + athlete ID</li>
-      <li>Go to <a href="https://intervals.icu/settings" target="_blank" rel="noopener">intervals.icu/settings</a> → Whoop → Connect</li>
-    </ol>
-    <button id="btn-whoop-connect" class="btn-secondary" style="width:100%;text-align:center">Use legacy OAuth instead</button>
-  `;
-  document.getElementById('btn-whoop-connect').addEventListener('click', whoopConnect);
+  // 4. El payload se construye SIEMPRE desde IndexedDB: una sola fuente de verdad.
+  const data = await _whoopBuildFromWellness(todayStr, intervalsResult);
+  _whoopCache = { ts: Date.now(), data };
+  return data;
 }
 
 // ==================== WHOOP RECOVERY CARD ====================
@@ -942,7 +611,7 @@ async function renderWhoopRecoveryCard() {
 
   const data = await whoopSyncData();
   if (!data || data.recovery.length === 0) {
-    container.innerHTML = '<div class="empty-state" style="padding:16px">WHOOP connected but no recovery data found. Try Sync Now in Settings.</div>';
+    container.innerHTML = '<div class="empty-state" style="padding:16px">WHOOP conectado pero sin datos de recuperación. Prueba "Sincronizar ahora" en Ajustes › Integraciones.</div>';
     container.classList.remove('hidden');
     return;
   }
@@ -990,8 +659,8 @@ async function renderWhoopRecoveryCard() {
     </tr>`;
   }).reverse().join('');
 
-  // Sleep breakdown — only shown when stage data is available (legacy OAuth path).
-  // intervals.icu wellness doesn't surface REM/deep stages, so the breakdown is hidden.
+  // Sleep breakdown — only shown when stage data is available (WHOOP direct writes the stages;
+  // intervals.icu wellness doesn't surface REM/deep, so there the breakdown is hidden).
   let sleepHTML = '';
   if (latestSleep && (latestSleep.deepMs > 0 || latestSleep.remMs > 0)) {
     const deepH = (latestSleep.deepMs / 3600000).toFixed(1);
@@ -1071,9 +740,18 @@ async function renderWhoopRecoveryCard() {
 // Expose globally
 window.whoopIsConnected = whoopIsConnected;
 window.whoopSyncData = whoopSyncData;
-window.renderWhoopUI = renderWhoopUI;
+window.whoopResetCache = whoopResetCache;
+window.whoopNoteServerSync = whoopNoteServerSync;
 window.renderWhoopRecoveryCard = renderWhoopRecoveryCard;
-// v11.58: el dato de hoy y sus etiquetas honestas los consume también app.js (Home).
-window.whoopFetchTodayRecovery = whoopFetchTodayRecovery;
 window.whoopDayLabel = whoopDayLabel;
 window.whoopClock = whoopClock;
+window.intervalsFetchWellness = intervalsFetchWellness;
+
+// Exports para los tests (Node los carga con `vm`); en el navegador no estorba.
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    whoopIsConnected, whoopSyncData, whoopResetCache, whoopNoteServerSync, intervalsFetchWellness,
+    getRecoveryColor, whoopDayLabel, whoopClock, renderWhoopRecoveryCard,
+    WHOOP_OWNED_KEYS, _whoopLocalDateStr, _whoopRowsEqual,
+  };
+}

@@ -2,13 +2,14 @@
 // Service Worker — Training App v4.0
 // ============================================================
 
-const CACHE_NAME = 'training-v11.63';
+const CACHE_NAME = 'training-v11.64';
 const APP_SHELL = [
   './',
   './index.html',
   './style.css',
   './app.js',
   './supabase-sync.js',
+  './integrations.js',
   './whoop.js',
   './strava.js',
   './bloodwork.js',

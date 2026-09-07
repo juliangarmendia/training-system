@@ -543,6 +543,7 @@ ctx = {
 | `CHURN` | warn | > 3 prioridades, o > 3 cambios estructurales en una semana | GEN-001, STR-010 | G-S12 |
 | `ROTATION` | warn | swap de ejercicio fuera de la semana 1 del bloque | STR-010, SEL-002 | G-S12 |
 | `CTL-FOR-STRENGTH` | warn | decisión de fuerza/descarga apoyada en ctl/atl/rampRate (F-3 / F-2) | GEN-002, READ-003 | G-S13 |
+| `WEEK-SUMMARY` | warn | sesión del plan sin fila en `coachBrief.weekSummary` — sólo cuando hay `coachBrief` (v11.65, contrato v2: también lo que se mantiene lleva su motivo) | GEN-001 | G-S14 |
 | `VALIDATOR-ERROR` | warn | el propio validador falló: los avisos pueden estar incompletos | — | — |
 
 **Nota sobre el plan ideal real**: la semana completa (4 fuerza + 2 cardio + recuperación) suma un

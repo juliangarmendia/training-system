@@ -212,6 +212,15 @@ const nuevo = await ctx.createNewPlanVersion({
   meta: {
     schema: 2, status: 'active', author: 'coach-llm', basedOn: 'plan_v13',
     weekKey: '2026-W37', reviewId: '2026-W37#1', seedRev: 8,
+    // v11.65: el brief del coach viaja por `meta` como un campo más. Es lo que permite a la
+    // Home decir "por qué cambia / por qué se mantiene" cuando la revisión ya no esté.
+    coachBrief: {
+      reviewId: '2026-W37#1', weekKey: '2026-W37', appliedAt: 1757200000000,
+      focus: 'mantener los 6 anclas', phase: 'build',
+      whyChanged: '', whyKept: 'Upper A igual: 8/8/7 @7,5 el 1-sep.',
+      priorities: ['a', 'b', 'c'], lastWeekSummary: ['3 de 4 sesiones'],
+      weekSummary: [{ sessionId: 'upperA', status: 'kept', line: 'sin cambios' }],
+    },
     // Lo que una propuesta maliciosa o un bug intentaría estampar:
     id: 'plan_vPROPUESTA', version: 999, createdAt: '1999-01-01T00:00:00.000Z',
   },
@@ -224,6 +233,17 @@ eq(nuevo.weekKey, '2026-W37', 'y weekKey');
 eq(nuevo.reviewId, '2026-W37#1', 'y reviewId (lo lee la tarjeta para el "Deshacer")');
 eq(nuevo.status, 'active', 'y status');
 eq(nuevo.basedOn, 'plan_v13', 'y basedOn');
+// `coachBrief` NO es una clave protegida: tiene que sobrevivir al spread entero, con su
+// `weekSummary` dentro. Si `createNewPlanVersion` lo filtrara, la Home volvería a "Plan W37
+// activo (v14)" y el porqué de cada sesión se perdería en cuanto se pode la revisión.
+ok(!!nuevo.coachBrief, 'coachBrief sobrevive a createNewPlanVersion (no es una clave protegida)');
+eq(nuevo.coachBrief.focus, 'mantener los 6 anclas', 'con su foco');
+eq(nuevo.coachBrief.phase, 'build', 'su fase');
+eq(nuevo.coachBrief.weekSummary.length, 1, 'y su weekSummary intacto');
+eq(nuevo.coachBrief.whyKept, 'Upper A igual: 8/8/7 @7,5 el 1-sep.', 'y el "por qué se mantiene"');
+await ctx.loadActivePlan();
+eq(ctx._active().coachBrief.focus, 'mantener los 6 anclas',
+  'y sigue ahí tras releer el store (es un campo del plan, no un adorno del render)');
 eq(written.length, 1, 'una sola escritura');
 eq(written[0][0], 'plans', 'en el store plans');
 ok(written[0][1] === nuevo, 'la fila escrita es la que devuelve');
