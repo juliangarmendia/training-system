@@ -14,7 +14,7 @@
 //        sesión. "El wearable dice fatiga, el RPE dice bien → gana el wearable" era falso
 //        para fuerza y está eliminado (READ-005 dice lo contrario).
 //   F-9: los días de pierna y el techo de Z2 se leen del plan vivo (`facts.plan.weekTemplate`,
-//        `facts.cardio.z2Ceiling`). Aquí no hay ningún 140 ni ningún "martes y viernes".
+//        `facts.cardio.z2Ceiling.bpm`). Aquí no hay ningún 140 ni ningún "martes y viernes".
 
 import rulesJson from "./rules-compact.json" with { type: "json" };
 
@@ -175,7 +175,7 @@ mantener. <50% → **simplificar** (menos días, menos ejercicios), nunca añadi
   (STR-010, \`expert\`). Un **anchor nunca rota por estancamiento** — se cambia el esquema de
   series. Dolor → sustituto lumbar-friendly ya. Saltado 2 de 3 → reordenar o quitar ya.
 
-**5. Carrera.** Z2 cumplida = FC media ≤ \`facts.cardio.z2Ceiling\` **y** (máximo ≤ techo+12 o
+**5. Carrera.** Z2 cumplida = FC media ≤ \`facts.cardio.z2Ceiling.bpm\` **y** (máximo ≤ techo+12 o
 ≤10% del tiempo por encima de la zona). Salir de run/walk con 2 carreras seguidas ≥30' bajo el
 techo y ≤10% caminando (END-006, \`expert\`). Ramp sólo con verde (o amarillo-1) + adherencia
 ≥75% + las 2 últimas en Z2: largo +5' o +0,5 km. Total semanal ≤ +10% (orientativo, END-003 no
@@ -258,7 +258,7 @@ const BLANDOS = `# Reglas blandas — SHOULD. Si las cruzas, dilo tú antes de q
   desde el último ajuste, o antes de la primera fecha elegible de ajuste.
 - **G-S9** Presupuesto de días duros de la semana por encima de 6 (BUD-001, informativo).
 - **G-S10** Leer progreso aeróbico por ritmo entre junio y septiembre (ENV-001).
-- **G-S11** Techo de Z2 distinto del declarado en \`facts.cardio.z2Ceiling\`.
+- **G-S11** Techo de Z2 distinto del declarado en \`facts.cardio.z2Ceiling.bpm\`.
 - **G-S12** Más de 3 prioridades, más de 3 swaps, o un swap fuera de la semana 1 del bloque.
 - **G-S13** Cualquier decisión de fuerza o de deload apoyada en ctl, atl o rampRate.`;
 
