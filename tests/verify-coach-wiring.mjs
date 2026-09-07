@@ -590,8 +590,83 @@ yes(E.blockWeekFromDates('2026-09-07', '2026-09-07', 5).index === 1
   && E.blockWeekFromDates('2026-09-13', '2026-09-07', 5).isDeload === false,
   'con el ancla nueva: 7-sep = semana 1, 13-sep sigue en semana 1, 5-oct = deload');
 
+// ── 12. Inc 4 — clasificación desde el dato y frescura del dato de hoy (v11.58) ───────────────
+// Los fallos que impide, todos silenciosos: `whoopFetchTodayRecovery` definida pero nunca
+// llamada desde `whoopSyncData` (la ruta directa no se ejecutaría jamás y a la mañana seguiría
+// el dato de ayer); un `toISOString()` que vuelva a colar la fecha UTC como "hoy" (F-14, la app
+// ya pagó una migración por esto); `getWhoopContext` volviendo a coger el último elemento del
+// array; `toSession` sin la tabla SESSION_CLASS (F-7); `finishWorkout` sin la instantánea.
+console.log('');
+console.log('12. Inc 4 · clasificación por dato + dato de hoy fresco (v11.58)');
+const WHOOPJS = readFileSync('app/whoop.js', 'utf8');
+const whoopFn = (decl) => {
+  const i = WHOOPJS.indexOf(decl);
+  if (i < 0) return '';
+  const j = WHOOPJS.indexOf('\n}', i);
+  return WHOOPJS.slice(i, j < 0 ? WHOOPJS.length : j);
+};
+yes(/async function whoopFetchTodayRecovery\(/.test(WHOOPJS), 'whoop.js define whoopFetchTodayRecovery()');
+yes(/window\.whoopFetchTodayRecovery = whoopFetchTodayRecovery/.test(WHOOPJS), 'y la expone en window');
+const WSD_SRC = whoopFn('async function whoopSyncData() {');
+yes(/_whoopEnsureTodayFresh\(/.test(WSD_SRC), 'whoopSyncData llama al paso de frescura del dato de hoy');
+const ETF_SRC = whoopFn('async function _whoopEnsureTodayFresh(');
+yes(/whoopFetchTodayRecovery\(/.test(ETF_SRC), 'y ese paso llama a whoopFetchTodayRecovery()');
+yes(/todaySource = 'whoop-direct'/.test(ETF_SRC) && /todaySource = 'missing'/.test(ETF_SRC),
+  "marca todaySource 'whoop-direct' o 'missing'");
+yes(/_whoopTodayMissingReason\(\)/.test(ETF_SRC), 'y adjunta el motivo concreto cuando falta');
+const TMR_SRC = whoopFn('function _whoopTodayMissingReason()');
+yes(/aún tiene el de ayer/.test(TMR_SRC) && /no puntuó la noche/.test(TMR_SRC) && /reconectarse en Ajustes/.test(TMR_SRC),
+  'los tres motivos: sin ruta directa / hay que reconectar / WHOOP no ha puntuado');
+yes(/_whoopPersistTodayWellness\(/.test(ETF_SRC), 'persiste el dato de hoy en el store wellness');
+const PTW_SRC = whoopFn('async function _whoopPersistTodayWellness(');
+yes(/smartPut\('wellness'/.test(PTW_SRC), 'y lo hace con smartPut (mismo camino que intervals → sube a Supabase)');
+yes(/Object\.assign\(\{\}, existing/.test(PTW_SRC), 'mezclando con la fila existente (no pisa peso/pasos/CTL)');
+yes(/readinessSource: 'whoop-direct'|readinessSource = 'whoop-direct'/.test(PTW_SRC), "y marca readinessSource:'whoop-direct'");
+// F-14: ni un solo "hoy" derivado de UTC en whoop.js. Se cuentan usos REALES (las líneas de
+// comentario que explican el bug histórico no cuentan).
+const WHOOP_CODE = WHOOPJS.split('\n').filter(l => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
+const isoUses = (WHOOP_CODE.match(/toISOString\(\)/g) || []).length;
+eq(isoUses, 0, 'whoop.js no usa toISOString() en ninguna fecha (F-14: todo local)');
+yes(/function _whoopLocalDateStr\(/.test(WHOOPJS), 'define _whoopLocalDateStr() (whoop.js carga antes que app.js)');
+// La caché de 10 min no puede tapar la falta del dato de hoy.
+yes(/_whoopTodayAttemptFresh\(/.test(WSD_SRC), 'la comprobación de caché mira la ventana de reintento del dato de hoy');
+yes(/hasToday/.test(WSD_SRC), 'y si al payload cacheado le falta hoy, se resincroniza');
+const FTR_SRC = whoopFn('async function whoopFetchTodayRecovery(');
+yes(/whoopOAuthConnected\(\)/.test(FTR_SRC), 'whoopFetchTodayRecovery exige OAuth');
+yes(/whoopGetRecoveryCollection\(/.test(FTR_SRC), 'pide /v2/recovery de los últimos 2 días');
+yes(/whoopGetSleep\(/.test(FTR_SRC), 'y el sueño de anoche');
+yes(/score_state === 'SCORED'/.test(FTR_SRC), 'sólo acepta registros SCORED');
+yes(/return null/.test(FTR_SRC) && /catch/.test(FTR_SRC), 'y ante cualquier error devuelve null (nunca lanza)');
+yes(/whoop_today_attempt/.test(WHOOPJS), 'la marca del intento por día vive en localStorage');
+yes(/localStorage\.removeItem\('whoop_today_attempt'\)/.test(APP), '"Sync Now" borra la marca para reintentar ya');
+// app.js: hoy es hoy.
+const GWC = fnSrc('async function getWhoopContext()');
+yes(!/recovery\[[^\]]*length - 1\]/.test(GWC), 'getWhoopContext NO usa recovery[recovery.length - 1] (F-6)');
+yes(/\.find\(r => r\.date === t\)/.test(GWC), 'usa find(r => r.date === today())');
+yes(/lastAvailable/.test(GWC), 'y expone lastAvailable para pintar el último con su fecha');
+yes(/source: 'none'/.test(GWC) && /'whoop-direct'/.test(GWC), "devuelve source 'none' | 'whoop-direct' | 'intervals'");
+const CTA = fnSrc('async function computeTrainingAdvisory()');
+yes(/whoop\.reason/.test(CTA), 'el advisory traslada el motivo de la falta de dato');
+yes(/confidence = 'low'/.test(CTA), 'y baja la confianza a low con unknown');
+const RRH = fnSrc('async function renderRecoveryHero()');
+yes(/whoopDayLabel\(/.test(RRH), 'renderRecoveryHero etiqueta la fecha del dato (hoy/ayer/hace N días)');
+yes(/Sin dato de hoy/.test(RRH), 'y avisa "Sin dato de hoy" con el motivo');
+const RFS = fnSrc('async function renderFatigueScore()');
+yes(!/recovery\[whoopData\.recovery\.length - 1\]/.test(RFS), 'la fatigue card ya no puntúa con el último elemento');
+yes(/r\.date === t/.test(RFS), 'sólo el dato de hoy entra en el score');
+// F-7: la clasificación sale del dato.
+const TOS = fnSrc('function toSession(record, originStore)');
+yes(/SESSION_CLASS/.test(TOS), 'toSession usa la tabla SESSION_CLASS');
+yes(/fallback regex/.test(TOS), 'y la regex queda como fallback con aviso');
+yes(/const SESSION_CLASS_EXTRA = \{/.test(APP), 'existe el mapa explícito (free, hybrid1, legacy)');
+yes(/function sessionClassMap\(\)/.test(APP), 'y el constructor perezoso desde IDEAL_BLOCK_V1');
+const FIN = fnSrc('async function finishWorkout()');
+yes(/workout\.family = /.test(FIN), 'finishWorkout guarda la instantánea family');
+yes(/workout\.subtype = /.test(FIN) && /workout\.budgetWeight = /.test(FIN), 'con subtype y budgetWeight');
+yes(!/workout\.sessionType = /.test(FIN), 'y NO guarda sessionType (activaría la rama de `sessions`)');
+
 console.log('');
 console.log(failed === 0
-  ? '✅ Coach v2 cableado: módulo, stores, sync, meta del plan, decisiones y bloque + cardio.'
+  ? '✅ Coach v2 cableado: módulo, stores, sync, meta del plan, decisiones, bloque + cardio y el dato de hoy.'
   : `❌ ${failed} comprobación(es) fallaron.`);
 process.exit(failed === 0 ? 0 : 1);

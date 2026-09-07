@@ -761,6 +761,65 @@ function sessionSubtypeMeta(family, subtype) {
   return fam.subtypes[subtype] || null;
 }
 
+// ==================== CLASIFICACIÓN DE SESIONES DESDE EL DATO (F-7, v11.58) ====================
+// `toSession` clasificaba la sesión de fuerza por regex sobre su id, y se equivocaba en 6 de las
+// 9 del plan: `fullA/fullB/travelA/travelB/hybrid1` y la sesión libre `free` caían en
+// `strength.maintenance` peso 1. Eso rompía tres cosas a la vez: un full-body nunca era `hard`
+// (así que el advisory nunca proponía recuperación con la recuperación en rojo), `hybrid1` nunca
+// era familia `hybrid` (flag HYB-002 inalcanzable) y el presupuesto de la semana infra-contaba.
+//
+// La clasificación sale ahora del dato que YA existe: `IDEAL_BLOCK_V1.variants[*].days[]` declara
+// `planRef`, `kind`, `subtype` y `bw` de cada sesión. El mapa se construye una vez, perezosamente
+// (IDEAL_BLOCK_V1 se define más abajo en el fichero; en tiempo de ejecución ya existe). La regex
+// queda sólo como último recurso, y avisa: dejar de decidir en silencio es la mitad del arreglo.
+//
+// `SESSION_CLASS_EXTRA` cubre lo que el IDEAL no referencia. Los ids que también están en el
+// IDEAL coinciden con él a propósito: si algún día divergen, gana el IDEAL (es el dato).
+const SESSION_CLASS_EXTRA = {
+  // La sesión libre vive en `state.adHocSession`, nunca en el IDEAL. Suele ser compuesta →
+  // peso 2 es la elección conservadora (audit Change 3).
+  free: { family: 'strength', subtype: 'full', bw: 2 },
+  // Híbrido (trineo + SkiErg): sólo existe como alternativa en ALT_LIBRARY, no como día del
+  // IDEAL. Familia `hybrid` = el flag HYB-002 vuelve a ser alcanzable.
+  hybrid1: { family: 'hybrid', subtype: 'strength_endurance', bw: 2 },
+  // Legacy: los ids que los 31 registros guardados ya usan, por si alguna variante del IDEAL
+  // deja de referenciarlos (el registro histórico no se migra, el adaptador lo cubre).
+  lowerA: { family: 'strength', subtype: 'lower', bw: 2 },
+  lowerB: { family: 'strength', subtype: 'lower', bw: 2 },
+  upperA: { family: 'strength', subtype: 'upper', bw: 1 },
+  upperB: { family: 'strength', subtype: 'upper', bw: 1 },
+  fullA: { family: 'strength', subtype: 'full', bw: 2 },
+  fullB: { family: 'strength', subtype: 'full', bw: 2 },
+  travelA: { family: 'strength', subtype: 'full', bw: 1.5 },
+  travelB: { family: 'strength', subtype: 'full', bw: 1.5 },
+};
+const _SESSION_KIND_FAMILY = { strength: 'strength', hybrid: 'hybrid', cardio: 'cardio', recovery: 'recovery' };
+let _sessionClassCache = null;
+
+// { sessionId: { family, subtype, bw } } — IDEAL primero, mapa explícito para el resto.
+function sessionClassMap() {
+  if (_sessionClassCache) return _sessionClassCache;
+  const map = {};
+  try {
+    const variants = (typeof IDEAL_BLOCK_V1 !== 'undefined' && IDEAL_BLOCK_V1.variants) || {};
+    for (const v of Object.values(variants)) {
+      for (const day of (v.days || [])) {
+        if (!day || !day.planRef) continue;
+        map[day.planRef] = {
+          family: _SESSION_KIND_FAMILY[day.kind] || 'strength',
+          subtype: day.subtype,
+          bw: day.bw != null ? day.bw : null,
+        };
+      }
+    }
+  } catch (e) { console.warn('[sessionClass] IDEAL_BLOCK_V1 no legible:', e); }
+  for (const [id, cls] of Object.entries(SESSION_CLASS_EXTRA)) {
+    if (!map[id]) map[id] = Object.assign({}, cls);
+  }
+  _sessionClassCache = map;
+  return map;
+}
+
 function _subtypeFromIntensity(label) {
   const l = String(label || '').toLowerCase();
   if (!l) return 'zone2';
@@ -819,18 +878,31 @@ function toSession(record, originStore) {
       payload: { routineId: record.routineId, painBefore: record.painBefore, painAfter: record.painAfter },
     };
   }
-  // Default: strength workout. Infer upper/lower from the session id/name.
-  const sid = String(record.session || record.sessionName || '').toLowerCase();
-  const subtype = /low|leg|squat|dead|hinge|glute/.test(sid) ? 'lower'
+  // Default: gym workout. Clasificación por prioridad (F-7, v11.58):
+  //   1) el propio registro, si `finishWorkout` guardó su instantánea `family/subtype`;
+  //   2) el lookup SESSION_CLASS (IDEAL_BLOCK_V1 + mapa explícito) por id de sesión;
+  //   3) la regex de siempre, SÓLO como último recurso y avisando.
+  const rawSid = String(record.session || record.sessionName || '').trim();
+  const sid = rawSid.toLowerCase();
+  const SESSION_CLASS = sessionClassMap();
+  let cls = (record.family && record.subtype)
+    ? { family: record.family, subtype: record.subtype, bw: record.budgetWeight != null ? record.budgetWeight : null }
+    : (SESSION_CLASS[rawSid] || null);
+  if (!cls) {
+    console.warn('[toSession] fallback regex for', rawSid || '(sin id)');
+    const guess = /low|leg|squat|dead|hinge|glute/.test(sid) ? 'lower'
                 : /upper|push|pull|bench|press/.test(sid) ? 'upper' : 'maintenance';
-  const meta = sessionSubtypeMeta('strength', subtype) || {};
+    cls = { family: 'strength', subtype: guess, bw: null };
+  }
+  const meta = sessionSubtypeMeta(cls.family, cls.subtype) || {};
+  const bw = cls.bw != null ? cls.bw : (meta.budgetWeight != null ? meta.budgetWeight : 1);
   return {
     id: record.id, date: record.date, ts: record._updated_at || null,
-    family: 'strength', subtype, modality: 'gym',
+    family: cls.family, subtype: cls.subtype, modality: 'gym',
     title: record.sessionName || 'Strength',
     durationMin: null, perceivedEffort: null,
-    evidenceTags: meta.evidenceTags || [], budgetWeight: meta.budgetWeight != null ? meta.budgetWeight : 1,
-    source: 'manual', sessionType: 'strength.' + subtype,
+    evidenceTags: meta.evidenceTags || [], budgetWeight: bw,
+    source: 'manual', sessionType: cls.family + '.' + cls.subtype,
     payload: { exercises: record.exercises || [], quality: record.quality, unit: record.unit, blockTimings: record.blockTimings },
   };
 }
@@ -4583,6 +4655,20 @@ async function finishWorkout() {
     quick: !!state.quickMode,
   };
 
+  // Instantánea de la clasificación (F-7, v11.58): el registro se describe a sí mismo y deja de
+  // depender de que el id siga en el plan mañana. Campos nuevos y opcionales — `toSession` los
+  // respeta si están y cae al lookup si no, así que los 31 registros anteriores siguen valiendo.
+  // NO se guarda `sessionType`: eso activaría la primera rama de `toSession` (la de los registros
+  // de `sessions`, que devuelve el registro crudo) en vez del envoltorio de fuerza.
+  // (`free` está en SESSION_CLASS_EXTRA → strength.full peso 2, como cualquier otra sesión.)
+  const _cls = sessionClassMap()[state.activeSession] || null;
+  if (_cls) {
+    workout.family = _cls.family;
+    workout.subtype = _cls.subtype;
+    const _meta = sessionSubtypeMeta(_cls.family, _cls.subtype) || {};
+    workout.budgetWeight = _cls.bw != null ? _cls.bw : (_meta.budgetWeight != null ? _meta.budgetWeight : 1);
+  }
+
   // LECTURA DE LA SESIÓN (v11.57): objetivo vs. hecho, y qué toca la próxima vez. Se calcula
   // ANTES de escribir porque `clearActiveWorkout()` limpia `state.activeTargets`, y entero
   // dentro de un try/catch: terminar un entrenamiento no puede fallar por un resumen.
@@ -5130,12 +5216,22 @@ async function renderFatigueScore() {
   if (window.whoopIsConnected && whoopIsConnected()) {
     try {
       const whoopData = await whoopSyncData();
-      if (whoopData && whoopData.recovery.length > 0) {
-        const latest = whoopData.recovery[whoopData.recovery.length - 1];
-        if (latest.score != null) {
-          const whoopFatigue = Math.round((100 - latest.score) * 0.3);
-          fatigue = Math.round(fatigue * 0.55 + whoopFatigue + fatigue * 0.15);
-          whoopLabel = ` · WHOOP ${latest.score}%`;
+      const recs = (whoopData && Array.isArray(whoopData.recovery)) ? whoopData.recovery.filter(r => r && r.date) : [];
+      // v11.58 (F-6): sólo el dato de HOY entra en el score. Antes entraba el último elemento
+      // del array, así que el rojo de anteayer seguía puntuando el "readiness" de hoy. Si el de
+      // hoy no ha llegado, el último disponible se MUESTRA con su fecha pero no puntúa.
+      const t = today();
+      const todayRec = recs.find(r => r.date === t && r.score != null) || null;
+      if (todayRec) {
+        const whoopFatigue = Math.round((100 - todayRec.score) * 0.3);
+        fatigue = Math.round(fatigue * 0.55 + whoopFatigue + fatigue * 0.15);
+        whoopLabel = ` · WHOOP ${todayRec.score}% (hoy)`;
+      } else {
+        const sorted = recs.slice().sort((a, b) => a.date.localeCompare(b.date));
+        const last = sorted.length ? sorted[sorted.length - 1] : null;
+        if (last && last.score != null) {
+          const when = (typeof whoopDayLabel === 'function') ? whoopDayLabel(last.date, t) : last.date;
+          whoopLabel = ` · WHOOP ${last.score}% (${when})`;
         }
       }
     } catch { /* ignore whoop errors */ }
@@ -5527,8 +5623,11 @@ async function runFullSync({ silent = true } = {}) {
     runsResult = await intervalsIcuSync();
   } catch (e) { console.warn('[sync] runs failed:', e); }
   try {
-    // Force-bypass cache by clearing the wellness cache key
+    // Force-bypass cache by clearing the wellness cache key. También la marca del intento del
+    // dato de hoy: "Sync Now" tiene que volver a probar la ruta directa de WHOOP, sin esperar
+    // los 10 min de la ventana de reintento (§B.2.b).
     localStorage.removeItem('whoop_cache');
+    localStorage.removeItem('whoop_today_attempt');
     if (typeof whoopSyncData === 'function') {
       wellnessResult = await whoopSyncData();
     }
@@ -8104,7 +8203,13 @@ async function renderRecoveryHero() {
 
   let data = null;
   try { if (window.whoopIsConnected && whoopIsConnected()) data = await whoopSyncData(); } catch (e) {}
-  const rec = data && data.recovery && data.recovery.length ? data.recovery[data.recovery.length - 1] : null;
+  // El de HOY si existe; si no, el último disponible pero PINTADO CON SU FECHA (F-6). Nunca se
+  // muestra el de ayer como si fuera de hoy — que es lo que hacía `recovery[length - 1]`.
+  const _t = today();
+  const _recs = (data && Array.isArray(data.recovery)) ? data.recovery.filter(r => r && r.date) : [];
+  const _sorted = _recs.slice().sort((a, b) => a.date.localeCompare(b.date));
+  const _todayRec = _sorted.find(r => r.date === _t && r.score != null) || null;
+  const rec = _todayRec || (_sorted.length ? _sorted[_sorted.length - 1] : null);
 
   if (!rec) {
     // No wellness data — show a quiet placeholder that invites connecting, no invented numbers.
@@ -8124,9 +8229,23 @@ async function renderRecoveryHero() {
   const score = hasScore ? rec.score : null;
   const { color, label } = hasScore ? getRecoveryColor(score) : { color: 'var(--text2)', label: '' };
   const chip = hasScore ? (score >= 67 ? 'Primed' : score >= 34 ? 'Adequate' : 'Low') : '—';
-  const sleep = data.sleep && data.sleep.length ? data.sleep[data.sleep.length - 1] : null;
+  // El sueño del MISMO día que el score que se pinta, no "el último que haya".
+  const sleeps = (data && Array.isArray(data.sleep)) ? data.sleep.filter(s => s && s.date) : [];
+  const sleep = sleeps.find(s => s.date === rec.date)
+    || (sleeps.length ? sleeps.slice().sort((a, b) => a.date.localeCompare(b.date))[sleeps.length - 1] : null);
   const sleepTxt = sleep ? `${sleep.durationHrs}h` : '--';
+  // Eyebrow honesto: "Recovery · hoy · WHOOP 07:42" | "Recovery · hoy" | "Recovery · ayer".
+  const when = (typeof whoopDayLabel === 'function') ? whoopDayLabel(rec.date, _t) : rec.date;
+  const clock = (_todayRec && rec.source === 'whoop-direct' && typeof whoopClock === 'function')
+    ? whoopClock(rec.fetchedAt || (data && data.todayFetchedAt)) : '';
+  const eyebrow = `Recovery${when ? ` · ${when}` : ''}${clock ? ` · WHOOP ${clock}` : ''}`;
+  const missingNote = !_todayRec
+    ? `Sin dato de hoy: ${(data && data.todayMissingReason) || 'intervals.icu aún tiene el de ayer'}`
+    : '';
+  // Con un dato que no es de hoy NO se afirma nada sobre hoy (era el mensaje contradictorio:
+  // "ready for high strain today" con el score de ayer).
   const msg = !hasScore ? 'Recovery score not in yet — HRV/RHR below.'
+            : !_todayRec ? `Dato de ${when} — hoy todavía sin puntuar.`
             : score >= 67 ? 'Your body is ready for high strain today.'
             : score >= 34 ? 'Moderate readiness — train smart, watch fatigue.'
             : 'Low recovery. Prioritise rest or go very light.';
@@ -8138,9 +8257,10 @@ async function renderRecoveryHero() {
     <section class="recovery-hero" data-rh>
       <div class="rh-glow" aria-hidden="true"></div>
       <div class="rh-head">
-        <span class="rh-eyebrow">Recovery</span>
+        <span class="rh-eyebrow">${eyebrow}</span>
         <span class="rh-chip" style="color:${color};background:${color}1a">${chip}</span>
       </div>
+      ${missingNote ? `<div class="rh-stale">${missingNote}</div>` : ''}
       <div class="rh-main">
         <div class="rh-ring">
           <svg viewBox="0 0 100 100" class="rh-ring-svg">
@@ -8387,17 +8507,38 @@ function classifySessionStress(planned) {
 }
 
 // WHOOP recovery context — uses WHOOP's recovery as-is (flag), does NOT recompute a score.
+//
+// v11.58 (F-6): el dato es de HOY o no hay dato. Antes cogía `recovery[recovery.length - 1]` —el
+// último elemento del array de 7 días— sin comparar su fecha con hoy, así que a las 7:00, cuando
+// intervals.icu todavía tiene el de ayer, el advisory decidía el entreno de hoy con la noche de
+// anteayer. Ahora: `find(r => r.date === today())`; si no está → `unknown` con el motivo, y el
+// último disponible viaja aparte en `lastAvailable` SÓLO para pintarlo con su fecha.
 async function getWhoopContext() {
   let data = null;
   try { if (window.whoopIsConnected && whoopIsConnected()) data = await whoopSyncData(); } catch (e) {}
-  const rec = data && data.recovery && data.recovery.length ? data.recovery[data.recovery.length - 1] : null;
-  const sleep = data && data.sleep && data.sleep.length ? data.sleep[data.sleep.length - 1] : null;
-  const sleepHrs = sleep ? sleep.durationHrs : null;
+  const t = today();
+  const recs = (data && Array.isArray(data.recovery)) ? data.recovery.filter(r => r && r.date) : [];
+  const rec = recs.find(r => r.date === t) || null;
+  const sorted = recs.slice().sort((a, b) => a.date.localeCompare(b.date));
+  const last = sorted.length ? sorted[sorted.length - 1] : null;
+  const lastAvailable = last ? { date: last.date, score: last.score != null ? last.score : null } : null;
+  const sleeps = (data && Array.isArray(data.sleep)) ? data.sleep.filter(s => s && s.date) : [];
+  const sleepToday = sleeps.find(s => s.date === t) || null;
+  const sleepHrs = sleepToday ? sleepToday.durationHrs : null;
   if (!rec || rec.score == null) {
-    return { color: 'unknown', score: null, sleepHrs, hrv: rec ? rec.hrv : null, rhr: rec ? rec.restingHR : null, source: 'whoop/intervals' };
+    const reason = (data && data.todayMissingReason)
+      || (data ? 'Sin dato de recuperación de hoy' : 'Sin datos de recuperación');
+    return { color: 'unknown', score: null, hrv: null, rhr: null, sleepHrs, source: 'none', date: t, fetchedAt: null, reason, lastAvailable };
   }
+  const source = (rec.source === 'whoop-direct' || (data && data.todaySource === 'whoop-direct')) ? 'whoop-direct' : 'intervals';
   const { label } = getRecoveryColor(rec.score);
-  return { color: String(label).toLowerCase(), score: rec.score, sleepHrs, hrv: rec.hrv, rhr: rec.restingHR, source: 'whoop/intervals' };
+  return {
+    color: String(label).toLowerCase(), score: rec.score,
+    hrv: rec.hrv != null ? rec.hrv : null, rhr: rec.restingHR != null ? rec.restingHR : null,
+    sleepHrs, source, date: t,
+    fetchedAt: rec.fetchedAt || (data && data.todayFetchedAt) || null,
+    reason: null, lastAvailable,
+  };
 }
 
 // Weekly hard-day budget (programming guardrail, not a physiological score).
@@ -8458,7 +8599,6 @@ async function computeTrainingAdvisory() {
   const whoop = await getWhoopContext();
   const budget = await computeHardDayBudget();
   const interference = detectInterference(planned, { stress, whoop, budget });
-  const nFlags = interference.flags.length;
 
   let recommendation = 'keep';
   let confidence = 'high';
@@ -8467,14 +8607,26 @@ async function computeTrainingAdvisory() {
   if (planned.type === 'rest' || stress.level === 'easy') {
     reason.push('Sesión suave o de descanso — mantené.');
   } else if (whoop.color === 'unknown') {
+    // Sin dato de HOY no se decide nada: se mantiene el plan y se dice por qué falta (F-6). El
+    // motivo viene de whoopSyncData ("intervals.icu aún tiene el de ayer…" / "WHOOP aún no
+    // puntuó la noche"), no de una frase genérica.
     recommendation = 'keep'; confidence = 'low';
-    reason.push('Todavía no hay dato de recuperación de WHOOP hoy — mantengo el plan.');
+    reason.push(`Sin dato de recuperación de hoy (${whoop.reason || 'sin datos'}) — mantengo el plan.`);
+    if (whoop.lastAvailable && whoop.lastAvailable.score != null) {
+      const when = (typeof whoopDayLabel === 'function') ? whoopDayLabel(whoop.lastAvailable.date, whoop.date) : whoop.lastAvailable.date;
+      reason.push(`El último dato es de ${when}: ${whoop.lastAvailable.score}% (no cuenta como hoy).`);
+    }
   } else if (stress.level === 'hard') {
     // v11.41: la carga acumulada YA NO decide nada. Antes `budget.overCap` contaba como señal y
     // podía degradar o reemplazar la sesión por un número heurístico. Ahora el consejo se apoya solo
     // en señales fisiológicas —recuperación e interferencia real— y la autorregulación del volumen
     // la hace el usuario. La carga sigue visible en su tarjeta, como información.
-    const signals = (whoop.color === 'red' ? 1 : 0) + (nFlags >= 1 ? 1 : 0);
+    // READ-002 pide DOS señales CONCORDANTES, y el flag `recovery` de detectInterference es
+    // "rojo + sesión exigente": la misma señal contada dos veces (F-6). Con eso, un rojo de un
+    // día ya daba `replace`. Sólo los flags no redundantes —hoy, la familia híbrida (HYB-002)—
+    // cuentan como segunda señal.
+    const concordant = interference.flags.filter(f => f.type !== 'recovery').length;
+    const signals = (whoop.color === 'red' ? 1 : 0) + (concordant >= 1 ? 1 : 0);
     if (signals >= 2) { recommendation = 'replace'; }
     else if (whoop.color === 'red') { recommendation = 'recovery'; }
     else { recommendation = 'keep'; }
@@ -8556,6 +8708,12 @@ async function renderTrainingAdvisory() {
   try { a = await computeTrainingAdvisory(); } catch (e) { console.warn('[T3] advisory failed', e); container.innerHTML = ''; return; }
   const rec = _T3_REC[a.recommendation] || _T3_REC.keep;
   const whoopTxt = _t3WhoopPlain(a.whoopContext.color);
+  // Sin dato de hoy la tarjeta lo DICE, con el motivo; y cuando lo hay, de dónde sale y a qué
+  // hora si es de la ruta directa de WHOOP (§B.2.b).
+  const wc = a.whoopContext;
+  const recoveryTxt = wc.color === 'unknown'
+    ? `Recuperación: <b>sin dato de hoy</b>${wc.reason ? ` (${wc.reason})` : ''}`
+    : `recuperación <b>${whoopTxt}</b>${wc.source === 'whoop-direct' && typeof whoopClock === 'function' && whoopClock(wc.fetchedAt) ? ` · WHOOP ${whoopClock(wc.fetchedAt)}` : ''}`;
   const stressTxt = _t3StressPlain(a.plannedStress);
   const dayLabel = _t3SessionLabel(a.plannedSession);
   const nameTag = (a.plannedSession.type === 'gym' && a.plannedSession.name && a.plannedSession.name !== dayLabel) ? ` <span class="t3-stress">${a.plannedSession.name}</span>` : '';
@@ -8573,7 +8731,7 @@ async function renderTrainingAdvisory() {
         <span class="t3-rec" style="color:${rec.color};background:${rec.color}1a">${rec.label}</span>
       </div>
       <div class="t3-title">${dayLabel}${nameTag}</div>
-      <div class="t3-context">${stressTxt ? stressTxt + ' · ' : ''}recuperación WHOOP <b>${whoopTxt}</b> · carga de la semana <b>${budgetWord}</b></div>
+      <div class="t3-context">${stressTxt ? stressTxt + ' · ' : ''}${recoveryTxt} · carga de la semana <b>${budgetWord}</b></div>
       <ul class="t3-reasons">${a.reason.slice(0, 3).map(r => `<li>${r}</li>`).join('')}</ul>
       ${alts ? `<div class="t3-alts-label">Alternativas:</div><ol class="t3-alts">${alts}</ol>` : ''}
       <div class="t3-foot">Es una sugerencia — vos decidís; no cambia tu plan.</div>
@@ -10754,8 +10912,13 @@ async function checkDeloadNeeded() {
   if (window.whoopIsConnected && whoopIsConnected()) {
     try {
       const whoopData = await whoopSyncData();
-      if (whoopData && whoopData.recovery.length >= 2) {
-        const last3 = whoopData.recovery.slice(-3);
+      // Tendencia de 3 días (no "hoy"), así que aquí SÍ vale el final del array — pero las filas
+      // sin readiness se descartan: con un solo null el promedio salía NaN y la señal no disparaba
+      // nunca en silencio.
+      const scored = (whoopData && Array.isArray(whoopData.recovery))
+        ? whoopData.recovery.filter(r => r && r.score != null) : [];
+      if (scored.length >= 2) {
+        const last3 = scored.slice(-3);
         const avgRecovery = last3.reduce((s, r) => s + r.score, 0) / last3.length;
         if (avgRecovery < 34) {
           reasons.push(`WHOOP recovery averaging ${Math.round(avgRecovery)}% (red zone)`);
@@ -12257,9 +12420,15 @@ async function init() {
     });
   }).catch(() => {});
   if (typeof whoopSyncData === 'function') {
-    whoopSyncData().then(() => {
-      if (state.currentTab === 'home' && typeof renderWhoopRecoveryCard === 'function') {
-        renderWhoopRecoveryCard();
+    whoopSyncData().then((d) => {
+      if (state.currentTab !== 'home') return;
+      if (typeof renderWhoopRecoveryCard === 'function') renderWhoopRecoveryCard();
+      // v11.58: si esta sincronización trajo el dato de HOY (ruta directa de WHOOP, o intervals
+      // que ya lo tiene), el Home se repinta solo. Sin esto, la tarjeta se quedaría con el "Sin
+      // dato de hoy" del primer render aunque el dato hubiese llegado dos segundos después.
+      if (d && d.todaySource && d.todaySource !== 'missing') {
+        if (typeof renderRecoveryHero === 'function') renderRecoveryHero().catch(() => {});
+        if (typeof renderTrainingAdvisory === 'function') renderTrainingAdvisory().catch(() => {});
       }
     }).catch(() => {});
   }

@@ -11,6 +11,21 @@ const WHOOP_REDIRECT_URI = 'https://juliangarmendia.github.io/training-system/wh
 const WHOOP_TOKEN_PROXY = 'https://ycfodifvpvosukepcxie.supabase.co/functions/v1/whoop-auth';
 const WHOOP_SCOPES = 'read:recovery read:sleep read:workout read:body_measurement read:profile';
 
+// ==================== FECHAS (F-14) ====================
+// Todo "hoy" de este fichero es LOCAL. Usaba `new Date().toISOString().split('T')[0]`, que es UTC:
+// entre las 00:00 y las 02:00 de Madrid pedía la ventana de "hoy" UTC (= ayer local) y etiquetaba
+// las filas con un día de menos. El resto de la app ya usa `dateStr()` local a propósito (el
+// proyecto pagó una migración por esto, tz_date_migration_v2). whoop.js se carga ANTES de app.js,
+// así que se define aquí su propio helper en vez de depender del orden de los <script>.
+function _whoopLocalDateStr(d) {
+  const dt = d instanceof Date ? d : (d != null ? new Date(d) : new Date());
+  if (isNaN(dt.getTime())) return null;
+  const y = dt.getFullYear();
+  const m = String(dt.getMonth() + 1).padStart(2, '0');
+  const day = String(dt.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 // ==================== CONNECTION STATE ====================
 function intervalsWellnessConfigured() {
   return !!(typeof state !== 'undefined' && state.settings
@@ -223,8 +238,8 @@ async function intervalsFetchWellness() {
   const apiKey = state.settings.intervalsIcuApiKey;
   const athleteId = state.settings.intervalsIcuAthleteId;
 
-  const today = new Date().toISOString().split('T')[0];
-  const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
+  const today = _whoopLocalDateStr();
+  const weekAgo = _whoopLocalDateStr(new Date(Date.now() - 7 * 86400000));
   const url = `https://intervals.icu/api/v1/athlete/${encodeURIComponent(athleteId)}/wellness`
     + `?oldest=${weekAgo}&newest=${today}`;
   const auth = 'Basic ' + btoa(`API_KEY:${apiKey}`);
@@ -343,9 +358,10 @@ async function intervalsFetchWellness() {
         if (typeof dbGet === 'function') {
           const existing = await dbGet('bodyweight', r.id);
           const prevDate = (() => {
+            // Mediodía local − 1 día, en local: la misma cuenta de siempre, sin pasar por UTC.
             const d = new Date(r.id + 'T12:00:00');
-            d.setUTCDate(d.getUTCDate() - 1);
-            return d.toISOString().split('T')[0];
+            d.setDate(d.getDate() - 1);
+            return _whoopLocalDateStr(d);
           })();
           const prev = await dbGet('bodyweight', prevDate);
           const prevWeight = prev && typeof prev.weight === 'number' ? prev.weight : null;
@@ -479,12 +495,156 @@ async function intervalsFetchWellness() {
 
   return {
     synced: true,
-    syncDate: new Date().toISOString().split('T')[0],
+    syncDate: _whoopLocalDateStr(),
     source: 'intervals.icu',
     recovery,
     sleep,
     bodyWeight: latestWeight,
   };
+}
+
+// ==================== EL DATO DE HOY, FRESCO (§B.2.b, v11.58) ====================
+// Dos fuentes con roles distintos, no una principal y una de repuesto:
+//   · intervals.icu = HISTÓRICO. A la mañana está completo hasta ayer, que es justo lo que
+//     necesitan las tendencias 7d/28d. Tarda horas en reflejar el readiness del día.
+//   · WHOOP directo = EL DATO DE HOY. Se pide sólo si el histórico aún no lo trae.
+// Sin esto, a las 7:00 el array acaba en el registro de ayer y el advisory decide el entreno de
+// hoy con la noche de anteayer (F-6). Si la ruta directa no está o falla, el sistema lo DICE
+// (`todaySource:'missing'` + motivo); no rellena el hueco con el dato de ayer.
+const WHOOP_TODAY_ATTEMPT_KEY = 'whoop_today_attempt';
+const WHOOP_TODAY_RETRY_MS = 10 * 60 * 1000;
+
+// El intento se marca POR DÍA: mientras no llegue el registro de hoy se reintenta cada 10 min,
+// cada vez que se abre la app. Marca también cuando no hay ruta OAuth: así el bypass de la caché
+// no dispara una resincronización completa en cada render.
+function _whoopTodayAttemptFresh(todayStr) {
+  try {
+    const raw = localStorage.getItem(WHOOP_TODAY_ATTEMPT_KEY);
+    if (!raw) return false;
+    const a = JSON.parse(raw);
+    return !!(a && a.date === todayStr && a.ts && (Date.now() - a.ts) < WHOOP_TODAY_RETRY_MS);
+  } catch { return false; }
+}
+
+function _whoopMarkTodayAttempt(todayStr) {
+  try { localStorage.setItem(WHOOP_TODAY_ATTEMPT_KEY, JSON.stringify({ date: todayStr, ts: Date.now() })); } catch { /* ignore */ }
+}
+
+// Devuelve el registro de recuperación de HOY desde la API de WHOOP, o null. Nunca lanza: si la
+// app OAuth está caída, el token no refresca o la respuesta cambia de forma, se degrada a null y
+// quien llama lo trata como "sin dato de hoy".
+async function whoopFetchTodayRecovery(todayStr) {
+  const day = todayStr || _whoopLocalDateStr();
+  if (!day) return null;
+  if (_whoopTodayAttemptFresh(day)) return null;
+  _whoopMarkTodayAttempt(day);            // antes del await: dos renders simultáneos no piden dos veces
+  if (!whoopOAuthConnected()) return null;
+  try {
+    const yesterday = _whoopLocalDateStr(new Date(Date.now() - 86400000));
+    const [recCol, sleepCol] = await Promise.all([
+      whoopGetRecoveryCollection(yesterday, day),
+      whoopGetSleep(yesterday, day).catch(() => null),
+    ]);
+    const records = (recCol && Array.isArray(recCol.records)) ? recCol.records : [];
+    // La fecha del ciclo/creación se convierte a LOCAL (F-14): un registro de las 23:30 UTC-1 no
+    // es "mañana". Se coge el más reciente que sea de hoy y esté puntuado.
+    const mine = records
+      .filter(r => r && r.score_state === 'SCORED' && r.score)
+      .filter(r => _whoopLocalDateStr(r.created_at || r.updated_at) === day)
+      .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
+    const rec = mine[0];
+    if (!rec) return null;
+
+    // Sueño de anoche = el registro (no siesta) que TERMINA hoy.
+    let sleepHrs = null;
+    const sleeps = (sleepCol && Array.isArray(sleepCol.records)) ? sleepCol.records : [];
+    const night = sleeps
+      .filter(s => s && s.nap !== true && s.score && s.score.stage_summary)
+      .filter(s => _whoopLocalDateStr(s.end || s.start) === day)
+      .sort((a, b) => String(b.end || '').localeCompare(String(a.end || '')))[0];
+    if (night) {
+      const ms = night.score.stage_summary.total_in_bed_time_milli || 0;
+      if (ms > 0) sleepHrs = Math.round(ms / 3600000 * 10) / 10;
+    }
+
+    return {
+      date: day,
+      score: rec.score.recovery_score != null ? Math.round(rec.score.recovery_score) : null,
+      hrv: rec.score.hrv_rmssd_milli != null ? Number(rec.score.hrv_rmssd_milli) : null,
+      restingHR: rec.score.resting_heart_rate != null ? Number(rec.score.resting_heart_rate) : null,
+      sleepHrs,
+      source: 'whoop-direct',
+      fetchedAt: Date.now(),
+    };
+  } catch (e) {
+    console.warn('[WHOOP] dato de hoy no disponible por la ruta directa:', e);
+    return null;
+  }
+}
+
+// Guarda el dato de hoy en el store `wellness` MEZCLANDO con la fila que ya haya (la de
+// intervals.icu trae peso, pasos, CTL/ATL… y no se pierde). Mismo camino de escritura que la
+// ruta de intervals: `smartPut`, así que también sube a Supabase.
+async function _whoopPersistTodayWellness(fresh) {
+  if (!fresh || typeof smartPut !== 'function') return;
+  try {
+    let existing = null;
+    if (typeof dbGet === 'function') {
+      try { existing = await dbGet('wellness', fresh.date); } catch { /* fila nueva */ }
+    }
+    const row = Object.assign({}, existing || {}, { date: fresh.date });
+    if (fresh.score != null) row.readiness = Math.round(fresh.score);
+    if (fresh.hrv != null) row.hrv = Number(fresh.hrv);
+    if (fresh.restingHR != null) row.restingHR = Number(fresh.restingHR);
+    if (fresh.sleepHrs != null) row.sleepSecs = Math.round(fresh.sleepHrs * 3600);
+    row.readinessSource = 'whoop-direct';
+    row.ts = Date.now();
+    await smartPut('wellness', row);
+  } catch (e) { console.warn('[WHOOP] no se pudo guardar el wellness de hoy:', e); }
+}
+
+// Marca de dónde sale el dato de hoy y, si falta, va a buscarlo a WHOOP.
+//   data.todaySource = 'intervals' | 'whoop-direct' | 'missing'
+//   data.todayMissingReason = por qué falta, en castellano y sin excusas
+async function _whoopEnsureTodayFresh(data) {
+  if (!data || !Array.isArray(data.recovery)) return data;
+  const todayStr = _whoopLocalDateStr();
+  const i = data.recovery.findIndex(r => r && r.date === todayStr);
+  if (i >= 0 && data.recovery[i].score != null) { data.todaySource = 'intervals'; return data; }
+
+  const fresh = await whoopFetchTodayRecovery(todayStr);
+  if (fresh && fresh.score != null) {
+    const merged = { date: fresh.date, source: 'whoop-direct', fetchedAt: fresh.fetchedAt };
+    if (fresh.score != null) merged.score = fresh.score;
+    if (fresh.hrv != null) merged.hrv = fresh.hrv;
+    if (fresh.restingHR != null) merged.restingHR = fresh.restingHR;
+    if (i >= 0) data.recovery[i] = Object.assign({}, data.recovery[i], merged);
+    else data.recovery.push(merged);
+    data.recovery.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+    if (fresh.sleepHrs != null && Array.isArray(data.sleep)) {
+      const j = data.sleep.findIndex(s => s && s.date === todayStr);
+      const sl = { date: todayStr, durationHrs: fresh.sleepHrs, source: 'whoop-direct' };
+      if (j >= 0) data.sleep[j] = Object.assign({}, data.sleep[j], sl);
+      else data.sleep.push(sl);
+      data.sleep.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+    }
+    data.todaySource = 'whoop-direct';
+    data.todayFetchedAt = fresh.fetchedAt;
+    await _whoopPersistTodayWellness(fresh);
+  } else {
+    data.todaySource = 'missing';
+    data.todayMissingReason = _whoopTodayMissingReason();
+  }
+  return data;
+}
+
+// Por qué falta el dato de hoy, en castellano y distinguiendo los tres casos reales: no hay ruta
+// directa, la ruta existe pero el token murió (hay que reconectar en Ajustes), o WHOOP todavía no
+// ha puntuado la noche. Decir "aún no puntuó" cuando en realidad hay que reconectar sería mentir.
+function _whoopTodayMissingReason() {
+  if (!whoopOAuthConnected()) return 'intervals.icu aún tiene el de ayer; WHOOP directo no conectado';
+  if (whoopNeedsReconnect()) return 'WHOOP necesita reconectarse en Ajustes';
+  return 'WHOOP aún no puntuó la noche';
 }
 
 // ==================== SYNC DATA ====================
@@ -497,7 +657,13 @@ async function whoopSyncData() {
     try {
       const cached = JSON.parse(cache);
       if (cached.timestamp && Date.now() - cached.timestamp < 10 * 60 * 1000) {
-        return cached.data;
+        // La caché de 10 min NO puede tapar la falta del dato de hoy: si el payload guardado no
+        // tiene la fila de hoy y la ventana de reintento ya pasó, se vuelve a sincronizar para
+        // darle otra oportunidad a la ruta directa de WHOOP.
+        const todayStr = _whoopLocalDateStr();
+        const hasToday = Array.isArray(cached.data && cached.data.recovery)
+          && cached.data.recovery.some(r => r && r.date === todayStr && r.score != null);
+        if (hasToday || _whoopTodayAttemptFresh(todayStr)) return cached.data;
       }
     } catch { /* ignore */ }
   }
@@ -506,6 +672,7 @@ async function whoopSyncData() {
   if (intervalsWellnessConfigured()) {
     const data = await intervalsFetchWellness();
     if (data) {
+      await _whoopEnsureTodayFresh(data);
       localStorage.setItem('whoop_cache', JSON.stringify({ timestamp: Date.now(), data }));
       localStorage.setItem('whoop_last_sync', data.syncDate);
       return data;
@@ -516,8 +683,8 @@ async function whoopSyncData() {
     console.warn('[wellness] intervals.icu path returned null, falling back to OAuth');
   }
 
-  const today = new Date().toISOString().split('T')[0];
-  const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
+  const today = _whoopLocalDateStr();
+  const weekAgo = _whoopLocalDateStr(new Date(Date.now() - 7 * 86400000));
 
   const result = {
     synced: true,
@@ -545,7 +712,8 @@ async function whoopSyncData() {
     for (const rec of recoveryCollection.records) {
       if (rec.score_state === 'SCORED' && rec.score) {
         result.recovery.push({
-          date: rec.created_at ? rec.created_at.split('T')[0] : today,
+          // Fecha LOCAL (F-14): un recovery creado a las 00:30 de Madrid es de hoy, no de ayer.
+          date: (rec.created_at && _whoopLocalDateStr(rec.created_at)) || today,
           score: rec.score.recovery_score,
           hrv: rec.score.hrv_rmssd_milli,
           restingHR: rec.score.resting_heart_rate,
@@ -563,7 +731,7 @@ async function whoopSyncData() {
         const rec = await whoopGetRecoveryForCycle(cycle.id);
         if (rec && rec.score) {
           result.recovery.push({
-            date: cycle.start ? cycle.start.split('T')[0] : today,
+            date: (cycle.start && _whoopLocalDateStr(cycle.start)) || today,
             score: rec.score.recovery_score,
             hrv: rec.score.hrv_rmssd_milli,
             restingHR: rec.score.resting_heart_rate,
@@ -586,7 +754,10 @@ async function whoopSyncData() {
         ? Math.round(((summary.total_slow_wave_sleep_time_milli || 0) + (summary.total_rem_sleep_time_milli || 0)) / totalMs * 100)
         : null;
       return {
-        date: s.start ? s.start.split('T')[0] : null,
+        // La noche se etiqueta con el día en que te DESPIERTAS y en fecha local, igual que hace
+        // intervals.icu (`r.id` = el día de la fila). Antes usaba `s.start` en UTC, así que el
+        // sueño de anoche aparecía con la fecha de ayer y `sleep.find(date === hoy)` no lo veía.
+        date: _whoopLocalDateStr(s.end || s.start),
         durationHrs,
         qualityPct,
         remMs: summary.total_rem_sleep_time_milli || 0,
@@ -598,6 +769,25 @@ async function whoopSyncData() {
   // Body measurement
   if (body) {
     result.bodyWeight = body.weight_kilogram || null;
+  }
+
+  // Ruta directa: aquí el dato de hoy YA viene de WHOOP, así que sólo hay que declararlo — o
+  // decir que la noche todavía no está puntuada (§B.2.b). Nunca se hereda el de ayer.
+  const todayRec = result.recovery.find(r => r && r.date === today && r.score != null) || null;
+  if (todayRec) {
+    todayRec.source = 'whoop-direct';
+    todayRec.fetchedAt = Date.now();
+    result.todaySource = 'whoop-direct';
+    result.todayFetchedAt = todayRec.fetchedAt;
+    const sl = result.sleep.find(s => s && s.date === today) || null;
+    await _whoopPersistTodayWellness({
+      date: today, score: todayRec.score, hrv: todayRec.hrv,
+      restingHR: todayRec.restingHR, sleepHrs: sl ? sl.durationHrs : null,
+    });
+    _whoopMarkTodayAttempt(today);
+  } else {
+    result.todaySource = 'missing';
+    result.todayMissingReason = _whoopTodayMissingReason();
   }
 
   // Cache result
@@ -708,6 +898,28 @@ function getRecoveryColor(score) {
   return { color: '#ee343b', label: 'Red' };
 }
 
+// "hoy" / "ayer" / "hace 3 días" para una fecha YYYY-MM-DD, en local. La regla del proyecto:
+// un dato que no es de hoy se pinta CON SU FECHA, nunca como si fuera de hoy (F-6).
+function whoopDayLabel(dateStrIn, todayStr) {
+  if (!dateStrIn) return '';
+  const t = todayStr || _whoopLocalDateStr();
+  if (dateStrIn === t) return 'hoy';
+  const a = new Date(dateStrIn + 'T12:00:00');
+  const b = new Date(t + 'T12:00:00');
+  const days = Math.round((b - a) / 86400000);
+  if (days === 1) return 'ayer';
+  if (days > 1) return `hace ${days} días`;
+  return dateStrIn;
+}
+
+// "07:42" local desde un timestamp (la hora a la que WHOOP dio el dato).
+function whoopClock(ts) {
+  if (!ts) return '';
+  const d = new Date(ts);
+  if (isNaN(d.getTime())) return '';
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
 async function renderWhoopRecoveryCard() {
   const container = document.getElementById('whoop-recovery');
   if (!container || !whoopIsConnected()) {
@@ -724,13 +936,27 @@ async function renderWhoopRecoveryCard() {
 
   container.classList.remove('hidden');
 
-  // Latest recovery
-  const latest = data.recovery[data.recovery.length - 1];
+  // El número grande: el de HOY si existe, y si no el último disponible pero ETIQUETADO con su
+  // día (F-6). Antes cogía `recovery[length - 1]` y lo pintaba como si fuera de hoy.
+  const _today = _whoopLocalDateStr();
+  const todayRec = data.recovery.find(r => r && r.date === _today && r.score != null) || null;
+  // Para el respaldo se coge el último día CON score: una fila de intervals con HRV pero sin
+  // readiness pintaría el anillo en rojo al 0 %.
+  const _scored = data.recovery.filter(r => r && r.score != null);
+  const latest = todayRec || _scored[_scored.length - 1] || data.recovery[data.recovery.length - 1];
   const score = latest.score;
   const { color, label } = getRecoveryColor(score);
+  const whenTxt = (() => {
+    const when = whoopDayLabel(latest.date, _today);
+    if (latest.date !== _today) return when;
+    const hhmm = latest.source === 'whoop-direct' ? whoopClock(latest.fetchedAt || data.todayFetchedAt) : '';
+    return hhmm ? `hoy · WHOOP ${hhmm}` : 'hoy';
+  })();
+  const missingTxt = (!todayRec && data.todayMissingReason) ? `Sin dato de hoy: ${data.todayMissingReason}` : '';
 
-  // Latest sleep
-  const latestSleep = data.sleep.length > 0 ? data.sleep[data.sleep.length - 1] : null;
+  // Sueño del mismo día que el score que se está pintando (no "el último que haya").
+  const latestSleep = (latest.date && data.sleep.find(s => s && s.date === latest.date))
+    || (data.sleep.length > 0 ? data.sleep[data.sleep.length - 1] : null);
 
   // 7-day recovery trend table
   const last7 = data.recovery.slice(-7);
@@ -795,7 +1021,9 @@ async function renderWhoopRecoveryCard() {
         <div class="whoop-card-title">
           <span class="whoop-logo-text">WHOOP</span>
           <span class="whoop-recovery-label" style="color:${color}">${label}</span>
+          <span class="whoop-when" style="font-size:11px;color:var(--text3)">${whenTxt}</span>
         </div>
+        ${missingTxt ? `<div class="whoop-when-missing" style="font-size:11px;color:var(--text3);margin:2px 0 4px">${missingTxt}</div>` : ''}
         <div class="whoop-metrics-row">
           <div class="whoop-metric-sm">
             <span class="wm-val-sm">${latest.hrv ? Math.round(latest.hrv) : '--'}</span>
@@ -832,3 +1060,7 @@ window.whoopIsConnected = whoopIsConnected;
 window.whoopSyncData = whoopSyncData;
 window.renderWhoopUI = renderWhoopUI;
 window.renderWhoopRecoveryCard = renderWhoopRecoveryCard;
+// v11.58: el dato de hoy y sus etiquetas honestas los consume también app.js (Home).
+window.whoopFetchTodayRecovery = whoopFetchTodayRecovery;
+window.whoopDayLabel = whoopDayLabel;
+window.whoopClock = whoopClock;

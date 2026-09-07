@@ -7,8 +7,15 @@ Fuentes verificadas: `app/whoop.js`, `app/strava.js`, `app/app.js`, `app/supabas
 ## Hallazgo de arquitectura (importante)
 
 **`intervals.icu` es el hub de datos**, no un input más:
-- **Whoop → intervals.icu wellness → app** (ruta primaria, sin OAuth; el OAuth directo a Whoop es
-  legacy/fallback marcado para borrar). Endpoint: `/api/v1/athlete/{id}/wellness`.
+- **Whoop → intervals.icu wellness → app** (ruta primaria del **histórico**, sin OAuth). Endpoint:
+  `/api/v1/athlete/{id}/wellness`.
+  **v11.58**: el OAuth directo a Whoop deja de ser "legacy marcado para borrar" y pasa a tener un
+  rol propio: **el dato de HOY**. intervals.icu tarda horas en reflejar el readiness del día (a la
+  mañana tiene el de ayer), así que `whoopFetchTodayRecovery()` (`app/whoop.js`) pide `/v2/recovery`
+  + `/v2/activity/sleep` de los últimos 2 días **sólo cuando falta la fila de hoy**, la mezcla en el
+  payload con `source:'whoop-direct'` y la persiste en `wellness` (merge, `readinessSource`).
+  Si esa ruta no está conectada, el sistema lo dice ("Sin dato de hoy: …") en vez de usar el de ayer.
+  Todas las fechas de `whoop.js` son **locales** desde v11.58 (F-14).
 - **Coros PACE → Strava (auto-sync) → app** (`strava-sync`) **y** **Coros → Strava → intervals.icu →
   app** (dos rutas que traen las mismas carreras; dedup last-write-wins por `_updated_at`).
 - **Apple Health NO tiene integración directa** (sin HealthKit). Steps/peso entran vía el companion
@@ -24,7 +31,7 @@ companion de Apple Health falla, el peso se degrada a forward-fills (ver caveats
 
 | Campo | Clasificación | Nota |
 |---|---|---|
-| `readiness` (recovery score 0-100) | available | Flag verde/amarillo/rojo (READ-003), no dosis |
+| `readiness` (recovery score 0-100) | available | Flag verde/amarillo/rojo (READ-003), no dosis. **Sólo cuenta si `date === hoy`** (v11.58, F-6); el de hoy puede venir por WHOOP directo (`readinessSource:'whoop-direct'`) |
 | `hrv` (ms) + `hrvSDNN` | available | HRV de **sueño** (Whoop), no RMSSD matinal — usar como tendencia |
 | `restingHR` (+ `restingHRMeasured`) | available | Tendencia |
 | `sleepSecs` (duración) | available | Input directo a readiness |
