@@ -96,29 +96,18 @@ body::before {
   #app { height: 100vh; }
 }
 
-/* T3 — Training Advisory + Hard-Day Budget cards (v11.21) */
+/* T3 — lo que queda tras retirar el advisory diario (v11.62): la carga de la semana (ahora en
+   Stats) y los pies del selector de plan y del preview del ideal. Las clases de la tarjeta de
+   consejo (la píldora de recomendación, el título, el nivel de estrés, las razones, las
+   alternativas, el aviso y los Rule IDs) se fueron con ella. */
 .t3-card { margin-bottom: 12px; padding: 14px 16px; }
 .t3-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
 .t3-eyebrow { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text2); }
-.t3-rec { font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
 .t3-budget-num { font-size: 15px; font-weight: 800; font-variant-numeric: tabular-nums; }
-.t3-title { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
-.t3-stress { font-size: 12px; font-weight: 600; color: var(--text2); margin-left: 6px; }
 .t3-context { font-size: 13px; color: var(--text2); margin-bottom: 6px; }
-.t3-reasons { margin: 4px 0 0; padding-left: 18px; font-size: 13px; color: var(--text); }
-.t3-reasons li { margin: 2px 0; }
-.t3-alts-label { font-size: 12px; font-weight: 600; color: var(--text2); margin-top: 8px; }
-.t3-alts { margin: 4px 0 0; padding-left: 18px; font-size: 13px; }
-.t3-alts li { margin: 3px 0; }
-.t3-alt-why { color: var(--text2); }
 .t3-bar { height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; margin: 6px 0 8px; }
 .t3-bar-fill { height: 100%; border-radius: 4px; transition: width 0.5s; }
-.t3-warn { font-size: 12px; color: var(--yellow); margin-top: 4px; }
-.t3-rules { font-size: 10px; letter-spacing: 0.04em; color: var(--text3); margin-top: 8px; }
 .t3-foot { font-size: 10px; color: var(--text3); margin-top: 6px; font-style: italic; }
-.t3-alt-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.t3-alt-btn { flex-shrink: 0; font-size: 11px; font-weight: 700; padding: 5px 10px; border-radius: 16px; border: 1px solid var(--accent); background: var(--accent-dim); color: var(--accent); cursor: pointer; }
-.t3-alt-btn:active { background: var(--accent); color: #000; }
 
 /* T4 — Ideal Plan Preview */
 .ip-goal { margin-bottom: 12px; }
@@ -669,7 +658,8 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
 .swap-option:active { background: var(--accent-dim); border-color: var(--accent); }
 .swap-cancel { display: block; width: 100%; padding: 8px; background: none; border: 1px solid var(--border); border-radius: var(--radius-xs); color: var(--text3); font-size: 12px; cursor: pointer; margin-top: 6px; }
 
-/* ========== Deload Reminder ========== */
+/* ========== Banner de aviso (lo usa el aviso de copia en la nube pendiente; el banner
+      reactivo de descarga se retiró en v11.62) ========== */
 .deload-banner { background: linear-gradient(135deg, rgba(251,191,36,0.12), transparent); border: 1px solid var(--yellow); border-radius: var(--radius-sm); padding: 12px 16px; display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
 .deload-icon { font-size: 18px; }
 .deload-text { font-size: 13px; color: var(--yellow); font-weight: 600; }
@@ -1947,40 +1937,9 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
    HOME — Lovable Whoop-editorial layout (v11.1)
    ================================================== */
 
-/* ---- Recovery hero ---- */
-.recovery-hero {
-  position: relative; overflow: hidden; margin-bottom: 16px;
-  border-radius: 26px; padding: 22px;
-  background: linear-gradient(135deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02) 50%, transparent);
-  border: 1px solid rgba(255,255,255,0.08);
-  -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
-  box-shadow: 0 20px 60px -30px rgba(0,0,0,0.8);
-}
-.rh-glow { position: absolute; top: -90px; right: -60px; width: 220px; height: 220px; border-radius: 50%; background: var(--accent); opacity: 0.18; filter: blur(60px); pointer-events: none; }
-.rh-head { display: flex; align-items: center; justify-content: space-between; position: relative; z-index: 1; }
-.rh-eyebrow { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.25em; color: var(--text2); }
-.rh-chip { font-family: var(--font-mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.2em; padding: 4px 10px; border-radius: 999px; }
-/* v11.58: una línea sobria cuando el dato de hoy todavía no ha llegado (F-6). */
-.rh-stale { position: relative; z-index: 1; margin-top: 8px; font-size: 11px; line-height: 1.35; color: var(--text3); }
-.rh-main { display: flex; align-items: center; gap: 22px; margin-top: 18px; position: relative; z-index: 1; }
-.rh-ring { position: relative; width: 100px; height: 100px; flex-shrink: 0; }
-.rh-ring-svg { width: 100%; height: 100%; }
-.rh-ring-label { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.2em; color: var(--text2); }
-.rh-readout { flex: 1; min-width: 0; }
-.rh-score { font-family: var(--font-display); font-size: 64px; font-weight: 900; line-height: 1; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; }
-.rh-pct { font-size: 28px; vertical-align: top; }
-.rh-msg { margin-top: 8px; font-size: 13px; line-height: 1.35; color: var(--text2); max-width: 22ch; }
-.rh-vitals { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 20px; position: relative; z-index: 1; }
-.rh-vital { border-radius: 16px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); padding: 12px; }
-.rh-vital-head { display: flex; align-items: center; gap: 6px; }
-.rh-vital-head svg { width: 14px; height: 14px; flex-shrink: 0; }
-.rh-vital-k { font-family: var(--font-mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.2em; }
-.rh-vital-v { display: block; margin-top: 8px; font-family: var(--font-display); font-size: 20px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
-.rh-vital-u { font-size: 11px; font-weight: 500; color: var(--text2); margin-left: 3px; }
-.recovery-hero-empty { cursor: pointer; }
-.rh-empty-body { margin-top: 14px; }
-.rh-empty-title { font-family: var(--font-display); font-size: 17px; font-weight: 700; }
-.rh-empty-sub { font-size: 12px; color: var(--text2); margin-top: 4px; }
+/* El hero de recuperación (anillo gigante + "Your body is ready for high strain today") se
+   retiró en v11.62: era consejo diario derivado de un número. Lo que hay ahora es
+   la línea de recuperación de Home, más abajo en este fichero. */
 
 /* ---- Today's session hero (full-bleed cover) ---- */
 .session-hero { position: relative; overflow: hidden; border-radius: 26px; margin-bottom: 16px; aspect-ratio: 4 / 5; cursor: pointer; border: 1px solid rgba(255,255,255,0.06); }
@@ -2534,7 +2493,7 @@ body[data-tab="home"] .home-scroll-v2 { padding-top: calc(var(--safe-top) + 10px
 .coach-outcome-skip { color: var(--text3); }
 
 /* ==================================================
-   COACH v2 — readiness: señales, propuesta y check-in (v11.59)
+   COACH v2 — readiness: señales en Stats y la línea informativa de Home (v11.59 / v11.62)
    ================================================== */
 /* Las señales que justifican el color, en la tarjeta de Home. Una por línea porque cada una es
    un hecho comprobable ("HRV 7d 62 ms vs 71 de base"), no un adorno. */
@@ -2542,27 +2501,25 @@ body[data-tab="home"] .home-scroll-v2 { padding-top: calc(var(--safe-top) + 10px
 .coach-signals li { margin: 0; }
 .coach-signals-note { margin-top: 6px; font-size: var(--fs-xs); color: var(--text3); line-height: 1.5; }
 
-/* La propuesta: qué cambia y por qué, con los dos botones debajo. Ninguno se deshabilita nunca
-   (los guardarraíles avisan, no bloquean). */
-.coach-proposal { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
-.coach-proposal-title { font-size: var(--fs-sm); font-weight: 700; color: var(--text); }
-.coach-changes { margin: 6px 0 0; padding-left: 16px; font-size: var(--fs-xs); color: var(--text); line-height: 1.6; }
-.coach-change-why { color: var(--text3); }
+/* v11.62: las clases de la propuesta diaria y su lista de cambios se fueron con la tarjeta de
+   consejo. Los botones siguen aquí porque los usa la tarjeta del coach SEMANAL (Aplicar /
+   Rechazar / Regenerar), que sí propone cosas — una vez por semana y con motivo. */
 .coach-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
 .coach-btn { flex: 1; min-width: 130px; padding: 10px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface2); color: var(--text); font-size: var(--fs-xs); font-weight: 700; cursor: pointer; }
 .coach-btn-primary { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
 .coach-btn:disabled { opacity: 0.5; }
 
-/* Check-in de 2 toques, sólo cuando falta el dato de hoy. Descartable con la ✕. */
-.coach-checkin { margin-top: 12px; padding: 10px 12px; background: var(--surface2); border-radius: var(--radius-sm); }
-.coach-checkin-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.coach-checkin-title { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--text3); }
-.coach-checkin-close { background: none; border: none; color: var(--text3); font-size: 14px; line-height: 1; padding: 2px 4px; cursor: pointer; }
-.coach-checkin-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
-.coach-checkin-q { font-size: var(--fs-xs); color: var(--text2); }
-.coach-checkin-opts { display: flex; gap: 6px; }
-.coach-checkin-opt { padding: 6px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg2); color: var(--text2); font-size: var(--fs-xs); font-weight: 600; cursor: pointer; }
-.coach-checkin-opt.selected { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+/* LA LÍNEA DE RECUPERACIÓN DE HOME (v11.62). Sustituye al hero, al advisory y al check-in de 2
+   toques. Texto apagado y dos líneas: la de arriba es el RENDIMIENTO (anclas y última carrera),
+   la de abajo las tendencias de 7 días y el WHOOP de hoy. Sin color por estado a propósito: un
+   rojo aquí volvería a ser un consejo. */
+.coach-recovery-line { margin: 10px 0 4px; padding: 0 2px; }
+.coach-recovery-line .crl-perf,
+.coach-recovery-line .crl-trend {
+  font-size: var(--fs-xs); line-height: 1.5; color: var(--text3);
+  font-variant-numeric: tabular-nums;
+}
+.coach-recovery-line .crl-perf { color: var(--text2); }
 
 /* Stats › Today: la lista de señales que sustituye al score 0-100. Sin barra y sin número. */
 .readiness-signals { padding: 14px 16px; }

@@ -1,5 +1,21 @@
 # Training Advisory Layer v1 (T3)
 
+> **v11.62 — RETIRADO: el coach no ajusta el día (decisión del usuario, 2026-09-07).**
+> *"Nada de ajustar el entrenamiento del día por WHOOP. Eso es muy subjetivo; voy a ser yo y mi
+> cuerpo el que decida skipear un ejercicio o bajar los pesos."* Con esa frase se fueron
+> `computeTrainingAdvisory`, `renderTrainingAdvisory` y sus dos botones, el check-in de 2 toques,
+> el hero de WHOOP en Home, el banner reactivo de descarga y el motor `adjustSessionForReadiness`.
+> **Este documento se conserva como historia**: describe una capa que ya no existe.
+>
+> Lo que SÍ sigue vivo de aquí, y dónde: `getPlannedSessionForDate` (el plan del día),
+> `classifySessionStress` (clasificación de sesiones), `getWhoopContext` (dato de hoy o nada),
+> `computeHardDayBudget` / `renderHardDayBudget` (ahora en **Stats › Today**, informativo) y
+> `ALT_LIBRARY` (la lee el preview del plan ideal). La recuperación se ve en Home como **una línea
+> informativa** (`renderRecoveryLine`, con el rendimiento primero) y en Stats como la lista de
+> señales (`renderReadinessSignals`). Ninguna propone nada.
+>
+> El coaching que sí cambia el plan es **semanal**: `docs/architecture/coach-v2.1-implementation-plan.md`.
+
 Capa de **inteligencia de programación, read-only**. WHOOP = fuente de recovery (no se recalcula).
 La app responde, para hoy: qué sesión tocaba (plan actual) → qué estrés genera → contexto WHOOP →
 hard-day budget de la semana → interferencia → **recomendación advisory** (keep/modify/replace/
@@ -57,8 +73,8 @@ Dos correcciones al v1, ambas en `app/app.js` + `app/whoop.js`:
    como segunda señal: era la misma señal dos veces, así que un rojo de un día daba `replace`
    (READ-002 pide **concordancia**, no repetición).
 
-Tests: `tests/verify-session-classification.mjs`, `tests/verify-advisory-matrix.mjs`,
-`tests/verify-coach-wiring.mjs` §12. La ruta directa de WHOOP **no se puede probar contra la API
+Tests: `tests/verify-session-classification.mjs`, `tests/verify-whoop-context.mjs` (el sucesor de
+`verify-advisory-matrix.mjs`, con sólo la honestidad de fecha), `tests/verify-coach-wiring.mjs` §12. La ruta directa de WHOOP **no se puede probar contra la API
 real** desde los tests: el código devuelve `null` ante cualquier error y nunca lanza.
 
 ## v11.59 — Un readiness para todo: advisory, deload reactivo y señales
@@ -116,8 +132,9 @@ y `readinessAtStart`, así que **al reanudar los ejercicios quitados siguen quit
 `finishWorkout` sella `readinessAtStart`, `adjusted` y el resumen del ajuste: es la mitad del lazo
 que el coach semanal necesita para contrastar sus propias propuestas.
 
-Tests: `verify-readiness-trend.mjs`, `verify-session-adjust.mjs`, `verify-advisory-matrix.mjs`
-(matriz completa), `verify-coach-wiring.mjs` §13.
+Tests: `verify-readiness-trend.mjs`, `verify-coach-wiring.mjs` §13. (`verify-session-adjust.mjs` y
+`verify-advisory-matrix.mjs` se borraron en v11.62 con el ajuste diario; `verify-coach-wiring.mjs`
+§16 comprueba ahora que nada de esto vuelva.)
 
 ## Matriz de decisión v1 (histórica — la vigente es la de v11.59, arriba)
 Solo se sale de `keep` con **confirmación multi-señal** (≥2 concordantes, READ-002):

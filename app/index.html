@@ -174,9 +174,6 @@
           <div id="resume-workout-banner" class="hidden"></div>
           <div id="resume-mobility-banner" class="hidden"></div>
           <div id="home-topbar"></div>
-          <div id="recovery-hero"></div>
-          <div id="training-advisory"></div>
-          <div id="hard-day-budget"></div>
           <div id="plan-selector"></div>
           <div id="week-calendar"></div>
           <div class="home-sec-row" style="margin-top:24px">
@@ -189,6 +186,10 @@
                cambia la semana, y por último qué toca hacer hoy. Vacía cuando no hay revisión. -->
           <div id="coach-week-card" class="hidden"></div>
           <div id="todays-plan-card"></div>
+          <!-- Recuperación como INFORMACIÓN (v11.62). Dos líneas apagadas: rendimiento
+               (anclas + última carrera) y tendencias de 7 días. Sin color de estado, sin
+               botones y sin nada que decidir: el entreno del día no se ajusta por WHOOP. -->
+          <div id="coach-recovery-line"></div>
           <div id="home-stat-trio"></div>
           <div class="home-sec-row" style="margin-top:28px">
             <h2 class="home-h2">This week</h2>
@@ -464,9 +465,11 @@
 
           <!-- ===== TODAY ===== -->
           <div id="sync-warning" class="hidden" data-group="today"></div>
-          <div id="deload-reminder" class="hidden" data-group="today"></div>
           <div class="streak-row" id="streak-row" data-group="today"></div>
           <div class="card readiness-signals" id="readiness-signals" data-group="today"></div>
+          <!-- La carga de la semana vivía en Home hasta v11.61. Es un dato que se consulta,
+               no algo que haya que ver antes de entrenar: se queda en Stats, tras las señales. -->
+          <div id="hard-day-budget" data-group="today"></div>
           <div class="card coach-goals" id="coach-goals" data-group="today"></div>
           <div class="section-label" data-group="today">This Week</div>
           <div class="card" id="weekly-summary" data-group="today"></div>
@@ -778,7 +781,7 @@
           </div>
           <div class="section-label" style="margin-top:24px">App</div>
           <div class="card">
-            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v11.61<br>Data stored locally + cloud sync.<br>Works offline.</p>
+            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v11.62<br>Data stored locally + cloud sync.<br>Works offline.</p>
             <button id="btn-force-update" class="btn-secondary btn-full" style="text-align:center">Force Update App</button>
           </div>
         </div>

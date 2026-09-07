@@ -12,7 +12,8 @@
 // `verify-coach-wiring.mjs` las vigila: un módulo fuera del APP_SHELL funciona en el navegador
 // y falla sin conexión, que es justo donde se entrena (ya pasó con nutrition.js).
 //
-// v11.60 (incremento 6) trae `renderGoalsCard`, la tarjeta "Objetivos".
+// v11.60 (incremento 6) trae `renderGoalsCard`, la tarjeta "Objetivos". v11.62 trae
+// `renderRecoveryLine`, la línea informativa de Home que sustituye al consejo diario.
 // v11.57 (incremento 3) trae `renderCoachReadout`. v11.59 (incremento 5) trae
 // `renderReadinessSignals`, que sustituye al score 0-100 de la fatigue card. Los incrementos
 // siguientes añaden aquí `maybeRunWeeklyCoach`, `applyCoachProposal`, `rollbackPlanVersion`,
@@ -161,6 +162,109 @@ async function renderReadinessSignals() {
     </div>
     <div class="rs-rows">${rows}</div>
     ${lastLine}`;
+}
+
+// ==================== LÍNEA DE RECUPERACIÓN (Home, v11.62) ====================
+//
+// QUÉ SUSTITUYE. En Home había tres cosas hablando de recuperación: el hero de WHOOP (anillo
+// gigante + "Your body is ready for high strain today"), la tarjeta de consejo diario con sus
+// botones, y el banner reactivo de descarga. Julian las retiró el 2026-09-07: *"nada de ajustar
+// el entrenamiento del día por WHOOP; eso es muy subjetivo; voy a ser yo y mi cuerpo el que
+// decida skipear un ejercicio o bajar los pesos"*.
+//
+// LO QUE QUEDA SON DOS LÍNEAS APAGADAS, y el orden importa:
+//
+//   Rendimiento: banca 95×8 ↑ · sentadilla 105×8 → · Z2 5,1 km @141
+//   HRV estable (−3 %) · RHR 44 · sueño 7,4 h · WHOOP hoy 71 %
+//
+// **Rendimiento primero** (plan v2.1 §Principios 2): la recuperación se mira sobre todo en los
+// entrenamientos —el top set, las reps a la misma carga, el pulso a Z2— y el wearable es
+// contexto en tendencia de 7 días, nunca un día suelto y nunca una dosis.
+//
+// SIN COLOR POR ESTADO Y SIN BOTONES, a propósito. Un rojo aquí volvería a ser un consejo por
+// la puerta de atrás. Quien quiera el detalle lo tiene en Stats › Today, con cada señal, su
+// valor y su base.
+//
+// El contenedor queda VACÍO si no hay nada que decir: una etiqueta "Recuperación" sobre tres
+// guiones no es información, es un hueco con nombre.
+
+/** Ventana de la línea de rendimiento: dos semanas. Más atrás ya no describe "cómo vengo". */
+const RECOVERY_LINE_DAYS = 14;
+
+/** "HRV estable (−3 %)" / "RHR 44" / "sueño 7,4 h" desde las señales que SÍ tienen dato. */
+function _crlTrendBits(signals) {
+  const bits = [];
+  const by = (id) => (signals || []).find(s => s && s.id === id && s.status === 'ok') || null;
+  const fmt = (v) => (typeof _coachFmtKg === 'function' ? _coachFmtKg(v) : String(v));
+
+  const hrv = by('hrv7v28');
+  if (hrv && hrv.value != null && hrv.baseline) {
+    const pct = Math.round((hrv.value / hrv.baseline - 1) * 100);
+    const signo = (pct < 0 ? '−' : '+') + Math.abs(pct) + ' %';
+    bits.push(`HRV ${hrv.fired ? 'baja' : 'estable'} (${signo})`);
+  }
+  const rhr = by('rhr7v28');
+  if (rhr && rhr.value != null) {
+    const d = rhr.baseline != null ? Math.round(rhr.value - rhr.baseline) : null;
+    bits.push(`RHR ${rhr.value}` + (rhr.fired && d != null ? ` (${d < 0 ? '−' : '+'}${Math.abs(d)})` : ''));
+  }
+  const slp = by('sleep7');
+  if (slp && slp.value != null) bits.push(`sueño ${fmt(slp.value)} h`);
+  return bits;
+}
+
+async function renderRecoveryLine() {
+  const el = document.getElementById('coach-recovery-line');
+  if (!el) return;
+  el.innerHTML = '';
+  try {
+    const ds = today();
+    const desde = dateStr(new Date(Date.parse(ds + 'T12:00:00') - RECOVERY_LINE_DAYS * 86400000));
+
+    // ---- Línea 1: rendimiento ------------------------------------------------------------
+    let perf = '';
+    if (typeof performanceLine === 'function') {
+      const [workouts, runs] = await Promise.all([
+        dbGetAll('workouts').catch(() => []),
+        (typeof getRunsDeduped === 'function' ? getRunsDeduped() : dbGetAll('runs')).catch(() => []),
+      ]);
+      const zonas = (typeof _runningZones === 'function') ? _runningZones() : null;
+      perf = performanceLine(
+        (workouts || []).filter(w => w && w.date && w.date >= desde && w.date <= ds),
+        (runs || []).filter(r => r && r.date && r.date >= desde && r.date <= ds),
+        { z2Ceiling: (zonas && zonas.z2 && zonas.z2[1]) || null },
+      );
+    }
+
+    // ---- Línea 2: tendencias de 7 días + el dato de hoy -----------------------------------
+    let trend = '';
+    let r = null;
+    try { r = await computeReadiness(); } catch (e) { r = null; }
+    if (r) {
+      const bits = _crlTrendBits(r.signals);
+      // El dato de HOY o su ausencia, con la fecha del último (F-6): nunca el de ayer como si
+      // fuera de hoy. Sin `%` de recomendación al lado: es un número, no una instrucción.
+      const whoop = (r.signals || []).find(s => s && s.id === 'whoop') || {};
+      if (whoop.status === 'ok' && whoop.value != null) {
+        bits.push(`WHOOP hoy ${whoop.value} %`);
+      } else {
+        const last = r.whoopLastAvailable;
+        bits.push((last && last.score != null)
+          ? `sin dato de hoy (último: ${last.score} % ${(typeof whoopDayLabel === 'function' ? whoopDayLabel(last.date, ds) : last.date)})`
+          : 'sin dato de hoy');
+      }
+      trend = bits.join(' · ');
+    }
+
+    if (!perf && !trend) return;
+    el.innerHTML =
+      (perf ? `<div class="crl-perf">${escapeHtml(perf)}</div>` : '') +
+      (trend ? `<div class="crl-trend">${escapeHtml(trend)}</div>` : '');
+  } catch (e) {
+    // Patrón `renderHomeView`: cada sección con su try/catch. Una línea no tumba Home.
+    console.warn('[Coach] renderRecoveryLine:', e);
+    el.innerHTML = '';
+  }
 }
 
 // ==================== OBJETIVOS (Stats › Today, v11.60) ====================
@@ -367,9 +471,13 @@ const COACH_ERROR_ES = {
 const COACH_DECISION_ES = {
   progression: 'progresión', structure: 'estructura', running: 'carrera',
   nutrition: 'nutrición', recovery: 'recuperación',
-  'session-readout': 'lectura de sesión', 'readiness-adjust': 'ajuste por recuperación',
+  'session-readout': 'lectura de sesión',
+  // v11.62: los dos siguientes ya NO se escriben (el ajuste diario y el banner reactivo de
+  // descarga se retiraron). Se conservan para poder leer las decisiones históricas.
+  'readiness-adjust': 'ajuste por recuperación (histórico: ya no se escribe)',
   'plan-apply': 'plan aplicado', 'plan-adjust': 'plan ajustado', 'plan-reject': 'plan rechazado',
-  'plan-rollback': 'versión restaurada', 'deload-request': 'descarga', 'running-week': 'semana de carrera',
+  'plan-rollback': 'versión restaurada', 'running-week': 'semana de carrera',
+  'deload-request': 'descarga (histórico: ya no se escribe)',
   'goal-update': 'objetivo', 'target-override': 'objetivo manual', other: 'otra',
 };
 const COACH_OUTCOME_ES = { accepted: 'aceptada', declined: 'rechazada', done: 'hecha' };
@@ -1605,7 +1713,7 @@ async function setCoachAutoApply(mode) {
 // Exports para los tests (Node los carga con `vm`); en el navegador no estorba.
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
-    renderCoachReadout, renderReadinessSignals, renderGoalsCard,
+    renderCoachReadout, renderReadinessSignals, renderRecoveryLine, renderGoalsCard,
     COACH_APP_VERSION, COACH_RULE_ES, COACH_EVIDENCE_ES, COACH_GUARD_ES, COACH_STATUS_ES,
     buildCoachFactsFromStores, maybeRunWeeklyCoach, runWeeklyCoach, pollCoachReview,
     applyCoachProposal, rejectCoachProposal, rollbackPlanVersion,

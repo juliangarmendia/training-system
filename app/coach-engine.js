@@ -20,8 +20,9 @@
 // ISO. v11.56 (incremento 2) añade la semana del bloque anclada a fecha (`blockWeekFromDates`,
 // `mondayOf`, `anchorDateFromWeek`) y la progresión de cardio (`progressCardioMin`). v11.57
 // (inc. 3) el kg del set (`suggestSetTarget`, `sessionReadout`). v11.59 (inc. 5) el readiness
-// único (`computeReadinessFrom`) y el ajuste de la sesión (`adjustSessionForReadiness`,
-// `_coachTrimAccessories`). El incremento 6 añade `suggestRunningWeek` / `goalProgress`.
+// único (`computeReadinessFrom`). El incremento 6 añade `suggestRunningWeek` / `goalProgress`.
+// v11.62 retira el ajuste diario de la sesión —la recuperación informa, no dosifica— y pone en
+// su lugar `performanceLine`: el rendimiento primero.
 
 // ==================== OBJETIVOS ====================
 //
@@ -870,7 +871,7 @@ function sessionReadout(workout, targetsById, exDefs, nextById) {
 // EL PROBLEMA QUE RESUELVE (audit 2026-09-05, F-5 + F-6 + F-8, Change 6). Hasta v11.58 había
 // TRES lecturas de recuperación, cada una con sus inputs y su criterio:
 //
-//   Home  · `computeTrainingAdvisory` → color WHOOP de un día + 2 flags → keep/modify/…
+//   Home  · el advisory diario        → color WHOOP de un día + 2 flags → mantener/ajustar/…
 //   Stats · `renderFatigueScore`      → score 0-100 compuesto (frecuencia + calidad + energía +
 //                                       días bajo proteína ×3 + RPE medio + WHOOP) → "Push hard"
 //   Stats · `checkDeloadNeeded`       → quality ≤2 ×2, RPE ≥8,5 ×3, media WHOOP 3d, + una rama
@@ -891,8 +892,9 @@ function sessionReadout(workout, targetsById, exDefs, nextById) {
 //   READ-003 · el Recovery de WHOOP es una bandera (verde/amarillo/rojo), no una dosis.
 //   READ-004 · la HRV se compara con la base PROPIA (media de los días 7..34), nunca con valores
 //              poblacionales ni con el día anterior.
-//   READ-005 · el subjetivo y el rendimiento pesan cuando el wearable falta o discrepa: de ahí
-//              `sleepSelf`/`feelSelf` (check-in de 2 toques) y `rpe2`/`quality2`.
+//   READ-005 · el RENDIMIENTO pesa cuando el wearable falta o discrepa: de ahí `rpe2` y
+//              `quality2`. (El check-in subjetivo de 2 toques salió en v11.62 con el ajuste
+//              diario: un dato que no cambia ninguna decisión no se pide.)
 //   READ-006 · el sueño es la palanca primaria.
 //   READ-008 · el deload reactivo sale de un declive multi-señal SOSTENIDO, no de un mal día.
 //
@@ -954,7 +956,7 @@ function _readDelta(d) {
 /** Nombre corto de cada señal, para la UI. El motivo (`reason`) NO lo repite. */
 const _READ_LABELS = {
   whoop: 'WHOOP hoy', hrv7v28: 'HRV 7d', rhr7v28: 'FC reposo 7d', sleep7: 'Sueño 7d',
-  rpe2: 'RPE', quality2: 'Calidad', sleepSelf: 'Sueño (check-in)', feelSelf: 'Sensación (check-in)',
+  rpe2: 'RPE', quality2: 'Calidad',
 };
 
 /** Señal sin dato suficiente. Lleva SIEMPRE el motivo: "no hay dato" no es una explicación. */
@@ -972,7 +974,7 @@ function _readInsufficient(id, unit, reason) {
  * @param {object} inputs
  * @param {string} inputs.today                'YYYY-MM-DD' LOCAL (nunca derivado de UTC — F-14).
  * @param {Array}  inputs.wellness             Filas del store `wellness` de los últimos ~35 días:
- *                                             `{date, readiness, hrv, restingHR, sleepSecs, subjective?}`.
+ *                                             `{date, readiness, hrv, restingHR, sleepSecs}`.
  *                                             Fuente: intervals.icu (histórico) + WHOOP directo (hoy).
  * @param {object|null} inputs.whoopToday      `{score, source, fetchedAt}` SÓLO si es de HOY (F-6).
  * @param {string} [inputs.whoopMissingReason] Por qué falta el dato de hoy, en castellano.
@@ -1133,33 +1135,11 @@ function computeReadinessFrom(inputs = {}) {
     });
   }
 
-  // ---- 7-8. Check-in de 2 toques (READ-005) ----------------------------------------------
-  // Cuando el wearable no tiene el dato de hoy, esto es lo único que habla de HOY. Es opcional:
-  // sin responder queda `insufficient` y no pasa nada.
-  const todayRow = day ? rows.find(r => _coachDayStr(r.date) === day) : null;
-  const subj = (todayRow && todayRow.subjective) || null;
-  if (!subj || !subj.sleepBand) {
-    signals.push(_readInsufficient('sleepSelf', 'h', 'sin responder hoy'));
-  } else {
-    const bad = String(subj.sleepBand) === '<6h';
-    signals.push({
-      id: 'sleepSelf', label: _READ_LABELS.sleepSelf, fired: bad, dir: 'down', value: null, baseline: null, unit: 'h',
-      // `band` es la respuesta CRUDA ('<6h', '6-7'…). La lleva la señal para que la UI pueda
-      // marcar el botón elegido sin volver a leer IndexedDB ni parsear su propio texto.
-      band: String(subj.sleepBand),
-      text: bad ? 'Dormiste <6 h (check-in)' : 'Dormiste ' + subj.sleepBand + ' (check-in)',
-      status: 'ok',
-    });
-  }
-  if (!subj || subj.feel == null || !isFinite(Number(subj.feel))) {
-    signals.push(_readInsufficient('feelSelf', '/5', 'sin responder hoy'));
-  } else {
-    const feel = Number(subj.feel);
-    signals.push({
-      id: 'feelSelf', label: _READ_LABELS.feelSelf, fired: feel <= 2, dir: 'down', value: feel, baseline: 2, unit: '/5',
-      text: 'Te sientes ' + _coachFmtKg(feel) + '/5 (check-in)', status: 'ok',
-    });
-  }
+  // RETIRADO en v11.62: las señales 7-8 eran el check-in subjetivo de 2 toques (`sleepSelf` /
+  // `feelSelf`). Se fueron con el ajuste diario: sin nadie que cambie el entreno por el color
+  // del día, preguntar cada mañana "¿cómo dormiste?" es pedir un dato para no hacer nada con
+  // él. Nada escribe ya `wellness[hoy].subjective`; las filas históricas que lo tengan se
+  // conservan intactas y simplemente no se leen. Quedan SEIS señales.
 
   // ---- Color: ≥2 concordantes = rojo; 1 = amarillo (READ-002) -----------------------------
   const byId = (id) => signals.find(s => s.id === id) || null;
@@ -1194,312 +1174,156 @@ function computeReadinessFrom(inputs = {}) {
   return { color, signals, fired, confidence, deloadHint, ruleIds: READ_RULE_IDS.slice() };
 }
 
-// ==================== EL AJUSTE DE LA SESIÓN (READ-007) ====================
+// ==================== LÍNEA DE RENDIMIENTO ====================
 //
-// READ-007 dice que un día rojo cambia el OBJETIVO de la sesión, no sólo la carga. Esta función
-// es esa frase hecha código: devuelve la MISMA sesión con menos accesorios y un tope de RPE
-// (amarillo), o una sesión distinta (rojo + día exigente).
+// QUÉ SUSTITUYE (v11.62). Aquí vivía "EL AJUSTE DE LA SESIÓN (READ-007)": la función que
+// devolvía la sesión del día con menos accesorios, un tope de RPE o cambiada por otra cuando la
+// recuperación estaba en rojo. Julian la retiró el 2026-09-07 con una frase que no admite
+// interpretación: *"eso es muy subjetivo; voy a ser yo y mi cuerpo el que decida skipear un
+// ejercicio o bajar los pesos"*. La recuperación se queda como INFORMACIÓN. La app sigue
+// prescribiendo el kg del set (dato propio, doble progresión) y no toca nada más del día.
 //
-// LO QUE NO TOCA, NUNCA:
-//   · Los kg. La carga la fija `suggestSetTarget` (doble progresión) y la fatiga se gestiona por
-//     RPE y volumen — STR-001. Un readiness que mueve el kg es un score convertido en dosis, que
-//     es exactamente lo que READ-003 prohíbe.
-//   · Los compuestos en amarillo. En déficit lo que preserva fuerza es la intensidad de los
-//     compuestos (STR-001); lo primero que sobra son los accesorios.
-//   · El Z2 finisher ni los días de descanso/recuperación: ya son la parte fácil.
+// Y LO QUE ENTRA EN SU LUGAR ES LO CONTRARIO DE UN CONSEJO: un resumen de lo que ha pasado de
+// verdad. El principio nuevo es **rendimiento primero** (plan v2.1 §Principios 2): la señal que
+// dice cómo va la recuperación es el top set, las reps a la misma carga y el pulso a Z2 — el
+// wearable es contexto en tendencia, nunca un día suelto y nunca una dosis.
 //
-// Y NO BLOQUEA: esto devuelve una PROPUESTA. Los dos botones de Home arrancan, y las dos
-// decisiones quedan registradas (`logDecision`).
+// PURA, como todo este fichero: recibe los registros y devuelve un string. El filtrado por
+// fechas y la lectura de IndexedDB los hace `renderRecoveryLine()` en coach.js.
 
-/** Redondeo a 5 minutos: la duración de una sesión no se prescribe en minutos sueltos. */
-function _readRound5(x) { return Math.round(Number(x) / 5) * 5; }
+/**
+ * Nombre corto en castellano de las anclas. `getExerciseName()` devuelve el nombre completo en
+ * inglés del plan ("Barbell Back Squat"), que en una línea con tres ejercicios y una carrera no
+ * cabe. Sólo las anclas y sus variantes: para todo lo demás vale el nombre que trae la lectura.
+ */
+const COACH_LIFT_ES = {
+  'back-squat': 'sentadilla', 'front-squat': 'sentadilla frontal', 'hack-squat': 'hack',
+  'bench-press': 'banca', 'db-bench': 'banca mancuernas', 'incline-db-press': 'inclinado',
+  'sumo-dl': 'peso muerto', 'conv-dl': 'peso muerto', 'trap-bar-dl': 'peso muerto hex',
+  'rdl': 'peso muerto rumano',
+  'ohp': 'press militar', 'barbell-row': 'remo', 'chinups': 'dominadas', 'pullups': 'dominadas',
+};
 
-/** Copia superficial de la sesión + copia de cada ejercicio. `planned` NUNCA se muta. */
-function _readCopySession(planned) {
-  const s = Object.assign({}, planned || {});
-  if (Array.isArray(s.exercises)) s.exercises = s.exercises.map(e => Object.assign({}, e));
-  return s;
+/** Cuántas anclas caben en la línea antes de que deje de leerse de un vistazo. */
+const PERF_MAX_LIFTS = 3;
+const PERF_LB_TO_KG = 0.45359237;
+/**
+ * La flecha sale del `outcome` que ya calculó `sessionReadout` — no se recalcula aquí. Un
+ * segundo criterio de "ha subido" se desincronizaría del de la tarjeta post-sesión, y entonces
+ * Home y la lectura dirían cosas distintas de la misma serie.
+ */
+const PERF_OUTCOME_ARROW = {
+  progressed: '↑', held: '→', regressed: '↓', skipped: '○', 'no-target': '○',
+};
+
+/** Los registros anteriores a la mudanza están en libras; el registro lleva su unidad. */
+function _perfToKg(v, unit) {
+  const n = Number(v);
+  if (!isFinite(n)) return null;
+  return String(unit || 'kg').toLowerCase() === 'lb' ? n * PERF_LB_TO_KG : n;
 }
 
 /**
- * Recorte de accesorios por PERMANENCIA, no por orden de aparición.
+ * Los items de lectura de una sesión. Si el registro trae `readout` (v11.57 en adelante) se usa
+ * tal cual; si no —los registros viejos— se reconstruye lo mínimo desde las series hechas y el
+ * objetivo sellado en el ejercicio. El criterio de outcome es el MISMO de `sessionReadout`,
+ * simplificado a lo que se puede saber sin las definiciones del plan.
+ */
+function _perfItems(w) {
+  if (w && w.readout && Array.isArray(w.readout.items)) return w.readout.items;
+  const out = [];
+  for (const ex of ((w && w.exercises) || [])) {
+    if (!ex || !ex.exerciseId) continue;
+    const done = ((ex.sets) || []).filter(s => s && s.done);
+    const reps = done.map(s => Number(s.reps) || 0);
+    const topKg = done.length ? Math.max(...done.map(s => Number(s.weight) || 0)) : null;
+    const target = (ex.target && ex.target.kg != null) ? ex.target : null;
+    let outcome;
+    if (!done.length) outcome = 'skipped';
+    else if (!target) outcome = 'no-target';
+    else if (topKg >= target.kg - 0.01) outcome = 'progressed';
+    else if (topKg < target.kg - COACH_STEP_KG) outcome = 'regressed';
+    else outcome = 'held';
+    out.push({
+      exerciseId: ex.exerciseId, name: ex.exerciseId, target,
+      done: { topKg, reps, avgRpe: null }, outcome, measureUnit: null, next: null,
+    });
+  }
+  return out;
+}
+
+/**
+ * "Rendimiento: banca 95×8 ↑ · sentadilla 105×8 → · Z2 5,1 km @141".
  *
- * Permanencia (de más a menos): `compuesto > Core > miembro de superserie > accesorio suelto`.
- * Se quita desde el FINAL dentro del grupo menos permanente que quede. Los ejercicios de
- * potencia/pliometría salen SIEMPRE (INT-004: la potencia va en fresco y con intención máxima;
- * en amarillo no hay intención máxima) y NO cuentan contra `n`.
+ * La última lectura de cada ancla (máximo 3, la más reciente primero) más la última carrera.
+ * La carrera se llama "Z2" SÓLO si su pulso medio está en el techo de Z2 o por debajo: las
+ * cuatro carreras de agosto iban a 147-155 sobre un techo de 143, y llamarlas Z2 sería la
+ * falsa precisión que este sistema tiene prohibida.
  *
- * DOS PREDICADOS, NO UNO, y la diferencia importa:
- *   · `isCompound` = la flag `compound` del plan. Es lo que el resto de app.js entiende por
- *     compuesto (quick mode, bloques, `deriveExerciseFlags`) y lo que decide quién sobrevive a un
- *     día rojo ("sólo compuestos y core").
- *   · `isMainLift` = uno de los seis patrones del plan (sentadilla, bisagra, los dos empujes, los
- *     dos tirones). PROTEGE del recorte de accesorios a movimientos que el plan no marca como
- *     compuestos aunque lo sean: el RDL de `lowerA` no lleva la flag, y sin este predicado un
- *     recorte de 2 accesorios se llevaría el peso muerto y dejaría el gemelo.
- * Añadir la flag que falta en `PLAN` sería más limpio, pero `compound` también controla el
- * recorte de quick mode: cambiarla movería series en la pantalla más usada por un motivo que no
- * tiene nada que ver. Se arregla aquí, donde se necesita, y se dice por qué.
- *
- * @param {Array} exercises Ejercicios de la sesión, en orden.
- * @param {number} n        Cuántos accesorios recortar.
+ * @param {Array}  workouts        Registros de fuerza (cualquier orden), con `readout` o sin él.
+ * @param {Array}  runs            Carreras `{date, distance, avgHR}` (o `{km}`).
  * @param {object} [opts]
- * @param {object|Set} [opts.powerIds] Ids de potencia (`COACH_POWER_IDS`).
- * @param {function} [opts.isCore]     `(ex) => bool`. Por defecto `muscle === 'Core'`.
- * @param {function} [opts.isCompound] `(ex) => bool`. Por defecto la flag `compound` del plan.
- * @param {function} [opts.isMainLift] `(ex) => bool`. Por defecto ninguno.
- * @returns {{kept:Array, dropped:Array, power:Array}}
+ * @param {string[]} [opts.anchorIds]  Por defecto `COACH_GOALS_DEFAULT.preserve.anchorLifts`.
+ * @param {number} [opts.z2Ceiling]    Techo de Z2 en bpm. Por defecto `RW_Z2_DEFAULT[1]`.
+ * @param {number} [opts.maxLifts]     Por defecto 3.
+ * @returns {string} '' si no hay ni lecturas ni carreras (Home no pinta un contenedor vacío).
  */
-function _coachTrimAccessories(exercises, n, opts = {}) {
+function performanceLine(workouts, runs, opts = {}) {
   const o = opts || {};
-  const pw = o.powerIds || {};
-  const isPower = (ex) => !!(ex && ex.id && (pw instanceof Set ? pw.has(ex.id) : pw[ex.id]));
-  const isCore = typeof o.isCore === 'function' ? o.isCore : (ex) => !!(ex && ex.muscle === 'Core');
-  const isCompound = typeof o.isCompound === 'function' ? o.isCompound : (ex) => !!(ex && ex.compound);
-  const isMainLift = typeof o.isMainLift === 'function' ? o.isMainLift : () => false;
-  const list = Array.isArray(exercises) ? exercises : [];
-  const power = list.filter(isPower);
-  const rest = list.filter(ex => !isPower(ex));
-  const rank = (ex) => ((isCompound(ex) || isMainLift(ex)) ? 3 : isCore(ex) ? 2 : (ex && ex.superset) ? 1 : 0);
-  const slots = rest.map(ex => ({ ex, rank: rank(ex) }));
-  const dropped = [];
-  let left = Math.max(0, Math.floor(Number(n) || 0));
-  for (let tier = 0; tier <= 1 && left > 0; tier++) {          // 0 = suelto, 1 = superserie
-    for (let i = slots.length - 1; i >= 0 && left > 0; i--) {
-      if (slots[i] && slots[i].rank === tier) { dropped.push(slots[i].ex); slots[i] = null; left--; }
+  const anchorIds = (Array.isArray(o.anchorIds) && o.anchorIds.length)
+    ? o.anchorIds.slice()
+    : ((((COACH_GOALS_DEFAULT || {}).preserve || {}).anchorLifts) || []).slice();
+  const anchors = new Set(anchorIds);
+  const maxLifts = Number(o.maxLifts) > 0 ? Number(o.maxLifts) : PERF_MAX_LIFTS;
+  const z2Ceiling = Number(o.z2Ceiling) > 0 ? Number(o.z2Ceiling) : RW_Z2_DEFAULT[1];
+
+  const partes = [];
+  const vistos = new Set();
+  const wks = (Array.isArray(workouts) ? workouts : [])
+    .filter(w => w && w.date)
+    .slice()
+    .sort((a, b) => String(b.date).localeCompare(String(a.date)));
+  for (const w of wks) {
+    if (vistos.size >= maxLifts) break;
+    for (const it of _perfItems(w)) {
+      if (vistos.size >= maxLifts) break;
+      const id = it && it.exerciseId;
+      if (!id || !anchors.has(id) || vistos.has(id)) continue;
+      vistos.add(id);
+      const nombre = COACH_LIFT_ES[id] || it.name || id;
+      const flecha = PERF_OUTCOME_ARROW[it.outcome] || '○';
+      const done = it.done || {};
+      const kg = _perfToKg(done.topKg, w.unit);
+      const reps = Array.isArray(done.reps) ? done.reps : [];
+      // `measureUnit` presente = el número son centímetros (box jump), no kilos. Va con su
+      // unidad o no va: un "60×5" sin unidad al lado de un 95 kg se lee como carga.
+      const u = it.measureUnit ? ' ' + it.measureUnit : '';
+      const cuerpo = (kg != null && kg > 0 && reps.length)
+        ? _coachFmtKg(Math.round(kg * 10) / 10) + u + '×' + reps[0]
+        : 'saltado';
+      partes.push(nombre + ' ' + cuerpo + ' ' + flecha);
     }
   }
-  return { kept: slots.filter(Boolean).map(s => s.ex), dropped, power };
-}
 
-/**
- * La sesión ajustada a la recuperación de hoy. Matriz completa en §B.2 del plan.
- *
- * @param {object} planned   Salida de `getPlannedSessionForDate`.
- * @param {object} readiness Salida de `computeReadinessFrom`.
- * @param {object} ctx
- * @param {object} ctx.stress      Salida de `classifySessionStress` (`{level, family, subtype}`).
- * @param {Array}  [ctx.alts]      Alternativas de `ALT_LIBRARY` (`getReplacementOptions`).
- * @param {object|Set} [ctx.powerIds]
- * @param {function} [ctx.isCore]
- * @param {function} [ctx.isCompound] Quién es compuesto (flag del plan): decide el esqueleto del
- *                                    día rojo y a quién se le quita una serie.
- * @param {function} [ctx.isMainLift] Quién está protegido del recorte de accesorios (los seis
- *                                    patrones). Ver `_coachTrimAccessories`.
- * @param {number} [ctx.flags]     Nº de flags de interferencia NO redundantes (HYB-002…).
- * @returns {{mode:'keep'|'modify'|'replace'|'recovery', session:object,
- *            changes:Array<{type:string, exerciseId?:string, from:*, to:*, why:string, ruleIds:string[]}>,
- *            reason:string[], alternatives:Array, confidence:string, ruleIds:string[]}}
- */
-function adjustSessionForReadiness(planned, readiness, ctx = {}) {
-  const c = ctx || {};
-  const stress = c.stress || {};
-  const alts = Array.isArray(c.alts) ? c.alts : [];
-  const trimOpts = { powerIds: c.powerIds, isCore: c.isCore, isCompound: c.isCompound, isMainLift: c.isMainLift };
-  const color = (readiness && readiness.color) || 'unknown';
-  const confidence = color === 'unknown' ? 'low' : ((readiness && readiness.confidence) || 'low');
-  const level = stress.level || 'easy';
-  const family = stress.family
-    || (planned && planned.type === 'run' ? 'cardio' : (planned && planned.type === 'gym' ? 'strength' : 'recovery'));
-  const name = (planned && planned.name) || 'la sesión';
-
-  const session = _readCopySession(planned);
-  const changes = [];
-  const reason = [];
-  const rules = new Set();
-  let mode = 'keep';
-
-  const add = (ch) => { changes.push(ch); (ch.ruleIds || []).forEach(r => rules.add(r)); };
-  const out = () => ({
-    mode, session, changes, reason,
-    alternatives: mode === 'keep' ? [] : alts,
-    confidence, ruleIds: Array.from(rules),
-  });
-
-  const señales = (readiness && readiness.fired) || 0;
-  const plural = señales === 1 ? 'señal' : 'señales';
-  const firedText = ((readiness && readiness.signals) || []).filter(s => s.fired).map(s => s.text);
-
-  // ---- Descanso / recuperación: no hay nada que ajustar ----------------------------------
-  if (!planned || planned.type === 'rest' || planned.type === 'recovery' || family === 'recovery') {
-    rules.add('READ-007');
-    reason.push('Día de descanso o recuperación: ya es la parte fácil, no se toca.');
-    return out();
-  }
-
-  // ---- Sin dato de hoy: se mantiene el plan y se dice por qué (F-6) ----------------------
-  if (color === 'unknown') {
-    rules.add('READ-001'); rules.add('READ-003');
-    reason.push('Sin dato de recuperación de hoy: dejo el plan tal cual.');
-    return out();
-  }
-
-  if (color === 'green') {
-    rules.add('READ-002');
-    reason.push('Recuperación en verde: la sesión va tal cual.');
-    return out();
-  }
-
-  // ---- CARDIO ---------------------------------------------------------------------------
-  if (family === 'cardio') {
-    const dur = Number(session.durationMin) || null;
-    if (level === 'easy') {
-      // El Z2 fácil es la sesión que MENOS conviene quitar: mantiene el hábito y la base aeróbica
-      // sin coste de recuperación (END-001). En rojo sólo se le pone un tope.
-      rules.add('READ-007');
-      if (color === 'red' && dur && dur > 30) {
-        session.durationMin = 30;
-        add({
-          type: 'durationScale', from: dur, to: 30,
-          why: 'Tope de 30′ hoy: mantener el hábito sin sumar fatiga',
-          ruleIds: ['READ-007', 'END-001'],
-        });
-        reason.push('Recuperación en rojo: el Z2 se queda, con tope de 30′.');
-      } else {
-        reason.push('Cardio fácil: se mantiene igual.');
-      }
-      return out();
-    }
-    if (color === 'yellow') {
-      mode = 'modify';
-      if (dur) {
-        const to = Math.max(20, _readRound5(dur * 0.8));
-        session.durationMin = to;
-        add({
-          type: 'durationScale', from: dur, to,
-          why: 'Misma zona y mismo objetivo, 20 % menos de minutos',
-          ruleIds: ['END-002', 'READ-007'],
-        });
-      }
-      reason.push('Recuperación amarilla (' + señales + ' ' + plural + '): recorto la duración, no la zona.');
-      if (firedText.length) reason.push(firedText[0]);
-      return out();
-    }
-    // Rojo + cardio con carga: cambia el objetivo (READ-007), no los minutos.
-    mode = 'replace';
-    const alt = alts[0] || null;
-    session.type = 'recovery';
-    session.name = alt ? alt.label : 'Cardio muy suave';
-    session.durationMin = (alt && alt.durationMin) ? alt.durationMin : (dur ? Math.min(dur, 30) : 30);
-    session.replacedFrom = name;
-    if (alt && alt.subtype) session.subtype = alt.subtype;
-    add({
-      type: 'replaceSession', from: name, to: session.name,
-      why: 'Con la recuperación en rojo el día cambia de objetivo, no de carga',
-      ruleIds: ['READ-007', 'INT-002'],
-    });
-    reason.push('Recuperación en rojo (' + señales + ' ' + plural + '): cambio la sesión de calidad por algo de bajo impacto.');
-    if (firedText.length) reason.push(firedText[0]);
-    return out();
-  }
-
-  // ---- FUERZA / HÍBRIDO ------------------------------------------------------------------
-  const exs = Array.isArray(session.exercises) ? session.exercises : [];
-
-  if (level === 'easy') {                    // un día de fuerza clasificado como suave
-    reason.push('Sesión suave: se mantiene igual.');
-    return out();
-  }
-
-  const dropPower = (list) => {
-    for (const ex of list) {
-      add({
-        type: 'dropExercise', exerciseId: ex.id, from: ex.name || ex.id, to: null,
-        why: 'La potencia sólo en fresco: hoy pierde intención y sube el riesgo',
-        ruleIds: ['INT-004', 'ATH-004'],
-      });
-    }
-  };
-  const dropAccessory = (list) => {
-    for (const ex of list) {
-      add({
-        type: 'dropExercise', exerciseId: ex.id, from: ex.name || ex.id, to: null,
-        why: 'Menos volumen accesorio: el estímulo que preserva fuerza lo dan los compuestos',
-        ruleIds: ['STR-001', 'LOAD-004'],
-      });
-    }
-  };
-  const capRpe = () => {
-    add({
-      type: 'rpeCap', from: null, to: 7,
-      why: 'Sin llegar al fallo: mismos kg, menos fatiga',
-      ruleIds: ['STR-001', 'READ-007'],
-    });
-  };
-
-  if (color === 'yellow') {
-    mode = 'modify';
-    const n = level === 'hard' ? 2 : 1;      // exigente recorta 2 accesorios; moderada, 1
-    const t = _coachTrimAccessories(exs, n, trimOpts);
-    session.exercises = t.kept;
-    // Orden de los cambios = orden en que se leen en la tarjeta: primero qué desaparece, después
-    // cómo se hace lo que queda.
-    dropPower(t.power);
-    dropAccessory(t.dropped);
-    capRpe();
-    reason.push('Recuperación amarilla (' + señales + ' ' + plural + '): compuestos intactos, menos accesorios y tope de RPE 7.');
-    if (firedText.length) reason.push(firedText[0]);
-    return out();
-  }
-
-  // ---- ROJO ------------------------------------------------------------------------------
-  if (level === 'hard') {
-    // Pierna pesada, full body o híbrido con la recuperación en rojo: el objetivo del día cambia.
-    // Con una segunda bandera de interferencia (familia híbrida, HYB-002) se propone un CAMBIO de
-    // modalidad; sin ella, recuperación activa de 30′.
-    const alt = alts[0] || null;
-    mode = (Number(c.flags) || 0) >= 1 ? 'replace' : 'recovery';
-    const min = mode === 'recovery' ? 30 : ((alt && alt.durationMin) ? alt.durationMin : 30);
-    session.type = 'recovery';
-    session.name = alt ? alt.label : 'Recuperación activa';
-    session.durationMin = min;
-    session.replacedFrom = name;
-    delete session.exercises;
-    add({
-      type: 'replaceSession', from: name, to: session.name + ' · ' + min + '′',
-      why: 'Un día rojo cambia el objetivo de la sesión, no sólo el peso de la barra',
-      ruleIds: ['READ-007', 'LOAD-004'],
-    });
-    reason.push('Recuperación en rojo (' + señales + ' ' + plural + ') con una sesión exigente: cambio el objetivo del día.');
-    if (firedText.length) reason.push(firedText[0]);
-    return out();
-  }
-
-  // Rojo + sesión moderada (upper): se mantiene, pero sólo el esqueleto.
-  mode = 'modify';
-  const isCore = typeof c.isCore === 'function' ? c.isCore : (ex) => !!(ex && ex.muscle === 'Core');
-  const isCompound = typeof c.isCompound === 'function' ? c.isCompound : (ex) => !!(ex && ex.compound);
-  const pw = c.powerIds || {};
-  const isPower = (ex) => !!(ex && ex.id && (pw instanceof Set ? pw.has(ex.id) : pw[ex.id]));
-  const kept = [];
-  const fuera = [];
-  const potencia = [];
-  for (const ex of exs) {
-    if (isPower(ex)) { potencia.push(ex); continue; }
-    if (isCompound(ex) || isCore(ex)) kept.push(ex); else fuera.push(ex);
-  }
-  // −1 serie en los compuestos, con suelo de 2: por debajo de 2 series no queda estímulo que
-  // mantener, y el objetivo del día sigue siendo mantener (STR-001).
-  for (const ex of kept) {
-    if (!isCompound(ex)) continue;
-    const from = Number(ex.sets) || 0;
-    const to = Math.max(2, from - 1);
-    if (to !== from) {
-      ex.sets = to;
-      add({
-        type: 'setDelta', exerciseId: ex.id, from, to,
-        why: 'Una serie menos en los compuestos: mantener, no progresar',
-        ruleIds: ['STR-001', 'LOAD-004'],
-      });
+  const rs = (Array.isArray(runs) ? runs : [])
+    .filter(r => r && r.date)
+    .slice()
+    .sort((a, b) => String(b.date).localeCompare(String(a.date)));
+  const last = rs[0] || null;
+  if (last) {
+    const km = Number(last.distance != null ? last.distance : last.km);
+    const hrRaw = Number(last.avgHR);
+    const hr = (last.avgHR != null && isFinite(hrRaw) && hrRaw > 0) ? Math.round(hrRaw) : null;
+    const etiqueta = (hr != null && hr <= z2Ceiling) ? 'Z2' : 'carrera';
+    if (isFinite(km) && km > 0) {
+      partes.push(etiqueta + ' ' + _coachFmtKg(Math.round(km * 10) / 10) + ' km' + (hr != null ? ' @' + hr : ''));
+    } else if (hr != null) {
+      partes.push(etiqueta + ' @' + hr);
     }
   }
-  session.exercises = kept;
-  dropPower(potencia);
-  dropAccessory(fuera);
-  capRpe();
-  reason.push('Recuperación en rojo (' + señales + ' ' + plural + '): sólo compuestos y core, una serie menos y tope de RPE 7.');
-  if (firedText.length) reason.push(firedText[0]);
-  return out();
+
+  if (!partes.length) return '';
+  return 'Rendimiento: ' + partes.join(' · ');
 }
 
 // ==================== CARRERA HACIA EL 10K ====================
@@ -2363,11 +2187,14 @@ if (typeof module !== 'undefined' && module.exports) {
     _readMean,
     _readPct,
     _readDelta,
-    _readRound5,
-    _readCopySession,
-    _coachTrimAccessories,
     computeReadinessFrom,
-    adjustSessionForReadiness,
+    // Línea de rendimiento (v11.62). Sustituye al motor de ajuste de la sesión: la
+    // recuperación informa, no ajusta (decisión del usuario, 2026-09-07).
+    COACH_LIFT_ES,
+    PERF_MAX_LIFTS,
+    PERF_OUTCOME_ARROW,
+    _perfItems,
+    performanceLine,
     // Carrera hacia el 10k y objetivos (incremento 6, v11.60)
     RW_Z2_DEFAULT,
     RW_STRAP_NOISE_BPM,

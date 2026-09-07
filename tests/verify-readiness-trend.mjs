@@ -18,8 +18,10 @@
 //      aguda y de ahí sacaba "Push hard today". Eso es READ-003 al revés.
 //
 // Además fija el requisito del usuario (§B.2.b): la mañana sin dato de hoy NO es un `unknown`
-// inútil — las tendencias hasta ayer siguen valiendo y dan color con `confidence:'medium'`; y el
-// check-in de 2 toques (READ-005) entra en el recuento de señales.
+// inútil — las tendencias hasta ayer siguen valiendo y dan color con `confidence:'medium'`.
+//
+// v11.62: el motor queda en SEIS señales (whoop, hrv7v28, rhr7v28, sleep7, rpe2, quality2). El
+// check-in subjetivo de 2 toques se retiró con el ajuste diario; §9 lo fija para que no vuelva.
 //
 // Ejecutar desde la raíz del repo: node tests/verify-readiness-trend.mjs
 
@@ -215,33 +217,33 @@ yes(sig(pocoSueno, 'sleep7').fired, 'media 7d de 6,1 h sí dispara (READ-006)');
 eq(sig(pocoSueno, 'sleep7').text, 'Sueño 7d 6,1 h', 'con el texto del wireframe');
 eq(pocoSueno.color, 'yellow', 'una señal → amarillo');
 
-// ── 9. Check-in "<6h" + HRV −12 % → dos señales → rojo (READ-005) ─────────────────────
+// ── 9. EXACTAMENTE SEIS SEÑALES: el check-in subjetivo ya no existe (v11.62) ──────────
+//
+// El fallo que este bloque impide: que vuelva a colarse una séptima señal "subjetiva" que
+// pida un dato cada mañana. El check-in de 2 toques (`sleepSelf` / `feelSelf`) se fue con el
+// ajuste diario — sin nadie que cambie el entreno por el color del día, preguntar "¿cómo
+// dormiste?" es pedir un dato para no hacer nada con él. Las filas históricas de `wellness`
+// que aún tengan `subjective` se conservan y simplemente NO se leen.
 console.log('');
-console.log('9. Check-in subjetivo + tendencia de HRV, sin wearable de hoy');
-r = run({
-  wellness: wellness(35, (age) => (age === 0
-    ? { hrv: 62.5, subjective: { sleepBand: '<6h', feel: 3, ts: 1 } }
-    : (age <= 6 ? { hrv: 62.5 } : null))),
-  whoopToday: null,
-  whoopMissingReason: MOTIVO,
+console.log('9. Seis señales, ninguna subjetiva');
+const SENALES = ['whoop', 'hrv7v28', 'rhr7v28', 'sleep7', 'rpe2', 'quality2'];
+r = run({ whoopToday: { score: 74, source: 'whoop-direct' } });
+eq(r.signals.length, 6, 'exactamente 6 señales');
+eq(r.signals.map(s => s.id).join(','), SENALES.join(','), 'y en este orden');
+yes(!sig(r, 'sleepSelf'), 'no existe la señal sleepSelf');
+yes(!sig(r, 'feelSelf'), 'ni feelSelf');
+// Se mira el CÓDIGO, no los comentarios: los que explican qué se retiró sí pueden citarlo.
+const ENGINE_CODE = ENGINE.split(/\r?\n/).filter(l => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
+yes(!/sleepSelf|feelSelf/.test(ENGINE_CODE), 'y el motor no las nombra en ninguna parte');
+yes(!/subjective/.test(ENGINE_CODE), 'ni queda código que lea `wellness[hoy].subjective`');
+// Una fila con `subjective` de antes de v11.62 no cambia nada: se ignora, no rompe.
+const conSubjetivoViejo = run({
+  wellness: wellness(35, { 0: { subjective: { sleepBand: '<6h', feel: 1, ts: 1 } } }),
+  whoopToday: { score: 74, source: 'whoop-direct' },
 });
-eq(r.color, 'red', 'rojo: el subjetivo cuenta como señal concordante');
-eq(r.fired, 2, 'dos señales');
-eq(firedIds(r), 'hrv7v28,sleepSelf', 'HRV 7d y el check-in de sueño');
-eq(sig(r, 'sleepSelf').text, 'Dormiste <6 h (check-in)', 'texto del check-in de sueño');
-eq(sig(r, 'feelSelf').fired, false, 'sentirse 3/5 no dispara');
-eq(sig(r, 'feelSelf').text, 'Te sientes 3/5 (check-in)', 'pero se muestra');
-// Sentirse 2/5 sí.
-const malCuerpo = run({
-  wellness: wellness(35, { 0: { subjective: { sleepBand: '7-8', feel: 2, ts: 1 } } }),
-  whoopToday: null,
-});
-yes(sig(malCuerpo, 'feelSelf').fired, 'sentirse 2/5 dispara (READ-005)');
-eq(malCuerpo.color, 'yellow', 'solo, es amarillo');
-// Sin check-in: insuficiente, y se dice.
-const sinCheckin = run({ whoopToday: null });
-eq(sig(sinCheckin, 'sleepSelf').status, 'insufficient', 'sin check-in la señal es insuficiente');
-yes(/sin responder/.test(sig(sinCheckin, 'feelSelf').reason || ''), 'y el motivo lo dice');
+eq(conSubjetivoViejo.signals.length, 6, 'una fila histórica con `subjective` sigue dando 6 señales');
+eq(conSubjetivoViejo.fired, 0, 'y no dispara ninguna');
+eq(conSubjetivoViejo.color, 'green', 'el color no cambia por un check-in viejo');
 
 // ── 10. Sin WHOOP y sin tendencias → unknown honesto ──────────────────────────────────
 console.log('');
@@ -255,7 +257,7 @@ yes(r.signals.every(s => s.status === 'insufficient'), 'y TODAS las señales se 
 // Sin ningún dato tampoco explota.
 const vacio = E.computeReadinessFrom({ today: TODAY });
 eq(vacio.color, 'unknown', 'con inputs vacíos: unknown');
-eq(vacio.signals.length, 8, 'y las 8 señales presentes, todas insuficientes');
+eq(vacio.signals.length, 6, 'y las 6 señales presentes, todas insuficientes');
 
 // ── 11. Calidad ≤2 dos veces ──────────────────────────────────────────────────────────
 console.log('');
