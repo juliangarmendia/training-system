@@ -1127,7 +1127,11 @@ function resolveSessionExercises(sessionId, exercises) {
 // dispositivos, incluidos los que corren código viejo.
 async function createNewPlanVersion(modifications) {
   const plans = await dbGetAll('plans');
-  const currentVersion = Math.max(...plans.map(p => p.version), 0);
+  // `Number(p.version) || 0` y no `p.version`: las primeras filas de abril de 2026 no llevan
+  // `version`, y un solo `undefined` dentro de `Math.max` devuelve NaN → `plan_vNaN`, que
+  // ordena mal, colisiona con el siguiente NaN y sobrescribe el plan del usuario.
+  // `tests/verify-plan-v2-compat.mjs` cubre el caso.
+  const currentVersion = Math.max(...plans.map(p => Number(p.version) || 0), 0);
   const meta = (modifications && typeof modifications.meta === 'object' && modifications.meta) || {};
   const newPlan = {
     weekNumber: modifications.weekNumber || getWeekNumber(),
@@ -2221,6 +2225,14 @@ function updateHeader(tab) {
   } else if (tab === 'settings') {
     title.textContent = 'Settings';
     sub.textContent = '';
+  } else if (tab === 'coach') {
+    // Vista secundaria (v11.61): mismo patrón que `ideal-preview`/`analytics`, con su propio
+    // botón de volver. No es una pestaña: la barra inferior no la muestra.
+    title.textContent = 'Coach';
+    const blk = (typeof blockWeek === 'function') ? blockWeek() : null;
+    sub.textContent = (blk && blk.index)
+      ? `Semana ${blk.index}/${DELOAD_BLOCK_WEEKS} · ${blk.label}`
+      : `Week ${wk}${dayChip}`;
   }
 }
 
@@ -3609,7 +3621,14 @@ async function startWorkout(sessionId, opts = {}) {
   const wk = getWeekNumber();
   // En deload, `buildExerciseCard` recorta series y fuerza RPE 5-6. Aplicarlo a una sesión libre
   // partiría a la mitad las series que acabás de elegir a mano. No se aplica.
-  const deload = baseSession.adHoc ? false : isDeloadWeek(wk);
+  //
+  // Y TAMPOCO SOBRE UN PLAN DEL COACH (v11.61): el plan del coach YA TRAE el volumen de la
+  // semana de descarga — el modelo escribe las series y el RPE con LOAD-004 en la mano. Aplicar
+  // encima el recorte de la tarjeta sería el doble recorte (4 series → 2 → 1) y un RPE 5-6 sobre
+  // una carga que ya se bajó. `activePlan.author` es lo que lo distingue.
+  const deload = baseSession.adHoc ? false
+    : (activePlan && activePlan.author === 'coach-llm') ? false
+      : isDeloadWeek(wk);
 
   const allWorkoutsDesc = (await dbGetAll('workouts')).sort((a, b) => b.date.localeCompare(a.date));
   // `workouts` alimenta el 1RM estimado de cada tarjeta. Para las sesiones del plan se mantiene
@@ -4030,7 +4049,13 @@ async function computeSessionTargets(sessionId, exercises, opts = {}) {
   const all = opts.allWorkoutsDesc
     || (await dbGetAll('workouts')).sort((a, b) => String(b.date).localeCompare(String(a.date)));
   const planSession = (activePlan && activePlan.sessions && activePlan.sessions[sessionId]) || null;
-  const legacy = await _legacyCoachTargets(sessionId);
+  // El adaptador legacy (`weekly_reviews`, el cron retirado en v11.61) sólo se consulta si el
+  // plan activo NO es del coach. Con un plan v2 vivo, `exercises[].target` es la fuente y la
+  // prosa del cron es historia: leerla igual reintroduciría los objetivos de un coach que ya no
+  // existe, con la etiqueta de autoridad más alta que tiene la app.
+  const legacy = (activePlan && activePlan.author === 'coach-llm')
+    ? null
+    : await _legacyCoachTargets(sessionId);
   const ds = today();
   const todayWeekKey = typeof isoWeekKey === 'function' ? isoWeekKey(ds) : null;
 
@@ -5229,107 +5254,84 @@ async function renderStreaks() {
   `;
 }
 
-// ==================== WEEKLY COACH CARD ====================
-// Reads `tracking/weekly-reviews/latest.json` published by the /weekly-review
-// slash command. If newer than what's in IDB, upserts. Renders the latest
-// observed/planNext into Stats > Today > Coach Review.
-async function fetchLatestWeeklyReview() {
-  const url = './tracking/weekly-reviews/latest.json?ts=' + Date.now();
-  try {
-    const res = await fetch(url, { cache: 'no-store' });
-    if (!res.ok) {
-      console.warn('[CoachReview] fetch latest.json returned', res.status);
-      return null;
-    }
-    const data = await res.json();
-    if (!data || !data.weekKey) {
-      console.warn('[CoachReview] latest.json missing weekKey');
-      return null;
-    }
-    return data;
-  } catch (e) {
-    console.warn('[CoachReview] fetch latest.json failed:', e);
-    return null;
-  }
-}
-
+/// ==================== RESUMEN DEL COACH EN STATS (v11.61) ====================
+//
+// LO QUE SUSTITUYE. Hasta v11.60 esta tarjeta hacía un `fetch` al manifiesto JSON que publicaba
+// el cron del domingo bajo `tracking/weekly-reviews/`, y pintaba su prosa entera en Stats. Ese
+// cron está desprogramado: la revisión semanal la hace ahora la edge function
+// `coach-weekly-review` desde dentro de la app y la fuente de verdad es el store
+// `coach_reviews`. La función que leía ese manifiesto se BORRÓ, y con ella el fetch: mantener
+// una lectura de un artefacto que ya nadie escribe sólo garantiza que un día la tarjeta muestre
+// la revisión de agosto como si fuera la de esta semana.
+//
+// Y AQUÍ SE QUEDA EN DOS LÍNEAS. La revisión completa (briefing, propuesta con diff, decisiones,
+// versiones) vive en la vista Coach, a la que se llega desde Home y desde aquí. Repetir el mismo
+// contenido en dos pantallas es cómo se acaba con dos renderers que discrepan.
 async function loadAndRenderWeeklyCoach() {
   const card = document.getElementById('weekly-coach-card');
   if (!card) return;
+  try {
+    let review = null;
+    try {
+      const rows = await dbGetAll('coach_reviews');
+      const ts = (r) => (r.updatedAt ? Date.parse(r.updatedAt) || 0 : 0) || Number(r.createdAt || 0) || 0;
+      review = (rows || []).filter(r => r && r.id).sort((a, b) =>
+        String(b.weekKey || '').localeCompare(String(a.weekKey || ''))
+        || (Number(b.attempt || 0) - Number(a.attempt || 0))
+        || (ts(b) - ts(a)))[0] || null;
+    } catch (e) { review = null; }
 
-  // Try fetching from deployed JSON manifest. Falls back silently to whatever's in IDB.
-  const fetched = await fetchLatestWeeklyReview();
-  let fetchFailed = false;
-  if (fetched) {
-    const existing = await dbGet('weekly_reviews', fetched.weekKey);
-    const isNewer = !existing || (fetched.generatedAt && fetched.generatedAt > (existing.generatedAt || 0));
-    if (isNewer) {
-      await dbPut('weekly_reviews', { ...fetched, source: fetched.source || 'auto' });
+    // Fallback LEGACY, sólo lectura: las filas que el cron dejó en `weekly_reviews`. El store no
+    // se borra (§B.9) y sigue teniendo valor histórico, pero ya no se escribe ni se sincroniza.
+    let legacy = null;
+    if (!review) {
+      try {
+        const all = await dbGetAll('weekly_reviews');
+        legacy = (all || []).slice().sort((a, b) => (b.generatedAt || 0) - (a.generatedAt || 0))[0] || null;
+      } catch (e) { legacy = null; }
     }
-  } else {
-    fetchFailed = true;
-  }
 
-  // Render most recent stored review (any week). If IDB is also empty, show a
-  // visible empty state instead of hiding the card — that way the user can tell
-  // the section exists and what to expect (vs. a silent missing card).
-  const all = await dbGetAll('weekly_reviews');
-  if (!all || all.length === 0) {
+    if (!review && !legacy) {
+      card.classList.remove('hidden');
+      card.innerHTML = `
+        <div class="wcc-header">
+          <span class="wcc-week">Coach</span>
+          <span class="wcc-source">semanal</span>
+        </div>
+        <div class="wcc-empty">
+          <p>Todavía no hay revisión.</p>
+          <p class="muted">El coach revisa la semana la primera vez que abres la app cada lunes. Necesita al menos una semana de datos.</p>
+        </div>`;
+      return;
+    }
+
+    const ES = (typeof COACH_STATUS_ES !== 'undefined' && COACH_STATUS_ES) || {};
+    const wk = (review && review.weekKey) || (legacy && legacy.weekKey) || '';
+    const estado = review ? (ES[review.status] || review.status || '') : 'revisión antigua';
+    const prios = review ? ((((review.output || {}).briefing) || {}).priorities || []) : [];
+    const primeraLinea = (md) => String(md || '').split('\n').map(l => l.replace(/^[#*\-\s]+/, '').trim()).find(l => l) || '—';
+    const linea = prios.length
+      ? prios[0]
+      : (review && review.status === 'running'
+        ? 'El coach está revisando la semana…'
+        : (legacy
+          ? primeraLinea((legacy.coachVoice && legacy.coachVoice.lastWeek) || legacy.observed)
+          : 'Sin prioridades esta semana.'));
+
     card.classList.remove('hidden');
     card.innerHTML = `
       <div class="wcc-header">
-        <span class="wcc-week">Coach Review</span>
-        <span class="wcc-source">/weekly-review</span>
+        <span class="wcc-week">${escapeHtml(String(wk))}</span>
+        <span class="wcc-source">${escapeHtml(String(estado))}</span>
       </div>
-      <div class="wcc-empty">
-        <p>No weekly review yet.</p>
-        <p class="muted">Reviews appear automatically every Sunday night after the cron runs. The first one will land after at least one full Mon-Sun training week.</p>
-      </div>
-    `;
-    return;
-  }
-  const latest = all.sort((a, b) => (b.generatedAt || 0) - (a.generatedAt || 0))[0];
-  card.classList.remove('hidden');
-
-  const dt = latest.generatedAt ? new Date(latest.generatedAt) : null;
-  const dtStr = dt ? `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}` : '';
-
-  // v10.17 schema: coachVoice + nextWeekPlan. Falls back to legacy
-  // observed/planNext fields if the cron hasn't run with the new schema yet.
-  const lastWeekMd = (latest.coachVoice && latest.coachVoice.lastWeek) || latest.observed || '— no notes —';
-  const nextWeekMd = (latest.coachVoice && latest.coachVoice.nextWeek) || latest.planNext || '— no plan —';
-
-  const staleHint = fetchFailed ? `<div class="wcc-stale">Last sync failed — showing cached version</div>` : '';
-
-  card.innerHTML = `
-    <div class="wcc-header">
-      <span class="wcc-week">${escapeHtml(latest.weekKey)}</span>
-      <span class="wcc-source">${latest.source === 'manual' ? 'manual' : '/weekly-review'}${dtStr ? ' · ' + dtStr : ''}</span>
-    </div>
-    ${staleHint}
-    <div class="wcc-section">
-      <div class="wcc-section-title">Last Week — Coach's Read</div>
-      <div class="wcc-section-body">${markdownToBasicHtml(lastWeekMd)}</div>
-    </div>
-    <div class="wcc-section">
-      <div class="wcc-section-title">Next Week — The Plan</div>
-      <div class="wcc-section-body">${markdownToBasicHtml(nextWeekMd)}</div>
-    </div>
-    ${renderNextWeekPlan(latest.nextWeekPlan)}
-  `;
-
-  // Wire "Push to COROS" button if it was rendered (depends on intervals.icu key + runningPlan presence).
-  const pushBtn = document.getElementById('btn-push-coros');
-  if (pushBtn) {
-    pushBtn.addEventListener('click', async () => {
-      pushBtn.textContent = 'Pushing...';
-      pushBtn.disabled = true;
-      try { await pushRunningPlanToIntervalsIcu(); }
-      finally {
-        pushBtn.textContent = 'Push to COROS via intervals.icu';
-        pushBtn.disabled = false;
-      }
-    });
+      <div class="wcc-summary">${escapeHtml(String(linea).slice(0, 220))}</div>
+      <button id="btn-open-coach-stats" class="btn-secondary btn-full" style="margin-top:10px;text-align:center">Abrir Coach</button>`;
+    const b = document.getElementById('btn-open-coach-stats');
+    if (b && typeof openCoachView === 'function') b.addEventListener('click', openCoachView);
+  } catch (e) {
+    console.warn('[Coach] resumen en Stats:', e);
+    card.classList.add('hidden');
+    card.innerHTML = '';
   }
 }
 
@@ -6213,6 +6215,35 @@ async function _icuUpsertEvents(events) {
   return res;
 }
 
+// Subtipo del plan v2 → el `type` que entiende `_generateIntervalsIcuDsl` (que a su vez lo
+// traduce a un token de zona; intervals.icu no admite bpm absolutos, ver `_icuZoneToken`).
+const _ICU_RUN_TYPE_BY_SUBTYPE = {
+  zone2: 'Z2', long_easy: 'Z2', recovery: 'Z2', zone3: 'tempo',
+  threshold: 'threshold', intervals: 'intervals',
+};
+
+// El lunes de una semana ISO ('2026-W37' → '2026-09-07'), en UTC como toda la aritmética de
+// semanas del proyecto (el incidente de tz ya se pagó una vez). Es la INVERSA de `isoWeekKey`:
+// se parte del 4 de enero, que por definición cae en la semana 1, y se suman semanas.
+// `verify-coach-wiring.mjs` comprueba el ida y vuelta contra `isoWeekKey`.
+function _mondayOfWeekKey(weekKey) {
+  const m = String(weekKey || '').match(/^(\d{4})-W(\d{2})$/);
+  if (!m) return null;
+  const jan4 = Date.UTC(Number(m[1]), 0, 4);
+  const dow = new Date(jan4).getUTCDay() || 7;         // domingo = 7, no 0
+  const week1Monday = jan4 - (dow - 1) * 86400000;
+  const d = new Date(week1Monday + (Number(m[2]) - 1) * 7 * 86400000);
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+}
+
+/**
+ * Empuja la semana de carrera a intervals.icu → COROS.
+ *
+ * FUENTE (v11.61): `activePlan.running.plan[]`, el plan v2. Sus slots llevan `dow`, no fecha —
+ * un plan aprobado el martes sigue siendo válido — así que las fechas se resuelven desde el
+ * lunes del `weekKey` del plan. El `weekly_reviews` del cron retirado queda como FALLBACK de
+ * sólo lectura mientras haya filas viejas en el teléfono: ésas sí traen `date` propia.
+ */
 async function pushRunningPlanToIntervalsIcu() {
   const apiKey = state.settings && state.settings.intervalsIcuApiKey;
   const athleteId = state.settings && state.settings.intervalsIcuAthleteId;
@@ -6220,16 +6251,46 @@ async function pushRunningPlanToIntervalsIcu() {
     if (typeof toast === 'function') toast('Configura intervals.icu en Settings primero');
     return;
   }
-  const all = await dbGetAll('weekly_reviews');
-  if (!all || all.length === 0) {
-    if (typeof toast === 'function') toast('No weekly review yet');
-    return;
-  }
-  const latest = all.sort((a, b) => (b.generatedAt || 0) - (a.generatedAt || 0))[0];
-  const plan = latest.nextWeekPlan && latest.nextWeekPlan.runningPlan;
-  if (!plan || plan.length === 0) {
-    if (typeof toast === 'function') toast('No running plan in latest review');
-    return;
+
+  let weekKey = null;
+  let plan = null;
+  const rp = (activePlan && activePlan.running && Array.isArray(activePlan.running.plan))
+    ? activePlan.running.plan : null;
+  if (rp && rp.length) {
+    weekKey = activePlan.weekKey || (typeof isoWeekKey === 'function' ? isoWeekKey(today()) : null);
+    const monday = _mondayOfWeekKey(weekKey);
+    plan = rp.map((run, i) => {
+      const dow = Number(run.dow);
+      // dow 0 = domingo, que en una semana ISO es el ÚLTIMO día: +6, no +0.
+      const offset = (dow >= 1 && dow <= 6) ? dow - 1 : (dow === 0 ? 6 : null);
+      const date = (monday != null && offset != null && typeof _plusDaysStr === 'function')
+        ? _plusDaysStr(monday, offset) : (run.date || null);
+      // Se traduce a los nombres que ya lee `_generateIntervalsIcuDsl` en vez de tocar esa
+      // función: la usan también las filas legacy, y un cambio ahí las rompería en silencio.
+      const st = run.subtype || 'zone2';
+      return {
+        id: run.id || `run${i + 1}`,
+        date,
+        label: run.label || run.name || cardioSubtypeLabel(st),
+        distance_km: run.distanceKm != null ? run.distanceKm : run.distance_km,
+        duration_min: run.durationMin != null ? run.durationMin : null,
+        // `dsl` del coach → `intervals`, que el generador usa VERBATIM (mismo criterio que
+        // `_generateCardioDsl` en v11.60: un bloque de trote/caminata no se puede aplanar).
+        intervals: run.dsl || run.intervals || null,
+        type: _ICU_RUN_TYPE_BY_SUBTYPE[st] || 'Z2',
+        note: run.note || null,
+      };
+    });
+  } else {
+    const all = await dbGetAll('weekly_reviews');
+    const latest = (all || []).slice().sort((a, b) => (b.generatedAt || 0) - (a.generatedAt || 0))[0];
+    const legacy = latest && latest.nextWeekPlan && latest.nextWeekPlan.runningPlan;
+    if (!legacy || !legacy.length) {
+      if (typeof toast === 'function') toast('El plan activo no trae carrera programada');
+      return;
+    }
+    weekKey = latest.weekKey;
+    plan = legacy;
   }
 
   // external_id keeps the push idempotent, but only through the bulk upsert endpoint
@@ -6237,7 +6298,7 @@ async function pushRunningPlanToIntervalsIcu() {
   const events = plan
     .filter(run => run.date)
     .map(run => ({
-      external_id: `pwa-${latest.weekKey}-${run.id}`,
+      external_id: `pwa-${weekKey}-${run.id}`,
       name: run.label || 'Programmed run',
       start_date_local: `${run.date}T06:00:00`,
       category: 'WORKOUT',
@@ -8147,6 +8208,9 @@ async function renderHomeView() {
     // Lectura del coach de la sesión de hoy (app/coach.js, v11.57). Con `typeof` porque el
     // módulo se carga por <script> aparte: si no cargó, Home se pinta igual.
     (typeof renderCoachReadout === 'function' ? renderCoachReadout() : Promise.resolve()),
+    // Revisión semanal del coach (v11.61): propuesta con diff y avisos, o su estado. Se pinta
+    // sola sólo cuando hay algo que decir; sin revisión no ocupa sitio en Home.
+    (typeof renderCoachWeekCard === 'function' ? renderCoachWeekCard() : Promise.resolve()),
     renderTodaysPlan(),
     renderHomeStatTrio(),
     renderHomeQueue(),
@@ -9409,6 +9473,37 @@ const PLAN_REV = 8;
 async function applyIdealPlan({ force = false } = {}) {
   const n = _idealVariant();
   const lbl = (activePlan && activePlan.label) || '';
+  const author = (activePlan && activePlan.author) || null;
+
+  // COACH V2 (v11.61). Un plan del COACH o del USUARIO no se regenera desde la semilla — ni
+  // aunque suba `PLAN_REV`. `PLAN_REV` pasa a ser "revisión de la SEMILLA": gobierna los planes
+  // `ideal-seed` y dentro de los del coach viaja como `seedRev`, para saber con qué semilla se
+  // construyeron. Sin este gate, un arreglo de calentamiento que sube PLAN_REV borraría en el
+  // siguiente arranque la propuesta que Julian aprobó el lunes — con sus kg y su carrera.
+  // Los arreglos de la semilla siguen llegando: `startWorkout` cae a `PLAN.sessions[id].warmup`,
+  // y la próxima propuesta del coach se construye sobre el plan vivo.
+  if ((author === 'coach-llm' || author === 'user') && !force) {
+    const antes = (state.settings && state.settings.planRev) != null ? state.settings.planRev : null;
+    if (antes !== PLAN_REV) {
+      // El flag sube igual: si no, esto se registraría en cada arranque. Se anota UNA vez.
+      state.settings.planRev = PLAN_REV;
+      try { await smartPut('settings', { key: 'userSettings', data: state.settings }); } catch (e) {}
+      console.log(`[Plan] PLAN_REV ${antes} → ${PLAN_REV} con plan "${author}" activo: no se regenera`);
+      try {
+        await logDecision({
+          source: 'rule', type: 'other',
+          what: `Semilla del plan al día en PLAN_REV ${PLAN_REV}; el plan activo (${author}) se conserva`,
+          why: 'PLAN_REV gobierna sólo los planes semilla; en los del coach viaja como seedRev',
+          ruleIds: [],
+          evidence: { desde: antes, hasta: PLAN_REV, plan: (activePlan && activePlan.id) || null },
+          ref: { planVersion: (activePlan && activePlan.version) != null ? activePlan.version : null },
+          outcome: 'done',
+        });
+      } catch (e) { /* el log no puede impedir el arranque */ }
+    }
+    return;
+  }
+
   const managed = /^Ideal/.test(lbl) || lbl === 'Upper/Lower 4-Day Split' || lbl === 'Fallback' || /^Re-Entry/.test(lbl);
   if (!managed && !force) return; // respect a custom plan the user set themselves
   const targetLabel = `Ideal · ${n} días`;
@@ -9448,11 +9543,18 @@ async function clearFutureScheduleOverrides() {
 // and preserves past/done days. Logs (workouts/runs/sessions) are never touched.
 async function setIdealVariant(n) {
   if (![0, 3, 4, 5, 6].includes(n)) return;
-  const changed = n !== _idealVariant() || !/^Ideal/.test((activePlan && activePlan.label) || '');
+  const author = (activePlan && activePlan.author) || null;
+  const coachActivo = author === 'coach-llm' || author === 'user';
+  const changed = n !== _idealVariant()
+    || (!coachActivo && !/^Ideal/.test((activePlan && activePlan.label) || ''));
   state.settings.idealVariant = n;
   await smartPut('settings', { key: 'userSettings', data: state.settings });
   if (changed) {
-    await applyIdealPlan({ force: true });
+    // VARIANTE = CALENDARIO, COACH = CONTENIDO (§A.8). Con un plan del coach vivo, un
+    // `applyIdealPlan({force:true})` reinstalaría `PLAN.sessions` y borraría los kg, el foco y
+    // la carrera de esta semana. Cambiar de 6 a 4 días es una decisión de AGENDA.
+    if (coachActivo) await _applyVariantOverCoachPlan(n);
+    else await applyIdealPlan({ force: true });
     await clearFutureScheduleOverrides();
   }
   try { await renderHomeView(); } catch (e) {}
@@ -9461,6 +9563,50 @@ async function setIdealVariant(n) {
     const lbl = (IDEAL_BLOCK_V1.variants[n] && IDEAL_BLOCK_V1.variants[n].label) || `${n} días`;
     toast(`Plan: ${lbl} — días pasados intactos`);
   }
+}
+
+/**
+ * Nueva variante de CALENDARIO sobre un plan del coach (v11.61).
+ *
+ * El `weekTemplate` sale de la variante elegida; las `sessions`, el `running` y el `weekKey`
+ * son los del plan vivo. La versión resultante es `author:'user'` porque la decisión es del
+ * usuario: así el gate de `applyIdealPlan` sigue protegiéndola y el propio coach ve en
+ * `facts.plan.author` que el calendario lo movió él, no el modelo.
+ */
+async function _applyVariantOverCoachPlan(n) {
+  const prev = activePlan;
+  const wkShort = prev && prev.weekKey ? String(prev.weekKey).replace(/^\d{4}-/, '') : null;
+  const lblVar = (IDEAL_BLOCK_V1.variants[n] && IDEAL_BLOCK_V1.variants[n].label) || `${n} días`;
+  const nuevo = await createNewPlanVersion({
+    label: `Coach${wkShort ? ` · ${wkShort}` : ''} · ${lblVar}`,
+    weekNumber: getWeekNumber(),
+    sessions: (prev && prev.sessions) || PLAN.sessions,
+    weekTemplate: buildWeekTemplateFromIdeal(n),
+    meta: {
+      schema: 2, status: 'active', author: 'user',
+      basedOn: (prev && prev.id) || null,
+      weekKey: (prev && prev.weekKey) || null,
+      reviewId: (prev && prev.reviewId) || null,
+      block: (typeof blockWeek === 'function') ? blockWeek() : null,
+      running: (prev && prev.running) || null,
+      seedRev: PLAN_REV,
+    },
+  });
+  if (prev && prev.id) {
+    try { await smartPut('plans', { ...prev, status: 'superseded', supersededBy: nuevo.id }); } catch (e) {}
+  }
+  try {
+    await logDecision({
+      source: 'user', type: 'plan-adjust',
+      what: `Calendario a ${lblVar}; el contenido del coach se conserva`,
+      why: 'Variante = calendario, coach = contenido',
+      ruleIds: [],
+      evidence: { variante: n, desde: (prev && prev.label) || null, plan: nuevo.id },
+      ref: { planVersion: nuevo.version },
+      outcome: 'done',
+    });
+  } catch (e) {}
+  return nuevo;
 }
 const _DOW_ES = { 1: 'Lun', 2: 'Mar', 3: 'Mié', 4: 'Jue', 5: 'Vie', 6: 'Sáb', 0: 'Dom' };
 const _DOW_ORDER = [1, 2, 3, 4, 5, 6, 0];
@@ -11966,6 +12112,9 @@ function applySettingsToUI() {
   if (stepsSecretEl) stepsSecretEl.value = stepsSecret || '';
   const stepsEndpointEl = document.getElementById('steps-endpoint-url');
   if (stepsEndpointEl) stepsEndpointEl.value = STEPS_INGEST_URL;
+  // Coach v2 (v11.61): 'ask' por defecto. `coachAutoApplyMode()` normaliza (vive en coach.js).
+  const autoEl = document.getElementById('setting-coach-auto-apply');
+  if (autoEl) autoEl.value = (typeof coachAutoApplyMode === 'function') ? coachAutoApplyMode() : 'ask';
 }
 
 async function saveSettings() {
@@ -12104,6 +12253,17 @@ function bindEvents() {
   { const b = document.getElementById('ip-back'); if (b) b.addEventListener('click', () => { showView('settings'); updateHeader('settings'); }); }
   { const b = document.getElementById('btn-analytics'); if (b) b.addEventListener('click', openAnalytics); }
   { const b = document.getElementById('an-back'); if (b) b.addEventListener('click', () => { showView('settings'); updateHeader('settings'); }); }
+
+  // Vista Coach (v11.61). El "volver" va a HOME y no a Ajustes: se entra sobre todo desde la
+  // tarjeta de Home, y devolver a Ajustes al que llegó desde Home sería teletransportarlo.
+  { const b = document.getElementById('coach-back'); if (b) b.addEventListener('click', () => { switchTab('home'); }); }
+  { const b = document.getElementById('btn-open-coach'); if (b) b.addEventListener('click', () => { if (typeof openCoachView === 'function') openCoachView(); }); }
+  { const b = document.getElementById('btn-export-facts'); if (b) b.addEventListener('click', () => { if (typeof exportCoachFacts === 'function') exportCoachFacts(); }); }
+  {
+    const s = document.getElementById('setting-coach-auto-apply');
+    // Se guarda al cambiar y no al pulsar "Save": es un interruptor, no un formulario.
+    if (s) s.addEventListener('change', () => { if (typeof setCoachAutoApply === 'function') setCoachAutoApply(s.value); });
+  }
 
   // Unit toggle in workout header (segmented control)
   document.getElementById('unit-toggle').addEventListener('click', async (e) => {
@@ -12861,6 +13021,17 @@ async function init() {
   // Y empujar lo que los seeds de plan/ejercicios dejaron solo en local (ver la funcion).
   try { await backfillSeedStoresToCloud(); } catch (e) { console.warn('[Sync] backfill:', e); }
 
+  // COACH SEMANAL (v11.61). Va después de la auth y de un `syncAll()` ESPERADO a propósito: sin
+  // el pull de `coach_reviews`, una revisión que ya se creó en otro dispositivo no se vería aquí
+  // y la app pagaría una segunda ($0,50-0,70). Todo en segundo plano para no retrasar el primer
+  // pintado — `maybeRunWeeklyCoach` repinta la tarjeta de Home cuando llega la propuesta.
+  if (typeof maybeRunWeeklyCoach === 'function') {
+    (async () => {
+      try { if (window.syncAll) await window.syncAll(); } catch (e) { /* sin red, se decide con lo local */ }
+      await maybeRunWeeklyCoach();
+    })().catch(e => console.warn('[Coach] semanal:', e));
+  }
+
   renderWeekStrip();
   renderRecentWorkouts();
   renderStreakBanner();
@@ -12870,8 +13041,8 @@ async function init() {
     if (state.currentTab === 'home') renderStepsCard();
   }).catch(() => {});
 
-  // Hydrate weekly review IDB cache early so the Coach Review card has data
-  // ready when the user navigates to Stats — no spinner / no empty flash.
+  // Resumen del coach en Stats, pintado desde IDB (v11.61: ya sin fetch a ningún manifiesto),
+  // para que la pestaña esté lista cuando el usuario llegue — sin spinner ni parpadeo vacío.
   loadAndRenderWeeklyCoach().catch(() => {});
 
   // Populate the initial tab. HTML defaults to view-home being .active, so

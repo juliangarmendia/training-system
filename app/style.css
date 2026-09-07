@@ -2601,3 +2601,75 @@ body[data-tab="home"] .home-scroll-v2 { padding-top: calc(var(--safe-top) + 10px
 .coach-goal-sig-flag { color: var(--text); font-weight: 600; }
 .coach-goal-sig-flag .coach-goal-sig-dot { color: var(--yellow); }
 .coach-goal-sig-info .coach-goal-sig-dot { color: var(--teal); }
+
+/* ===== Revisión semanal del coach (v11.61) =====
+   Tarjeta de Home + vista Coach. Sólo los tokens que ya existen y CERO animaciones nuevas:
+   una propuesta que hay que leer y decidir no necesita moverse. Los avisos duros van en rojo
+   y los blandos en ámbar, pero NINGÚN botón se deshabilita — los duros restringen al coach,
+   no al usuario. */
+.coach-week-card { padding: 14px 16px; margin-top: 10px; }
+.coach-week-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.coach-week-title { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.16em; color: var(--text2); }
+.coach-week-readiness { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; }
+.coach-week-open { margin-left: auto; background: none; border: none; padding: 0; color: var(--accent); font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.08em; cursor: pointer; }
+.coach-week-line { margin-top: 8px; font-size: var(--fs-sm); color: var(--text); line-height: 1.45; }
+.coach-week-bad { color: var(--red); }
+.coach-week-mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text2); }
+.coach-week-status { margin-top: 6px; font-size: var(--fs-xs); color: var(--text3); line-height: 1.45; }
+.coach-week-empty { margin-top: 8px; font-size: var(--fs-xs); color: var(--text3); }
+.coach-week-prios { margin: 8px 0 0; padding-left: 18px; font-size: var(--fs-sm); color: var(--text); line-height: 1.5; }
+.coach-week-prios li { margin: 3px 0; }
+.coach-week-next { margin-top: 10px; }
+.coach-week-next > summary { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--text2); cursor: pointer; }
+.coach-week-md { margin-top: 6px; font-size: var(--fs-xs); color: var(--text2); line-height: 1.55; }
+.coach-week-md p { margin: 5px 0; }
+.coach-week-md ul { margin: 5px 0; padding-left: 16px; }
+.coach-week-md strong { color: var(--text); }
+.coach-week-diff { margin-top: 10px; }
+.coach-week-more { margin-top: 6px; font-size: 10px; color: var(--text3); }
+.coach-diff-group { margin-top: 8px; }
+.coach-diff-session { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text3); }
+.coach-diff-row { padding: 3px 0 3px 10px; border-left: 2px solid var(--border2); font-size: var(--fs-xs); color: var(--text2); line-height: 1.45; }
+.coach-diff-row.-up { border-left-color: var(--accent); color: var(--text); }
+.coach-diff-row.-down { border-left-color: var(--yellow); color: var(--text); }
+.coach-diff-row.-add { border-left-color: var(--teal); color: var(--text); }
+.coach-diff-row.-remove { border-left-color: var(--text3); }
+.coach-week-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
+.coach-week-chip { font-family: var(--font-mono); font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; padding: 2px 6px; border-radius: 20px; }
+.coach-week-chip.-warn { background: var(--tint-yellow); color: var(--yellow); }
+.coach-week-chip.-hard { background: var(--tint-red); color: var(--red); }
+
+/* Vista Coach: briefing, decisiones y versiones. */
+.coach-brief { padding: 14px 16px; margin-top: 10px; }
+.coach-brief-title { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.16em; color: var(--text2); }
+.coach-brief-legacy { color: var(--text3); letter-spacing: 0.04em; text-transform: none; }
+.coach-decs { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
+.coach-dec { padding: 8px 0; border-bottom: 1px solid var(--border); }
+.coach-dec:last-of-type { border-bottom: none; }
+.coach-dec-what { font-size: var(--fs-sm); color: var(--text); line-height: 1.45; }
+.coach-dec-type { font-family: var(--font-mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text3); }
+.coach-dec-why { margin-top: 3px; font-size: var(--fs-xs); color: var(--text2); line-height: 1.5; }
+.coach-dec-nums { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+.coach-dec-num { font-family: var(--font-mono); font-size: 9px; padding: 2px 6px; border-radius: 20px; background: var(--surface2); color: var(--text2); font-variant-numeric: tabular-nums; }
+.coach-dec-rules { margin-top: 6px; }
+.coach-dec-rules > summary { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text3); cursor: pointer; }
+.coach-dec-rules ul { margin: 6px 0 0; padding-left: 16px; font-size: var(--fs-xs); color: var(--text2); line-height: 1.5; }
+.coach-decs-card, .coach-vers-card { padding: 14px 16px; margin-top: 10px; }
+.coach-dec-row { display: flex; align-items: baseline; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: var(--fs-xs); }
+.coach-dec-row:last-of-type { border-bottom: none; }
+.coach-dec-date { font-family: var(--font-mono); font-size: 10px; color: var(--text3); white-space: nowrap; }
+.coach-dec-kind { font-family: var(--font-mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text2); white-space: nowrap; }
+.coach-dec-txt { flex: 1; min-width: 0; color: var(--text2); line-height: 1.4; }
+.coach-dec-out { font-family: var(--font-mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em; padding: 2px 6px; border-radius: 20px; background: var(--surface2); color: var(--text3); white-space: nowrap; }
+.coach-dec-out.-accepted { background: var(--accent-dim); color: var(--accent); }
+.coach-dec-out.-declined { background: var(--surface3); color: var(--text2); }
+.coach-dec-out.-done { background: var(--tint-teal); color: var(--teal); }
+.coach-ver-row { display: flex; align-items: baseline; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: var(--fs-xs); }
+.coach-ver-row:last-of-type { border-bottom: none; }
+.coach-ver-row.-active .coach-ver-label { color: var(--accent); }
+.coach-ver-label { font-family: var(--font-mono); font-size: 10px; color: var(--text2); white-space: nowrap; }
+.coach-ver-name { flex: 1; min-width: 0; color: var(--text3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.coach-ver-back { background: none; border: 1px solid var(--border2); border-radius: var(--radius-xs); padding: 4px 8px; color: var(--text2); font-size: 10px; cursor: pointer; white-space: nowrap; }
+
+/* Resumen de 2 líneas en Stats › Today (el resto vive en la vista Coach). */
+.wcc-summary { margin-top: 8px; font-size: var(--fs-sm); color: var(--text); line-height: 1.45; }

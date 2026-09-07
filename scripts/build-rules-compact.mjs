@@ -21,8 +21,15 @@
 // "el corpus del prompt desincronizado de la fuente de verdad", que es exactamente el tipo de
 // desincronización silenciosa que el repo lleva meses persiguiendo.
 //
+// Y TAMBIÉN `app/coach-rules.js` (v11.61, incremento 9). La vista Coach tiene que poder
+// escribir "Regla STR-001 (evidencia fuerte): <texto>" debajo de cada decisión: los Rule ID
+// crudos en pantalla son ruido (§B.9), pero sin el texto de la regla el "por qué" del coach no
+// se puede auditar desde el teléfono. Un `fetch` al JSON de la edge function no sirve —la PWA
+// entrena sin conexión— así que el corpus viaja como script clásico dentro del APP_SHELL. Sólo
+// `rule` y `evidenceLevel`: el resto de campos son para el modelo, no para la pantalla.
+//
 // Uso, desde la raíz del repo:
-//   node scripts/build-rules-compact.mjs            # escribe el JSON
+//   node scripts/build-rules-compact.mjs            # escribe el JSON + app/coach-rules.js
 //   node scripts/build-rules-compact.mjs --check    # sólo comprueba que está al día (exit 1 si no)
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
@@ -33,6 +40,7 @@ const SRC = 'research/evidence-to-rules.md';
 const OUT_DIR = 'supabase/functions/coach-weekly-review';
 const OUT = path.join(OUT_DIR, 'rules-compact.json');
 const OUT_SHA = path.join(OUT_DIR, 'rules-compact.sha');
+const OUT_JS = 'app/coach-rules.js';
 
 // Los seis campos que viajan al prompt. El orden importa: es el orden en que se serializan y
 // por tanto el que ve el modelo (id primero, acción al final: "qué regla, cómo de firme, qué
@@ -90,6 +98,38 @@ function main() {
   const body = compact.map(r => '    ' + JSON.stringify(r)).join(',\n');
   const json = `${head},\n  "rules": [\n${body}\n  ]\n}\n`;
 
+  // ---- El corpus para la PANTALLA (app/coach-rules.js) ----
+  // Script clásico, no módulo: la PWA no tiene bundler y esto se carga por <script> junto a
+  // coach-facts.js. Una regla por línea por el mismo motivo que el JSON: el diff se lee.
+  const jsBody = compact
+    .map(r => `  ${JSON.stringify(r.id)}: { rule: ${JSON.stringify(r.rule)}, evidenceLevel: ${JSON.stringify(r.evidenceLevel)} },`)
+    .join('\n');
+  const js = `// ============================================================
+// coach-rules.js — texto de las reglas para la vista Coach
+// ============================================================
+//
+// GENERADO — no editar. Lo escribe scripts/build-rules-compact.mjs desde
+// research/evidence-to-rules.md (fuente de verdad). Para regenerarlo:
+//
+//   node scripts/build-rules-compact.mjs
+//
+// sourceSha256: ${sourceSha256}
+// count: ${compact.length}
+//
+// POR QUÉ EXISTE. La vista Coach escribe "Regla STR-001 (evidencia fuerte): <texto>" debajo de
+// cada decisión del coach. Los Rule ID crudos en pantalla son ruido (§B.9) y el texto no puede
+// venir por fetch: la app entrena sin conexión, así que el corpus va en el APP_SHELL. Sólo
+// viajan \`rule\` y \`evidenceLevel\`; el resto de campos son para el prompt, no para la pantalla.
+// El texto de la regla se queda en el idioma del corpus (inglés); la etiqueta de evidencia la
+// traduce COACH_EVIDENCE_ES en app/coach.js.
+
+const COACH_RULES = {
+${jsBody}
+};
+
+if (typeof module !== 'undefined' && module.exports) module.exports = { COACH_RULES };
+`;
+
   if (check) {
     if (!existsSync(OUT)) { console.error(`FALTA ${OUT}. Ejecuta: node scripts/build-rules-compact.mjs`); process.exit(1); }
     let prev = null;
@@ -98,16 +138,23 @@ function main() {
       console.error(`DESINCRONIZADO: ${OUT} no corresponde al ${SRC} actual. Ejecuta: node scripts/build-rules-compact.mjs`);
       process.exit(1);
     }
-    console.log(`ok — ${OUT} al día (${compact.length} reglas, sha ${sourceSha256.slice(0, 12)}…)`);
+    if (!existsSync(OUT_JS) || readFileSync(OUT_JS, 'utf8') !== js) {
+      console.error(`DESINCRONIZADO: ${OUT_JS} no corresponde al ${SRC} actual. Ejecuta: node scripts/build-rules-compact.mjs`);
+      process.exit(1);
+    }
+    console.log(`ok — ${OUT} y ${OUT_JS} al día (${compact.length} reglas, sha ${sourceSha256.slice(0, 12)}…)`);
     return;
   }
 
   mkdirSync(OUT_DIR, { recursive: true });
   writeFileSync(OUT, json, 'utf8');
   writeFileSync(OUT_SHA, sourceSha256 + '\n', 'utf8');
+  writeFileSync(OUT_JS, js, 'utf8');
   const kb = (Buffer.byteLength(json, 'utf8') / 1024).toFixed(1);
+  const kbJs = (Buffer.byteLength(js, 'utf8') / 1024).toFixed(1);
   console.log(`${OUT} — ${compact.length} reglas, ${kb} KB`);
   console.log(`${OUT_SHA} — ${sourceSha256}`);
+  console.log(`${OUT_JS} — ${compact.length} reglas, ${kbJs} KB`);
   if (Number(kb) > 25) console.warn(`AVISO: ${kb} KB por encima del objetivo de 25 KB del prefijo cacheable.`);
 }
 

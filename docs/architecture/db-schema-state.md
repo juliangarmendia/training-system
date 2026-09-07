@@ -214,3 +214,35 @@ DB local quedó en v10. Si después se despliega código viejo que llama `indexe
 - Cualquier store nuevo posterior: mismo patrón aditivo, bump de `DB_VERSION`, y actualizar este doc.
 - Rollback de T2: revertir el commit de T2 **manteniendo `DB_VERSION >= 10`** (o el valor que tenga al
   momento); `sessions` puede quedar con datos o vacío sin romper nada.
+
+## v11.61 — quién escribe `coach_reviews` (incremento 9)
+
+`coach_reviews` es el primer store del proyecto **cuyas filas las escribe el servidor**, no la app. La
+edge function `coach-weekly-review` hace `upsert` de `{status:'running'}`, sigue trabajando bajo
+`EdgeRuntime.waitUntil()` y vuelve a hacer `upsert` con `{status:'proposed'}` y la propuesta dentro.
+Eso obliga a partir las escrituras locales en dos categorías, y la distinción NO es estilística:
+
+| Qué se escribe | Cómo | Por qué |
+|---|---|---|
+| **Espejo** de una fila del servidor (`running` tras el 202, la fila terminada que llega por polling o por `cached:true`, y la fila `failed` local cuando la invocación ni llega a la función) | **`dbPut`** | Un `smartPut` encolaría la copia del cliente y el último-que-escribe-gana la subiría **después** del `proposed` del servidor, borrando una propuesta que cuesta $0,50-0,70. Los tres sitios están en `app/coach.js` (`runWeeklyCoach`, `_coachMirror`). |
+| **Decisión del usuario** sobre esa fila: `applied` (+`appliedPlanId`, `guardrails`), `rejected` (+`rejectedReason`), `expired` | **`smartPut`** | Es dato del usuario: tiene que llegar a la nube, o el otro dispositivo seguiría ofreciendo "Aplicar" sobre una propuesta ya aplicada o muerta. |
+
+`tests/verify-sync-writes.mjs` fija esto como línea base (`dbPut('coach_reviews')` × 3, sólo en
+`coach.js`, y `smartPut` en `applyCoachProposal`/`rejectCoachProposal`/`_coachExpireIfStale`).
+
+**`plans` no cambia de esquema**, y sigue valiendo el invariante "plan activo = versión más alta"
+(`loadActivePlan`). Las propuestas **nunca** entran en `plans`: sólo `applyCoachProposal` crea una
+versión, con `author:'coach-llm'` y `reviewId`, y marca la anterior `status:'superseded'` (metadatos;
+nunca se borra una fila). El rollback es una versión **nueva copiada**, no una reactivación. Detalle
+en `plan-v2-schema.md`.
+
+**Fichero generado nuevo:** `app/coach-rules.js` (70 reglas, `rule` + `evidenceLevel`), escrito por
+`scripts/build-rules-compact.mjs` junto al `rules-compact.json` de la función. No es un store; entra
+en el `APP_SHELL` del service worker porque la vista Coach cita el texto de las reglas y la app
+funciona sin conexión. Su `sourceSha256` tiene que coincidir con `rules-compact.sha`
+(`verify-coach-wiring.mjs` §15.c).
+
+**`weekly_reviews` pasa a sólo lectura.** No se borra (sigue en `BACKUP_STORES` y sin sincronizar), y
+lo leen dos sitios como *fallback legacy*: el resumen de Stats y `pushRunningPlanToIntervalsIcu`
+cuando el plan activo no trae `running`. Nada lo escribe ya: el cron del domingo está desprogramado y
+la lectura del manifiesto JSON que publicaba se borró en esta versión.

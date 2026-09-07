@@ -349,8 +349,14 @@ yes(/opts\.targets/.test(SW_SRC), 'acepta objetivos ya calculados (reanudar no l
 yes(/session\.exercises\.filter\(e => !\(e\.id in dados\)\)/.test(SW_SRC),
   '…y sólo calcula los que faltan (un ejercicio añadido en la sesión libre recibe el suyo)');
 yes(/state\.activeTargets \|\| \{\}/.test(SW_SRC), 'y los pasa a cada tarjeta con guard');
-yes(/const deload = baseSession\.adHoc \? false : isDeloadWeek\(wk\)/.test(SW_SRC),
+// v11.61: la bandera pasa a mirar también `activePlan.author`. Lo que este check protege sigue
+// siendo lo mismo: que la sesión LIBRE nunca reciba el recorte de deload (partiría a la mitad
+// las series que acabas de elegir a mano).
+yes(/const deload = baseSession\.adHoc \? false/.test(SW_SRC),
   'la sesión libre sigue sin deload (comportamiento intacto)');
+yes(/activePlan && activePlan\.author === 'coach-llm'\) \? false/.test(SW_SRC),
+  'y un plan del coach tampoco lo recibe (ya trae el volumen de descarga: no hay doble recorte)');
+yes(/isDeloadWeek\(wk\)/.test(SW_SRC), 'el resto de los planes sí (isDeloadWeek sigue decidiendo)');
 // El fallo que esto arregla de paso: un set marcado sin escribir peso se guardaba con weight 0
 // y desaparecía del historial, del tonelaje y del 1RM.
 yes(/wIn\.value === '' && isFinite\(parseFloat\(wIn\.placeholder\)\)/.test(SW_SRC),
@@ -946,8 +952,16 @@ yes(/gates/.test(LRW_SRC), 'la evidencia guarda las puertas que decidieron');
 yes(HTML.indexOf('id="coach-goals"') > 0, 'index.html tiene #coach-goals');
 yes(HTML.indexOf('id="coach-goals"') > HTML.indexOf('id="readiness-signals"'),
   'justo después de #readiness-signals (Stats › Today)');
-yes(/async function renderGoalsCard\(\)/.test(COACHJS), 'renderGoalsCard vive en coach.js');
-const RGC_SRC = COACHJS.slice(COACHJS.indexOf('async function renderGoalsCard('));
+// v11.61: la firma pasa a llevar el id del contenedor, porque la misma tarjeta se pinta en
+// Stats (`#coach-goals`) y en la vista Coach (`#coach-goals-view`). Dos contenedores y no un id
+// duplicado: `getElementById` sólo encontraría uno de los dos.
+yes(/async function renderGoalsCard\(containerId = 'coach-goals'\)/.test(COACHJS),
+  'renderGoalsCard(containerId) vive en coach.js');
+// ACOTADO a la propia función: antes iba hasta el final del fichero, y desde v11.61 detrás hay
+// 800 líneas de coach semanal que sí citan Rule IDs (en `title=`, que es donde se permiten).
+const RGC_SRC = COACHJS.slice(
+  COACHJS.indexOf('async function renderGoalsCard('),
+  COACHJS.indexOf('// ============================================================\n// COACH SEMANAL'));
 yes(/goalProgress\(/.test(RGC_SRC), 'y delega TODO el cálculo en goalProgress (nada de números en el renderer)');
 yes(/measured === false/.test(RGC_SRC), 'sólo pesadas medidas (los forward-fill meterían pendiente 0)');
 yes(/weightMeasured/.test(RGC_SRC), 'incluyendo las de wellness');
@@ -972,6 +986,358 @@ for (const clase of ['coach-goals', 'coach-goal-row', 'coach-goal-status-ok', 'c
                      'coach-goal-status-na', 'coach-goal-sig', 'cardio-rx-note']) {
   yes(new RegExp(`\\.${clase}[\\s,{:]`).test(CSS), `.${clase} existe en style.css`);
 }
+
+
+// ── 15. Inc 9 — vista Coach, aprobación y retiro del cron (v11.61) ────────────────────────────
+//
+// Formas nuevas de romperse en silencio, todas de este incremento:
+//
+//   · `coach-facts.js` o `coach-rules.js` fuera del orden de <script> o del APP_SHELL:
+//     `buildCoachFacts`/`COACH_RULES` son undefined y el coach semanal no arranca — sin error
+//     visible, porque cada llamada va con `typeof`. Y sin conexión, que es donde se entrena.
+//   · Una propuesta escrita en `plans` con `status:'proposed'`: el invariante de la app es
+//     "plan activo = versión más alta" y lo aplican también los dispositivos con código viejo.
+//     Sería el plan vivo de todos ellos.
+//   · El espejo `running` con `smartPut`: el último-que-escribe-gana subiría la copia del
+//     cliente por encima del `proposed` del servidor y borraría la propuesta que costó $0,60.
+//   · `applyIdealPlan` sin mirar `author`: un PLAN_REV nuevo regeneraría desde la semilla y
+//     borraría el plan del coach con sus kg y su carrera.
+//   · El deload aplicado dos veces (el plan del coach ya trae el volumen recortado).
+//   · `pushRunningPlanToIntervalsIcu` leyendo el `weekly_reviews` del cron retirado: el reloj
+//     recibiría la semana de carrera de agosto.
+//   · Un fetch superviviente al manifiesto del cron: la tarjeta mostraría la revisión de
+//     agosto como si fuera la de esta semana.
+//   · `coach-rules.js` desincronizado de `evidence-to-rules.md`: la vista Coach citaría el
+//     texto de una regla que ya no dice eso. (No se toca `verify-rules-compact.mjs`; el sha se
+//     compara aquí.)
+console.log('');
+console.log('15. Inc 9 — vista Coach, aprobación y retiro del cron (v11.61)');
+
+const RULESJS = readFileSync('app/coach-rules.js', 'utf8');
+const FACTSJS = readFileSync('app/coach-facts.js', 'utf8');
+
+// 15.a Orden de carga y APP_SHELL
+const iFacts = HTML.indexOf('src="coach-facts.js"');
+const iRules = HTML.indexOf('src="coach-rules.js"');
+
+yes(iFacts > 0, 'index.html carga coach-facts.js');
+yes(iRules > 0, 'index.html carga coach-rules.js');
+yes(iEngine > 0 && iFacts > iEngine, 'coach-facts.js DESPUÉS de coach-engine.js (usa isoWeekKey/mondayOf como globals)');
+yes(iRules > iFacts, 'coach-rules.js después de coach-facts.js');
+yes(iCoachJs > iRules, 'coach.js después de los dos (los consume)');
+yes(iApp > iCoachJs, 'y app.js al final, como siempre');
+for (const m of ['coach-engine.js', 'coach-facts.js', 'coach-rules.js', 'coach.js']) {
+  yes(new RegExp(`'\\./${m.replace('.', '\\.')}'`).test(SW), `'./${m}' está en el APP_SHELL`);
+}
+
+// 15.b Versión: index.html == CACHE_NAME == COACH_APP_VERSION
+const vCoach = (COACHJS.match(/const COACH_APP_VERSION = 'v(\d+\.\d+)'/) || [])[1];
+eq(vCoach, vHtml, 'COACH_APP_VERSION == versión de index.html (viaja como clientVersion)');
+yes(vNum(vHtml) >= vNum('11.61'), `la versión (v${vHtml}) es >= v11.61`);
+
+// 15.c El corpus de reglas generado
+const sha = readFileSync('supabase/functions/coach-weekly-review/rules-compact.sha', 'utf8').trim();
+yes(/GENERADO — no editar/.test(RULESJS), 'coach-rules.js se declara generado');
+yes(RULESJS.includes(`sourceSha256: ${sha}`),
+  'y su sha coincide con rules-compact.sha (si el .md cambia y nadie regenera, esto falla)');
+const nRules = (RULESJS.match(/evidenceLevel:/g) || []).length;
+eq(nRules, 70, `coach-rules.js trae las 70 reglas del corpus (${nRules})`);
+yes(/const COACH_RULES = \{/.test(RULESJS), 'como script clásico (sin bundler no hay import)');
+// Por CLAVE y no por palabra: "sources" aparece dentro del texto de GEN-003 ("when sources
+// conflict…"), y buscarla suelta haría fallar el test por una regla escrita en inglés.
+yes(!/(sources|caveats|applicabilityToUser|population|domain|goal):/.test(RULESJS),
+  'sin los campos de auditoría: a la pantalla sólo van `rule` y `evidenceLevel`');
+yes(!/(confidence|energyState|programmingAction):/.test(RULESJS),
+  'ni los campos que sólo le sirven al modelo (el prompt los lee del JSON, no de aquí)');
+yes(/module\.exports/.test(RULESJS), 'y exportado para los tests');
+// La traducción de la graduación, con los cuatro niveles del enum único del repo.
+for (const [nivel, es] of [['strong', 'fuerte'], ['moderate', 'moderada'],
+                           ['weak_extrapolated', 'débil/extrapolada'], ['expert', 'opinión experta']]) {
+  yes(new RegExp(`${nivel}: '${es.replace(/[/]/g, '\\/')}'`).test(COACHJS)
+    || COACHJS.includes(`${nivel}: '${es}'`), `COACH_EVIDENCE_ES traduce ${nivel} → ${es}`);
+}
+yes(/function COACH_RULE_ES\(/.test(COACHJS), 'COACH_RULE_ES(ruleId) existe');
+yes(/Regla \$\{ruleId\}/.test(COACHJS), 'y arma la etiqueta "Regla <id> (evidencia …)"');
+
+// 15.d index.html: los contenedores nuevos
+for (const id of ['view-coach', 'coach-week-card', 'coach-week', 'coach-briefing', 'coach-proposal',
+                  'coach-goals-view', 'coach-decisions', 'coach-versions', 'coach-back',
+                  'btn-export-facts', 'setting-coach-auto-apply', 'btn-open-coach']) {
+  yes(HTML.indexOf(`id="${id}"`) > 0, `index.html tiene #${id}`);
+}
+yes(HTML.indexOf('id="coach-week-card"') > HTML.indexOf('id="coach-readout"'),
+  '#coach-week-card va después de #coach-readout');
+yes(HTML.indexOf('id="coach-week-card"') < HTML.indexOf('id="todays-plan-card"'),
+  'y antes de #todays-plan-card (§A.7)');
+// El selector con los tres modos, y `ask` primero (es el valor por defecto).
+for (const v of ['ask', 'auto-if-clean', 'auto']) {
+  yes(HTML.includes(`value="${v}"`), `el selector ofrece coachAutoApply="${v}"`);
+}
+yes(HTML.indexOf('value="ask"') < HTML.indexOf('value="auto-if-clean"'),
+  "'ask' es la primera opción (el default nunca es automático)");
+// Y un id no puede estar dos veces: `getElementById` sólo encontraría uno.
+{
+  const ids = [...HTML.matchAll(/id="([a-z0-9-]+)"/g)].map(m => m[1]);
+  const dup = ids.filter((x, i) => ids.indexOf(x) !== i);
+  eq([...new Set(dup)].join(', ') || 'ninguno', 'ninguno', 'sin ids duplicados en index.html');
+}
+
+// 15.e La llamada a la edge function
+yes(/functions\.invoke\('coach-weekly-review'/.test(COACHJS),
+  "coach.js invoca la función con functions.invoke('coach-weekly-review'");
+const RWC_SRC = COACHJS.slice(COACHJS.indexOf('async function runWeeklyCoach('),
+  COACHJS.indexOf('async function _coachMirror('));
+yes(!!RWC_SRC, 'se localiza runWeeklyCoach()');
+for (const k of ['weekKey', 'facts', 'currentPlan', 'allowed', 'priorReviews', 'clientVersion']) {
+  yes(new RegExp(`${k}[,:]`).test(RWC_SRC), `el body lleva ${k}`);
+}
+yes(/mode: 'async'/.test(RWC_SRC), "y mode:'async' (el modelo tarda 60-180 s; iOS suspende la PWA)");
+yes(/getUser\(\)/.test(RWC_SRC), 'exige sesión (la función valida el token)');
+yes(/navigator\.onLine === false/.test(RWC_SRC), 'y no llama sin conexión');
+yes(/dbPut\('coach_reviews'/.test(RWC_SRC),
+  "el espejo `running` va con dbPut (un smartPut pisaría el `proposed` del servidor)");
+yes(!/smartPut\('coach_reviews'/.test(RWC_SRC), 'y runWeeklyCoach no encola la fila del servidor');
+yes(/kind: 'invoke'/.test(RWC_SRC), 'un fallo de invocación deja fila `failed` con error.kind');
+
+// 15.f El disparo automático: una vez por semana y nunca sobre un historial de fallos
+const MRW_SRC = COACHJS.slice(COACHJS.indexOf('async function maybeRunWeeklyCoach('),
+  COACHJS.indexOf('async function runWeeklyCoach('));
+yes(!!MRW_SRC, 'se localiza maybeRunWeeklyCoach()');
+yes(/_coachWeeklyTried/.test(MRW_SRC), 'con memoria de proceso (una vez por carga)');
+yes(/isoWeekKey|_cWeekKey/.test(MRW_SRC), 'resuelve la semana ISO');
+yes(/if \(mine\.length\) return/.test(MRW_SRC),
+  'cualquier fila de esta semana (incl. sólo `failed`) corta el disparo: no se reintenta solo');
+yes(/pollCoachReview\(/.test(MRW_SRC), 'y retoma el polling de una revisión que quedó en marcha');
+const iCheckAuth = APP.indexOf('await checkAuth()');
+const iMaybe = APP.indexOf('await maybeRunWeeklyCoach()');
+yes(iCheckAuth > 0 && iMaybe > iCheckAuth, 'init() lo llama DESPUÉS de checkAuth()');
+yes(/await window\.syncAll\(\)[\s\S]{0,120}await maybeRunWeeklyCoach\(\)/.test(APP),
+  'y tras esperar un syncAll() (sin el pull, se pagaría una revisión que ya existe en la nube)');
+
+// 15.g Polling: 5 s, 5 min, y se para al ocultar la pestaña
+const POLL_SRC = COACHJS.slice(COACHJS.indexOf('function pollCoachReview('),
+  COACHJS.indexOf('function _coachElapsed('));
+yes(/COACH_POLL_MS/.test(POLL_SRC) && /5000/.test(COACHJS), 'polling cada 5 s');
+yes(/5 \* 60 \* 1000/.test(COACHJS), 'hasta 5 min');
+yes(/\.from\('coach_reviews'\)[\s\S]{0,140}record_id/.test(POLL_SRC),
+  'consulta su propia fila por record_id (RLS)');
+yes(/maybeSingle\(\)/.test(POLL_SRC), 'con maybeSingle()');
+yes(/visibilitychange/.test(COACHJS), 'se para al ocultar la pestaña y se retoma al volver');
+yes(/status !== 'running'/.test(POLL_SRC), 'y sólo refleja cuando la fila ya no está en marcha');
+yes(/vuelve más tarde/.test(COACHJS), 'si se agota el plazo, la tarjeta lo dice (el pull la traerá)');
+
+// 15.h Aplicar: las propuestas NUNCA entran en `plans`
+const ACP_SRC = COACHJS.slice(COACHJS.indexOf('async function applyCoachProposal('),
+  COACHJS.indexOf('async function rejectCoachProposal('));
+yes(!!ACP_SRC, 'se localiza applyCoachProposal()');
+yes(/mergeProposal\(/.test(ACP_SRC), 'mergea la propuesta sobre el plan activo');
+yes(/validatePlanVersion\(/.test(ACP_SRC), 'la audita con validatePlanVersion');
+yes(/createNewPlanVersion\(/.test(ACP_SRC), 'y crea una VERSIÓN nueva de plan');
+yes(/author: 'coach-llm'/.test(ACP_SRC), "estampada con author:'coach-llm'");
+for (const k of ['schema: 2', 'basedOn', 'weekKey', 'reviewId', 'seedRev']) {
+  yes(ACP_SRC.includes(k), `con ${k} en el meta`);
+}
+yes(/status: 'superseded'/.test(ACP_SRC), 'marca la anterior como superseded (sin borrarla)');
+yes(/smartPut\('coach_reviews'/.test(ACP_SRC), "y la decisión del usuario sí sube (smartPut)");
+yes(/status: 'applied'/.test(ACP_SRC), "con status:'applied'");
+yes(/appliedPlanId/.test(ACP_SRC), 'y appliedPlanId');
+yes(/logDecision\(/.test(ACP_SRC) && /'plan-apply'/.test(ACP_SRC), "registra la decisión plan-apply");
+yes(/_coachReconcileOverrides\(/.test(ACP_SRC), 'reconcilia los swaps de ejercicio');
+yes(/diff\.weekTemplate && diff\.weekTemplate\.length > 0/.test(ACP_SRC),
+  'y sólo limpia los overrides de calendario si el template cambió');
+// La regla que no se negocia: ninguna propuesta en `plans`.
+yes(!/smartPut\('plans'[\s\S]{0,200}'proposed'/.test(COACHJS),
+  "ningún smartPut('plans') escribe status 'proposed'");
+yes(!/status: 'proposed'/.test(COACHJS.replace(/\/\/[^\n]*/g, '')),
+  "coach.js no escribe status:'proposed' en ninguna parte (lo pone la función, en coach_reviews)");
+// Y NADA se deshabilita por un aviso.
+yes(!/disabled[\s\S]{0,60}guardrail/i.test(COACHJS), 'ningún botón se deshabilita por un guardarraíl');
+yes(/-hard/.test(COACHJS) && /-warn/.test(COACHJS), 'los avisos se pintan en rojo y ámbar (chips)');
+yes(/\.coach-week-chip\.-hard/.test(CSS) && /\.coach-week-chip\.-warn/.test(CSS),
+  'con su CSS (rojo = duro, ámbar = blando)');
+
+// 15.i Rechazar y rollback
+const REJ_SRC = COACHJS.slice(COACHJS.indexOf('async function rejectCoachProposal('),
+  COACHJS.indexOf('async function rollbackPlanVersion('));
+yes(/status: 'rejected'/.test(REJ_SRC) && /rejectedReason/.test(REJ_SRC), 'rechazar guarda el motivo');
+yes(/smartPut\('coach_reviews'/.test(REJ_SRC), 'con smartPut (es una decisión del usuario)');
+yes(/'plan-reject'/.test(REJ_SRC), "y registra la decisión plan-reject");
+const RBK_SRC = COACHJS.slice(COACHJS.indexOf('async function rollbackPlanVersion('),
+  COACHJS.indexOf('async function _coachReconcileOverrides('));
+yes(/createNewPlanVersion\(/.test(RBK_SRC),
+  'el rollback crea una versión NUEVA copiada (no re-activa la vieja: el invariante es max(version))');
+yes(/\(restaurada\)/.test(RBK_SRC), 'etiquetada "(restaurada)"');
+yes(/rolledBackFrom/.test(RBK_SRC), 'con rolledBackFrom');
+yes(/author: 'user'/.test(RBK_SRC), "y author:'user'");
+yes(/'plan-rollback'/.test(RBK_SRC), 'registra la decisión plan-rollback');
+yes(!/dbDelete\('plans'|smartDelete\('plans'/.test(COACHJS), 'y nunca borra una versión');
+// Vencimiento: una propuesta de otra semana no se puede aplicar.
+yes(/status: 'expired'/.test(COACHJS), 'una propuesta de una semana anterior pasa a `expired`');
+yes(/_coachExpireIfStale\(/.test(COACHJS), 'y se comprueba al pintar');
+
+// 15.j Retiro y migración en app.js
+const AIP_SRC = fnSrc('async function applyIdealPlan(');
+yes(/author === 'coach-llm'/.test(AIP_SRC) && /author === 'user'/.test(AIP_SRC),
+  "applyIdealPlan() sale temprano con un plan del coach o del usuario");
+yes(/!force/.test(AIP_SRC), 'salvo force (el selector de variante y la semilla siguen pudiendo)');
+yes(/planRev = PLAN_REV/.test(AIP_SRC) && /logDecision\(/.test(AIP_SRC),
+  'y con un PLAN_REV nuevo NO regenera: sube el flag y lo anota UNA vez');
+const SIV_SRC = fnSrc('async function setIdealVariant(');
+yes(/_applyVariantOverCoachPlan\(/.test(SIV_SRC),
+  'setIdealVariant() con plan del coach crea una versión propia (variante = calendario)');
+const AVO_SRC = fnSrc('async function _applyVariantOverCoachPlan(');
+yes(/buildWeekTemplateFromIdeal\(n\)/.test(AVO_SRC), 'con el weekTemplate de la variante elegida');
+yes(/sessions: \(prev && prev\.sessions\)/.test(AVO_SRC), 'y las sesiones del coach intactas');
+yes(/author: 'user'/.test(AVO_SRC), "author:'user' (la decisión es del usuario)");
+yes(/running: \(prev && prev\.running\)/.test(AVO_SRC), 'conservando el running del coach');
+
+const CST_SRC9 = fnSrc('async function computeSessionTargets(');
+yes(/activePlan\.sessions\[sessionId\]/.test(CST_SRC9),
+  'computeSessionTargets lee las sesiones del plan activo');
+yes(/coachWeekKey = activePlan\.weekKey/.test(CST_SRC9),
+  'y la vigencia del objetivo sale de activePlan.weekKey (v11.57, intacto)');
+yes(/activePlan && activePlan\.author === 'coach-llm'\)\s*\n?\s*\? null/.test(CST_SRC9)
+  || /author === 'coach-llm'[\s\S]{0,60}\? null[\s\S]{0,80}_legacyCoachTargets/.test(CST_SRC9),
+  'el adaptador legacy de weekly_reviews sólo se consulta si el plan NO es del coach');
+
+const PRP_SRC = fnSrc('async function pushRunningPlanToIntervalsIcu(');
+yes(/activePlan\.running\.plan/.test(PRP_SRC), 'el push lee activePlan.running.plan[]');
+yes(/_mondayOfWeekKey\(/.test(PRP_SRC), 'y resuelve las fechas desde el lunes del weekKey');
+yes(/pwa-\$\{weekKey\}-\$\{run\.id\}/.test(PRP_SRC), 'con external_id = pwa-${weekKey}-${id}');
+yes(/weekly_reviews/.test(PRP_SRC), 'manteniendo el weekly_reviews legacy como fallback');
+yes(PRP_SRC.indexOf('activePlan.running.plan') < PRP_SRC.indexOf("dbGetAll('weekly_reviews')"),
+  'y en ese orden: el plan activo primero, el legacy sólo si no hay');
+
+// El fetch al manifiesto del cron, muerto y enterrado (comentarios incluidos: si el literal
+// sigue en el fichero, alguien puede volver a llamarlo).
+yes(!/fetchLatestWeeklyReview/.test(APP), 'app.js ya no contiene fetchLatestWeeklyReview');
+yes(!APP.includes('tracking/weekly-reviews/latest.json'),
+  'ni la URL del manifiesto del cron');
+const LWC_SRC = fnSrc('async function loadAndRenderWeeklyCoach(');
+yes(/dbGetAll\('coach_reviews'\)/.test(LWC_SRC), 'el resumen de Stats lee coach_reviews');
+yes(/dbGetAll\('weekly_reviews'\)/.test(LWC_SRC), 'con el legacy como fallback de sólo lectura');
+yes(/Abrir Coach/.test(LWC_SRC), 'y ofrece "Abrir Coach"');
+yes(!/fetch\(/.test(LWC_SRC), 'sin ningún fetch');
+
+// 15.k El pack desde los stores, y el botón de exportarlo
+const BCF_SRC = COACHJS.slice(COACHJS.indexOf('async function buildCoachFactsFromStores('),
+  COACHJS.indexOf('function _coachZ2Ceiling('));
+yes(!!BCF_SRC, 'se localiza buildCoachFactsFromStores()');
+for (const s of ['workouts', 'runs', 'sessions', 'mobility_sessions', 'wellness', 'steps',
+                 'bodyweight', 'nutrition', 'decisions', 'coach_reviews']) {
+  yes(BCF_SRC.includes(`'${s}'`), `lee el store ${s}`);
+}
+for (const k of ['exerciseOverrides', 'weekSchedule', 'userSettings', 'activePlan', 'exercisesLibrary']) {
+  yes(BCF_SRC.includes(k), `y pasa ${k}`);
+}
+for (const d of ['convertWeight', 'estimate1RM', 'measureUnitFor', 'dedupeRuns', 'dedupeSessions', 'toSession']) {
+  yes(BCF_SRC.includes(d), `inyecta el dep ${d}`);
+}
+yes(/typeof nutRollingWeight === 'function'/.test(BCF_SRC)
+  && /typeof weeklyDeficits === 'function'/.test(BCF_SRC),
+  'los dos deps de nutrition.js van con guarda typeof (si ese script no cargó, el pack se degrada)');
+yes(/z2Ceiling: _coachZ2Ceiling\(\)/.test(BCF_SRC), 'y el techo de Z2 medido');
+yes(/legacyLatest/.test(BCF_SRC), 'con el latest de weekly_reviews como entrada legacy');
+yes(/buildCoachFacts\(input, deps\)/.test(BCF_SRC), 'y delega TODO el cálculo en buildCoachFacts');
+yes(!/\.reduce\(|Math\.round/.test(BCF_SRC),
+  'sin aritmética propia: un número calculado aquí sería un número sin test');
+const EXP_SRC = COACHJS.slice(COACHJS.indexOf('async function exportCoachFacts('),
+  COACHJS.indexOf('function coachAutoApplyMode('));
+yes(/clipboard/.test(EXP_SRC), 'exportCoachFacts copia al portapapeles');
+yes(/navigator\.share/.test(EXP_SRC), 'con navigator.share como segundo camino (iOS)');
+yes(/textarea/.test(EXP_SRC), 'y un textarea como último recurso');
+yes(/dataGaps/.test(EXP_SRC), 'y dice cuántos huecos de datos declara el pack');
+yes(/KB/.test(EXP_SRC), 'y cuánto pesa');
+yes(/function coachAutoApplyMode\(/.test(COACHJS), 'coachAutoApplyMode() normaliza a ask por defecto');
+yes(/=== 'auto' \|\| v === 'auto-if-clean'\) \? v : 'ask'/.test(COACHJS),
+  "cualquier otro valor cae en 'ask' (auto NUNCA por defecto)");
+yes(/smartPut\('settings', \{ key: 'userSettings'/.test(COACHJS),
+  'y el ajuste se persiste por la ruta de userSettings');
+
+// 15.l `_mondayOfWeekKey` es la inversa exacta de `isoWeekKey`
+{
+  const src = fnSrc('function _mondayOfWeekKey(');
+  yes(!!src, 'se localiza _mondayOfWeekKey()');
+  const f = new Function(`${src}\n}\nreturn _mondayOfWeekKey;`)();
+  const casos = [['2026-W37', '2026-09-07'], ['2026-W01', '2025-12-29'], ['2027-W01', '2027-01-04']];
+  for (const [wk, mon] of casos) eq(f(wk), mon, `_mondayOfWeekKey('${wk}') = ${mon}`);
+  eq(f('basura'), null, 'y devuelve null con una entrada que no es una semana ISO');
+  // Ida y vuelta contra la aritmética del motor, que es la fuente: 120 semanas seguidas.
+  let rt = 0;
+  for (let i = 0; i < 120; i++) {
+    const d = new Date(Date.UTC(2026, 0, 5) + i * 7 * 86400000).toISOString().slice(0, 10);
+    const wk = E.isoWeekKey(d);
+    if (f(wk) === E.mondayOf(d)) rt++;
+  }
+  eq(rt, 120, 'ida y vuelta con isoWeekKey/mondayOf en 120 semanas seguidas');
+}
+
+// 15.m Home, vista y navegación
+yes(/renderCoachWeekCard/.test(fnSrc('async function renderHomeView(')),
+  'renderHomeView llama renderCoachWeekCard');
+yes(/typeof renderCoachWeekCard === 'function'/.test(APP), 'con guarda typeof (vive en coach.js)');
+yes(/async function renderCoachWeekCard\(/.test(COACHJS), 'renderCoachWeekCard vive en coach.js');
+yes(/async function renderCoachView\(/.test(COACHJS), 'y renderCoachView también');
+yes(/function openCoachView\(/.test(COACHJS), 'con openCoachView() como entrada');
+yes(/showView\('coach'\)/.test(COACHJS), "que hace showView('coach') — mismo patrón que ideal-preview");
+yes(/tab === 'coach'/.test(fnSrc('function updateHeader(')), "updateHeader conoce la pestaña 'coach'");
+yes(/getElementById\('coach-back'\)/.test(APP), 'el botón de volver está cableado');
+yes(/getElementById\('btn-export-facts'\)/.test(APP), 'y el de exportar los facts');
+yes(/getElementById\('setting-coach-auto-apply'\)/.test(APP), 'y el selector de coachAutoApply');
+yes(/setCoachAutoApply\(/.test(APP), 'que guarda con setCoachAutoApply');
+yes(/coachAutoApplyMode\(\)/.test(fnSrc('function applySettingsToUI(')),
+  'applySettingsToUI pinta el valor guardado');
+// Cada sección de la vista con su try/catch (patrón renderHomeView): una no puede vaciar el resto.
+const RCV_SRC = COACHJS.slice(COACHJS.indexOf('async function renderCoachView('),
+  COACHJS.indexOf('async function _coachRenderWeek('));
+yes(/try \{ await fn\(el\); \} catch/.test(RCV_SRC), 'cada sección de la vista Coach con su try/catch');
+for (const id of ['coach-week', 'coach-briefing', 'coach-proposal', 'coach-goals-view',
+                  'coach-decisions', 'coach-versions']) {
+  yes(RCV_SRC.includes(`'${id}'`), `la vista pinta #${id}`);
+}
+yes(/renderGoalsCard\('coach-goals-view'\)/.test(RCV_SRC),
+  'reutilizando renderGoalsCard en su propio contenedor');
+// Y los renderers de los incrementos anteriores siguen en pie.
+for (const fn of ['renderCoachReadout', 'renderReadinessSignals', 'renderGoalsCard']) {
+  yes(new RegExp(`async function ${fn}\\(`).test(COACHJS), `${fn} sigue existiendo`);
+  yes(COACHJS.slice(COACHJS.indexOf('module.exports')).includes(fn), `y sigue exportado`);
+}
+
+// 15.n El diff y los estados de la tarjeta
+yes(/function coachDiffGroups\(/.test(COACHJS), 'coachDiffGroups() agrupa el diff por sesión');
+yes(/diffPlanVersions\(/.test(COACHJS), 'sobre diffPlanVersions (una sola aritmética de diff)');
+for (const k of ['-up', '-down', '-add', '-remove']) {
+  yes(CSS.includes(`.coach-diff-row.${k}`), `.coach-diff-row.${k} existe en style.css`);
+}
+for (const clase of ['coach-week-card', 'coach-week-chip', 'coach-week-prios', 'coach-diff-group',
+                     'coach-diff-session', 'coach-dec-row', 'coach-ver-row', 'coach-ver-back',
+                     'coach-brief-title', 'wcc-summary']) {
+  yes(new RegExp(`\\.${clase}[\\s,{:.]`).test(CSS), `.${clase} existe en style.css`);
+}
+yes(!/@keyframes coach-week|animation:[^;]*coach-week/.test(CSS), 'y cero animaciones nuevas (§B.6)');
+const RCWC_SRC = COACHJS.slice(COACHJS.indexOf('async function renderCoachWeekCard('),
+  COACHJS.indexOf('function openCoachView('));
+for (const st of ['running', 'proposed', 'applied', 'failed', 'expired']) {
+  yes(RCWC_SRC.includes(`'${st}'`), `la tarjeta cubre el estado ${st}`);
+}
+yes(/classList\.add\('hidden'\)/.test(RCWC_SRC), 'y sin revisión no pinta nada (no deja hueco)');
+yes(/coach-week-apply/.test(RCWC_SRC) && /coach-week-reject/.test(RCWC_SRC)
+  && /coach-week-regen-note/.test(RCWC_SRC), 'con Aplicar · Rechazar · Regenerar con nota');
+yes(/rollbackPlanVersion\(/.test(RCWC_SRC), 'y "Deshacer" en el estado applied');
+yes(/COACH_GUARD_ES/.test(COACHJS), 'los ids de guardarraíl se traducen (nada de ids crudos en pantalla)');
+
+// 15.o `allowed`: el vocabulario que se le permite al modelo
+const ALW_SRC = COACHJS.slice(COACHJS.indexOf('function _coachAllowed('),
+  COACHJS.indexOf('function _coachCurrentPlan('));
+yes(/COACH_MAX_SESSION_IDS/.test(ALW_SRC) && /COACH_MAX_EXERCISE_IDS/.test(ALW_SRC),
+  '_coachAllowed respeta los topes que valida la función');
+eq((COACHJS.match(/const COACH_MAX_SESSION_IDS = (\d+)/) || [])[1], '12', 'tope de sesiones = 12');
+eq((COACHJS.match(/const COACH_MAX_EXERCISE_IDS = (\d+)/) || [])[1], '150', 'tope de ejercicios = 150');
+yes(ALW_SRC.indexOf('plan.sessions') < ALW_SRC.indexOf('Object.keys(lib)'),
+  'los ejercicios DEL PLAN van primero (así sobreviven al recorte de 150)');
+yes(/measure: !!\(typeof measureUnitFor === 'function' && measureUnitFor\(id\)\)/.test(ALW_SRC),
+  "`measure` sale de measureUnitFor y no del plan (sin él, el modelo podría prescribir 'box jump 52,5 kg')");
+for (const k of ['name', 'muscle', 'db', 'bw']) yes(new RegExp(`${k}:`).test(ALW_SRC), `y cada id lleva ${k}`);
 
 console.log('');
 console.log(failed === 0

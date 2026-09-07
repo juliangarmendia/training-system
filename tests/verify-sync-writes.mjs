@@ -96,6 +96,19 @@ const baseline = [
             'de este dispositivo, no dato de usuario. Sincronizarlo haría que descartarla en el ' +
             'móvil la borrase en la web antes de leerla, y encolaría una escritura por sesión.',
   },
+  {
+    store: 'coach_reviews', src: COACHJS, n: 3,
+    motivo: 'ESPEJO LOCAL de filas que escribe LA EDGE FUNCTION, no la app (v11.61). La fila de ' +
+            'una revisión es del servidor: él pone `running` y luego `proposed` con la propuesta ' +
+            'que cuesta $0,50-0,70. Un `smartPut` de la copia `running` la encolaría y el ' +
+            'último-que-escribe-gana la subiría DESPUÉS del `proposed`, borrando la propuesta. ' +
+            'Los tres sitios son: (1) el espejo `running` tras el 202, (2) `_coachMirror()` — el ' +
+            'reflejo de la fila terminada que llega por polling o por `cached:true` —, y (3) la ' +
+            'fila `failed` local cuando la invocación ni llega a la función (sin fila del ' +
+            'servidor no hay nada que reflejar, y un fallo sin rastro es indistinguible de "el ' +
+            'coach no dijo nada"). Las escrituras del USUARIO sobre esa misma fila —aplicar, ' +
+            'rechazar, vencer— sí van con `smartPut`: ésas son suyas y tienen que llegar a la nube.',
+  },
   { store: 'nutrition', src: APP, n: 1, motivo: 'restauración de backup.' },
 ];
 
@@ -107,16 +120,44 @@ for (const b of baseline) {
 // Los stores que NO deben tener ninguna escritura cruda en ningún fichero.
 const sinCrudas = ['bodyweight', 'sessions', 'mobility_sessions', 'wellness', 'foods', 'meals',
                    'exercises', 'plans',
-                   // Coach v2 (v11.55). `logDecision` y las revisiones del coach son dato de
-                   // usuario con tabla en Supabase: una escritura cruda repetiría el bug de
-                   // `exercises` (0 filas en la nube durante meses) sobre la memoria del coach.
-                   // Ojo: `pruneDecisions()` sí BORRA en local con dbDelete a propósito — la
-                   // nube conserva el historial completo.
-                   'coach_reviews', 'decisions'];
+                   // Coach v2 (v11.55). `logDecision` es dato de usuario con tabla en Supabase:
+                   // una escritura cruda repetiría el bug de `exercises` (0 filas en la nube
+                   // durante meses) sobre la memoria del coach. Ojo: `pruneDecisions()` sí BORRA
+                   // en local con dbDelete a propósito — la nube conserva el historial completo.
+                   'decisions'];
 for (const store of sinCrudas) {
   const total = [APP, SYNC, NUT, WHOOP, COACHJS]
     .reduce((acc, src) => acc + cuenta(src, new RegExp(`dbPut\\('${store}'`, 'g')), 0);
   eq(total, 0, `'${store}' no tiene ninguna escritura cruda`);
+}
+
+// `coach_reviews` es el caso raro y se comprueba por separado: NINGUNA escritura cruda fuera de
+// coach.js (los tres espejos justificados arriba), y las decisiones del usuario sobre la fila
+// —aplicar, rechazar, vencer— con `smartPut`. Sin esta segunda mitad, "el espejo va con dbPut"
+// se convertiría en "todo va con dbPut" y el "Aplicar" del lunes no saldría del teléfono.
+console.log('');
+console.log('3.b coach_reviews: espejo local con dbPut, decisiones del usuario con smartPut');
+for (const [nombre, src] of [['app.js', APP], ['supabase-sync.js', SYNC], ['nutrition.js', NUT], ['whoop.js', WHOOP]]) {
+  eq(cuenta(src, /dbPut\('coach_reviews'/g), 0, `sin dbPut('coach_reviews') en ${nombre}`);
+}
+const smartCR = cuenta(COACHJS, /smartPut\('coach_reviews'/g);
+yes(smartCR >= 3, `coach.js escribe con smartPut('coach_reviews') en ${smartCR} sitios (aplicar, rechazar, vencer)`);
+for (const fn of ['applyCoachProposal', 'rejectCoachProposal', '_coachExpireIfStale']) {
+  const i = COACHJS.indexOf(`function ${fn}(`);
+  yes(i > 0, `se localiza ${fn}()`);
+  if (i < 0) continue;
+  const cuerpo = COACHJS.slice(i, i + 5000);
+  yes(/smartPut\('coach_reviews'/.test(cuerpo), `${fn}() escribe la fila con smartPut`);
+  yes(!/dbPut\('coach_reviews'/.test(cuerpo), `${fn}() no la escribe cruda`);
+}
+// Y el espejo, al contrario: `_coachMirror` NUNCA puede encolar (subiría la copia del cliente
+// por encima de lo que escribió el servidor).
+{
+  const i = COACHJS.indexOf('async function _coachMirror(');
+  yes(i > 0, 'se localiza _coachMirror()');
+  const cuerpo = COACHJS.slice(i, i + 1600);
+  yes(/dbPut\('coach_reviews'/.test(cuerpo), '_coachMirror() refleja con dbPut');
+  yes(!/smartPut/.test(cuerpo), '_coachMirror() no encola nada');
 }
 
 // ── 4. Los seeds usan smartPut ──────────────────────────────────────────────────────

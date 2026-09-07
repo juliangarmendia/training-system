@@ -184,6 +184,10 @@
             <span class="home-link-mono" id="todays-detail">Detail</span>
           </div>
           <div id="coach-readout" class="hidden"></div>
+          <!-- Revisión semanal del coach (v11.61): propuesta, avisos y Aplicar de un toque.
+               Va ENTRE la lectura de la sesión y el plan de hoy: primero qué pasó, luego qué
+               cambia la semana, y por último qué toca hacer hoy. Vacía cuando no hay revisión. -->
+          <div id="coach-week-card" class="hidden"></div>
           <div id="todays-plan-card"></div>
           <div id="home-stat-trio"></div>
           <div class="home-sec-row" style="margin-top:28px">
@@ -600,6 +604,25 @@
         </div>
       </section>
 
+      <!-- Vista Coach (v11.61, §B.6): un scroll con la semana, el briefing, la propuesta,
+           los objetivos, el registro de decisiones y el historial de versiones del plan.
+           Cada sección la pinta app/coach.js con su propio try/catch. -->
+      <section id="view-coach" class="view">
+        <div class="view-scroll">
+          <button id="coach-back" class="btn-secondary" style="margin-bottom:12px">‹ Volver</button>
+          <div id="coach-week"></div>
+          <div id="coach-briefing"></div>
+          <div id="coach-proposal"></div>
+          <!-- `coach-goals-view` y no `coach-goals`: la tarjeta de Objetivos sigue viva en
+               Stats › Today con ese id, y dos elementos con el mismo id harían que
+               getElementById sólo encontrase uno. `renderGoalsCard(containerId)` pinta en
+               los dos sitios. -->
+          <div class="card coach-goals" id="coach-goals-view"></div>
+          <div id="coach-decisions"></div>
+          <div id="coach-versions"></div>
+        </div>
+      </section>
+
       <!-- Ideal Plan Preview (T4) -->
       <section id="view-ideal-preview" class="view">
         <div class="view-scroll">
@@ -632,6 +655,25 @@
           <div class="card">
             <p class="muted" style="font-size:13px;margin:0 0 10px">Tu <b>plan ideal evidence-based</b> es el plan vivo. Elegí los <b>días (3/4/5/6)</b> según la semana — cambia solo hacia adelante, tus sesiones registradas quedan intactas.</p>
             <button id="btn-ideal-preview" class="btn-secondary btn-full" style="text-align:center">Mi plan</button>
+          </div>
+
+          <!-- Coach semanal (v11.61). "Exportar facts JSON" existe para poder INSPECCIONAR el
+               pack en el iPhone antes de gastar un céntimo en una llamada al modelo. -->
+          <div class="section-label" style="margin-top:24px">Coach semanal</div>
+          <div class="card">
+            <p class="muted" style="font-size:13px;margin:0 0 10px">El coach revisa la semana y <b>propone</b>; tú apruebas. La propuesta aparece en Home y en la vista Coach.</p>
+            <div class="form-row">
+              <label for="setting-coach-auto-apply">Aplicación de la propuesta semanal</label>
+              <select id="setting-coach-auto-apply" class="text-input">
+                <option value="ask">Propone, yo apruebo</option>
+                <option value="auto-if-clean">Automático si no hay avisos (próximamente)</option>
+                <option value="auto">Automático siempre (próximamente)</option>
+              </select>
+            </div>
+            <button id="btn-open-coach" class="btn-secondary btn-full" style="text-align:center;margin-top:10px">Abrir Coach</button>
+            <button id="btn-export-facts" class="btn-secondary btn-full" style="text-align:center;margin-top:8px">Exportar facts JSON</button>
+            <p class="muted" style="font-size:11px;margin-top:6px">Copia al portapapeles los hechos que el coach recibe (sin filas crudas). Sirve para revisar qué ve antes de pedirle una revisión.</p>
+            <div id="coach-facts-out" class="hidden" style="margin-top:8px"></div>
           </div>
 
           <div class="section-label" style="margin-top:24px">Analítica</div>
@@ -736,7 +778,7 @@
           </div>
           <div class="section-label" style="margin-top:24px">App</div>
           <div class="card">
-            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v11.60<br>Data stored locally + cloud sync.<br>Works offline.</p>
+            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v11.61<br>Data stored locally + cloud sync.<br>Works offline.</p>
             <button id="btn-force-update" class="btn-secondary btn-full" style="text-align:center">Force Update App</button>
           </div>
         </div>
@@ -797,6 +839,8 @@
   <script src="bloodwork.js"></script>
   <script src="nutrition.js"></script>
   <script src="coach-engine.js"></script>
+  <script src="coach-facts.js"></script>
+  <script src="coach-rules.js"></script>
   <script src="coach.js"></script>
   <script src="app.js"></script>
 </body>
