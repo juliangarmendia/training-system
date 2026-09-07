@@ -1500,6 +1500,15 @@ function getWeekNumber() {
 //
 // The anchor is stored, not derived from startDate, so switching this on does NOT
 // retroactively make the current week a deload: the first one lands 4 weeks out.
+//
+// v11.56 — EL ANCLA PASA A SER UNA FECHA (`settings.deloadAnchorDate`, lunes ISO).
+// Antes era `deloadAnchorWeek`, un número de `getWeekNumber()`, o sea "semanas desde
+// `settings.startDate`" — y `startDate` se edita en Ajustes. Cambiarla un día que cruce el
+// lunes desplazaba `weekNum` en 1 y el deload se movía de semana SIN AVISO (audit F-13).
+// Ahora hay UNA sola aritmética, la del motor puro (`blockWeekFromDates` en coach-engine.js),
+// y `getWeekNumber()` vuelve a ser lo que debería haber sido siempre: una etiqueta.
+// `deloadAnchorWeek` se conserva en settings (código viejo y backups lo leen), pero ninguna
+// decisión sale de él.
 const DELOAD_BLOCK_WEEKS = 5;
 
 function deloadAnchorWeek() {
@@ -1507,21 +1516,55 @@ function deloadAnchorWeek() {
   return (typeof a === 'number' && a > 0) ? a : null;
 }
 
-function isDeloadWeek(weekNum) {
-  const anchor = deloadAnchorWeek();
-  if (!anchor) return false;              // not yet anchored → never a deload
-  const offset = weekNum - anchor;
-  if (offset < 0) return false;
-  return (offset % DELOAD_BLOCK_WEEKS) === DELOAD_BLOCK_WEEKS - 1;  // 4 build, then deload
+// La semana del bloque de una fecha: `{ index 1..5, isDeload, label, blockStartMonday,
+// deloadMonday }`. Único punto de la app que sabe contar semanas de bloque.
+function blockWeek(date = new Date()) {
+  const anchor = (state.settings && state.settings.deloadAnchorDate) || null;
+  if (typeof blockWeekFromDates !== 'function') {      // coach-engine.js no cargó
+    return { index: null, isDeload: false, weeksIntoBlock: null, label: 'sin ancla', blockStartMonday: null, deloadMonday: null };
+  }
+  return blockWeekFromDates(dateStr(date), anchor, DELOAD_BLOCK_WEEKS);
 }
 
-// Set the anchor once, to the CURRENT week, so the first deload is 4 weeks away and the
-// user can see it coming instead of losing a week to a surprise 50% volume cut.
+// Fecha (local) en la que arranca una semana de app. `getWeekNumber()` cuenta semanas de 7
+// días desde `startDate`, así que las semanas de app empiezan el día de la semana de
+// `startDate` — NO necesariamente lunes. Se convierte a fecha y `blockWeek` la normaliza a su
+// lunes ISO; para la semana en curso se usa hoy directamente, que es lo que piden los ~8
+// llamadores de `isDeloadWeek` (todos pasan `getWeekNumber()`).
+function _weekNumToDate(weekNum) {
+  const wk = Number(weekNum);
+  if (!isFinite(wk) || wk === getWeekNumber()) return new Date();
+  const start = state.settings && state.settings.startDate;
+  if (!start) return new Date();
+  const d = new Date(start + 'T00:00:00');
+  d.setDate(d.getDate() + (Math.max(1, wk) - 1) * 7);
+  return d;
+}
+
+// Firma intacta (número de semana de app) por sus llamadores; la aritmética es una sola.
+function isDeloadWeek(weekNum) {
+  return blockWeek(_weekNumToDate(weekNum)).isDeload;
+}
+
+// Pone el ancla una sola vez.
+//  · Si ya hay `deloadAnchorDate`, no se toca (el coach o el usuario pueden haberlo fijado).
+//  · Si existe el `deloadAnchorWeek` viejo, se MIGRA a fecha: la coherencia con lo que el
+//    usuario ya venía viendo importa más que empezar limpio.
+//  · Si no hay nada, se ancla al lunes de esta semana, así el primer deload queda 4 semanas
+//    fuera y se ve venir en vez de perder una semana a un recorte del 50 % por sorpresa.
 async function ensureDeloadAnchor() {
-  if (deloadAnchorWeek()) return;
-  state.settings.deloadAnchorWeek = getWeekNumber();
+  if (typeof mondayOf !== 'function') {                // coach-engine.js no cargó
+    console.warn('[Deload] coach-engine.js no disponible; ancla sin sembrar');
+    return;
+  }
+  if (state.settings.deloadAnchorDate) return;
+  const legacy = deloadAnchorWeek();
+  const migrated = legacy ? anchorDateFromWeek(state.settings.startDate, legacy) : null;
+  state.settings.deloadAnchorDate = migrated || mondayOf(today());
+  // Se mantiene poblado para código viejo y para los backups ya exportados; nada decide con él.
+  if (!legacy) state.settings.deloadAnchorWeek = getWeekNumber();
   try { await smartPut('settings', { key: 'userSettings', data: state.settings }); } catch (e) {}
-  console.log(`[Deload] Anchored to week ${state.settings.deloadAnchorWeek}; next deload in ${DELOAD_BLOCK_WEEKS - 1} weeks`);
+  console.log(`[Deload] Ancla = ${state.settings.deloadAnchorDate} (${migrated ? `migrada de la semana ${legacy}` : 'lunes de esta semana'}); próximo deload la semana del ${blockWeek().deloadMonday}`);
 }
 
 // ==================== COACH V2 · OBJETIVOS ====================
@@ -1611,13 +1654,26 @@ async function pruneDecisions(max = 500) {
 }
 
 // Which calendar week (from getWeekNumber) is the next deload?
+//
+// v11.56: se deriva de `blockWeek()` — el `deloadMonday` del bloque en curso traducido a
+// número de semana de app — en vez de repetir el modulo con el ancla vieja. Dos aritméticas
+// para el mismo concepto es cómo la etiqueta ("deload en 2 semanas") acaba contradiciendo al
+// recorte de series que sí ocurre.
 function nextDeloadWeek() {
-  const anchor = deloadAnchorWeek();
-  if (!anchor) return null;
-  const wk = getWeekNumber();
-  let w = anchor + DELOAD_BLOCK_WEEKS - 1;
-  while (w < wk) w += DELOAD_BLOCK_WEEKS;
-  return w;
+  const blk = blockWeek();
+  if (!blk.deloadMonday) return null;
+  return _appWeekNumFor(blk.deloadMonday);
+}
+
+// Número de semana de app de una fecha 'YYYY-MM-DD' (inverso de `getWeekNumber()`, que sólo
+// sabe de hoy). Redondeo, no truncado: entre dos fechas locales un cambio de horario mete una
+// hora de diferencia y `Math.floor` restaría un día entero.
+function _appWeekNumFor(ds) {
+  const start = state.settings && state.settings.startDate;
+  if (!start || !ds) return null;
+  const days = Math.round((Date.parse(ds + 'T00:00:00') - Date.parse(start + 'T00:00:00')) / 86400000);
+  if (!isFinite(days)) return null;
+  return Math.max(1, Math.floor(days / 7) + 1);
 }
 
 function getWeekDates() {
@@ -5470,6 +5526,9 @@ async function intervalsIcuSync(opts = {}) {
       pulled++;
     }
 
+    // v11.56: la importación puede traer el cardio de ayer; la progresión lee "días sin cardio".
+    if (pulled + pulledSessions > 0) state._lastCardioDate = null;
+
     if (!opts.skipCursor) localStorage.setItem('intervalsicu_last_sync', String(Date.now()));
 
     // Diagnostics. A silent discard is what let this go unnoticed for months; now every
@@ -5972,6 +6031,7 @@ async function logZ2Finisher(minutes) {
     budgetWeight: meta.budgetWeight != null ? meta.budgetWeight : 0.5,
     notes: '', source: 'manual', origin: 'z2_finisher', week: getWeekNumber(),
   });
+  state._lastCardioDate = null;   // v11.56: el finisher cuenta como cardio para la progresión
   toast(`Z2 ${mins}' registrado`);
   try { renderTodaysPlan(); } catch (e) {}
   try { renderSessionHistory(); } catch (e) {}
@@ -6985,10 +7045,18 @@ async function renderRunPlanBanner() {
 
   if (planned && planned.type === 'run') {
     const hr = planned.hrTarget ? `FC ${planned.hrTarget}` : cardioIntensityGuide(planned.subtype);
-    const badge = [planned.durationMin ? `${planned.durationMin} min` : '', planned.subtitle, hr].filter(Boolean).join(' · ');
+    // v11.56: los minutos ya vienen progresados por la semana del bloque; el badge dice de dónde
+    // salen. `_cardioDurLabel` mete un <span>, y el badge es texto plano, así que se compone aparte.
+    const durTxt = planned.durationMin
+      ? `${planned.durationMin} min` + ((planned.durationSource === 'rule' && planned.baseMin && planned.baseMin !== planned.durationMin && planned.block && planned.block.index)
+          ? ` (${planned.baseMin}' base · semana ${planned.block.index})`
+          : (planned.durationSource === 'coach' ? ' (coach)' : ''))
+      : '';
+    const badge = [durTxt, planned.subtitle, hr].filter(Boolean).join(' · ');
     banner.innerHTML = `
       <div class="rpb-title">Hoy: ${planned.name}</div>
       <div class="rpb-detail">${planned.summary || planned.subtitle}</div>
+      ${_blockEyebrowHtml(planned.block)}
       <span class="rpb-badge">${badge}</span>
       <button class="btn-secondary btn-full" id="rpb-push-icu" style="margin-top:10px;text-align:center">Enviar a intervals.icu</button>
     `;
@@ -7028,6 +7096,7 @@ async function logRun() {
   };
 
   await smartPut('runs', run);
+  state._lastCardioDate = null;   // v11.56: la progresión de cardio lee "días sin cardio"
 
   document.getElementById('run-distance').value = '';
   document.getElementById('run-duration').value = '';
@@ -7119,6 +7188,7 @@ async function logCardio() {
     notes, source: 'manual', week: getWeekNumber(),
   };
   await smartPut('sessions', rec);
+  state._lastCardioDate = null;   // v11.56: invalida la caché de "días sin cardio"
 
   document.getElementById('cardio-duration').value = '';
   document.getElementById('cardio-distance').value = '';
@@ -7915,6 +7985,57 @@ async function t3LogAlternative(i) {
 }
 
 // Resolve today's planned session from the CURRENT plan (T4 will swap the source).
+// ---- Progresión de cardio: cuánto tiempo hace del último cardio (v11.56) ----
+//
+// `progressCardioMin` no progresa tras >14 días sin cardio: volver de una pausa con un 33 %
+// más de volumen es cómo se llega a una lesión. Esto le da el dato.
+//
+// Cuenta como cardio cualquier carrera y cualquier sesión de familia `cardio` — el Z2 finisher
+// incluido (`origin: 'z2_finisher'`): son minutos aeróbicos reales, y excluirlos haría creer
+// que hay una pausa en semanas de 4 días de fuerza con finisher.
+//
+// Lecturas DEDUPEADAS: la misma actividad llega por Strava y por intervals.icu con ids
+// distintos (v11.36). Aquí sólo importa la fecha más reciente, así que el duplicado no
+// cambiaría el resultado — pero usar la vista dedupeada es la regla de la casa y evita que
+// esto se convierta en el único sitio que cuenta doble.
+//
+// Caché de 60 s en `state._lastCardioDate` porque `renderWeekCalendar` y `renderHomeQueue`
+// llaman a `getPlannedSessionForDate` 7 veces seguidas. Se invalida al registrar cardio
+// (`logRun`/`logCardio`/`logZ2Finisher`) y al importar (`intervalsIcuSync`): sin eso, el
+// finisher que acabás de registrar tardaría un minuto en contar.
+async function _cardioDatesDesc() {
+  const now = Date.now();
+  const c = state._lastCardioDate;
+  if (c && (now - c.ts) < 60000) return c.dates;
+  const [runs, sessions] = await Promise.all([
+    (typeof getRunsDeduped === 'function' ? getRunsDeduped() : dbGetAll('runs')).catch(() => []),
+    (typeof getSessionsDeduped === 'function' ? getSessionsDeduped() : dbGetAll('sessions')).catch(() => []),
+  ]);
+  const dates = [];
+  for (const r of (runs || [])) if (r && r.date) dates.push(r.date);
+  for (const s of (sessions || [])) if (s && s.date && s.family === 'cardio') dates.push(s.date);
+  dates.sort().reverse();
+  state._lastCardioDate = { dates, ts: now };
+  return dates;
+}
+
+// Días desde el último cardio registrado EN O ANTES de `ds`. null = nunca (no se inventa).
+async function lastCardioDaysAgo(ds) {
+  let dates = [];
+  try { dates = await _cardioDatesDesc(); } catch (e) { return null; }
+  const last = dates.find(d => d <= ds);
+  if (!last) return null;
+  return Math.round((Date.parse(ds + 'T12:00:00') - Date.parse(last + 'T12:00:00')) / 86400000);
+}
+
+// Minutos del coach para un día de la semana, si la versión activa del plan los trae (esquema
+// v2, incremento 9). Prioridad coach > regla > base (plan §Principios 3).
+function _coachCardioMin(jsDay, field) {
+  const c = activePlan && activePlan.weekTemplate && activePlan.weekTemplate[jsDay] && activePlan.weekTemplate[jsDay].cardio;
+  const v = c ? c[field] : null;
+  return (v != null && isFinite(Number(v))) ? Number(v) : null;
+}
+
 async function getPlannedSessionForDate(date) {
   const ds = dateStr(date);
   const jsDay = date.getDay();
@@ -7922,23 +8043,62 @@ async function getPlannedSessionForDate(date) {
   try { customSchedule = await getWeekSchedule(); } catch (e) {}
   const slot = (activeWeekTemplate && activeWeekTemplate[jsDay]) || { type: 'rest' };
   const sessionId = getPlannedSession(jsDay, customSchedule, ds); // gym id or null
+  // La semana del bloque viaja con la sesión planificada: la pantalla, el push a COROS y el
+  // registro leen el mismo `block` que decidió los minutos.
+  const blk = blockWeek(date);
+  const variant = (typeof _idealVariant === 'function') ? _idealVariant() : null;
+  const prog = async (baseMin, coachMin) => {
+    if (typeof progressCardioMin !== 'function') return { min: baseMin || null, source: 'base', note: null };
+    if (!baseMin && coachMin == null) return { min: null, source: 'base', note: null };
+    return progressCardioMin(baseMin, blk, { variant, lastCardioDaysAgo: await lastCardioDaysAgo(ds), coachMin });
+  };
   if (sessionId) {
     const s = (activePlan && activePlan.sessions) ? activePlan.sessions[sessionId] : null;
     // Z2 finisher only applies when the day comes from the template (not a manual override).
-    const z2 = (slot.type === 'gym' && customSchedule[ds] === undefined) ? (slot.z2FinisherMin || null) : null;
+    const z2Base = (slot.type === 'gym' && customSchedule[ds] === undefined) ? (slot.z2FinisherMin || null) : null;
+    const z2 = await prog(z2Base, z2Base ? _coachCardioMin(jsDay, 'z2FinisherMin') : null);
     const exs = s ? resolveSessionExercises(sessionId, s.exercises) : [];
-    return { type: 'gym', date: ds, sessionId, name: s ? s.name : sessionId, subtitle: s ? s.subtitle : '', exercises: exs || [], z2FinisherMin: z2 };
+    return { type: 'gym', date: ds, sessionId, name: s ? s.name : sessionId, subtitle: s ? s.subtitle : '', exercises: exs || [], z2FinisherMin: z2.min, z2BaseMin: z2Base, z2Source: z2.source, z2Note: z2.note, block: blk };
   }
   if (customSchedule[ds] === undefined) {
     if (slot.type === 'run') { // cardio day (internal type stays 'run' for compatibility)
       const st = slot.subtype || 'zone2';
-      return { type: 'run', date: ds, name: slot.label || 'Cardio Z2', subtitle: cardioSubtypeLabel(st), subtype: st, durationMin: slot.durationMin || null, summary: slot.summary || null, hrTarget: cardioHrTarget(st) };
+      const base = slot.durationMin || null;
+      const p = await prog(base, _coachCardioMin(jsDay, 'durationMin'));
+      return { type: 'run', date: ds, name: slot.label || 'Cardio Z2', subtitle: cardioSubtypeLabel(st), subtype: st, durationMin: p.min, baseMin: base, durationSource: p.source, durationNote: p.note, block: blk, summary: slot.summary || null, hrTarget: cardioHrTarget(st) };
     }
     if (slot.type === 'recovery') {
-      return { type: 'recovery', date: ds, name: slot.label || 'Recuperación activa', subtitle: 'Movilidad + Z2 suave', z2FinisherMin: slot.z2FinisherMin || null };
+      const rBase = slot.z2FinisherMin || null;
+      const r = await prog(rBase, rBase ? _coachCardioMin(jsDay, 'z2FinisherMin') : null);
+      return { type: 'recovery', date: ds, name: slot.label || 'Recuperación activa', subtitle: 'Movilidad + Z2 suave', z2FinisherMin: r.min, z2BaseMin: rBase, z2Source: r.source, z2Note: r.note, block: blk };
     }
   }
-  return { type: 'rest', date: ds, name: 'Rest' };
+  return { type: 'rest', date: ds, name: 'Rest', block: blk };
+}
+
+// ---- Cómo se cuenta la semana del bloque en pantalla (v11.56) ----
+//
+// El número que se hace y de dónde sale, en la misma línea. Sin esto, el cardio subiría de
+// 40' a 50' sin que nada lo explique — y un cambio que no se entiende se lee como un bug.
+// "48 min (40' base · semana 3/5)" · "45 min (coach)" · "40 min" cuando no hay progresión.
+function _cardioDurLabel(min, baseMin, source, blk) {
+  if (min == null) return '—';
+  if (source === 'coach') return `${min} min <span class="rx-dur-src">(coach)</span>`;
+  if (source === 'rule' && baseMin && baseMin !== min && blk && blk.index) {
+    return `${min} min <span class="rx-dur-src">(${baseMin}' base · semana ${blk.index}/${DELOAD_BLOCK_WEEKS})</span>`;
+  }
+  return `${min} min`;
+}
+
+// "Semana 3/5 · build" — cadena vacía si no hay ancla (no se inventa una semana de bloque).
+function _blockEyebrow(blk) {
+  if (!blk || !blk.index) return '';
+  return `Semana ${blk.index}/${DELOAD_BLOCK_WEEKS} · ${blk.label}`;
+}
+
+function _blockEyebrowHtml(blk) {
+  const t = _blockEyebrow(blk);
+  return t ? `<div class="plan-block-eyebrow">${t}</div>` : '';
 }
 
 // Spanish label for a cardio subtype (used in planned-session cards).
@@ -8411,7 +8571,7 @@ async function setIdealVariant(n) {
     await clearFutureScheduleOverrides();
   }
   try { await renderHomeView(); } catch (e) {}
-  try { renderIdealPreview(); } catch (e) {}
+  try { await renderIdealPreview(); } catch (e) {}
   if (changed) {
     const lbl = (IDEAL_BLOCK_V1.variants[n] && IDEAL_BLOCK_V1.variants[n].label) || `${n} días`;
     toast(`Plan: ${lbl} — días pasados intactos`);
@@ -8440,21 +8600,56 @@ function _currentWeekLabel(dow) {
 }
 
 // Per-day guidance text for the ideal week (full session + quick-mode + Z2 finisher).
-function _idealDayGuide(d) {
-  if (d.kind === 'strength') return `Sesión completa 60-75' (quick-mode 40-45')${d.z2Finisher ? ` · +${d.z2Finisher}' Z2 al final` : ''}`;
-  if (d.kind === 'cardio') return `${d.durationMin || 35}' ${d.subtype === 'long_easy' ? 'calidad' : 'fácil'}`;
-  if (d.kind === 'recovery') return `Movilidad + core${d.z2Finisher ? ` · Z2 suave ${d.z2Finisher}'` : ''}`;
+// `prog` (v11.56) = los minutos ya progresados por la semana del bloque, cuando difieren de la
+// base. La base se sigue mostrando: el plan es el dato, la progresión es una función sobre él, y
+// esconder la base haría creer que alguien editó `IDEAL_BLOCK_V1`.
+function _idealDayGuide(d, prog) {
+  const upd = (base) => (prog != null && base && prog !== base) ? ` → <b>${prog}'</b> esta semana` : '';
+  if (d.kind === 'strength') return `Sesión completa 60-75' (quick-mode 40-45')${d.z2Finisher ? ` · +${d.z2Finisher}' Z2 al final${upd(d.z2Finisher)}` : ''}`;
+  if (d.kind === 'cardio') return `${d.durationMin || 35}' ${d.subtype === 'long_easy' ? 'calidad' : 'fácil'}${upd(d.durationMin)}`;
+  if (d.kind === 'recovery') return `Movilidad + core${d.z2Finisher ? ` · Z2 suave ${d.z2Finisher}'${upd(d.z2Finisher)}` : ''}`;
   return '';
 }
 
+// 'YYYY-MM-DD' + n días, en UTC (las fechas del bloque salen del motor, que trabaja en UTC).
+function _plusDaysStr(ds, n) {
+  if (!ds) return null;
+  const t = Date.parse(ds + 'T00:00:00Z');
+  if (!isFinite(t)) return null;
+  return new Date(t + n * 86400000).toISOString().slice(0, 10);
+}
+
+// dd-mmm en español, para las fechas del bloque ("del 7-sep al 13-sep").
+function _shortEsDate(ds) {
+  if (!ds) return '—';
+  const M = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+  const d = new Date(ds + 'T12:00:00');
+  return `${d.getDate()}-${M[d.getMonth()]}`;
+}
+
 // Render the Ideal Plan view (the LIVE plan). Day-count selector regenerates it.
-function renderIdealPreview() {
+async function renderIdealPreview() {
   const host = document.getElementById('ideal-preview-body');
   if (!host) return;
   const v = _idealVariant();
   const variant = IDEAL_BLOCK_V1.variants[v] || IDEAL_BLOCK_V1.variants[6];
   const byDow = {};
   variant.days.forEach(d => { byDow[d.dow] = d; });
+
+  // v11.56: dónde estás dentro del bloque de 5 semanas, y qué minutos toca ESTA semana.
+  // Hasta ahora el preview mostraba la semana ideal como si las 5 fueran idénticas — que es
+  // exactamente lo que eran (audit Change 11).
+  const blk = blockWeek();
+  const daysAgo = await lastCardioDaysAgo(today()).catch(() => null);
+  const progFor = (d) => {
+    if (typeof progressCardioMin !== 'function') return null;
+    const base = d.kind === 'cardio' ? (d.durationMin || null) : (d.z2Finisher || null);
+    if (!base) return null;
+    return progressCardioMin(base, blk, { variant: v, lastCardioDaysAgo: daysAgo, coachMin: null }).min;
+  };
+  const blockLine = blk.index
+    ? `Semana <b>${blk.index}/${DELOAD_BLOCK_WEEKS}</b> · ${blk.label} · bloque del ${_shortEsDate(blk.blockStartMonday)} al ${_shortEsDate(_plusDaysStr(blk.blockStartMonday, 6))} · deload la semana del ${_shortEsDate(blk.deloadMonday)}`
+    : 'Sin ancla de bloque todavía — el cardio repite la duración base.';
 
   const variantToggle = [0, 3, 4, 5, 6].map(n => {
     const lab = n === 0 ? 'Viaje' : n === 6 ? 'Ideal' : `${n}d`;
@@ -8471,7 +8666,7 @@ function renderIdealPreview() {
       <div class="ip-day-main">
         <div class="ip-day-title">${d.title} <span class="ip-level" style="color:${tone};background:${tone}1a">${lvl}</span></div>
         <div class="ip-day-why">${d.why}${d.summary ? ` · ${d.summary}` : ''}</div>
-        <div class="ip-day-dur">${_idealDayGuide(d)}</div>
+        <div class="ip-day-dur">${_idealDayGuide(d, progFor(d))}</div>
         ${altArr.length ? `<div class="ip-day-alt">Alt: ${altArr.join(' · ')}</div>` : ''}
       </div></div>`;
   }).join('');
@@ -8487,6 +8682,7 @@ function renderIdealPreview() {
       <div class="ip-goal-sub"><b>Cardio:</b> ${IDEAL_BLOCK_V1.runningArc}</div>
     </div>
     <div class="ip-toggles"><div class="ip-tog-group">${variantToggle}</div></div>
+    <div class="ip-block card"><div class="plan-block-eyebrow">Bloque</div><div class="ip-block-line">${blockLine}</div></div>
     <div class="ip-note">${variant.note}</div>
     <div class="section-label" style="margin-top:10px">Semana</div>
     <div class="ip-week">${idealRows}</div>
@@ -8502,7 +8698,7 @@ function renderIdealPreview() {
 
 function openIdealPreview() {
   showView('ideal-preview');
-  renderIdealPreview();
+  renderIdealPreview().catch(e => console.warn('[Ideal] preview:', e));
 }
 
 // ==================== ANALÍTICA DE SANGRE (v11.43) ====================
@@ -9016,7 +9212,8 @@ async function renderTodaysPlan() {
     const sub = (planned.subtitle || 'Zona 2 · fácil') + (planned.durationMin ? ` · ${planned.durationMin}'` : '');
     const hrLine = planned.hrTarget ? `FC objetivo: <b>${planned.hrTarget}</b>` : cardioIntensityGuide(planned.subtype);
     const rxRows = [
-      planned.durationMin ? `<div class="cardio-rx-row"><span>Duración</span><b>${planned.durationMin} min</b></div>` : '',
+      _blockEyebrowHtml(planned.block),
+      planned.durationMin ? `<div class="cardio-rx-row"><span>Duración</span><b>${_cardioDurLabel(planned.durationMin, planned.baseMin, planned.durationSource, planned.block)}</b></div>` : '',
       `<div class="cardio-rx-row"><span>Intensidad</span><b>${hrLine}</b></div>`,
       planned.summary ? `<div class="cardio-rx-row"><span>Qué hacer</span><b>${planned.summary}</b></div>` : '',
     ].join('');
@@ -9055,7 +9252,8 @@ async function renderTodaysPlan() {
     const rBlock = rMin ? `
       <div class="cardio-rx card">
         <div class="rx-sub">Z2 suave ${rDone ? '<span class="rx-done">✓ hecho</span>' : ''}</div>
-        <div class="cardio-rx-row"><span>Duración</span><b>${rMin} min</b></div>
+        ${_blockEyebrowHtml(planned.block)}
+        <div class="cardio-rx-row"><span>Duración</span><b>${_cardioDurLabel(rMin, planned.z2BaseMin, planned.z2Source, planned.block)}</b></div>
         <div class="cardio-rx-row"><span>Intensidad</span><b>${rHr ? `FC ${rHr}` : cardioIntensityGuide('zone2')}</b></div>
         <div class="cardio-rx-row"><span>Qué hacer</span><b>Caminata, bici suave o remo fácil</b></div>
         <div class="cardio-rx-actions">
@@ -9113,6 +9311,8 @@ async function renderTodaysPlan() {
     if (planSets) parts.push(`${planSets} sets`);
     parts.push('60-75 min');
     if (planned.z2FinisherMin) parts.push(`+${planned.z2FinisherMin}' Z2`);
+    const blkTxt = _blockEyebrow(planned.block);
+    if (blkTxt) parts.push(blkTxt);
     eyebrow = parts.join(' · ');
   }
 
@@ -9147,7 +9347,8 @@ async function renderTodaysPlan() {
     const intensity = hr ? `FC ${hr}` : cardioIntensityGuide('zone2');
     z2Block = `
       <div class="rx-sub">Al terminar · Z2 fácil ${z2Done ? '<span class="rx-done">✓ hecho</span>' : ''}</div>
-      <div class="cardio-rx-row"><span>Duración</span><b>${z2Min} min</b></div>
+      ${_blockEyebrowHtml(planned.block)}
+      <div class="cardio-rx-row"><span>Duración</span><b>${_cardioDurLabel(z2Min, planned.z2BaseMin, planned.z2Source, planned.block)}</b></div>
       <div class="cardio-rx-row"><span>Intensidad</span><b>${intensity}</b></div>
       <div class="cardio-rx-row"><span>Qué hacer</span><b>Bici, remo o cinta — conversacional</b></div>
       <div class="cardio-rx-actions">

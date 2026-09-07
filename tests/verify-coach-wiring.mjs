@@ -1,4 +1,5 @@
-// Coach v2 — parte 0: los cimientos de datos (incremento 1, v11.55).
+// Coach v2 — parte 0: los cimientos de datos (incremento 1, v11.55) + el cableado del
+// bloque y la progresión de cardio (incremento 2, v11.56).
 //
 // EL FALLO QUE ESTE TEST EXISTE PARA IMPEDIR. La app no tiene bundler: los módulos se
 // hablan por globals sueltos y por el orden de los `<script>` de index.html. Cada pieza de
@@ -23,6 +24,15 @@
 //   · `isoWeekKey` en hora local: en la frontera domingo/lunes y en los cambios de horario
 //     la semana se desplaza y el objetivo del coach se declara vencido un día antes. El
 //     proyecto ya pagó una migración por fechas (tz_date_migration_v2).
+//
+// Incremento 2 (v11.56) añade dos formas más de romperse en silencio:
+//
+//   · `isDeloadWeek` con su propio modulo Y `blockWeek()` calculando lo mismo desde una fecha:
+//     dos aritméticas del mismo concepto se desincronizan, y la etiqueta ("deload en 2
+//     semanas") acaba contradiciendo al recorte de series que sí ocurre.
+//   · `getPlannedSessionForDate` sin llamar a `progressCardioMin`: el motor existe, sus tests
+//     pasan (`verify-block-week.mjs`) y la pantalla sigue mostrando 40' para siempre. El motor
+//     que nadie llama es peor que el motor que no existe: parece hecho.
 //
 // Ejecutar desde la raíz del repo: node tests/verify-coach-wiring.mjs
 
@@ -57,7 +67,11 @@ const vHtml = (HTML.match(/Training System v(\d+\.\d+)/) || [])[1];
 const vSw = (SW.match(/CACHE_NAME = 'training-v(\d+\.\d+)'/) || [])[1];
 yes(!!vHtml, `index.html declara la versión (v${vHtml})`);
 eq(vSw, vHtml, 'CACHE_NAME del service worker == versión de index.html');
-eq(vHtml, '11.55', 'la versión de este incremento es v11.55');
+// Agnóstico de versión a propósito: lo que importa es que las DOS suban juntas (el fallo más
+// repetido del proyecto es subir una y no la otra) y que nunca bajen por debajo del incremento
+// que introdujo estos cimientos. Fijar el número exacto obliga a editar el test en cada push.
+const vNum = (v) => { const [a, b] = String(v).split('.').map(Number); return a * 1000 + b; };
+yes(vNum(vHtml) >= vNum('11.55'), `la versión (v${vHtml}) es >= v11.55 (nunca retrocede)`);
 
 // ── 2. Los dos stores nuevos ────────────────────────────────────────────────────────
 console.log('');
@@ -147,6 +161,71 @@ if (!E || !E.isoWeekKey) {
   process.exit(1);
 }
 
+// ── 6.b. Incremento 2: una sola aritmética de bloque, cardio progresado ─────────────
+//
+// `isDeloadWeek` tenía su propio modulo sobre `deloadAnchorWeek`. Con `blockWeek()` al lado
+// haciendo lo mismo desde una fecha, dos aritméticas para el mismo concepto se desincronizan:
+// la etiqueta diría "deload en 2 semanas" mientras el recorte de series ocurre en otra.
+console.log('');
+console.log('6.b Bloque por fecha y progresión de cardio (v11.56)');
+yes(!!E && typeof E.blockWeekFromDates === 'function', 'coach-engine exporta blockWeekFromDates()');
+yes(!!E && typeof E.progressCardioMin === 'function', 'coach-engine exporta progressCardioMin()');
+yes(!!E && typeof E.mondayOf === 'function', 'coach-engine exporta mondayOf()');
+yes(!!E && typeof E.anchorDateFromWeek === 'function', 'coach-engine exporta anchorDateFromWeek()');
+
+// Cuerpo de una función tope de app.js: desde su declaración hasta el primer `}` en columna 0.
+const fnSrc = (decl) => {
+  const i = APP.indexOf(decl);
+  if (i < 0) return '';
+  const j = APP.indexOf('\n}', i);
+  return APP.slice(i, j < 0 ? APP.length : j);
+};
+
+const IDW_SRC = fnSrc('function isDeloadWeek(');
+yes(!!IDW_SRC, 'se localiza isDeloadWeek()');
+yes(/blockWeek\(/.test(IDW_SRC), 'isDeloadWeek() delega en blockWeek( — una sola aritmética');
+yes(!/% DELOAD_BLOCK_WEEKS/.test(IDW_SRC),
+  'y ya NO calcula su propio modulo (% DELOAD_BLOCK_WEEKS fuera de isDeloadWeek)');
+const BW_SRC = fnSrc('function blockWeek(');
+yes(!!BW_SRC, 'blockWeek() existe en app.js (wrapper del motor puro)');
+yes(/blockWeekFromDates\(/.test(BW_SRC), 'blockWeek() llama blockWeekFromDates( del motor');
+yes(/deloadAnchorDate/.test(BW_SRC), 'y lee settings.deloadAnchorDate (ancla por fecha, F-13)');
+const NDW_SRC = fnSrc('function nextDeloadWeek(');
+yes(/blockWeek\(\)/.test(NDW_SRC), 'nextDeloadWeek() también se deriva de blockWeek()');
+
+const EDA_SRC = fnSrc('async function ensureDeloadAnchor()');
+yes(/state\.settings\.deloadAnchorDate =/.test(EDA_SRC), 'ensureDeloadAnchor() escribe deloadAnchorDate');
+yes(/anchorDateFromWeek\(/.test(EDA_SRC), 'y migra desde deloadAnchorWeek con anchorDateFromWeek(');
+yes(/smartPut\('settings', \{ key: 'userSettings'/.test(EDA_SRC),
+  'persiste con smartPut en userSettings (la misma ruta que ensureGoals)');
+yes(/function deloadAnchorWeek\(/.test(APP),
+  'deloadAnchorWeek() sigue existiendo (no se borra: código viejo y backups lo leen)');
+
+const GP_SRC = fnSrc('async function getPlannedSessionForDate(');
+yes(/progressCardioMin\(/.test(GP_SRC), 'getPlannedSessionForDate() llama progressCardioMin(');
+yes(/blockWeek\(date\)/.test(GP_SRC), 'y sitúa la fecha en el bloque con blockWeek(date)');
+for (const f of ['durationSource', 'baseMin', 'block:', 'z2Source']) {
+  yes(GP_SRC.includes(f), `devuelve ${f} (la UI necesita saber de dónde salen los minutos)`);
+}
+yes(/lastCardioDaysAgo\(/.test(GP_SRC), 'pasa lastCardioDaysAgo( (no se progresa tras una pausa)');
+
+// La invalidación de la caché: sin ella el cardio recién registrado tarda un minuto en contar.
+for (const fn of ['async function logRun(', 'async function logCardio(', 'async function logZ2Finisher(', 'async function intervalsIcuSync(']) {
+  yes(/state\._lastCardioDate = null/.test(fnSrc(fn)), `${fn.replace('async function ', '')}) invalida state._lastCardioDate`);
+}
+// Los consumidores leen los minutos YA progresados, nunca IDEAL_BLOCK_V1 directamente.
+for (const fn of ['function _generateCardioDsl(', 'async function pushCardioToIntervalsIcu(', 'async function pushZ2FinisherToIntervalsIcu(', 'async function logZ2Finisher(']) {
+  yes(!/IDEAL_BLOCK_V1/.test(fnSrc(fn)),
+    `${fn.replace(/^(async )?function /, '')}) no lee IDEAL_BLOCK_V1 (usa la duración progresada que le llega)`);
+}
+// Los renderers muestran de dónde salen los minutos (el "48' (40' base · semana 3/5)").
+yes(/function _cardioDurLabel\(/.test(APP), '_cardioDurLabel() existe (número + procedencia en la misma línea)');
+yes(/function _blockEyebrow\(/.test(APP), '_blockEyebrow() existe ("Semana 3/5 · build")');
+yes(/_cardioDurLabel\(/.test(fnSrc('async function renderTodaysPlan(')),
+  'renderTodaysPlan() usa _cardioDurLabel(');
+yes(/plan-block-eyebrow/.test(readFileSync('app/style.css', 'utf8')),
+  '.plan-block-eyebrow existe en style.css');
+
 // ── 7. isoWeekKey en UTC ────────────────────────────────────────────────────────────
 // Semana ISO: empieza en lunes, la semana 1 es la que contiene el 4 de enero. 2026 tiene 53.
 console.log('');
@@ -183,6 +262,6 @@ eq(G.version, 1, 'version 1');
 
 console.log('');
 console.log(failed === 0
-  ? '✅ Cimientos de Coach v2 cableados: módulo, stores, sync, meta del plan y decisiones.'
+  ? '✅ Coach v2 cableado: módulo, stores, sync, meta del plan, decisiones y bloque + cardio.'
   : `❌ ${failed} comprobación(es) fallaron.`);
 process.exit(failed === 0 ? 0 : 1);

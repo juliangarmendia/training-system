@@ -129,6 +129,12 @@ body::before {
 .ip-tog { font-size: 12px; font-weight: 600; padding: 6px 10px; border-radius: 16px; border: 1px solid var(--border); background: var(--surface); color: var(--text2); }
 .ip-tog.active { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); }
 .ip-note { font-size: 12px; color: var(--text2); margin-bottom: 6px; }
+/* v11.56 — semana del bloque. La misma clase sirve en Home (tarjeta de hoy, banner de Cardio)
+   y en el preview del ideal, así que el "Semana 3/5 · build" se lee igual en los tres sitios. */
+.plan-block-eyebrow { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.18em; color: var(--text3); margin-bottom: 6px; }
+.ip-block { margin-bottom: 8px; }
+.ip-block-line { font-size: 12px; color: var(--text2); }
+.rx-dur-src { font-weight: 500; font-size: 11px; color: var(--text3); }
 .ip-budget { font-size: 13px; margin-bottom: 4px; }
 .ip-week { display: flex; flex-direction: column; gap: 6px; }
 .ip-day { display: flex; gap: 10px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; }

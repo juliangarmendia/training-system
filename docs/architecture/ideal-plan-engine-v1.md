@@ -301,6 +301,75 @@ Julian rechazó el `fullA` de v11.37: cuatro compuestos de barra seguidos. Tení
   Sigue abierto en [`../pendientes.md`](../pendientes.md) punto 3b, con carga real medida ahora que
   entra el cardio de Concept2 y Wattbike.
 
+## v11.56 — Semana del bloque explícita y cardio que progresa (2026-09-07)
+
+`IDEAL_BLOCK_V1.weeks = 5` declaraba "4 build + 1 deload" desde junio, pero **sólo el deload
+existía**: `isDeloadWeek()` era lo único que sabía contar semanas, y las cuatro de carga eran
+idénticas. El `durationMin` del cardio llevaba constante en 40'/50' (y el finisher en 20')
+desde entonces, así que END-003 —subir el volumen aeróbico con el bloque— no estaba
+implementado en ningún sitio. Auditoría del 2026-09-05, Change 11 (F-0).
+
+**Qué cambió**
+
+- **`app/coach-engine.js` (motor puro, testeado):** `blockWeekFromDates(fecha, anclaLunes, 5)`
+  → `{ index 1..5, isDeload, weeksIntoBlock, label, blockStartMonday, deloadMonday }`, más
+  `mondayOf`, `anchorDateFromWeek` y `progressCardioMin(base, block, {variant,
+  lastCardioDaysAgo, coachMin})` → `{ min, source: 'coach'|'rule'|'base', note }`.
+- **Una sola aritmética.** `isDeloadWeek(weekNum)` conserva su firma (unos 8 llamadores) pero
+  ahora **delega** en `blockWeek(fecha)`, que llama al motor. `nextDeloadWeek()` se deriva del
+  `deloadMonday` del bloque en curso. Dos aritméticas del mismo concepto es cómo la etiqueta
+  ("deload en 2 semanas") acaba contradiciendo al recorte de series que sí ocurre.
+- **`getPlannedSessionForDate`** devuelve la duración **ya progresada** más `baseMin`,
+  `durationSource` y `block` (y `z2BaseMin`/`z2Source` en los días de fuerza y recuperación).
+  Todos los consumidores —tarjeta de Hoy, banner de Cardio, calendario y cola de la semana, el
+  push a intervals.icu/COROS, el registro del Z2 finisher— leen ese número sin cambiar de
+  firma. La duración **base sigue viviendo en `IDEAL_BLOCK_V1`**: la progresión es una función
+  sobre el dato, no una edición del dato.
+- **UI:** "Semana 3/5 · build" (o "· deload") en la tarjeta de Hoy, en el bloque del Z2
+  finisher y en el banner de Cardio; la fila de duración dice `48 min (40' base · semana 3/5)`
+  o `45 min (coach)`; el preview del ideal añade las fechas del bloque y del deload, y marca
+  los minutos de esta semana junto a la base.
+
+**El 10 %/semana es una heurística prudente, no un hallazgo.** Buist 2008 (n=532) comparó
+rampas del 10,5 % y del 23,7 % semanal y **no encontró diferencia** en lesiones. El 10 % no
+está aquí porque el 20 % lesione: está porque el techo real de esta persona no se conoce y una
+rampa lenta cuesta poco. END-003 está graduada `expert` en `research/evidence-to-rules.md` y se
+declara como tal. Del mismo tipo es el techo ×1,35, que impide que un bloque más largo
+convierta 40' en 115'. Escala real (paso 5' si la base ≥30', 2' si es un finisher corto):
+40 → 40/45/50/55 y **30** en deload · 50 → 50/55/60/65 y **35** · 20 → 20/22/24/26 y **14**.
+
+**La intensidad nunca progresa (END-002).** `progressCardioMin` devuelve minutos y nada más:
+ni zona, ni FC objetivo, ni ritmo. La base aeróbica se construye con volumen fácil; subir la
+intensidad con el bloque la convertiría en otra cosa. `verify-block-week.mjs` fija la forma del
+retorno (`{min, note, source}`) para que no se cuele un cuarto campo.
+
+**Cuándo NO progresa** (y devuelve la base, con nota): variante 0 (viaje), sin ancla de bloque,
+sin cardio registrado nunca, o más de 14 días sin cardio. Volver de una pausa con un 33 % más
+de volumen que el último día que se entrenó es cómo se llega a una lesión, y progresar sin
+historial es prescribir a ciegas. El objetivo del coach (`activePlan.weekTemplate[dow].cardio`)
+manda sobre todo lo anterior: si lo fijó, ya conocía el contexto.
+
+**Migración del ancla (audit Change 10a / F-13).** El ancla pasa de `deloadAnchorWeek` (un
+número de `getWeekNumber()`, o sea "semanas desde `settings.startDate`") a
+`settings.deloadAnchorDate` (un **lunes ISO**). El motivo: `startDate` se edita en Ajustes, y
+moverla un día que cruzara el lunes desplazaba `weekNum` en 1 → **el deload cambiaba de semana
+sin aviso**, y con él el recorte del 50 % de series. `ensureDeloadAnchor()` migra en el primer
+arranque: `startDate + (anchorWeek − 1) × 7 días`, normalizado al lunes ISO de esa semana. Si
+`startDate` no es lunes, el deload puede quedar desplazado hasta 6 días respecto a la
+numeración vieja — a cambio, deja de moverse solo. Sin ancla previa, se pone el lunes de la
+semana en curso, así el primer deload queda 4 semanas fuera y se ve venir. `deloadAnchorWeek`
+se conserva en `settings` (código viejo y backups ya exportados lo leen) pero **ninguna
+decisión sale de él**. Toda la aritmética va en UTC, como `isoWeekKey`: en local, un cambio de
+horario mueve la frontera domingo/lunes y con ella la semana del bloque entera.
+
+**Sin cambios:** los valores de `IDEAL_BLOCK_V1.durationMin`/`z2Finisher`, `DELOAD_BLOCK_WEEKS`,
+el recorte del 50 % de series en deload y `startWorkout`.
+
+**Tests:** `tests/verify-block-week.mjs` (nuevo: índice del bloque, escalas, techo, las cuatro
+puertas, prioridad coach y migración del ancla) y `tests/verify-coach-wiring.mjs` (parte 6.b:
+que `isDeloadWeek` ya no tenga su propio modulo, que `getPlannedSessionForDate` llame al motor
+y que la caché de "días sin cardio" se invalide al registrar).
+
 ## Roadmap
 - **T4b:** generador algorítmico (arma bloque/semana desde reglas+perfil en runtime; hoy `IDEAL_BLOCK_V1` es data).
 - **T6:** loop de adaptación semanal + periodización multi-bloque + progression/modality engines.
