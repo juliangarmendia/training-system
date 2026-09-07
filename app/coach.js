@@ -12,6 +12,7 @@
 // `verify-coach-wiring.mjs` las vigila: un módulo fuera del APP_SHELL funciona en el navegador
 // y falla sin conexión, que es justo donde se entrena (ya pasó con nutrition.js).
 //
+// v11.60 (incremento 6) trae `renderGoalsCard`, la tarjeta "Objetivos".
 // v11.57 (incremento 3) trae `renderCoachReadout`. v11.59 (incremento 5) trae
 // `renderReadinessSignals`, que sustituye al score 0-100 de la fatigue card. Los incrementos
 // siguientes añaden aquí `maybeRunWeeklyCoach`, `applyCoachProposal`, `rollbackPlanVersion`,
@@ -162,7 +163,159 @@ async function renderReadinessSignals() {
     ${lastLine}`;
 }
 
+// ==================== OBJETIVOS (Stats › Today, v11.60) ====================
+//
+// EL PROBLEMA QUE RESUELVE. La app medía muchas cosas y no respondía la única pregunta que
+// importa: **¿voy bien?**. El peso tenía gráfico y una tasa de 30 días, pero sin banda
+// objetivo, sin hito y sin ETA honesto; la carrera no tenía objetivo ninguno; y la promesa
+// central del bloque —"la fuerza se mantiene en déficit" (STR-001)— no se verificaba en
+// ninguna pantalla. Tres objetivos, tres filas, cada una con su tamaño de muestra al lado.
+//
+// SIN GRÁFICOS, a propósito: los de peso y fuerza ya existen en Stats › Body y Stats ›
+// Strength, y duplicarlos aquí sólo añadiría dos formas más de calcular lo mismo. Esta
+// tarjeta son números y estados.
+//
+// TODO EL CÁLCULO ESTÁ EN `goalProgress` (coach-engine.js, puro y con test). Aquí sólo se
+// leen los stores y se pinta. La regla de la casa: los números no se calculan en el renderer.
+//
+// VIVE EN STATS HASTA QUE EXISTA LA VISTA COACH (incremento 9), donde será la sección
+// `#coach-goals` del scroll — de ahí el id, que no cambiará al mudarse.
+
+/** Sólo pesadas MEDIDAS: los valores suavizados de intervals.icu meterían pendiente 0. */
+const GOALS_WEIGH_DAYS = 90;
+const GOALS_RUN_DAYS = 28;
+const GOALS_WORKOUT_DAYS = 56;
+
+async function renderGoalsCard() {
+  const el = document.getElementById('coach-goals');
+  if (!el) return;
+  if (typeof goalProgress !== 'function') { el.innerHTML = ''; return; }
+  try {
+    const ds = today();
+    const desde = (d) => dateStr(new Date(Date.parse(ds + 'T12:00:00') - d * 86400000));
+    const desdePeso = desde(GOALS_WEIGH_DAYS);
+    const desdeRun = desde(GOALS_RUN_DAYS);
+    const desdeWk = desde(GOALS_WORKOUT_DAYS);
+
+    const [bw, wellness, runs, workouts] = await Promise.all([
+      dbGetAll('bodyweight').catch(() => []),
+      dbGetAll('wellness').catch(() => []),
+      (typeof getRunsDeduped === 'function' ? getRunsDeduped() : dbGetAll('runs')).catch(() => []),
+      dbGetAll('workouts').catch(() => []),
+    ]);
+
+    // `measured !== false` y no `measured === true`: las filas que escribe `logBodyWeight` no
+    // llevan el campo y son pesadas reales. Las de intervals.icu sí lo llevan, y las
+    // rellenadas hacia delante llegan con `measured: false` — ésas son las que sobran.
+    const pesadas = [];
+    for (const r of (bw || [])) {
+      if (!r || !r.date || r.date < desdePeso || r.date > ds) continue;
+      if (r.measured === false || !(Number(r.weight) > 0)) continue;
+      pesadas.push({ date: r.date, kg: Number(r.weight) });
+    }
+    for (const w of (wellness || [])) {
+      if (!w || !w.date || w.date < desdePeso || w.date > ds) continue;
+      if (!(Number(w.weightMeasured) > 0)) continue;
+      pesadas.push({ date: w.date, kg: Number(w.weightMeasured) });
+    }
+
+    const runs4w = (runs || [])
+      .filter(r => r && r.date && r.date >= desdeRun && r.date <= ds)
+      .map(r => ({
+        date: r.date, km: Number(r.distance) || 0, min: Number(r.duration) || null,
+        avgHR: r.avgHR != null ? Number(r.avgHR) : null,
+        decoupling: r.decoupling != null ? Number(r.decoupling) : null,
+        modality: r.modality || null,
+      }));
+
+    const workouts8w = (workouts || []).filter(w => w && w.date && w.date >= desdeWk && w.date <= ds);
+
+    const gp = goalProgress(
+      (state.settings && state.settings.goals)
+        || (typeof COACH_GOALS_DEFAULT !== 'undefined' ? COACH_GOALS_DEFAULT : {}),
+      {
+        today: ds,
+        bodyweight: pesadas,
+        runs4w,
+        workouts8w,
+        zones: (typeof _runningZones === 'function') ? _runningZones() : null,
+        e1rm: estimate1RM,
+        exName: (id) => (typeof getExerciseName === 'function' ? getExerciseName(id) : id),
+        toKg: (v, unit) => (String(unit).toLowerCase() === 'lb'
+          ? (typeof convertWeight === 'function' ? convertWeight(Number(v), 'lb', 'kg') : Number(v) * 0.45359237)
+          : Number(v)),
+        block: (typeof blockWeek === 'function') ? blockWeek() : null,
+        readiness: (state._readinessCache && state._readinessCache.value) || null,
+      },
+    );
+
+    // Estado por fila. `-na` (gris) es un estado de primera clase: "no hay señal" no se pinta
+    // ni de verde ni de rojo, porque no es ninguna de las dos cosas.
+    const WSTATE = {
+      'at-target': 'ok', 'on-track': 'ok', slow: 'warn', stalled: 'warn',
+      fast: 'warn', insufficient: 'na',
+    };
+    const WLABEL = {
+      'at-target': 'en la banda', 'on-track': 'en rumbo', slow: 'lento',
+      stalled: 'estancado', fast: 'muy rápido', insufficient: 'sin señal',
+    };
+    const anclas = gp.strength.anchors || [];
+    const conDato = anclas.filter(a => a.maintained !== null);
+    const mantenidas = conDato.filter(a => a.maintained).length;
+    const pct10k = Math.round((gp.running.readinessFor10k || 0) * 100);
+
+    const row = (label, valor, estado, texto, sub) => `
+      <div class="coach-goal-row">
+        <div class="coach-goal-head">
+          <span class="coach-goal-label">${label}</span>
+          <span class="coach-goal-val">${valor}</span>
+          <span class="coach-goal-status coach-goal-status-${estado}">${sub}</span>
+        </div>
+        <div class="coach-goal-text">${escapeHtml(texto)}</div>
+      </div>`;
+
+    const filas = [
+      row('Peso',
+        gp.weight.trend7d != null ? `${String(gp.weight.trend7d).replace('.', ',')} kg` : '—',
+        WSTATE[gp.weight.status] || 'na',
+        gp.weight.text,
+        WLABEL[gp.weight.status] || gp.weight.status),
+      row('10k cómodo',
+        `${pct10k} %`,
+        gp.running.phase === 'ready10k' ? 'ok' : (gp.running.runCount === 0 ? 'na' : 'warn'),
+        gp.running.text,
+        (typeof RW_PHASE_ES !== 'undefined' && RW_PHASE_ES[gp.running.phase]) || gp.running.phase),
+      row('Fuerza mantenida',
+        `${mantenidas}/${anclas.length}`,
+        gp.strength.allMaintained === null ? 'na' : (gp.strength.allMaintained ? 'ok' : 'warn'),
+        gp.strength.text,
+        // "mantenida" en verde sólo si TODAS las anclas tienen dato. Con 1 de 6 medidas, un
+        // verde diría "la fuerza se mantiene" sobre cinco ejercicios que nadie ha tocado.
+        gp.strength.allMaintained === null
+          ? 'sin ventana'
+          : (!gp.strength.allMaintained ? 'ojo'
+            : (conDato.length === anclas.length ? 'mantenida' : `${conDato.length} de ${anclas.length} con dato`))),
+    ].join('');
+
+    const senales = (gp.signals || []).length
+      ? `<div class="coach-goal-sigs">
+           <div class="coach-goal-sigs-title">Señales para el coach</div>
+           ${gp.signals.map(s => `
+             <div class="coach-goal-sig coach-goal-sig-${s.severity}">
+               <span class="coach-goal-sig-dot">●</span>${escapeHtml(s.text)}
+             </div>`).join('')}
+         </div>`
+      : '<div class="coach-goal-sigs"><div class="coach-goal-sigs-title">Señales para el coach</div><div class="coach-goal-sig coach-goal-sig-info">Ninguna esta semana.</div></div>';
+
+    el.innerHTML = `<div class="coach-goals-head">Objetivos</div>${filas}${senales}`;
+  } catch (e) {
+    // Patrón `renderHomeView`: cada sección con su try/catch. Un resumen no tumba la pestaña.
+    console.warn('[Coach] renderGoalsCard:', e);
+    el.innerHTML = '';
+  }
+}
+
 // Exports para los tests (Node los carga con `vm`); en el navegador no estorba.
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { renderCoachReadout, renderReadinessSignals };
+  module.exports = { renderCoachReadout, renderReadinessSignals, renderGoalsCard };
 }

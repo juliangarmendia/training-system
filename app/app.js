@@ -5133,6 +5133,9 @@ async function renderStats() {
   // señales del readiness único, con su valor y su base (audit F-5). `typeof` porque vive en
   // coach.js, que se carga por <script> aparte.
   if (typeof renderReadinessSignals === 'function') await renderReadinessSignals();
+  // v11.60: peso, 10k cómodo y fuerza mantenida, con su tamaño de muestra. `typeof` porque
+  // vive en coach.js. Se mudará a la vista Coach en el incremento 9 (mismo id).
+  if (typeof renderGoalsCard === 'function') await renderGoalsCard();
   await renderDeloadReminder();
   try { await renderSyncWarning(); } catch (e) {}
   await renderWeeklySummary();
@@ -5839,7 +5842,7 @@ async function intervalsIcuSync(opts = {}) {
     }
 
     // v11.56: la importación puede traer el cardio de ayer; la progresión lee "días sin cardio".
-    if (pulled + pulledSessions > 0) state._lastCardioDate = null;
+    if (pulled + pulledSessions > 0) { state._lastCardioDate = null; state._runningWeek = null; }
     // v11.59: y puede traer wellness nuevo, que mueve las tendencias de 7d/28d del readiness.
     invalidateReadiness();
 
@@ -6263,6 +6266,11 @@ const _ICU_ZONE_BY_SUBTYPE = { zone2: 'Z2', long_easy: 'Z2', zone3: 'Z3', thresh
 // Build a one-step intervals.icu DSL for a planned cardio session. The target is
 // always a zone label — see _icuZoneToken for why absolute bpm is not an option.
 function _generateCardioDsl(planned) {
+  // v11.60: si la regla de carrera ya trajo un DSL, se usa VERBATIM. Es DSL válido de
+  // intervals.icu (bloque de repeticiones de trote/caminata, o distancia en km) y volver a
+  // generarlo aquí lo aplanaría: el reloj recibiría "35m Z2" seguidos en vez de los 6 × (5' +
+  // 1'), que es justo la prescripción de la fase.
+  if (planned && typeof planned.dsl === 'string' && planned.dsl.trim()) return planned.dsl;
   const dur = planned.durationMin ? `${planned.durationMin}m` : '40m';
   const st = planned.subtype || 'zone2';
   return `- ${dur} ${_icuZoneToken(_ICU_ZONE_BY_SUBTYPE[st] || 'Z2')}`;
@@ -6345,7 +6353,7 @@ async function logZ2Finisher(minutes) {
     budgetWeight: meta.budgetWeight != null ? meta.budgetWeight : 0.5,
     notes: '', source: 'manual', origin: 'z2_finisher', week: getWeekNumber(),
   });
-  state._lastCardioDate = null;   // v11.56: el finisher cuenta como cardio para la progresión
+  state._lastCardioDate = null; state._runningWeek = null;   // v11.56: el finisher cuenta como cardio para la progresión
   toast(`Z2 ${mins}' registrado`);
   try { renderTodaysPlan(); } catch (e) {}
   try { renderSessionHistory(); } catch (e) {}
@@ -7366,11 +7374,16 @@ async function renderRunPlanBanner() {
           ? ` (${planned.baseMin}' base · semana ${planned.block.index})`
           : (planned.durationSource === 'coach' ? ' (coach)' : ''))
       : '';
-    const badge = [durTxt, planned.subtitle, hr].filter(Boolean).join(' · ');
+    // v11.60: la dosis de la fase manda en el badge. Con kilómetros se dicen los kilómetros;
+    // en trote/caminata, el patrón — que es lo único que se puede ejecutar sin pensar.
+    const kmTxt = planned.distanceKm ? `${String(planned.distanceKm).replace('.', ',')} km` : '';
+    const badge = [kmTxt || durTxt, planned.pattern, planned.subtitle, hr].filter(Boolean).join(' · ');
+    const fase = (typeof runningPhaseLabel === 'function') ? runningPhaseLabel(planned) : '';
     banner.innerHTML = `
       <div class="rpb-title">Hoy: ${planned.name}</div>
-      <div class="rpb-detail">${planned.summary || planned.subtitle}</div>
+      <div class="rpb-detail">${escapeHtml(planned.summary || planned.subtitle || '')}</div>
       ${_blockEyebrowHtml(planned.block)}
+      ${fase ? `<div class="plan-block-eyebrow">${fase}</div>` : ''}
       <span class="rpb-badge">${badge}</span>
       <button class="btn-secondary btn-full" id="rpb-push-icu" style="margin-top:10px;text-align:center">Enviar a intervals.icu</button>
     `;
@@ -7410,7 +7423,7 @@ async function logRun() {
   };
 
   await smartPut('runs', run);
-  state._lastCardioDate = null;   // v11.56: la progresión de cardio lee "días sin cardio"
+  state._lastCardioDate = null; state._runningWeek = null;   // v11.56: la progresión de cardio lee "días sin cardio"
 
   document.getElementById('run-distance').value = '';
   document.getElementById('run-duration').value = '';
@@ -7502,7 +7515,7 @@ async function logCardio() {
     notes, source: 'manual', week: getWeekNumber(),
   };
   await smartPut('sessions', rec);
-  state._lastCardioDate = null;   // v11.56: invalida la caché de "días sin cardio"
+  state._lastCardioDate = null; state._runningWeek = null;   // v11.56: invalida la caché de "días sin cardio"
 
   document.getElementById('cardio-duration').value = '';
   document.getElementById('cardio-distance').value = '';
@@ -8374,6 +8387,209 @@ function _coachCardioMin(jsDay, field) {
   return (v != null && isFinite(Number(v))) ? Number(v) : null;
 }
 
+// ==================== CARRERA DE LA SEMANA: FALLBACK DETERMINISTA (v11.60) ====================
+//
+// EL PROBLEMA QUE RESUELVE. El plan vivo trae "Cardio Z2 40'" el miércoles y "Cardio calidad
+// Z2 50'" el sábado, y hasta v11.59 eso era TODO lo que el sistema sabía de correr: ninguna
+// fase, ningún kilómetro, ningún camino desde donde está esta persona (cuatro carreras a
+// 147-155 bpm sobre una Z2 que acaba en 143) hasta un 10 km cómodo. `suggestRunningWeek`
+// (coach-engine.js) convierte el slot en una FASE con dosis; esto es el cableado.
+//
+// SÓLO ES FALLBACK, y el orden es el mismo que en `progressCardioMin` y `suggestSetTarget`:
+// **coach > regla > base**. Cuando el coach semanal escriba `activePlan.running` (incremento
+// 9), esta rama no se ejecuta. Dos fuentes discutiendo por el mismo día es cómo la pantalla
+// acaba contradiciendo al reloj.
+
+/** Zona 2 en bpm desde `settings.icuZones`. null → el motor usa su defecto declarado (131-143). */
+function _runningZones() {
+  const zc = state.settings && state.settings.icuZones;
+  const r = zc && zc.z && zc.z.zone2;
+  if (r && r.length === 2 && isFinite(Number(r[0])) && isFinite(Number(r[1]))) {
+    return { z2: [Number(r[0]), Number(r[1])] };
+  }
+  return null;
+}
+
+/**
+ * Los slots de carrera de la semana ACTIVA, tal como los ve el motor. El día de recuperación
+ * entra como opcional con su `z2FinisherMin`: es un hueco aeróbico real del plan, y sin él el
+ * reparto de kilómetros creería que la semana tiene dos carreras cuando tiene tres.
+ */
+function _runningSlots() {
+  const tpl = activeWeekTemplate || {};
+  const out = [];
+  for (const dow of [1, 2, 3, 4, 5, 6, 0]) {
+    const d = tpl[dow];
+    if (!d) continue;
+    if (d.type === 'run' && d.durationMin) {
+      out.push({ dow, base: Number(d.durationMin), subtype: d.subtype || 'zone2' });
+    } else if (d.type === 'recovery' && d.z2FinisherMin) {
+      out.push({ dow, base: Number(d.z2FinisherMin), subtype: 'recovery', optional: true });
+    }
+  }
+  return out;
+}
+
+/**
+ * Historial de 4 semanas para el motor.
+ *
+ * Lecturas DEDUPEADAS (la misma actividad llega por Strava y por intervals.icu con ids
+ * distintos, v11.36) y sólo lo que es CORRER: de `sessions` entran las que tienen distancia
+ * real y modalidad de carrera, y se descarta el Z2 finisher (`origin: 'z2_finisher'`), que es
+ * un remate aeróbico post-fuerza sin distancia — contarlo como carrera metería una fila sin
+ * FC ni km en la ventana de cumplimiento de Z2 y empujaría a trote/caminata sin motivo.
+ * Bici, remo y ski los descarta el propio motor (`_rwNormalizeRuns`): son minutos aeróbicos
+ * reales, pero no construyen tolerancia al impacto.
+ */
+async function _runningHistory4w(ds) {
+  const desde = dateStr(new Date(Date.parse(ds + 'T12:00:00') - 28 * 86400000));
+  const [runs, sess] = await Promise.all([
+    (typeof getRunsDeduped === 'function' ? getRunsDeduped() : dbGetAll('runs')).catch(() => []),
+    (typeof getSessionsDeduped === 'function' ? getSessionsDeduped() : dbGetAll('sessions')).catch(() => []),
+  ]);
+  const out = [];
+  for (const r of (runs || [])) {
+    if (!r || !r.date || r.date < desde || r.date > ds) continue;
+    out.push({
+      date: r.date, km: Number(r.distance) || 0, min: Number(r.duration) || null,
+      avgHR: r.avgHR != null ? Number(r.avgHR) : null,
+      decoupling: r.decoupling != null ? Number(r.decoupling) : null,
+      modality: r.modality || null,
+    });
+  }
+  for (const s of (sess || [])) {
+    if (!s || !s.date || s.date < desde || s.date > ds) continue;
+    if (s.family !== 'cardio' || s.origin === 'z2_finisher') continue;
+    if (!(Number(s.distance) > 0)) continue;
+    out.push({
+      date: s.date, km: Number(s.distance), min: Number(s.durationMin) || null,
+      avgHR: s.avgHR != null ? Number(s.avgHR) : null, modality: s.modality || null,
+    });
+  }
+  out.sort((a, b) => String(b.date).localeCompare(String(a.date)));
+  return out;
+}
+
+/**
+ * La semana de carrera de la regla, con caché.
+ *
+ * DOS CLAVES a propósito: `weekKey` (la semana ISO — la prescripción es semanal) y
+ * `runsCount` (para que registrar una carrera la recalcule al instante). Y encima una ventana
+ * de 60 s, porque `renderWeekCalendar` llama a `getPlannedSessionForDate` siete veces
+ * seguidas y sin ella cada render haría catorce `dbGetAll`.
+ */
+async function suggestRunningWeekCached(date) {
+  if (typeof suggestRunningWeek !== 'function') return null;
+  const ds = dateStr(date);
+  const weekKey = (typeof isoWeekKey === 'function') ? isoWeekKey(ds) : ds;
+  const c = state._runningWeek;
+  if (c && c.weekKey === weekKey && (Date.now() - c.ts) < 60000) return c.value;
+  const history4w = await _runningHistory4w(ds);
+  if (c && c.weekKey === weekKey && c.runsCount === history4w.length) {
+    c.ts = Date.now();
+    return c.value;
+  }
+  const value = suggestRunningWeek({
+    history4w,
+    block: blockWeek(date),
+    // El readiness ya calculado, si lo hay. No se fuerza su cálculo desde aquí: pintar el plan
+    // no puede depender de una llamada a WHOOP, y sin él el motor simplemente no retiene.
+    readiness: (state._readinessCache && state._readinessCache.value) || { deloadHint: false },
+    goals: (state.settings && state.settings.goals) || (typeof COACH_GOALS_DEFAULT !== 'undefined' ? COACH_GOALS_DEFAULT : {}),
+    zones: _runningZones(),
+    slots: _runningSlots(),
+    todayStr: ds,
+    variant: (typeof _idealVariant === 'function') ? _idealVariant() : null,
+  });
+  state._runningWeek = { weekKey, runsCount: history4w.length, ts: Date.now(), value };
+  return value;
+}
+
+/**
+ * Vuelca la sesión de la regla sobre la sesión planificada del día.
+ *
+ * LOS MINUTOS DE LA FASE TROTE/CAMINATA PISAN A LOS DEL SLOT, y esto es una decisión, no un
+ * descuido: el run/walk arranca en 30'/40' (§B.4) mientras el slot del ideal lleva 40'/50',
+ * porque en trote/caminata la mitad del tiempo se camina. Si la pantalla dijera 50' y el
+ * resumen "8 × (5′ trote / 1′ caminar)" (48'), dos números de la misma tarjeta se
+ * contradirían. `baseMin` y `durationSource` viajan con el número correcto para que
+ * `_cardioDurLabel` siga explicando de dónde sale ("35 min · 30' base · semana 3/5").
+ * El objetivo del COACH, cuando existe, sigue mandando sobre los dos.
+ */
+async function _applyRunningWeekFallback(out, date, jsDay, durInfo) {
+  try {
+    const rw = await suggestRunningWeekCached(date);
+    if (!rw) return;
+    const s = (rw.sessions || []).find(x => x.dow === jsDay);
+    if (s) {
+      if (s.summary) out.summary = s.summary;
+      out.distanceKm = s.km != null ? s.km : null;
+      out.pattern = s.pattern || null;
+      out.dsl = s.dsl || null;
+      out.runningType = s.type;
+      out.runningNote = s.note || null;
+      out.runningPhase = rw.phase;
+      out.runningSource = 'rule';
+      out.weeklyKmTarget = rw.weeklyKmTarget;
+      if (s.min != null && (!durInfo || durInfo.source !== 'coach')) {
+        out.durationMin = s.min;
+        if (s.baseMin != null) out.baseMin = s.baseMin;
+        out.durationSource = 'rule';
+        out.durationNote = s.pattern ? 'trote/caminata por tiempo' : out.durationNote;
+      }
+    }
+    await _logRunningWeekOnce(rw, out.date);
+  } catch (e) {
+    console.warn('[coach] semana de carrera:', e);
+  }
+}
+
+/**
+ * Una entrada en `decisions` por semana ISO, y sólo cuando el fallback se USA de verdad.
+ *
+ * Tres guardas porque hay tres formas de spamear: `getPlannedSessionForDate` se llama siete
+ * veces por render (memoria de proceso), se llama también para días de OTRAS semanas al pintar
+ * el calendario (sólo se registra la de hoy), y la app se abre varias veces al día en
+ * dispositivos distintos (se consulta el store antes de escribir).
+ */
+async function _logRunningWeekOnce(rw, ds) {
+  if (!rw || typeof logDecision !== 'function') return;
+  if (ds !== today()) return;
+  const weekKey = (typeof isoWeekKey === 'function') ? isoWeekKey(ds) : ds;
+  if (state._runningWeekLogged === weekKey) return;
+  state._runningWeekLogged = weekKey;   // antes del await: siete llamadas en paralelo son una
+  try {
+    const all = await dbGetAll('decisions');
+    if ((all || []).some(d => d && d.type === 'running-week' && d.weekKey === weekKey)) return;
+  } catch (e) { return; }
+  await logDecision({
+    date: ds,
+    source: 'rule',
+    type: 'running-week',
+    what: rw.reason,
+    why: 'Fallback determinista sin plan de carrera del coach',
+    ruleIds: rw.ruleIds || [],
+    evidence: {
+      phase: rw.phase,
+      weeklyKmTarget: rw.weeklyKmTarget,
+      weeklyMinTarget: rw.weeklyMinTarget,
+      gates: rw.gates,
+    },
+    outcome: 'done',
+  });
+}
+
+/**
+ * Fase de carrera en castellano. Cadena vacía sin fase: no se inventa una etiqueta.
+ * El mapa (`RW_PHASE_ES`) vive en coach-engine.js, que es quien define los ids de fase.
+ */
+function runningPhaseLabel(planned) {
+  const p = planned && planned.runningPhase;
+  if (!p) return '';
+  const es = (typeof RW_PHASE_ES !== 'undefined' && RW_PHASE_ES[p]) || p;
+  return `Carrera · fase ${es}`;
+}
+
 async function getPlannedSessionForDate(date) {
   const ds = dateStr(date);
   const jsDay = date.getDay();
@@ -8403,7 +8619,12 @@ async function getPlannedSessionForDate(date) {
       const st = slot.subtype || 'zone2';
       const base = slot.durationMin || null;
       const p = await prog(base, _coachCardioMin(jsDay, 'durationMin'));
-      return { type: 'run', date: ds, name: slot.label || 'Cardio Z2', subtitle: cardioSubtypeLabel(st), subtype: st, durationMin: p.min, baseMin: base, durationSource: p.source, durationNote: p.note, block: blk, summary: slot.summary || null, hrTarget: cardioHrTarget(st) };
+      const out = { type: 'run', date: ds, name: slot.label || 'Cardio Z2', subtitle: cardioSubtypeLabel(st), subtype: st, durationMin: p.min, baseMin: base, durationSource: p.source, durationNote: p.note, block: blk, summary: slot.summary || null, hrTarget: cardioHrTarget(st) };
+      // v11.60: la carrera de la semana. Coach > regla > base: si el coach fijó
+      // `activePlan.running` manda él y aquí no se entra; si no, la regla decide la fase
+      // (trote/caminata por tiempo, kilómetros, o listo para 10k) y pisa el resumen del slot.
+      if (!(activePlan && activePlan.running)) await _applyRunningWeekFallback(out, date, jsDay, p);
+      return out;
     }
     if (slot.type === 'recovery') {
       const rBase = slot.z2FinisherMin || null;
@@ -9875,11 +10096,22 @@ async function renderTodaysPlan() {
     const done = !!doneCardio;
     const sub = (planned.subtitle || 'Zona 2 · fácil') + (planned.durationMin ? ` · ${planned.durationMin}'` : '');
     const hrLine = planned.hrTarget ? `FC objetivo: <b>${planned.hrTarget}</b>` : cardioIntensityGuide(planned.subtype);
+    // v11.60: la fase de carrera y su dosis. El patrón de trote/caminata y los km son la
+    // prescripción real de la semana; sin ellos la tarjeta decía sólo "40 min Zona 2".
+    const fase = (typeof runningPhaseLabel === 'function') ? runningPhaseLabel(planned) : '';
     const rxRows = [
       _blockEyebrowHtml(planned.block),
-      planned.durationMin ? `<div class="cardio-rx-row"><span>Duración</span><b>${_cardioDurLabel(planned.durationMin, planned.baseMin, planned.durationSource, planned.block)}</b></div>` : '',
+      fase ? `<div class="plan-block-eyebrow">${fase}</div>` : '',
+      // Un solo número para la dosis: con kilómetros prescritos, los minutos del slot son el
+      // hueco reservado, no la prescripción, y pintar los dos es el problema de "tres números
+      // para una decisión" que el audit (F-0/F-4) ya cerró en la tarjeta de ejercicio.
+      planned.distanceKm
+        ? `<div class="cardio-rx-row"><span>Distancia</span><b>${String(planned.distanceKm).replace('.', ',')} km</b></div>`
+        : (planned.durationMin ? `<div class="cardio-rx-row"><span>Duración</span><b>${_cardioDurLabel(planned.durationMin, planned.baseMin, planned.durationSource, planned.block)}</b></div>` : ''),
+      planned.pattern ? `<div class="cardio-rx-row"><span>Patrón</span><b>${escapeHtml(planned.pattern)}</b></div>` : '',
       `<div class="cardio-rx-row"><span>Intensidad</span><b>${hrLine}</b></div>`,
-      planned.summary ? `<div class="cardio-rx-row"><span>Qué hacer</span><b>${planned.summary}</b></div>` : '',
+      planned.summary ? `<div class="cardio-rx-row"><span>Qué hacer</span><b>${escapeHtml(planned.summary)}</b></div>` : '',
+      planned.runningNote ? `<div class="cardio-rx-note">${escapeHtml(planned.runningNote)}</div>` : '',
     ].join('');
     container.innerHTML = `
       <section class="session-hero" data-sh>

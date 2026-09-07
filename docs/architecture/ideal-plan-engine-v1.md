@@ -392,6 +392,73 @@ objetivos del `latest.json` legacy se honran **sólo en la semana ISO en curso o
 (fallback: plan de hace ≤ 14 días), y nunca en semana de descarga, porque el cron no sabe en qué
 semana del bloque está. Tests: `verify-set-target.mjs` y `verify-coach-wiring.mjs` (partes 9-10).
 
+## v11.60 — Carrera: de correr fuera de Z2 a 10 km cómodo, por fases y por datos (2026-09-07)
+
+Hasta v11.59 lo único que el sistema sabía de correr era el slot: "Cardio Z2 40'" el miércoles y
+"Cardio calidad Z2 50'" el sábado. Ni fases, ni kilómetros, ni un camino hasta el 10k. Y el dato
+real de partida manda: las cuatro últimas carreras (1,9 / 3,2 / 5,0 / 4,1 km) fueron a 152, 149,
+155 y 147 bpm de media sobre una Z2 que acaba en 143 — **cero carreras en Z2**. El problema no era
+el volumen, era la intensidad, y prescribir "5,5 km" sobre eso es prescribir más de lo mismo.
+
+`suggestRunningWeek({history4w, block, readiness, goals, zones, slots, todayStr})` en
+`app/coach-engine.js` (puro, testeado) devuelve la semana: `{phase, weeklyKmTarget,
+weeklyMinTarget, sessions[], gates, reason, ruleIds}`. La rama `run` de
+`getPlannedSessionForDate` la consume **sólo si el coach no fijó `activePlan.running`** (coach >
+regla > base, la misma prioridad de `progressCardioMin` y `suggestSetTarget`), y su `dsl` viaja
+verbatim a `_generateCardioDsl` → intervals.icu → COROS, así que el reloj recibe los bloques de
+trote/caminata, no 35 minutos seguidos.
+
+| Fase | Se entra cuando | Dosis | Largo | Duras |
+|---|---|---|---|---|
+| `run_walk` | ≥2 de las 3 últimas con FC > 145, o sin correr 14 d, o <8 km en dos semanas, o <2 carreras | **Tiempo**: 30'/40'/20' de base, progresados por `progressCardioMin` | — | 0 |
+| `base` | ≥2 de 3 en Z2 y ≥8 km | km: `min(máx(×1,10, +1 km), ×1,20)` | 50 % con 2 carreras, 40 % con 3 | 0 |
+| `build` | 3 semanas ISO seguidas con ≥15 km y ≥2/3 en Z2 | igual | `min(×1,10, +1 km)`, con el reparto como techo | 0 — sólo `qualityUnlocked` |
+| `ready10k` | largo Z2 ≥8 km **y** deriva <5 % **y** ≥18 km/sem | igual | hasta 10 km | 0 — las propone el coach |
+| descarga | `block.isDeload` | ×0,7 | baja con el volumen | 0 |
+| fatiga | `readiness.deloadHint` | se mantiene, sin rampa | igual | 0 |
+
+Patrón: semanas 1-2 del bloque `3′ trote / 2′ caminar`, semana ≥3 `5′ trote / 1′ caminar`; el DSL
+es un bloque de repeticiones (`6x` / `- 5m Z2 HR` / `- 1m Z1 HR`) con la línea en blanco que exige
+intervals.icu. Arco que produce el motor con el dato real (ancla 2026-09-07): sem 1-2 run/walk
+35'/50'/24' → 40'/55'/26' · sem 3 descarga · sem 4-7 base 14 → 17,5 km/sem · la puerta de la
+calidad se abre cuando se acumulan tres semanas de ≥15 km en Z2.
+
+**Cuatro honestidades, porque las cuatro cambian lo que el número significa:**
+- El **~10 %/semana es heurística prudente, no un hallazgo** (END-003, `moderate`, confianza
+  media). Buist 2008 (n=532) comparó 10,5 % y 23,7 % y **no encontró diferencia** en lesiones;
+  Nielsen 2012 quedó inconcluso. Está aquí porque el techo real de esta persona no se conoce.
+- El **40 % del largo con tres carreras es `expert`**, no un umbral medido. Lo mismo el 50 % con dos.
+- **Sin decoupling no hay 10k.** `gates.decouplingOk` es `null` —no `false`— cuando ningún largo
+  Z2 de ≥8 km trae el dato, y con `null` el motor **no** declara `ready10k` (END-005 es `expert` y
+  el dato hoy casi nunca llega desde intervals.icu). Se acepta un proxy declarado: deriva de FC
+  por mitades <5 bpm.
+- **El motor no genera ni una sesión dura.** `qualityUnlocked` abre la puerta; quién, qué y qué
+  sábado lo propone el coach y lo aprueba Julian (END-004, INT-001).
+
+Dos correcciones que salieron de simular el arco ocho semanas antes de dar el motor por bueno:
+la referencia de la rampa es **la mejor de las dos últimas semanas completas**, no la última —con
+la última, cada descarga bajaba el arco un escalón permanente (12 → 8,5 → 9,5) y los 8,5 km de la
+descarga caían bajo el suelo de 8 km, devolviendo a trote/caminata la semana siguiente: un
+oscilador, no una progresión. Y **los minutos de la fase run/walk pisan a los del slot** (30'/40'
+frente a 40'/50'), porque en trote/caminata la mitad del tiempo se camina y si la tarjeta dijera
+50' junto a "8 × (5′ + 1′)" se contradiría consigo misma.
+
+Sigue en pie que **la grasa manda sobre el 10k** (§C.1, decisión del usuario): cuando chocan,
+primero se congela el ramp de carrera. `goalProgress(goals, facts)` lo pone en pantalla en la
+tarjeta **Objetivos** (Stats › Today, `#coach-goals`, se mudará a la vista Coach): peso (media 7d,
+pendiente por regresión sobre esa media en 28 días, estado y ETA al hito de 82 kg), 10k cómodo
+(indicador `0,5·min(largo/8,1) + 0,3·min(km/18,1) + 0,2·Z2` — **indicador declarado, no una
+dosis**) y fuerza mantenida n/6 (mejor e1RM de 14 días contra el mejor de la ventana −42..−28;
+sin exposición en las dos ventanas el veredicto es `null`, nunca "mantenida"). Sin pendiente no
+hay ETA. Tests: `verify-running-week.mjs`, `verify-goal-progress.mjs` y
+`verify-coach-wiring.mjs` (parte 14).
+
+**Limitación conocida:** `gates.baseWeeks` cuenta semanas ISO consecutivas con ≥15 km, así que una
+semana de descarga la reinicia y la puerta de la calidad tarda tres semanas más en volver a
+abrirse. El motor recibe el `block` de la semana en curso, no el ancla, así que no puede saber que
+la semana baja estaba prescrita. Es conservador en la dirección correcta y el coach puede
+proponer la dura igualmente.
+
 ## Roadmap
 - **T4b:** generador algorítmico (arma bloque/semana desde reglas+perfil en runtime; hoy `IDEAL_BLOCK_V1` es data).
 - **T6:** loop de adaptación semanal + periodización multi-bloque + progression/modality engines.

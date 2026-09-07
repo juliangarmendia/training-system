@@ -2091,6 +2091,8 @@ body[data-tab="home"] .home-scroll-v2 { padding-top: calc(var(--safe-top) + 10px
 .rx-key { color: var(--accent); }
 .rx-sub { margin: 12px 0 4px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 12px; font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase; color: var(--text2); }
 .cardio-rx-row + .rx-sub { margin-top: 8px; }
+/* Nota de la fase de carrera (v11.60): el "cómo" de la sesión, no un dato más. */
+.cardio-rx-note { margin-top: 8px; font-size: var(--fs-xs); line-height: 1.45; color: var(--text3); }
 .rx-done { margin-left: 6px; color: var(--accent); text-transform: none; letter-spacing: 0; font-weight: 600; }
 
 /* ---- Historial banner button ---- */
@@ -2576,3 +2578,26 @@ body[data-tab="home"] .home-scroll-v2 { padding-top: calc(var(--safe-top) + 10px
 .rs-ok .rs-text { color: var(--text2); }
 .rs-none .rs-text { color: var(--text3); }
 .rs-foot { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); font-size: 10px; color: var(--text3); }
+
+/* Objetivos (v11.60) — tres filas y las señales del coach. Cero gráficos: los de peso y
+   fuerza ya existen en Stats › Body / Strength. Reutiliza los tokens de la tarjeta de
+   señales; sin colores nuevos y sin animaciones. */
+.coach-goals { padding: 14px 16px; }
+.coach-goals-head { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.16em; color: var(--text2); margin-bottom: 10px; }
+.coach-goal-row { padding: 8px 0; border-bottom: 1px solid var(--border); }
+.coach-goal-row:last-of-type { border-bottom: none; }
+.coach-goal-head { display: flex; align-items: baseline; gap: 8px; }
+.coach-goal-label { font-size: var(--fs-xs); color: var(--text2); }
+.coach-goal-val { font-size: var(--fs-md); font-weight: 700; margin-left: auto; font-variant-numeric: tabular-nums; }
+.coach-goal-status { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; min-width: 78px; text-align: right; }
+.coach-goal-status-ok { color: var(--accent); }
+.coach-goal-status-warn { color: var(--yellow); }
+.coach-goal-status-na { color: var(--text3); }
+.coach-goal-text { margin-top: 3px; font-size: var(--fs-xs); line-height: 1.45; color: var(--text3); }
+.coach-goal-sigs { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+.coach-goal-sigs-title { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.16em; color: var(--text2); margin-bottom: 6px; }
+.coach-goal-sig { display: flex; align-items: baseline; gap: 8px; padding: 4px 0; font-size: var(--fs-xs); line-height: 1.45; color: var(--text2); }
+.coach-goal-sig-dot { font-size: 9px; line-height: 1.7; color: var(--text3); }
+.coach-goal-sig-flag { color: var(--text); font-weight: 600; }
+.coach-goal-sig-flag .coach-goal-sig-dot { color: var(--yellow); }
+.coach-goal-sig-info .coach-goal-sig-dot { color: var(--teal); }

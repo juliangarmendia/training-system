@@ -705,7 +705,12 @@ yes(!/score:/.test(R_SRC.replace(/wt\.score|inp\.whoopToday|\bscore\b\s*[!=]/g, 
   'computeReadinessFrom no devuelve ningún score compuesto');
 yes(!/0\.55|0\.70|0\.3\b/.test(R_SRC), 'y no queda ninguna ponderación del score viejo');
 yes(!/protein|proteína/i.test(R_SRC), 'la proteína ya no cuenta como fatiga (era una ponderación inventada)');
-const ADJ_SRC = ENGINE.slice(ENGINE.indexOf('function adjustSessionForReadiness('));
+// Acotado a SU sección, no hasta el final del fichero: cortar en EOF hacía que cualquier
+// motor añadido después (v11.60 metió `goalProgress`, que sí lee kg del historial) rompiera
+// esta comprobación sin que `adjustSessionForReadiness` hubiera cambiado una línea.
+const _iAdj = ENGINE.indexOf('function adjustSessionForReadiness(');
+const _iAdjEnd = ENGINE.indexOf('\n// ====================', _iAdj);
+const ADJ_SRC = ENGINE.slice(_iAdj, _iAdjEnd > 0 ? _iAdjEnd : ENGINE.length);
 yes(!/\.kg\s*=|kg:/.test(ADJ_SRC), 'adjustSessionForReadiness no escribe ningún kg (READ-003)');
 yes(/_readCopySession\(/.test(ADJ_SRC), 'trabaja sobre una COPIA de la sesión planificada');
 
@@ -864,8 +869,112 @@ for (const clase of ['coach-signals', 'coach-proposal', 'coach-changes', 'coach-
   yes(new RegExp(`\\.${clase}[\\s,{:]`).test(CSS), `.${clase} existe en style.css`);
 }
 
+// ── 14. Inc 6 — la carrera de la semana y la tarjeta de objetivos (v11.60) ────────────────────
+//
+// El fallo que esta sección impide: que el motor de carrera exista y NO llegue a ninguna
+// pantalla (que es exactamente lo que pasaba con `z2Finisher` antes de v11.34 — la dosis
+// estaba en el plan y sólo se veía como un texto pegado a un eyebrow), o que llegue a la
+// pantalla pero no al reloj porque `_generateCardioDsl` vuelve a aplanar el DSL.
+console.log('');
+console.log('14. Inc 6 — carrera hacia el 10k y objetivos (v11.60)');
+
+// 14.a El motor existe, es puro y exporta lo que la app consume
+yes(typeof E.suggestRunningWeek === 'function', 'coach-engine.js exporta suggestRunningWeek');
+yes(typeof E.goalProgress === 'function', 'y goalProgress');
+const RW_SRC = ENGINE.slice(ENGINE.indexOf('function suggestRunningWeek('));
+yes(!/document\.|window\.|localStorage|indexedDB|fetch\(/.test(RW_SRC),
+  'y siguen siendo puros: sin DOM, sin IDB, sin red');
+yes(/progressCardioMin\(/.test(RW_SRC),
+  'suggestRunningWeek reusa progressCardioMin (una sola fuente de minutos: coach > regla > base)');
+yes(!/Z[45] HR/.test(RW_SRC), 'y no hay ni una zona dura en el generador de DSL (END-004)');
+
+// 14.b La rama `run` consulta al coach ANTES que a la regla
+const GPS_SRC = fnSrc('async function getPlannedSessionForDate(');
+yes(/_applyRunningWeekFallback\(/.test(GPS_SRC), 'getPlannedSessionForDate usa el fallback de carrera');
+yes(/activePlan && activePlan\.running/.test(GPS_SRC),
+  'y comprueba activePlan.running PRIMERO (coach > regla)');
+yes(GPS_SRC.indexOf('activePlan.running') < GPS_SRC.indexOf('_applyRunningWeekFallback('),
+  'la comprobación va antes de la llamada, no después');
+const ARW_SRC = fnSrc('async function _applyRunningWeekFallback(');
+yes(/suggestRunningWeekCached\(/.test(ARW_SRC), 'que resuelve por suggestRunningWeekCached');
+for (const campo of ['distanceKm', 'pattern', 'dsl', 'runningPhase', "runningSource = 'rule'"]) {
+  yes(ARW_SRC.indexOf(campo) >= 0,
+    `y vuelca \`${campo}\` en la sesión planificada`);
+}
+yes(/durInfo\.source !== 'coach'/.test(ARW_SRC), 'el objetivo del coach sigue mandando sobre los minutos');
+const SRWC_SRC = fnSrc('async function suggestRunningWeekCached(');
+yes(/getRunsDeduped|_runningHistory4w/.test(SRWC_SRC + fnSrc('async function _runningHistory4w(')),
+  'el historial sale de lecturas DEDUPEADAS (una carrera no cuenta dos veces)');
+yes(/weekKey/.test(SRWC_SRC) && /runsCount/.test(SRWC_SRC),
+  'con caché por semana ISO + número de carreras');
+yes(/blockWeek\(date\)/.test(SRWC_SRC), 'y la semana del bloque de ESE día');
+const HIST_SRC = fnSrc('async function _runningHistory4w(');
+yes(/z2_finisher/.test(HIST_SRC), 'el Z2 finisher NO entra como carrera de la semana');
+yes(/family !== 'cardio'/.test(HIST_SRC), 'ni las sesiones que no son cardio');
+
+// 14.c El DSL llega al reloj tal como lo generó la regla
+const DSL_SRC = fnSrc('function _generateCardioDsl(');
+yes(/planned\.dsl/.test(DSL_SRC), '_generateCardioDsl usa planned.dsl cuando existe');
+yes(DSL_SRC.indexOf('planned.dsl') < DSL_SRC.indexOf('planned.durationMin'),
+  'y lo hace ANTES de reconstruirlo (o el patrón trote/caminata se aplanaría)');
+yes(/return planned\.dsl/.test(DSL_SRC), 'lo devuelve verbatim, sin reformatear');
+
+// 14.d Las dos pantallas de cardio dicen la fase y la dosis
+const RTP6_SRC = fnSrc('async function renderTodaysPlan(');
+yes(/runningPhaseLabel\(/.test(RTP6_SRC), 'renderTodaysPlan pinta la fase de carrera');
+yes(/planned\.pattern/.test(RTP6_SRC), 'y el patrón de trote/caminata');
+yes(/planned\.distanceKm/.test(RTP6_SRC), 'y los kilómetros cuando la fase los tiene');
+const RPB_SRC = fnSrc('async function renderRunPlanBanner(');
+yes(/planned\.pattern/.test(RPB_SRC), 'el banner de Cardio también lleva el patrón');
+yes(/distanceKm/.test(RPB_SRC), 'y los kilómetros');
+yes(/runningPhaseLabel\(/.test(RPB_SRC), 'y la fase');
+yes(/RW_PHASE_ES/.test(ENGINE), 'las fases tienen etiqueta en castellano, y vive en el motor');
+yes(/RW_PHASE_ES/.test(APP) && /RW_PHASE_ES/.test(COACHJS), 'la usan las dos capas de pantalla');
+yes(!/RUN_PHASE_ES/.test(APP_CODE), 'el mapa viejo de app.js ya no existe (una sola fuente de etiquetas)');
+
+// 14.e Una decisión por semana, y sólo cuando el fallback se usa
+const LRW_SRC = fnSrc('async function _logRunningWeekOnce(');
+yes(/logDecision\(/.test(LRW_SRC), 'el fallback registra la decisión con logDecision');
+yes(/type: 'running-week'/.test(LRW_SRC), "con type:'running-week'");
+yes(/source: 'rule'/.test(LRW_SRC), "y source:'rule' (no es el coach)");
+yes(/dbGetAll\('decisions'\)/.test(LRW_SRC), 'consultando el store antes de escribir (no spamea)');
+yes(/state\._runningWeekLogged/.test(LRW_SRC), 'con memoria de proceso para las 7 llamadas del calendario');
+yes(/ds !== today\(\)/.test(LRW_SRC), 'y sólo para HOY, no para los otros días del calendario');
+yes(/gates/.test(LRW_SRC), 'la evidencia guarda las puertas que decidieron');
+
+// 14.f La tarjeta "Objetivos"
+yes(HTML.indexOf('id="coach-goals"') > 0, 'index.html tiene #coach-goals');
+yes(HTML.indexOf('id="coach-goals"') > HTML.indexOf('id="readiness-signals"'),
+  'justo después de #readiness-signals (Stats › Today)');
+yes(/async function renderGoalsCard\(\)/.test(COACHJS), 'renderGoalsCard vive en coach.js');
+const RGC_SRC = COACHJS.slice(COACHJS.indexOf('async function renderGoalsCard('));
+yes(/goalProgress\(/.test(RGC_SRC), 'y delega TODO el cálculo en goalProgress (nada de números en el renderer)');
+yes(/measured === false/.test(RGC_SRC), 'sólo pesadas medidas (los forward-fill meterían pendiente 0)');
+yes(/weightMeasured/.test(RGC_SRC), 'incluyendo las de wellness');
+yes(/estimate1RM/.test(RGC_SRC), 'reusa estimate1RM (no reimplementa Epley)');
+yes(/getRunsDeduped/.test(RGC_SRC), 'y las carreras dedupeadas');
+yes(/Señales para el coach/.test(RGC_SRC), 'pinta la lista de señales');
+yes(!/canvas|chart|Chart/.test(RGC_SRC), 'sin gráficos nuevos (§B.9)');
+yes(!/[A-Z]{3}-\d{3}/.test(RGC_SRC.replace(/\/\/[^\n]*/g, '')), 'y sin Rule IDs crudos en pantalla');
+yes(/renderGoalsCard/.test(fnSrc('async function renderStats(')), 'renderStats la llama');
+yes(/typeof renderGoalsCard === 'function'/.test(APP), "con guarda typeof (vive en otro <script>)");
+yes(/renderGoalsCard/.test(COACHJS.slice(COACHJS.indexOf('module.exports'))), 'y está exportada para los tests');
+
+// 14.g La caché de la semana se invalida cuando llega una carrera
+yes(/state\._runningWeek = null/.test(APP), 'registrar cardio invalida state._runningWeek');
+const invals = (APP.match(/state\._runningWeek = null/g) || []).length;
+yes(invals >= 4, `en los mismos ${invals} sitios que la caché de "días sin cardio"`);
+
+// 14.h Versión y CSS
+eq(vSw, vHtml, 'CACHE_NAME del service worker == versión de index.html (tras el bump a v11.60)');
+yes(vNum(vHtml) >= vNum('11.60'), `la versión (v${vHtml}) es >= v11.60`);
+for (const clase of ['coach-goals', 'coach-goal-row', 'coach-goal-status-ok', 'coach-goal-status-warn',
+                     'coach-goal-status-na', 'coach-goal-sig', 'cardio-rx-note']) {
+  yes(new RegExp(`\\.${clase}[\\s,{:]`).test(CSS), `.${clase} existe en style.css`);
+}
+
 console.log('');
 console.log(failed === 0
-  ? '✅ Coach v2 cableado: módulo, stores, sync, plan, decisiones, bloque, dato de hoy y readiness que ajusta.'
+  ? '✅ Coach v2 cableado: módulo, stores, sync, plan, decisiones, bloque, dato de hoy, readiness, carrera y objetivos.'
   : `❌ ${failed} comprobación(es) fallaron.`);
 process.exit(failed === 0 ? 0 : 1);
