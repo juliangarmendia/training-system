@@ -39,7 +39,8 @@ export interface WhoopSleepScore {
 }
 
 export interface WhoopSleep {
-  id?: string;
+  id?: string; // v2: UUID
+  cycle_id?: number; // v2 lo trae en el propio sueño: evita adivinar el ciclo por proximidad
   v1_id?: number;
   user_id?: number;
   created_at?: string;

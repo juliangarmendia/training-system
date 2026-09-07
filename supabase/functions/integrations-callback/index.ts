@@ -8,6 +8,7 @@ import {
   serviceClient,
   upsertTokens,
 } from "../_shared/tokens.ts";
+import { syncWhoop } from "../_shared/whoop-sync.ts";
 
 // EL CALLBACK OAUTH ATERRIZA AQUÍ, NO EN UNA PÁGINA DE LA PWA.
 //
@@ -114,7 +115,7 @@ Deno.serve(async (req) => {
       if (!sub.skipped) console.log(`[callback] withings notify subscribe → ${sub.ok ? "ok" : "fallo"}`);
     }
 
-    // (6) Primer volcado en segundo plano. TODO(A-2).
+    // (6) Primer volcado en segundo plano (30 días de WHOOP; Withings en A-5).
     EdgeRuntime.waitUntil(initialSync(userId, provider));
 
     // (7) De vuelta a la app. En el iPhone esto abre Safari: el usuario lo cierra y la PWA
@@ -143,10 +144,21 @@ async function subscribeWithingsNotify(_accessToken: string): Promise<{ ok: bool
 }
 
 /**
- * TODO(A-2): `syncWhoop(userId, { days: 30 })` (y su equivalente Withings en A-5).
- * De momento sólo deja rastro en el log para que la traza del callback esté completa.
+ * Primer volcado tras conectar: 30 días de historia de WHOOP. Va bajo `waitUntil` porque
+ * tarda varios segundos (tres colecciones paginadas) y el usuario está esperando una
+ * redirección, no un JSON. Si falla, no rompe la conexión: los tokens ya están guardados y
+ * el cron de A-4 recogerá los datos en la siguiente pasada.
+ * TODO(A-5): el equivalente de Withings (`syncWithings(userId, {days:90})`).
  */
 async function initialSync(userId: string, provider: ProviderId): Promise<void> {
-  await Promise.resolve();
-  console.log(`[callback] initialSync pendiente (${provider}, usuario ${userId.slice(0, 8)}…) — lo rellena A-2`);
+  if (provider !== "whoop") {
+    console.log(`[callback] initialSync de ${provider} pendiente — lo rellena A-5`);
+    return;
+  }
+  try {
+    const out = await syncWhoop(userId, { days: 30 });
+    console.log(`[callback] initialSync whoop → ${out.dates.length} días`);
+  } catch (err) {
+    console.error(`[callback] initialSync whoop falló: ${err instanceof Error ? err.message : String(err)}`);
+  }
 }

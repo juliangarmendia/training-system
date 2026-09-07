@@ -1,8 +1,8 @@
 // Coach v2.1 · Parte A — cableado de las integraciones de servidor (texto, sin ejecutar Deno).
 //
-// ESQUELETO DE A-1. Cubre sólo lo que existe tras el incremento A-1 (migración + `_shared` +
-// `integrations-oauth` + `integrations-callback`). A-2 añade `whoop-sync`/`whoop-webhook`,
-// A-3 la PWA y A-5 Withings; cada incremento amplía este fichero, no lo sustituye.
+// Cubre A-1 (migración + `_shared` + `integrations-oauth` + `integrations-callback`) y A-2
+// (`whoop-sync.ts`, `whoop-sync`, `whoop-webhook`). A-3 añadirá la PWA y A-5 Withings; cada
+// incremento amplía este fichero, no lo sustituye.
 //
 // EL FALLO QUE ESTE TEST EXISTE PARA IMPEDIR. Nada de lo que hay aquí falla en desarrollo:
 // falla semanas después, de noche, y se manifiesta como "WHOOP se ha vuelto a desconectar".
@@ -27,6 +27,20 @@
 //     los tokens quedan al alcance de la clave anon.
 //   · Una columna de token en `integration_status`: esa tabla SÍ la lee la PWA.
 //
+// A-2 añade su propia lista de silencios:
+//
+//   · `whoop-webhook` con `verify_jwt = true`: el gateway rechaza TODOS los eventos de WHOOP
+//     antes de que la función los vea. La integración parece conectada y no llega nada.
+//   · La firma calculada sobre el JSON reserializado en vez del cuerpo crudo: no cuadra nunca.
+//   · Sin ventana de 5 minutos: quien capture un evento válido puede repetirlo mañana.
+//   · Sin deduplicar por `trace_id`: WHOOP reintenta cinco veces en una hora y cada reintento
+//     dispara otro sync del mismo sueño.
+//   · Un webhook que trabaja ANTES de responder: WHOOP corta, lo da por fallido y reintenta.
+//   · El cron esperando el resultado: pg_net corta a los 5 s y el job sale "fallido" siempre.
+//   · Paginar con `next_token` como parámetro de PETICIÓN (es `nextToken`): se recibe una y
+//     otra vez la primera página, y los días viejos no entran nunca.
+//   · Escribir `ctl`/`atl`/`steps`/`weight` desde WHOOP: pisa lo de intervals.icu y Withings.
+//
 // Ejecutar desde la raíz del repo: node tests/verify-integrations-wiring.mjs
 
 import { readFileSync, existsSync } from 'node:fs';
@@ -43,6 +57,10 @@ const DATES = read('supabase/functions/_shared/dates.ts');
 const MEASURES = read('supabase/functions/_shared/measures.ts');
 const OAUTH = read('supabase/functions/integrations-oauth/index.ts');
 const CALLBACK = read('supabase/functions/integrations-callback/index.ts');
+const WSYNC = read('supabase/functions/_shared/whoop-sync.ts');
+const WWELL = read('supabase/functions/_shared/whoop-wellness.ts');
+const SYNCFN = read('supabase/functions/whoop-sync/index.ts');
+const HOOKFN = read('supabase/functions/whoop-webhook/index.ts');
 
 let failed = 0;
 const ok = (m) => console.log(`  ok   ${m}`);
@@ -74,9 +92,15 @@ eq(verifyJwtOf('integrations-callback'), 'false',
    'integrations-callback = false (llega el navegador del proveedor; la auth es la fila state)');
 eq(verifyJwtOf('steps-ingest'), 'false', 'steps-ingest = false (Atajo de iOS con secreto compartido)');
 eq(verifyJwtOf('strava-sync'), 'true', 'strava-sync = true (sesión de la PWA)');
+eq(verifyJwtOf('whoop-sync'), 'true', 'whoop-sync = true (JWT del usuario, o anon + x-cron-secret)');
+eq(verifyJwtOf('whoop-webhook'), 'false', 'whoop-webhook = false (la auth es la firma HMAC)');
 yes(/oauth_states/.test(fnBlock('integrations-callback') || ''),
     'el bloque del callback explica en un comentario por qué va sin JWT');
-for (const fn of ['integrations-oauth', 'integrations-callback']) {
+yes(/HMAC/i.test(fnBlock('whoop-webhook') || ''),
+    'el bloque del webhook explica en un comentario que la auth es la firma');
+yes(/x-cron-secret/.test(fnBlock('whoop-sync') || ''),
+    'el bloque de whoop-sync explica el doble modo');
+for (const fn of ['integrations-oauth', 'integrations-callback', 'whoop-sync', 'whoop-webhook']) {
   yes(existsSync(`supabase/functions/${fn}/deno.json`), `${fn}/deno.json existe`);
   yes(new RegExp(`entrypoint = "\\./functions/${fn}/index\\.ts"`).test(CONFIG),
       `${fn} declara su entrypoint`);
@@ -239,7 +263,7 @@ yes(/fail\("no_refresh_token"\)/.test(CALLBACK) && /!tokens\.refresh_token/.test
 yes(/upsertTokens\(/.test(CALLBACK), 'alta de tokens por upsertTokens (status active, sin lock)');
 yes(/EdgeRuntime\.waitUntil\(initialSync\(/.test(CALLBACK), 'el primer volcado va bajo waitUntil');
 yes(/subscribeWithingsNotify/.test(CALLBACK), 'la suscripción de Withings está cableada (stub de A-5)');
-yes(/TODO\(A-2\)/.test(CALLBACK) && /TODO\(A-5\)/.test(CALLBACK), 'los stubs están marcados como TODO');
+yes(/TODO\(A-5\)/.test(CALLBACK), 'el stub que queda (Withings) está marcado como TODO de A-5');
 yes(/#settings\?connected=\$\{provider\}/.test(CALLBACK), '302 a #settings?connected=<provider>');
 // Ni un token interpolado en un log ni en una respuesta: el callback sólo redirige.
 yes(!/console\.[a-z]+\([^;]*\$\{[^}]*(access_token|refresh_token)[^}]*\}/.test(CALLBACK),
@@ -273,6 +297,96 @@ for (const cls of ['ConfigError', 'ProviderFatalAuthError', 'ProviderTransientEr
 }
 yes(/export \{ ConfigError, ProviderFatalAuthError, ProviderTransientError, ReconnectRequired, RefreshInProgress \}/.test(TOKENS),
     'tokens.ts reexporta la taxonomía (las funciones importan de un solo sitio)');
+
+// ── 11. _shared/whoop-sync.ts ──────────────────────────────────────────────────────────────
+console.log('11. _shared/whoop-sync.ts: paginación, precedencia y merge');
+yes(/searchParams\.set\("nextToken"/.test(WSYNC),
+    'el parámetro de PETICIÓN es `nextToken` (camelCase)');
+yes(/body\.next_token/.test(WSYNC),
+    'y el de la RESPUESTA es `next_token` (snake_case) — confundirlos devuelve siempre la 1ª página');
+yes(/PAGE_LIMIT = 25/.test(WSYNC), 'limit 25 (el máximo que acepta la v2)');
+yes(/MAX_PAGES/.test(WSYNC), 'tope de páginas: un next_token infinito es un bug, no un dataset');
+for (const p of ['/v2/activity/sleep', '/v2/recovery', '/v2/cycle']) {
+  yes(WSYNC.includes(`"${p}"`) || WSYNC.includes(`${p}/`), `pagina ${p}`);
+}
+yes(/\/v2\/cycle\/\$\{encodeURIComponent\(String\(cycleId\)\)\}\/recovery/.test(WSYNC),
+    'la recuperación del webhook sale de /v2/cycle/{id}/recovery (no existe /v2/recovery/{id})');
+yes(/sleep\.cycle_id/.test(WSYNC), 'y el cycle_id sale del propio sueño (v2 lo trae)');
+yes(/withProviderFetch\(/.test(WSYNC), 'todas las llamadas pasan por withProviderFetch (token + 401 + reintento)');
+yes(/rpc\("merge_generic_row"/.test(WSYNC) && /p_table: "wellness"/.test(WSYNC),
+    'el merge es la función SQL atómica sobre wellness');
+yes(/pickNightsByDay/.test(WSYNC), 'las noches se eligen con pickNightsByDay (siestas fuera, la más larga)');
+yes(/dayOfSleep\(/.test(WSYNC), 'la recuperación se ancla al DÍA DE SU SUEÑO');
+yes(/markSynced\(/.test(WSYNC), 'actualiza integration_status.last_sync_at');
+yes(/Math\.min\(60, Number\(win\.days\)/.test(WSYNC), 'la ventana tiene tope');
+yes(/isoDaysAgo\(days \+ 1/.test(WSYNC), 'ventana [now − days − 1d, now]: el día extra recoge lo tardío');
+
+console.log('12. Precedencia de claves: WHOOP no escribe lo que no es suyo');
+yes(/readinessSource/.test(WWELL) && /"whoop"/.test(WWELL), 'whoop-wellness.ts marca readinessSource whoop');
+yes(/sleepSecs/.test(WWELL), 'y escribe sleepSecs');
+yes(/inBed - \(awake \|\| 0\)/.test(WWELL), 'sleepSecs = en cama − despierto (DORMIDO, no en cama)');
+const patchSrc = WWELL.split('export function buildWellnessPatch')[1] || '';
+for (const k of ['ctl', 'atl', 'rampRate', 'steps', 'weight', 'bodyFat']) {
+  yes(!new RegExp(`put\\(patch, "${k}"`).test(patchSrc), `buildWellnessPatch no escribe \`${k}\``);
+}
+yes(!/put\(patch, "source"/.test(patchSrc), 'ni `source` (esa clave es de intervals.icu)');
+yes(/FORBIDDEN_KEYS/.test(WWELL), 'la lista de claves prohibidas está declarada y es testeable');
+yes(/score_state === "SCORED"/.test(WWELL), 'sólo se leen puntuaciones SCORED');
+yes(/cycle\.end && cycle\.score_state === "SCORED"/.test(WWELL),
+    'strain y kcal sólo de un ciclo CERRADO y puntuado');
+yes(/Math\.abs\(need\.need_from_recent_nap_milli/.test(WWELL),
+    'la siesta siempre RESTA necesidad de sueño, venga con el signo que venga');
+
+// ── 13. whoop-sync (la función) ────────────────────────────────────────────────────────────
+console.log('13. whoop-sync: dos modos');
+yes(/x-cron-secret/.test(SYNCFN), 'modo cron por la cabecera x-cron-secret');
+yes(/timingSafeEqual\(cronHeader, expected\)/.test(SYNCFN), 'comparado en tiempo constante');
+yes(/EdgeRuntime\.waitUntil\(runForAll/.test(SYNCFN) && /\}, 202\)/.test(SYNCFN),
+    'el cron responde 202 y trabaja bajo waitUntil (pg_net corta a los 5 s)');
+yes(/\.eq\("provider", "whoop"\)[\s\S]{0,80}\.eq\("status", "active"\)/.test(SYNCFN),
+    'el cron recorre sólo los tokens activos de whoop');
+yes(/auth\.getUser\(\)/.test(SYNCFN), 'el modo usuario saca el usuario del JWT');
+yes(/status: "needs_reconnect"/.test(SYNCFN) && /ReconnectRequired/.test(SYNCFN),
+    'ReconnectRequired → 200 {ok:false, status:needs_reconnect}, no un 500');
+yes(/status: "refresh_in_progress" \}, 503\)/.test(SYNCFN), 'RefreshInProgress → 503');
+yes(/MAX_DAYS = 30/.test(SYNCFN), 'days con tope de 30');
+yes(/for \(const userId of userIds\)[\s\S]{0,400}catch/.test(SYNCFN),
+    'un usuario que falla no tumba el sync de los demás');
+
+// ── 14. whoop-webhook ──────────────────────────────────────────────────────────────────────
+console.log('14. whoop-webhook: firma, deduplicación y 200 inmediato');
+yes(/"X-WHOOP-Signature"/.test(HOOKFN), 'lee X-WHOOP-Signature');
+yes(/"X-WHOOP-Signature-Timestamp"/.test(HOOKFN), 'lee X-WHOOP-Signature-Timestamp');
+yes(/hmacBase64\(secret, ts \+ raw\)/.test(HOOKFN),
+    'firma = HMAC(secreto, timestamp + cuerpo CRUDO), en ese orden');
+yes(/hash: "SHA-256"/.test(HTTP) && /btoa\(/.test(HTTP), 'HMAC SHA-256 en base64');
+yes(/await req\.text\(\)/.test(HOOKFN) && HOOKFN.indexOf('await req.text()') < HOOKFN.indexOf('JSON.parse(raw)'),
+    'el cuerpo se lee crudo ANTES de parsearlo (reserializar cambiaría la firma)');
+yes(/timingSafeEqual\(expected, sig\)/.test(HOOKFN), 'comparación en tiempo constante');
+yes(/TOLERANCE_MS = 5 \* 60 \* 1000/.test(HOOKFN), 'ventana de 5 minutos');
+yes(/MILISEGUNDOS/.test(HOOKFN), 'el timestamp está documentado como milisegundos');
+yes(/MAX_BODY_BYTES = 16 \* 1024/.test(HOOKFN) && /413/.test(HOOKFN), 'tope de 16 KB → 413');
+yes(/integration_events/.test(HOOKFN), 'todo evento queda en integration_events');
+yes(/onConflict: "provider,trace_id", ignoreDuplicates: true/.test(HOOKFN),
+    'deduplicación por (provider, trace_id): WHOOP reintenta cinco veces');
+yes(/duplicate: true/.test(HOOKFN), 'un duplicado responde 200 y no trabaja');
+yes(/EdgeRuntime\.waitUntil\(process\(/.test(HOOKFN), 'el sync va bajo waitUntil');
+const idx200 = HOOKFN.indexOf('EdgeRuntime.waitUntil(process(');
+yes(idx200 > 0 && HOOKFN.slice(idx200, idx200 + 200).includes('return json({ ok: true, queued'),
+    'y el 200 se devuelve JUSTO DESPUÉS, sin esperar al sync');
+yes(/ignored: "unknown_user"/.test(HOOKFN) && /json\(\{ ok: true, ignored: "unknown_user" \}\)/.test(HOOKFN),
+    'usuario desconocido → 200 + ignored (un 404 sería un oráculo de qué cuentas hay conectadas)');
+yes(/HANDLED = new Set\(\["sleep\.updated", "recovery\.updated"\]\)/.test(HOOKFN),
+    'sólo sleep.updated y recovery.updated; workout.* y *.deleted se ignoran');
+yes(/UUID del SUEÑO/.test(HOOKFN), 'documenta que en v2 el id de recovery.updated es el del sueño');
+yes(/syncWhoopSleep\(/.test(HOOKFN), 'procesa con syncWhoopSleep');
+yes(/last_event_at/.test(HOOKFN), 'y adelanta integration_status.last_event_at');
+yes(/status: "error"|"error",/.test(HOOKFN), 'un fallo deja el evento en estado error, no en received');
+
+// ── 15. El callback ya hace el primer volcado ──────────────────────────────────────────────
+console.log('15. integrations-callback → primer volcado real');
+yes(/syncWhoop\(userId, \{ days: 30 \}\)/.test(CALLBACK), 'initialSync vuelca 30 días de WHOOP');
+yes(/TODO\(A-5\)/.test(CALLBACK), 'y el de Withings sigue marcado como TODO de A-5');
 
 console.log(failed === 0 ? '\nTODO OK' : `\n${failed} FALLOS`);
 process.exit(failed === 0 ? 0 : 1);

@@ -111,6 +111,30 @@ export function timingSafeEqual(a: string, b: string): boolean {
   return diff === 0;
 }
 
+/**
+ * `base64( HMAC_SHA256(secret, message) )` — el formato exacto con el que WHOOP firma sus
+ * webhooks (`message` = cabecera de timestamp + cuerpo CRUDO).
+ *
+ * Vive aquí, y no dentro de la función del webhook, porque es la ÚNICA autenticación de un
+ * endpoint público: así Node puede importarlo y contrastarlo contra `node:crypto` en el test.
+ * Usa sólo WebCrypto y `btoa`, presentes tanto en Deno como en Node.
+ */
+export async function hmacBase64(secret: string, message: string): Promise<string> {
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    enc.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const mac = await crypto.subtle.sign("HMAC", key, enc.encode(message));
+  const bytes = new Uint8Array(mac);
+  let bin = "";
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin);
+}
+
 /** Recorta un cuerpo de error para el log sin arrastrar el payload entero. */
 export function clip(text: string, max = 300): string {
   if (!text) return "";

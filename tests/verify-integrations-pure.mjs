@@ -1,5 +1,6 @@
-// Coach v2.1 · A-1 — los dos módulos PUROS de las integraciones: atribución de fecha
-// (`_shared/dates.ts`) y decodificación de la báscula (`_shared/measures.ts`).
+// Coach v2.1 · A-1/A-2 — los módulos PUROS de las integraciones: atribución de fecha
+// (`_shared/dates.ts`), decodificación de la báscula (`_shared/measures.ts`), traducción de
+// WHOOP a `wellness` (`_shared/whoop-wellness.ts`) y la firma del webhook (`_shared/http.ts`).
 //
 // EL FALLO QUE ESTE TEST EXISTE PARA IMPEDIR: que un dato correcto acabe en el día equivocado
 // o con la magnitud equivocada, en silencio y sin que nada falle.
@@ -23,6 +24,16 @@
 //   · `mergeBodyweight` pisando el peso MANUAL con el de la báscula: Julian escribió ese número
 //     a propósito; verlo cambiar solo es la forma más rápida de dejar de fiarse de la app.
 //
+// A-2 añade tres formas más de romperse en silencio:
+//
+//   · `sleepSecs` escrito como tiempo EN CAMA en vez de tiempo DORMIDO: infla el sueño medio
+//     unos 40 min por noche, y la señal de sueño del readiness deja de dispararse nunca.
+//   · Un parche de `wellness` que incluya `ctl`, `atl`, `rampRate`, `steps` o `weight`: son de
+//     intervals.icu y de Withings. Escribirlos desde WHOOP los pisa con datos que no existen.
+//   · La firma del webhook mal formada (hex en vez de base64, cuerpo antes del timestamp, o
+//     el JSON reserializado en vez del cuerpo crudo): la comparación falla SIEMPRE y ningún
+//     evento entra nunca — o, peor, si se relajara la comprobación, entraría cualquiera.
+//
 // Node 25 borra los tipos de TypeScript sin build, así que el test importa los `.ts` directos.
 // Por eso esos dos módulos son de sintaxis borrable, con imports relativos `.ts` y sin tocar
 // `Deno` al cargarse: si alguien mete un `enum` o un `Deno.env.get` en el top level, este test
@@ -31,12 +42,17 @@
 // Ejecutar desde la raíz del repo: node tests/verify-integrations-pure.mjs
 
 import { pathToFileURL } from 'node:url';
+import { createHmac } from 'node:crypto';
 
 const dates = await import(pathToFileURL('supabase/functions/_shared/dates.ts').href);
 const measures = await import(pathToFileURL('supabase/functions/_shared/measures.ts').href);
+const wellnessMod = await import(pathToFileURL('supabase/functions/_shared/whoop-wellness.ts').href);
+const http = await import(pathToFileURL('supabase/functions/_shared/http.ts').href);
 
 const { dayOf, pickNight, pickNightsByDay, parseOffsetMinutes } = dates;
 const { decodeMeasure, groupByDay, mergeBodyweight, MEAS_TYPES } = measures;
+const { buildWellnessPatch, WELLNESS_KEYS, FORBIDDEN_KEYS } = wellnessMod;
+const { hmacBase64, timingSafeEqual } = http;
 
 const TZ = 'Europe/Madrid';
 let failed = 0;
@@ -170,6 +186,154 @@ const previaWithings = { date: '2026-09-08', weight: 84.9, source: 'withings', m
 const resync = mergeBodyweight(previaWithings, day);
 eq(resync.weight, 84.35, 'una fila que ya era de Withings SÍ se reemplaza al resincronizar');
 eq(String(resync.weightWithings), 'undefined', 'y no se duplica en weightWithings');
+
+// ── 8. buildWellnessPatch · el parche de wellness que escribe WHOOP ────────────────────────
+console.log('8. buildWellnessPatch · objetos reales de la API v2 → claves de wellness');
+const NOW = 1788800000000;
+
+const SLEEP = {
+  id: 'ecfc6a15-4661-442f-a9a4-f160dd7afae8',
+  cycle_id: 93845,
+  user_id: 10129,
+  created_at: '2026-09-08T05:30:00.000Z',
+  updated_at: '2026-09-08T05:35:00.000Z',
+  start: '2026-09-07T22:10:00.000Z', // 00:10 local del 8 (Madrid, +02:00)
+  end: '2026-09-08T05:25:00.000Z',   // 07:25 local del 8 → el día es el 8
+  timezone_offset: '+02:00',
+  nap: false,
+  score_state: 'SCORED',
+  score: {
+    stage_summary: {
+      total_in_bed_time_milli: 26100000, // 7 h 15
+      total_awake_time_milli: 1500000,   // 25 min
+      total_no_data_time_milli: 0,
+      total_light_sleep_time_milli: 13200000,
+      total_slow_wave_sleep_time_milli: 5400000,
+      total_rem_sleep_time_milli: 6000000,
+      sleep_cycle_count: 4,
+      disturbance_count: 9,
+    },
+    sleep_needed: {
+      baseline_milli: 27395716,
+      need_from_sleep_debt_milli: 352230,
+      need_from_recent_strain_milli: 208595,
+      need_from_recent_nap_milli: -12312, // WHOOP lo manda NEGATIVO: es un crédito
+    },
+    respiratory_rate: 14.2578125,
+    sleep_performance_percentage: 89,
+    sleep_consistency_percentage: 74,
+    sleep_efficiency_percentage: 91.69533848,
+  },
+};
+
+const RECOVERY = {
+  cycle_id: 93845,
+  sleep_id: 'ecfc6a15-4661-442f-a9a4-f160dd7afae8',
+  user_id: 10129,
+  created_at: '2026-09-08T05:40:00.000Z',
+  updated_at: '2026-09-08T05:45:00.000Z',
+  score_state: 'SCORED',
+  score: {
+    user_calibrating: false,
+    recovery_score: 71,
+    resting_heart_rate: 47,
+    hrv_rmssd_milli: 58.317249,
+    spo2_percentage: 95.6875,
+    skin_temp_celsius: 33.72,
+  },
+};
+
+const CYCLE = {
+  id: 93846,
+  user_id: 10129,
+  start: '2026-09-08T05:25:00.000Z',
+  end: '2026-09-08T22:00:00.000Z',
+  timezone_offset: '+02:00',
+  score_state: 'SCORED',
+  score: { strain: 12.4571527, kilojoule: 11234.5, average_heart_rate: 68, max_heart_rate: 171 },
+};
+
+const full = buildWellnessPatch(SLEEP, RECOVERY, CYCLE, NOW);
+eq(full?.date, '2026-09-08', 'el día es la fecha LOCAL del despertar con el offset del registro');
+const P = full?.patch || {};
+const EXPECTED = {
+  date: '2026-09-08',
+  whoopSyncedAt: NOW,
+  whoopSleepId: 'ecfc6a15-4661-442f-a9a4-f160dd7afae8',
+  sleepInBedSecs: 26100,
+  sleepAwakeSecs: 1500,
+  sleepSecs: 24600,          // en cama − despierto: DORMIDO, no en cama
+  sleepRemSecs: 6000,
+  sleepDeepSecs: 5400,       // slow wave
+  sleepLightSecs: 13200,
+  sleepScore: 89,
+  sleepEfficiency: 91.7,
+  sleepConsistency: 74,
+  respiration: 14.26,
+  sleepNeedSecs: 27944,      // baseline + deuda + strain − |siesta|
+  whoopCycleId: 93845,
+  readiness: 71,
+  readinessSource: 'whoop',
+  hrv: 58.32,
+  restingHR: 47,
+  spO2: 95.7,
+  skinTemp: 33.7,
+  whoopCalibrating: false,
+  whoopRecoveryUpdatedAt: '2026-09-08T05:45:00.000Z',
+  whoopStrain: 12.46,
+  whoopKcal: 2685,           // kilojoule / 4,184
+};
+for (const [k, v] of Object.entries(EXPECTED)) eq(P[k], v, `patch.${k} = ${v}`);
+eq(Object.keys(P).sort().join(','), Object.keys(EXPECTED).sort().join(','),
+   'el parche tiene EXACTAMENTE esas claves y ninguna más');
+yes(Object.keys(P).every((k) => WELLNESS_KEYS.includes(k)),
+    'todas las claves están en la lista blanca WELLNESS_KEYS');
+for (const k of FORBIDDEN_KEYS) {
+  yes(!(k in P), `el parche NO escribe \`${k}\` (es de intervals.icu / Withings / la app)`);
+}
+
+console.log('9. buildWellnessPatch · casos parciales');
+const pending = buildWellnessPatch(SLEEP, { ...RECOVERY, score_state: 'PENDING_SCORE' }, CYCLE, NOW);
+yes(!('readiness' in (pending?.patch || {})), 'recovery PENDING_SCORE → sin `readiness`');
+yes(!('readinessSource' in (pending?.patch || {})),
+    'y sin `readinessSource`: marcar la fuente sin puntuación dejaría el día sin readiness de nadie');
+yes(!('hrv' in (pending?.patch || {})), 'ni `hrv` de una puntuación que no existe');
+eq(pending?.patch?.sleepSecs, 24600, 'pero el sueño SÍ se escribe (el merge es aditivo: el evento siguiente completa)');
+
+const inProgress = buildWellnessPatch(SLEEP, RECOVERY, { ...CYCLE, end: null }, NOW);
+yes(!('whoopStrain' in (inProgress?.patch || {})), 'ciclo sin `end` (en curso) → sin `whoopStrain`');
+yes(!('whoopKcal' in (inProgress?.patch || {})), 'ni `whoopKcal` a medias');
+const unscored = buildWellnessPatch(SLEEP, RECOVERY, { ...CYCLE, score_state: 'PENDING_SCORE' }, NOW);
+yes(!('whoopStrain' in (unscored?.patch || {})), 'ciclo PENDING_SCORE → sin `whoopStrain`');
+
+eq(String(buildWellnessPatch({ ...SLEEP, nap: true }, null, null, NOW)), 'null',
+   'una siesta sola no genera parche: no es la noche de ningún día');
+eq(String(buildWellnessPatch(null, null, null, NOW)), 'null', 'sin nada que atribuir → null');
+const soloCiclo = buildWellnessPatch(null, null, CYCLE, NOW);
+eq(soloCiclo?.date, '2026-09-08', 'sin sueño, el día sale del inicio del ciclo');
+eq(soloCiclo?.patch?.whoopStrain, 12.46, 'y el strain se escribe igual');
+
+// ── 10. La firma del webhook de WHOOP ──────────────────────────────────────────────────────
+console.log('10. hmacBase64 · la única autenticación del webhook');
+const SECRET = 'secreto-de-prueba-no-es-el-real';
+const TS = '1788800000000';
+const BODY = '{"user_id":10129,"id":"ecfc6a15","type":"sleep.updated","trace_id":"t1"}';
+const mine = await hmacBase64(SECRET, TS + BODY);
+const oracle = createHmac('sha256', SECRET).update(TS + BODY).digest('base64');
+eq(mine, oracle, 'WebCrypto y node:crypto coinciden: HMAC-SHA256 en base64');
+yes(!/^[0-9a-f]+$/.test(mine), 'la salida es base64, no hexadecimal');
+yes(mine !== await hmacBase64(SECRET, BODY + TS),
+    'el orden importa: timestamp + cuerpo, no cuerpo + timestamp');
+yes(mine !== await hmacBase64(SECRET, TS + JSON.stringify(JSON.parse(BODY), null, 2)),
+    'el cuerpo tiene que ser el CRUDO: reserializar el JSON cambia la firma');
+yes(mine !== await hmacBase64(SECRET + 'x', TS + BODY), 'otra clave, otra firma');
+
+console.log('11. timingSafeEqual');
+yes(timingSafeEqual('abc', 'abc'), 'iguales → true');
+yes(!timingSafeEqual('abc', 'abd'), 'distintos → false');
+yes(!timingSafeEqual('abc', 'abcd'), 'longitudes distintas → false');
+yes(!timingSafeEqual('', 'a'), 'vacío contra no vacío → false');
+yes(timingSafeEqual('', ''), 'dos vacíos → true');
 
 console.log(failed === 0 ? '\nTODO OK' : `\n${failed} FALLOS`);
 process.exit(failed === 0 ? 0 : 1);

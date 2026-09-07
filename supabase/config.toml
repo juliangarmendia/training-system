@@ -51,6 +51,25 @@ verify_jwt = false
 import_map = "./functions/integrations-callback/deno.json"
 entrypoint = "./functions/integrations-callback/index.ts"
 
+[functions.whoop-sync]
+enabled = true
+# verify_jwt = true en los DOS modos. Con la sesion de la PWA el usuario sale del JWT; el cron
+# de pg_net manda el JWT anon (que satisface esta puerta, es publico) MAS la cabecera
+# `x-cron-secret`, que es el secreto de verdad y se compara en tiempo constante dentro.
+verify_jwt = true
+import_map = "./functions/whoop-sync/deno.json"
+entrypoint = "./functions/whoop-sync/index.ts"
+
+[functions.whoop-webhook]
+enabled = true
+# verify_jwt = false: quien llama es WHOOP, que no tiene JWT. La auth es la FIRMA HMAC-SHA256
+# del cuerpo crudo con nuestro WHOOP_CLIENT_SECRET (base64, sobre
+# `X-WHOOP-Signature-Timestamp` + cuerpo), con ventana de 5 minutos y comparacion en tiempo
+# constante. Un verify_jwt = true aqui haria que el gateway rechazara todos los eventos.
+verify_jwt = false
+import_map = "./functions/whoop-webhook/deno.json"
+entrypoint = "./functions/whoop-webhook/index.ts"
+
 [functions.coach-weekly-review]
 enabled = true
 # verify_jwt: la PWA llama con la sesion de Supabase del usuario. La funcion escribe filas de

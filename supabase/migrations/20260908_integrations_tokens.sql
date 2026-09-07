@@ -192,9 +192,12 @@ create table if not exists public.integration_events (
   error            text,
   payload          jsonb
 );
+-- NO parcial a propósito: un índice único parcial no sirve como árbitro de
+-- `insert … on conflict (provider, trace_id) do nothing` (Postgres sólo infiere un índice
+-- parcial si la sentencia repite su predicado, y PostgREST no sabe expresarlo). Con el índice
+-- completo el árbitro funciona, y los `trace_id` nulos siguen siendo distintos entre sí.
 create unique index if not exists integration_events_provider_trace_idx
-  on public.integration_events (provider, trace_id)
-  where trace_id is not null;
+  on public.integration_events (provider, trace_id);
 create index if not exists integration_events_received_idx
   on public.integration_events (received_at desc);
 alter table public.integration_events enable row level security;
