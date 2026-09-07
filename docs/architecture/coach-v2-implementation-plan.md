@@ -7,7 +7,7 @@
 > Lectura rápida: §Context → §Arquitectura → §Incrementos y orden → §Verificación. Las partes A/B/C son la
 > especificación por área para quien implemente.
 
-> **Fe de erratas (2026-09-07, tras implementar 1-8):** (1) numeración real de versiones: 1-5 = v11.55-v11.59, 6 = v11.60, 9 = v11.61; los incrementos 7 y 8 se subieron sin bump de app (commits 710c1cb y 733f0f0). (2)  redondea a paso de 5' (≥30) o 2' (<30): 40/45/50/55/30 y 20/22/24/26/14; los 44/48/53 de §B.3 eran valores antes de redondear. (3) El día de largo de 10 km da 3.060 kcal con la fórmula de §C.1, no ~3.050. (4) El validador implementado tiene 32 ids con nivel hard/warn (§C.3 fusionado en §A.6); la tabla autoritativa está en . (5) Tablas Supabase tras DB v12: 15, no 14. Además: la ruta real del techo Z2 es  y los ajustes viven en .
+> **Fe de erratas (2026-09-07, tras implementar 1-8):** (1) numeración real de versiones: 1-5 = v11.55-v11.59, 6 = v11.60, 9 = v11.61; los incrementos 7 y 8 se subieron sin bump de app (commits 710c1cb y 733f0f0). (2) `progressCardioMin` redondea a paso de 5' (≥30) o 2' (<30): 40/45/50/55/30 y 20/22/24/26/14; los 44/48/53 de §B.3 eran valores antes de redondear. (3) El día de largo de 10 km da 3.060 kcal con la fórmula de §C.1, no ~3.050. (4) El validador implementado tiene 32 ids con nivel hard/warn (§C.3 fusionado en §A.6); la tabla autoritativa está en `coach-facts-schema.md`. (5) Tablas Supabase tras DB v12: 15, no 14. Además: la ruta real del techo Z2 es `settings.icuZones.z.zone2[1]` y los ajustes viven en `settings.data->'data'`.
 
 ## Context
 
