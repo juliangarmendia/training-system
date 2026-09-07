@@ -2500,3 +2500,38 @@ body[data-tab="home"] .home-scroll-v2 { padding-top: calc(var(--safe-top) + 10px
 .nut-composer-actions button { flex: 1; }
 /* Tu nota, separada visualmente de lo que dedujo el modelo. */
 .nut-user-note { font-size: var(--fs-xs); color: var(--text2); background: var(--surface2); border-radius: var(--radius-sm); padding: 8px 10px; margin-bottom: 8px; line-height: 1.45; }
+
+/* ==================================================
+   COACH v2 — objetivo del set y lectura de sesión (v11.57)
+   ================================================== */
+/* La línea "Objetivo: 92,5 kg × 5-8 @7-8 [chip]" de la tarjeta de ejercicio. Va justo bajo
+   `.exercise-target` (el esquema de series) y por encima del "Last: …", que se conserva: uno
+   dice qué hacer hoy, el otro qué pasó la última vez. Sin animaciones. */
+.coach-objective { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; margin-top: 3px; font-size: var(--fs-xs); color: var(--text); }
+.coach-objective b { font-variant-numeric: tabular-nums; font-weight: 700; }
+.coach-obj-label { color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; font-size: 10px; font-weight: 600; }
+/* El chip de procedencia. Es lo que permite confiar en el número o corregirlo: coach (verde,
+   lo fijó la revisión semanal), regla (teal, doble progresión), último (gris, se repite). */
+.coach-chip { font-family: var(--font-mono); font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; padding: 1px 5px; border-radius: 20px; white-space: nowrap; }
+.coach-chip-coach { background: var(--accent-dim); color: var(--accent); }
+.coach-chip-rule { background: rgba(34,205,229,0.14); color: var(--teal); }
+.coach-chip-last { background: var(--surface3); color: var(--text3); }
+#workout-exercises .coach-objective { font-family: var(--font-mono); letter-spacing: 0.02em; }
+
+/* Lectura del coach en Home: objetivo vs. hecho por ejercicio, y el kg de la próxima vez. */
+.coach-readout { margin-top: 10px; padding: 14px 16px; }
+.coach-readout-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.coach-readout-title { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.16em; color: var(--text2); }
+.coach-readout-close { background: none; border: none; color: var(--text3); font-size: 15px; line-height: 1; padding: 2px 4px; cursor: pointer; }
+.coach-readout-summary { margin-top: 8px; font-size: var(--fs-sm); color: var(--text); font-weight: 600; }
+.coach-readout-row { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: var(--fs-xs); }
+.coach-readout-row:last-of-type { border-bottom: none; }
+.coach-readout-name { flex: 1; min-width: 0; color: var(--text2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.coach-readout-done { color: var(--text); font-variant-numeric: tabular-nums; }
+.coach-readout-next { color: var(--accent); font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.coach-readout-foot { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border); font-size: 10px; color: var(--text3); }
+.coach-outcome { font-size: 11px; line-height: 1; }
+.coach-outcome-up { color: var(--accent); }
+.coach-outcome-hold { color: var(--teal); }
+.coach-outcome-down { color: var(--yellow); }
+.coach-outcome-skip { color: var(--text3); }

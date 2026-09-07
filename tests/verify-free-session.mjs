@@ -138,7 +138,7 @@ ok(d('ab-wheel').defaultRest === 45, 'core: descanso corto');
 ok(d('hip-thrust').reps === '10-12', 'glúteo: 10-12');
 ok(d('idInventado').reps === '8-12', 'id desconocido: valores genéricos, no undefined');
 for (const id of ['bench-press', 'lateral-raise', 'sled-push', 'box-jump', 'farmer-carry', 'ab-wheel', 'idInventado']) {
-  ok(typeof d(id).reps === 'string', `${id}: reps es string (generateCoachNote hace .toString())`);
+  ok(typeof d(id).reps === 'string', `${id}: reps es string (_coachParseReps la normaliza)`);
 }
 
 sec('5. Catálogo del selector: la UNIÓN, no sólo el store');

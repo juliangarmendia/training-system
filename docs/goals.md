@@ -8,6 +8,20 @@ cintura)."*
 Esto no contradice la sección de agosto —sigue siendo 79-81 kg— pero le pone **un criterio físico
 detrás del número**, y eso cambia qué se mide y qué se prioriza.
 
+### Hito intermedio (2026-09-07): −5 kg a corto plazo → ~82 kg
+
+**Julian:** *"Mi objetivo es bajar 5 kg en el corto plazo."* Queda registrado como hito en la app
+(`settings.goals.primary.milestoneKg = 82`) por delante de los 79-81 finales. Plazo honesto con el
+déficit de ~500 kcal/día pilotado por la báscula (0,45-0,55 kg/semana): **10-11 semanas, finales de
+noviembre**, descontando la pausa de dieta de la semana del 5-oct. Ir más rápido (hasta ~0,8 kg/sem,
+dentro de la banda REC-002) es posible pero cuesta fuerza, carrera y energía disponible; el coach lo
+propondrá con datos a partir del **24-sep**, primer ajuste posible de calorías.
+
+Misma fecha: el bloque se **re-ancla al lunes 7-sep** (semana 1 de B1) por decisión de Julian
+siguiendo la recomendación del coach. El ancla anterior (fijada sola el 16-ago, cuando no entrenaba)
+ponía un deload —y su pausa de dieta— justo en la primera semana medible del déficit. Primer deload:
+semana del 5-oct.
+
 ### Por qué la cintura es la métrica correcta
 
 La Tanita del 11-ago reparte los 14,3 kg de grasa así:

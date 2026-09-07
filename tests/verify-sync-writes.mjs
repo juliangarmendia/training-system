@@ -28,6 +28,7 @@ const APP = readFileSync('app/app.js', 'utf8');
 const SYNC = readFileSync('app/supabase-sync.js', 'utf8');
 const NUT = readFileSync('app/nutrition.js', 'utf8');
 const WHOOP = readFileSync('app/whoop.js', 'utf8');
+const COACHJS = readFileSync('app/coach.js', 'utf8');
 
 let failed = 0;
 const ok = (m) => console.log(`  ok   ${m}`);
@@ -67,10 +68,10 @@ console.log('3. Escrituras crudas en stores sincronizados (línea base justifica
 
 const baseline = [
   {
-    store: 'settings', src: APP, n: 9,
+    store: 'settings', src: APP, n: 10,
     motivo: 'borrador de entreno en curso y de movilidad (se escriben en cada serie: ' +
-            'sincronizarlos inundaría la cola), restauración de backup, 5 flags de migración ' +
-            'y el flag del backfill. Un flag sincronizado haría que otro dispositivo se ' +
+            'sincronizarlos inundaría la cola), restauración de backup, 6 flags de migración ' +
+            '(el sexto, v11.57: re-anclaje del bloque al 7-sep) y el flag del backfill. Un flag sincronizado haría que otro dispositivo se ' +
             'saltara una migración que sí necesita.',
   },
   {
@@ -89,6 +90,12 @@ const baseline = [
             'manual, que empuja por su propia edge function steps-ingest.',
   },
   { store: 'runs', src: APP, n: 1, motivo: 'restauración de backup.' },
+  {
+    store: 'settings', src: COACHJS, n: 1,
+    motivo: "'coachReadoutSeen' (v11.57): la lectura del coach ya vista. Es estado de INTERFAZ " +
+            'de este dispositivo, no dato de usuario. Sincronizarlo haría que descartarla en el ' +
+            'móvil la borrase en la web antes de leerla, y encolaría una escritura por sesión.',
+  },
   { store: 'nutrition', src: APP, n: 1, motivo: 'restauración de backup.' },
 ];
 
@@ -107,7 +114,7 @@ const sinCrudas = ['bodyweight', 'sessions', 'mobility_sessions', 'wellness', 'f
                    // nube conserva el historial completo.
                    'coach_reviews', 'decisions'];
 for (const store of sinCrudas) {
-  const total = [APP, SYNC, NUT, WHOOP]
+  const total = [APP, SYNC, NUT, WHOOP, COACHJS]
     .reduce((acc, src) => acc + cuenta(src, new RegExp(`dbPut\\('${store}'`, 'g')), 0);
   eq(total, 0, `'${store}' no tiene ninguna escritura cruda`);
 }

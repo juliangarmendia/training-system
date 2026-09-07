@@ -370,6 +370,28 @@ puertas, prioridad coach y migración del ancla) y `tests/verify-coach-wiring.mj
 que `isDeloadWeek` ya no tenga su propio modulo, que `getPlannedSessionForDate` llame al motor
 y que la caché de "días sin cardio" se invalide al registrar).
 
+## v11.57 — La app prescribe el kg del set (2026-09-07)
+
+El placeholder de la serie era el peso anterior, `generateCoachNote` calculaba la doble
+progresión y sólo emitía una frase, y el objetivo del cron moría en Stats: tres números para una
+decisión y ninguno donde se escribe el peso (audit 2026-09-05, Change 7 · F-0, F-4).
+
+`suggestSetTarget(ex, history, opts)` en `app/coach-engine.js` (puro, testeado) devuelve
+`{kg, reps, rpe, source:'coach'|'rule'|'last'|'none', reason, …}` con prioridad única **coach >
+regla > último** y siete puertas en orden: medida (cm) · reps no numéricas · coach vigente · sin
+historial · pausa > 21 días · descarga (−10 %, RPE 5-6) · doble progresión. `computeSessionTargets`
+(en `app.js`) le da el historial de **cualquier** sesión ya convertido a kg. `generateCoachNote`
+se borró: la tarjeta pinta `Objetivo: 92,5 kg × 5-8 @7-8` con chip de origen, ese kg es el
+placeholder de todas las series, y marcar una serie sin escribir peso lo acepta (antes se
+guardaba `weight: 0` y desaparecía del historial). Sin objetivo, la tarjeta es **byte a byte** la
+de v11.56. Al terminar, `#coach-readout` compara objetivo vs. hecho y `logDecision` lo guarda.
+
+Dos honestidades: el salto (2,5 kg en barra, 1,25 en polea, siguiente par de mancuerna) es
+**heurística de práctica, no evidencia** — STR-001 avala el método, no el tamaño del disco; y los
+objetivos del `latest.json` legacy se honran **sólo en la semana ISO en curso o la anterior**
+(fallback: plan de hace ≤ 14 días), y nunca en semana de descarga, porque el cron no sabe en qué
+semana del bloque está. Tests: `verify-set-target.mjs` y `verify-coach-wiring.mjs` (partes 9-10).
+
 ## Roadmap
 - **T4b:** generador algorítmico (arma bloque/semana desde reglas+perfil en runtime; hoy `IDEAL_BLOCK_V1` es data).
 - **T6:** loop de adaptación semanal + periodización multi-bloque + progression/modality engines.

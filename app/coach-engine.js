@@ -41,6 +41,10 @@ const COACH_GOALS_DEFAULT = {
     type: 'fat-loss',
     targetWeightKg: [79, 81],
     rateKgPerWeek: 0.45,
+    // Hito intermedio dicho por Julian el 2026-09-07: "bajar 5 kg en el corto plazo" → ~82 kg.
+    // El coach mide el progreso contra el hito antes que contra el objetivo final.
+    milestoneKg: 82,
+    milestoneLabel: '−5 kg a corto plazo (2026-09-07)',
     waistCm: null,
     startWeightKg: 87.1,
     startDate: '2026-08-19',
@@ -273,9 +277,596 @@ function progressCardioMin(baseMin, block, opts = {}) {
   return { min: roundStep(raw, step), source: 'rule', note: `semana ${b.index} del bloque` };
 }
 
+// ==================== PROGRESIÓN: EL KG DEL SET ====================
+//
+// EL PROBLEMA QUE RESUELVE (audit Change 7, F-0/F-4). Hasta v11.56 la pantalla de entreno
+// mostraba TRES números para una sola decisión: el placeholder del set (el peso de la sesión
+// anterior), una frase de `generateCoachNote` ("sube a 92,5") y, en otra pestaña, el objetivo
+// que el cron del domingo había calculado. Ninguno estaba en el hueco donde se escribe el peso,
+// y la regla de doble progresión, escrita desde hacía meses, sólo emitía texto.
+//
+// Ahora la app PRESCRIBE: `suggestSetTarget` devuelve un kg y ese kg es el placeholder de todas
+// las series. La prioridad es explícita y única (plan §Principios 3): **coach > regla >
+// último**. El coach semanal manda mientras su objetivo esté vigente; sin coach, la regla
+// progresa sola; sin historial, la tarjeta se queda como está y no inventa nada.
+//
+// LO QUE NUNCA HACE (plan §B.9): no progresa en semana de descarga, ni tras más de 21 días de
+// pausa, ni en ejercicios que se miden (altura de cajón en cm), ni con reps no numéricas
+// (AMRAP, metros). Y no bloquea: el número es un placeholder, el usuario escribe lo que
+// levante de verdad.
+//
+// EL INCREMENTO DE CARGA ES HEURÍSTICA DE PRÁCTICA, NO EVIDENCIA. STR-001 (en déficit,
+// mantener la intensidad) respalda la doble progresión como método; que el salto sean 2,5 kg en
+// barra y 1,25 en polea no sale de ningún ensayo, sale de los discos que hay en el gimnasio y
+// del siguiente par de mancuernas. Por eso las constantes son editables y se dice aquí.
+
+/** Pares de mancuernas REALES del gimnasio (David Lloyd Serrano), en kg. Editable. */
+const COACH_DB_PAIRS_KG = [2, 4, 6, 8, 10, 12.5, 15, 17.5, 20, 22.5, 25, 27.5, 30, 32.5, 35, 40];
+/** Disco más pequeño útil: todo kg prescrito es múltiplo de esto. */
+const COACH_STEP_KG = 1.25;
+/**
+ * Salto por tipo de carga. HEURÍSTICA DE PRÁCTICA, NO EVIDENCIA: son los discos disponibles,
+ * no un hallazgo. La polea sube la mitad porque su recorrido de carga útil es más corto y un
+ * +2,5 en un face pull es un +10 % de golpe.
+ */
+const COACH_INC = { barbell: 2.5, machine: 2.5, cable: 1.25, bw: 2.5 };
+/**
+ * Ejercicios de polea que existen de verdad en `PLAN.sessions` / `EXERCISE_ALTERNATIVES`.
+ * Cualquier id que empiece por `cable-` cuenta también (cable-crossover, cable-curl…): la
+ * lista explícita está para los que NO lo llevan en el id (face pull, pushdown, jalón).
+ */
+const COACH_CABLE_IDS = {
+  'face-pull': 1, 'tricep-pushdown': 1, 'lat-pulldown': 1,
+  'pallof-press': 1, 'cable-row': 1, 'cable-crunch': 1,
+};
+/**
+ * Potencia/pliometría: la variable de progresión es la altura del cajón o la intención, nunca
+ * el kg. `box-jump` además está en `_MEASURE_EXERCISES` (columna en cm); `pogo-hops` no lo
+ * está, y sin esta lista la regla le prescribiría carga.
+ */
+const COACH_POWER_IDS = { 'box-jump': 1, 'pogo-hops': 1 };
+/** Más de 3 semanas sin hacer el ejercicio: se repite la carga, no se sube (LOAD-004). */
+const COACH_PAUSE_DAYS = 21;
+/** Vida del objetivo del coach cuando no trae semana ISO (plan §Reconciliaciones). */
+const COACH_TARGET_TTL_DAYS = 14;
+/** Descarga: −10 % sobre la última carga real. */
+const COACH_DELOAD_FACTOR = 0.9;
+/** Por encima de este RPE medio no se sube carga aunque salgan todas las reps. */
+const COACH_RPE_HIGH = 8.5;
+
+/**
+ * Rango de repeticiones de una prescripción.
+ *
+ * `numeric: false` es la puerta que impide progresar sobre lo que no es un rango de reps:
+ * 'AMRAP', '20 m' (trineo), '250 m' (SkiErg), '30-40 s'. Sin ella, "20 m" se leería como
+ * "20 reps" y la regla pediría +2,5 kg a un empuje de trineo medido en distancia.
+ *
+ * @param {string|number} reps '5-8' · '8-10/side' · '10-15/pierna' · '5' · 'AMRAP' · '20 m'
+ * @returns {{min:number|null, max:number|null, suffix:string, numeric:boolean, raw:string}}
+ */
+function _coachParseReps(reps) {
+  const raw = reps == null ? '' : String(reps).trim();
+  const out = { min: null, max: null, suffix: '', numeric: false, raw };
+  // Sólo cuenta como rango si TODA la cadena es un número (o dos) con un sufijo por lado.
+  const m = /^(\d+)\s*(?:-\s*(\d+))?\s*(\/\S+)?$/.exec(raw);
+  if (!m) return out;
+  out.min = Number(m[1]);
+  out.max = m[2] != null ? Number(m[2]) : Number(m[1]);
+  out.suffix = m[3] || '';
+  out.numeric = true;
+  return out;
+}
+
+/**
+ * Tope del rango de RPE prescrito: '7-8' → 8 · '7' → 7 · '-' → null (no se puntúa).
+ * Es el umbral contra el que se compara el RPE medio de la última sesión.
+ */
+function _coachParseRpeTop(rpe) {
+  const s = rpe == null ? '' : String(rpe).trim();
+  if (!s || s === '-') return null;
+  const nums = s.match(/\d+(?:[.,]\d+)?/g);
+  if (!nums || !nums.length) return null;
+  return Number(String(nums[nums.length - 1]).replace(',', '.'));
+}
+
+/** Redondeo al múltiplo de `step` más cercano, sin arrastrar errores de coma flotante. */
+function _coachRound(kg, step = COACH_STEP_KG) {
+  const s = Number(step) > 0 ? Number(step) : COACH_STEP_KG;
+  const n = Number(kg);
+  if (!isFinite(n)) return null;
+  return +(Math.round(n / s) * s).toFixed(2);
+}
+
+/** El par de mancuernas de la tabla más cercano a `kg` (empate → el de abajo). */
+function _coachSnapDbPair(kg) {
+  const n = Number(kg);
+  if (!isFinite(n)) return null;
+  const top = COACH_DB_PAIRS_KG[COACH_DB_PAIRS_KG.length - 1];
+  // Por encima de la tabla la progresión es de 2,5 en 2,5 (mancuerna cargable).
+  if (n > top) return _coachRound(n, 2.5);
+  let best = COACH_DB_PAIRS_KG[0];
+  let bestD = Infinity;
+  for (const p of COACH_DB_PAIRS_KG) {
+    const d = Math.abs(p - n);
+    if (d < bestD - 1e-9) { best = p; bestD = d; }   // `<` estricto: el empate se queda abajo
+  }
+  return best;
+}
+
+/** El par de la tabla inmediatamente ≤ `kg` (el que se puede coger de verdad). */
+function _coachSnapDbDown(kg) {
+  const n = Number(kg);
+  if (!isFinite(n)) return null;
+  const top = COACH_DB_PAIRS_KG[COACH_DB_PAIRS_KG.length - 1];
+  if (n >= top) return _coachRound(n, 2.5);
+  let best = null;
+  for (const p of COACH_DB_PAIRS_KG) if (p <= n + 1e-9) best = p;
+  return best == null ? COACH_DB_PAIRS_KG[0] : best;
+}
+
+/**
+ * Siguiente par de mancuernas. Un peso fuera de la tabla (11 kg de un registro viejo, o 21,25
+ * de un redondeo) se AJUSTA A LA TABLA primero: si no, sumar el incremento devolvería 12,25 o
+ * 21,25 kg, pares que no existen en ningún gimnasio. Es el fallo que el test vigila.
+ */
+function _coachNextDbPair(kg) {
+  const snapped = _coachSnapDbPair(kg);
+  if (snapped == null) return null;
+  for (const p of COACH_DB_PAIRS_KG) if (p > snapped + 1e-9) return p;
+  return _coachRound(snapped + 2.5, 2.5);
+}
+
+/** Par de mancuernas anterior (mismo ajuste a la tabla que `_coachNextDbPair`). */
+function _coachPrevDbPair(kg) {
+  const snapped = _coachSnapDbPair(kg);
+  if (snapped == null) return null;
+  let prev = null;
+  for (const p of COACH_DB_PAIRS_KG) if (p < snapped - 1e-9) prev = p;
+  if (prev != null) return prev;
+  return Math.max(0, _coachRound(snapped - 2.5, 2.5));
+}
+
+/**
+ * Cómo se carga un ejercicio, que es lo que decide el tamaño del salto.
+ * Compuesto sin mancuerna ni peso corporal → barra; el resto que no es polea → máquina.
+ * @returns {'measure'|'db'|'bw'|'cable'|'barbell'|'machine'}
+ */
+function _coachLoadType(ex, measureUnit) {
+  const e = ex || {};
+  if (measureUnit || COACH_POWER_IDS[e.id]) return 'measure';
+  if (e.db) return 'db';
+  if (e.bw) return 'bw';
+  if (COACH_CABLE_IDS[e.id] || /^cable-/.test(String(e.id || ''))) return 'cable';
+  if (e.compound) return 'barbell';
+  return 'machine';
+}
+
+/**
+ * La carga siguiente (o anterior) para este ejercicio.
+ * @param {object} ex
+ * @param {number} kg  Carga de partida (la última real).
+ * @param {1|-1} dir   +1 sube, −1 baja.
+ * @returns {number|null} null si el ejercicio no se carga en kg.
+ */
+function _coachIncrement(ex, kg, dir, measureUnit) {
+  const type = _coachLoadType(ex, measureUnit);
+  if (type === 'measure') return null;
+  const n = Number(kg);
+  if (!isFinite(n)) return null;
+  if (type === 'db') return dir > 0 ? _coachNextDbPair(n) : _coachPrevDbPair(n);
+  const inc = COACH_INC[type] != null ? COACH_INC[type] : COACH_INC.machine;
+  return Math.max(0, _coachRound(n + dir * inc, COACH_STEP_KG));
+}
+
+/**
+ * Número → texto español: coma decimal, y los enteros sin decimales ('95', no '95,0').
+ * La app se lee en castellano; un '92.5' en la línea del objetivo canta.
+ */
+function _coachFmtKg(kg) {
+  const n = Number(kg);
+  if (!isFinite(n)) return '';
+  const s = (Math.round(n * 100) / 100).toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+  return s.replace('.', ',');
+}
+
+/**
+ * RPE siempre con un decimal ('7,0', '9,0'): es como se ha escrito siempre en la app y en las
+ * revisiones del coach, y un '7' pelado se confunde con el tope del rango prescrito.
+ */
+function _coachFmtRpe(v) {
+  const n = Number(v);
+  if (!isFinite(n)) return '';
+  return n.toFixed(1).replace('.', ',');
+}
+
+/** 'YYYY-MM-DD' desde lo que venga (ISO completo, ms, o ya una fecha). */
+function _coachDayStr(v) {
+  if (v == null) return null;
+  if (typeof v === 'number' && isFinite(v)) return _utcDayStr(v);
+  const s = String(v).slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
+}
+
+/** Días enteros entre dos fechas (b − a). null si falta cualquiera de las dos. */
+function _coachDaysBetween(a, b) {
+  const ta = _utcMs(_coachDayStr(a));
+  const tb = _utcMs(_coachDayStr(b));
+  if (ta == null || tb == null) return null;
+  return Math.round((tb - ta) / 86400000);
+}
+
+/**
+ * El lunes de una clave de semana ISO ('2026-W37' → '2026-09-07').
+ *
+ * La vigencia se compara por FECHAS y no restando números de semana: en el cruce de año
+ * ('2027-W01' menos '2026-W53') la resta daría −52 y un objetivo de la semana pasada se
+ * declararía vencido justo en Nochevieja.
+ */
+function _coachWeekKeyMonday(weekKey) {
+  const m = /^(\d{4})-W(\d{1,2})$/.exec(String(weekKey == null ? '' : weekKey).trim());
+  if (!m) return null;
+  const y = Number(m[1]);
+  const w = Number(m[2]);
+  const jan4 = Date.UTC(y, 0, 4);
+  const dow = new Date(jan4).getUTCDay() || 7;
+  const week1Monday = jan4 - (dow - 1) * 86400000;
+  return _utcDayStr(week1Monday + (w - 1) * 7 * 86400000);
+}
+
+/**
+ * El objetivo del coach para UN ejercicio, tal y como lo escribe el cron semanal en texto
+ * libre (`weekly_reviews[].nextWeekPlan`). Adaptador LEGACY: el plan v2 traerá el objetivo ya
+ * estructurado y esto se podrá borrar (incremento 9).
+ *
+ * REGEX CONSERVADORA A PROPÓSITO. Un número mal extraído de una frase en prosa se convierte en
+ * el placeholder del set, o sea en el peso que acaba en la barra. Ante la duda devuelve
+ * `kg: null` y la regla de doble progresión toma el mando: progresar solo es mejor que
+ * prescribir un número inventado. Sólo cuenta un número que ABRE la cadena (o el lastre tras
+ * 'BW+'), más la única forma en prosa que el cron usa de verdad ('empezar en 60 kg, …').
+ *
+ * @param {string} str '95 kg × 5-8' · '62,5 kg × 6-10' · '32 kg/mano × 8-12' · '20 kg/DB' ·
+ *                     'BW +7,5 kg × 5-8' · 'BW+2,5' · '3 × 12' · 'empezar en 60 kg, ajustar…'
+ * @returns {{kg:number|null, reps:string|null, bw:boolean, perHand:boolean, raw:string}}
+ */
+function parseCoachTarget(str) {
+  const raw = str == null ? '' : String(str).trim();
+  const out = { kg: null, reps: null, bw: false, perHand: false, raw };
+  if (!raw) return out;
+  const num = (s) => {
+    const n = Number(String(s).replace(',', '.'));
+    return isFinite(n) ? n : null;
+  };
+  // Reps: lo que sigue al × (o x). Un rango, o un número, con su sufijo por lado si lo trae.
+  const mReps = /[×x]\s*(\d+(?:\s*-\s*\d+)?(?:\/\S+)?)/i.exec(raw);
+  if (mReps) out.reps = mReps[1].replace(/\s*-\s*/, '-');
+  // Por mancuerna / por mano: el número es POR MANO, no el total.
+  if (/\/\s*(mano|db|hand)\b/i.test(raw)) out.perHand = true;
+  // Peso corporal + lastre. 'BW × 8-12' (sin lastre) se queda en kg null a propósito.
+  if (/^bw\b/i.test(raw) || /\bbw\s*\+/i.test(raw)) {
+    out.bw = true;
+    const mBw = /bw\s*\+\s*(\d+(?:[.,]\d+)?)/i.exec(raw);
+    if (mBw) out.kg = num(mBw[1]);
+    return out;
+  }
+  // 'empezar en 60 kg, ajustar a RPE 7' — la única forma en prosa que el cron usa.
+  const mProse = /^empezar en\s+(\d+(?:[.,]\d+)?)\s*kg\b/i.exec(raw);
+  if (mProse) { out.kg = num(mProse[1]); return out; }
+  // Número (o rango de kg, '8-9 kg/mano') al PRINCIPIO de la cadena. En un rango manda el
+  // suelo: es la carga con la que se empieza la serie.
+  const mKg = /^(\d+(?:[.,]\d+)?)(?:\s*-\s*\d+(?:[.,]\d+)?)?\s*kg\b/i.exec(raw);
+  if (mKg) out.kg = num(mKg[1]);
+  return out;
+}
+
+/**
+ * EL MOTOR. Qué kg toca hoy en este ejercicio, y por qué, en una línea en castellano.
+ *
+ * @param {object} ex  Ejercicio del plan: `{id, name, reps, rpe, sets, db, bw, compound}`.
+ * @param {Array<{date:string, sets:Array<{weight:number,reps:number,rpe:number|null,done:boolean}>}>} history
+ *        Sesiones de ESTE ejercicio, la más reciente primero, **pesos ya en kg**: la conversión
+ *        desde lb de los registros pre-España la hace el llamador (`convertWeight`).
+ * @param {object} [opts]
+ * @param {object|null} [opts.coachTarget]   `{kg, reps, rpe, note, bw}` del coach, si lo hay.
+ * @param {string|null} [opts.coachWeekKey]  Semana ISO en que el coach lo fijó.
+ * @param {string|null} [opts.todayWeekKey]  Semana ISO de hoy.
+ * @param {string|number|null} [opts.planCreatedAt] Fallback de vigencia si no hay semana.
+ * @param {boolean} [opts.deload]            Semana de descarga.
+ * @param {string} [opts.today]              'YYYY-MM-DD'.
+ * @param {string|null} [opts.measureUnit]   'cm' si la columna de carga es una medida.
+ * @returns {{kg:number|null, reps:string, rpe:string, source:'coach'|'rule'|'last'|'none',
+ *           reason:string, delta:number|null, ruleIds:string[],
+ *           basis:{lastKg:number|null, lastReps:number[], avgRpe:number|null, daysSince:number|null}|null}}
+ */
+function suggestSetTarget(ex, history, opts = {}) {
+  const e = ex || {};
+  const o = opts || {};
+  const hist = Array.isArray(history) ? history : [];
+  const todayStr = _coachDayStr(o.today) || _coachDayStr(new Date().toISOString());
+  const range = _coachParseReps(e.reps);
+  const type = _coachLoadType(e, o.measureUnit);
+  const baseReps = range.raw || String(e.reps == null ? '' : e.reps);
+  const baseRpe = e.rpe == null ? '-' : String(e.rpe);
+  const mk = (kg, source, reason, extra = {}) => ({
+    kg: kg == null ? null : +Number(kg).toFixed(2),
+    reps: baseReps,
+    rpe: baseRpe,
+    source,
+    reason,
+    delta: null,
+    ruleIds: [],
+    basis: null,
+    ...extra,
+  });
+
+  // ── (1) Se mide, no se carga ──────────────────────────────────────────────────────
+  if (type === 'measure') {
+    if (o.measureUnit) return mk(null, 'none', `Se mide en ${o.measureUnit}, no en kg`);
+    // Pliometría sin columna de medida (pogo hops): la intención es la carga.
+    return mk(null, 'none', 'Salto: progresa la intención y la altura, no el kg');
+  }
+
+  // Sesiones utilizables: las que tienen alguna serie hecha con carga. En peso corporal una
+  // serie hecha con 0 kg SÍ cuenta (unas dominadas sin lastre son un dato, no un hueco).
+  const usable = hist.filter(h => Array.isArray(h && h.sets) && h.sets.some(
+    s => s && s.done && (Number(s.weight) > 0 || type === 'bw')));
+  const lastSession = usable[0] || null;
+  const doneSets = lastSession
+    ? lastSession.sets.filter(s => s && s.done && (Number(s.weight) > 0 || type === 'bw'))
+    : [];
+  const lastTopKg = doneSets.length ? Math.max(...doneSets.map(s => Number(s.weight) || 0)) : null;
+  const lastReps = doneSets.map(s => Number(s.reps) || 0);
+  const rpes = doneSets.map(s => Number(s.rpe)).filter(v => isFinite(v) && v > 0);
+  const avgRpe = rpes.length ? +(rpes.reduce((a, b) => a + b, 0) / rpes.length).toFixed(2) : null;
+  const daysSince = lastSession ? _coachDaysBetween(lastSession.date, todayStr) : null;
+  const basis = lastSession ? { lastKg: lastTopKg, lastReps, avgRpe, daysSince } : null;
+  const withBasis = (t) => Object.assign(t, { basis });
+  const deltaFrom = (kg) => (kg == null || lastTopKg == null ? null : +(kg - lastTopKg).toFixed(2));
+
+  // ── (2) Sin rango de reps no hay doble progresión ─────────────────────────────────
+  // AMRAP, '20 m' de trineo, '250 m' de SkiErg: lo que progresa no es la carga.
+  if (!range.numeric) {
+    const reason = lastTopKg != null
+      ? `Sin rango de reps (${baseReps}): repite ${_coachFmtKg(lastTopKg)} kg y ajusta por sensación`
+      : `Sin rango de reps (${baseReps}): elige la carga por sensación, 2-3 reps en reserva`;
+    return withBasis(mk(lastTopKg, 'last', reason, { delta: 0 }));
+  }
+
+  // ── (3) El coach manda mientras su objetivo esté vigente ─────────────────────────
+  // Vigencia por FECHA (plan §Reconciliaciones): la semana ISO en que lo fijó tiene que ser
+  // ésta o la anterior; sin semana, vale un plan creado hace ≤ 14 días. Un objetivo de hace
+  // tres semanas describe un cuerpo que ya no existe, así que cede el paso a la regla.
+  const ct = o.coachTarget;
+  let expiredPrefix = '';
+  if (ct && ct.kg != null && isFinite(Number(ct.kg))) {
+    const ctMonday = _coachWeekKeyMonday(o.coachWeekKey);
+    const todayMonday = _coachWeekKeyMonday(o.todayWeekKey) || mondayOf(todayStr);
+    let vigente = false;
+    let ageDays = null;
+    if (ctMonday && todayMonday) {
+      const d = _coachDaysBetween(ctMonday, todayMonday);
+      vigente = d != null && d >= 0 && d <= 7;          // esta semana o la anterior
+      ageDays = _coachDaysBetween(ctMonday, todayStr);
+    } else if (!o.coachWeekKey && o.planCreatedAt != null) {
+      ageDays = _coachDaysBetween(o.planCreatedAt, todayStr);
+      vigente = ageDays != null && ageDays >= 0 && ageDays <= COACH_TARGET_TTL_DAYS;
+    }
+    if (vigente) {
+      const kg = +Number(ct.kg).toFixed(2);
+      return withBasis({
+        kg,
+        reps: ct.reps || baseReps,
+        rpe: ct.rpe || baseRpe,
+        source: 'coach',
+        reason: ct.note || 'Objetivo del coach para esta semana',
+        delta: deltaFrom(kg),
+        ruleIds: Array.isArray(ct.ruleIds) ? ct.ruleIds.slice() : [],
+        basis,
+      });
+    }
+    expiredPrefix = ageDays != null
+      ? `Objetivo del coach de hace ${ageDays} días — aplico la regla. `
+      : 'Objetivo del coach sin fecha — aplico la regla. ';
+  }
+
+  // ── (4) Sin historial no se inventa un número ────────────────────────────────────
+  if (!lastSession) {
+    return mk(null, 'none',
+      expiredPrefix + 'Primera vez: elige un peso que deje 2-3 reps en reserva');
+  }
+
+  // ── (5) Pausa larga: repetir, nunca subir (LOAD-004) ─────────────────────────────
+  if (daysSince != null && daysSince > COACH_PAUSE_DAYS) {
+    return withBasis(mk(lastTopKg, 'last',
+      `${expiredPrefix}Pausa de ${daysSince} días: repite la carga; si sale fácil, sube la próxima`,
+      { delta: 0, ruleIds: ['LOAD-004'] }));
+  }
+
+  // ── (6) Descarga: −10 % y RPE 5-6. NO se evalúa progresión ───────────────────────
+  // Es el punto entero de la semana 5/5. Evaluar la doble progresión aquí y recortar después
+  // sería prescribir dos cosas contradictorias sobre el mismo set.
+  if (o.deload) {
+    let kg;
+    if (type === 'bw' && (lastTopKg == null || lastTopKg <= 0)) {
+      kg = null;                                   // peso corporal sin lastre: no hay qué bajar
+    } else if (type === 'db') {
+      kg = _coachSnapDbDown(lastTopKg * COACH_DELOAD_FACTOR);
+    } else {
+      kg = _coachRound(lastTopKg * COACH_DELOAD_FACTOR, COACH_STEP_KG);
+    }
+    return withBasis({
+      kg: kg == null ? null : +Number(kg).toFixed(2),
+      reps: baseReps,
+      rpe: '5-6',
+      source: 'rule',
+      reason: expiredPrefix + 'Deload · semana 5/5: −10 % y RPE 5-6',
+      delta: deltaFrom(kg),
+      ruleIds: ['LOAD-004'],
+      basis,
+    });
+  }
+
+  // ── (7) Doble progresión sobre la última sesión (STR-001) ────────────────────────
+  const rpeTopParsed = _coachParseRpeTop(e.rpe);
+  const rpeTop = rpeTopParsed != null ? rpeTopParsed : 8;
+  const allHitMax = doneSets.length > 0 && lastReps.every(r => r >= range.max);
+  const allHitMin = doneSets.length > 0 && lastReps.every(r => r >= range.min);
+  const rule = (kg, reason, ruleIds = ['STR-001']) => withBasis({
+    kg: kg == null ? null : +Number(kg).toFixed(2),
+    reps: baseReps,
+    rpe: baseRpe,
+    source: 'rule',
+    reason: expiredPrefix + reason,
+    delta: deltaFrom(kg),
+    ruleIds,
+    basis,
+  });
+
+  // Peso corporal SIN puntuar (ab wheel, elevación de piernas): lo que progresa es el
+  // recorrido y las reps, nunca el lastre. Prescribir disco aquí es cómo se arquea una lumbar
+  // con dos contracturas en el historial.
+  if (type === 'bw' && baseRpe === '-') {
+    return rule(null, allHitMax
+      ? 'Al tope del rango: sube el recorrido o +1 rep, no el lastre'
+      : 'Completa el rango antes de tocar nada más');
+  }
+
+  if (allHitMax && (avgRpe == null || avgRpe <= rpeTop)) {
+    // Peso corporal al tope y sin lastre: el salto es empezar a colgar disco.
+    if (type === 'bw' && (lastTopKg == null || lastTopKg <= 0)) {
+      return rule(COACH_INC.bw,
+        `${doneSets.length}×${range.max} a peso corporal → añade ${_coachFmtKg(COACH_INC.bw)} kg de lastre`);
+    }
+    const next = _coachIncrement(e, lastTopKg, 1, o.measureUnit);
+    const rpeTxt = avgRpe == null ? '(sin RPE anotado)' : `@${_coachFmtRpe(avgRpe)}`;
+    return rule(next,
+      `Todas las series al tope (${range.max}) ${rpeTxt} → +${_coachFmtKg((next || 0) - (lastTopKg || 0))} kg. Apunta al mínimo del rango.`);
+  }
+
+  if (allHitMax) {
+    // Al tope pero con el RPE por encima del objetivo: la carga ya está donde tiene que estar;
+    // lo que falta es que ese mismo peso se sienta más fácil.
+    const reason = avgRpe > COACH_RPE_HIGH
+      ? `Al tope pero RPE ${_coachFmtRpe(avgRpe)}: mismo kg hasta bajar a ${_coachFmtKg(rpeTop)}`
+      : `Al tope con RPE ${_coachFmtRpe(avgRpe)} sobre el objetivo (${_coachFmtKg(rpeTop)}): mismo kg hasta que baje`;
+    return rule(lastTopKg, reason);
+  }
+
+  if (!allHitMin) {
+    const short = lastReps.filter(r => r < range.min).length;
+    const mitad = Math.ceil(doneSets.length / 2);
+    if (short >= mitad || (avgRpe != null && avgRpe >= 9)) {
+      const down = _coachIncrement(e, lastTopKg, -1, o.measureUnit);
+      return rule(down,
+        `No llegaste al mínimo en ${short} ${short === 1 ? 'serie' : 'series'} → −${_coachFmtKg((lastTopKg || 0) - (down || 0))} kg`);
+    }
+    return rule(lastTopKg,
+      `Una serie corta: repite ${_coachFmtKg(lastTopKg)} kg y completa el rango`);
+  }
+
+  // Dentro del rango pero sin llegar al tope: lo que progresa son reps, no kg.
+  const prev = usable[1] || null;
+  const mean = (arr) => (arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : null);
+  if (prev) {
+    const prevDone = prev.sets.filter(s => s && s.done && (Number(s.weight) > 0 || type === 'bw'));
+    const prevTop = prevDone.length ? Math.max(...prevDone.map(s => Number(s.weight) || 0)) : null;
+    if (prevTop != null && prevTop === lastTopKg
+        && mean(prevDone.map(s => Number(s.reps) || 0)) === mean(lastReps)) {
+      return rule(lastTopKg,
+        `Dos sesiones iguales: hoy +1 rep o RPE ${_coachFmtKg(rpeTop)} en la última`);
+    }
+  }
+  const bump = lastReps.map(r => Math.min(r + 1, range.max));
+  return rule(lastTopKg, `+1 rep por serie (${lastReps.join('/')} → ${bump.join('/')})`);
+}
+
+/**
+ * LECTURA DE LA SESIÓN: qué se prescribió, qué se hizo y qué toca la próxima vez.
+ *
+ * Es la mitad que cierra el lazo. Sin ella el objetivo es una sugerencia que nadie revisa: el
+ * facts pack (incremento 7) lee esto para poder decir "te propuse 95 en banca, hiciste
+ * 92,5×8/8/7" y para que el coach retire una decisión que no funcionó.
+ *
+ * PURA: el `next` de cada ejercicio lo calcula el llamador con `suggestSetTarget` sobre
+ * `[esta sesión, ...historial]` y lo pasa en `nextById`. Aquí no se lee IDB ni el reloj.
+ *
+ * @param {object} workout      El registro tal y como lo escribe `finishWorkout`.
+ * @param {object} targetsById  `{[exerciseId]: target}` que se mostró en la tarjeta.
+ * @param {object} exDefs       `{[exerciseId]: {name, reps, rpe, db, bw, compound, measureUnit}}`.
+ * @param {object} [nextById]   `{[exerciseId]: target}` de la próxima vez.
+ * @returns {{items:Array<object>, summary:{progressed:number,held:number,regressed:number,skipped:number}, line:string}}
+ */
+function sessionReadout(workout, targetsById, exDefs, nextById) {
+  const w = workout || {};
+  const T = targetsById || {};
+  const D = exDefs || {};
+  const N = nextById || {};
+  const items = [];
+  const summary = { progressed: 0, held: 0, regressed: 0, skipped: 0 };
+
+  for (const we of (w.exercises || [])) {
+    const id = we.exerciseId;
+    const def = D[id] || {};
+    const target = T[id] || null;
+    const type = _coachLoadType(Object.assign({ id }, def), def.measureUnit);
+    const done = (we.sets || []).filter(s => s && s.done
+      && (Number(s.weight) > 0 || type === 'bw' || type === 'measure'));
+    const reps = done.map(s => Number(s.reps) || 0);
+    const topKg = done.length ? Math.max(...done.map(s => Number(s.weight) || 0)) : null;
+    const rpes = done.map(s => Number(s.rpe)).filter(v => isFinite(v) && v > 0);
+    const avgRpe = rpes.length ? +(rpes.reduce((a, b) => a + b, 0) / rpes.length).toFixed(1) : null;
+    const range = _coachParseReps(def.reps != null ? def.reps : (target && target.reps));
+
+    let outcome;
+    if (!done.length) {
+      outcome = 'skipped';                                  // no se hizo: no se juzga
+    } else if (!target || target.kg == null) {
+      outcome = 'no-target';                                // medida, primera vez o ab wheel
+    } else {
+      const min = range.numeric ? range.min : 0;
+      const short = reps.filter(r => r < min).length;
+      if (topKg >= target.kg - 0.01 && short === 0) outcome = 'progressed';
+      else if (topKg < target.kg - COACH_STEP_KG || short >= Math.ceil(done.length / 2)) outcome = 'regressed';
+      else if (Math.abs(topKg - target.kg) <= COACH_STEP_KG && reps.every(r => r >= min - 2)) outcome = 'held';
+      else outcome = 'regressed';
+    }
+    if (summary[outcome] != null) summary[outcome] += 1;
+
+    const nx = N[id];
+    items.push({
+      exerciseId: id,
+      name: def.name || id,
+      target: target && target.kg != null
+        ? { kg: target.kg, reps: target.reps, source: target.source }
+        : null,
+      done: { topKg, reps, avgRpe },
+      outcome,
+      // La unidad viaja con el item: en `box-jump` el número son CENTÍMETROS, y pintarlo sin
+      // unidad al lado de kilos es cómo el 3-sep quedó un 0×5@6 en el registro (v11.48).
+      measureUnit: def.measureUnit || null,
+      next: nx && nx.kg != null ? { kg: nx.kg, reason: nx.reason } : null,
+    });
+  }
+
+  // Una línea, en castellano, con lo único que se lee de un vistazo: cuántas subieron y qué
+  // sube la próxima vez.
+  const plural = (n, sing, pl) => `${n} ${n === 1 ? sing : pl}`;
+  const trozos = [];
+  if (summary.progressed) trozos.push(plural(summary.progressed, 'subida', 'subidas'));
+  if (summary.held) trozos.push(plural(summary.held, 'mantenida', 'mantenidas'));
+  if (summary.regressed) trozos.push(plural(summary.regressed, 'corta', 'cortas'));
+  if (summary.skipped) trozos.push(plural(summary.skipped, 'saltado', 'saltados'));
+  const suben = items.filter(it => it.next && it.target && it.next.kg > it.target.kg);
+  const cola = suben.length
+    ? ` ${suben[0].name} sube a ${_coachFmtKg(suben[0].next.kg)} kg la próxima.`
+    : '';
+  const line = (trozos.length ? trozos.join(', ') + '.' : 'Sin series registradas.') + cola;
+
+  return { items, summary, line };
+}
+
 // ==================== EXPORTS PARA LOS TESTS ====================
-// tests/verify-coach-wiring.mjs y tests/verify-block-week.mjs cargan este fichero con `vm` y
-// leen este bloque. En el navegador no estorba (no hay `module`).
+// tests/verify-coach-wiring.mjs, verify-block-week.mjs y verify-set-target.mjs cargan este
+// fichero con `vm` y leen este bloque. En el navegador no estorba (no hay `module`).
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     COACH_GOALS_DEFAULT,
@@ -285,5 +876,31 @@ if (typeof module !== 'undefined' && module.exports) {
     anchorDateFromWeek,
     roundStep,
     progressCardioMin,
+    // Progresión (incremento 3, v11.57)
+    COACH_DB_PAIRS_KG,
+    COACH_STEP_KG,
+    COACH_INC,
+    COACH_CABLE_IDS,
+    COACH_POWER_IDS,
+    COACH_PAUSE_DAYS,
+    COACH_TARGET_TTL_DAYS,
+    COACH_DELOAD_FACTOR,
+    COACH_RPE_HIGH,
+    _coachParseReps,
+    _coachParseRpeTop,
+    _coachRound,
+    _coachNextDbPair,
+    _coachPrevDbPair,
+    _coachSnapDbPair,
+    _coachSnapDbDown,
+    _coachLoadType,
+    _coachIncrement,
+    _coachFmtKg,
+    _coachFmtRpe,
+    _coachWeekKeyMonday,
+    _coachDaysBetween,
+    parseCoachTarget,
+    suggestSetTarget,
+    sessionReadout,
   };
 }

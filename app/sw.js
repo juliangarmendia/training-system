@@ -2,7 +2,7 @@
 // Service Worker — Training App v4.0
 // ============================================================
 
-const CACHE_NAME = 'training-v11.56';
+const CACHE_NAME = 'training-v11.57';
 const APP_SHELL = [
   './',
   './index.html',
@@ -14,6 +14,7 @@ const APP_SHELL = [
   './bloodwork.js',
   './nutrition.js',
   './coach-engine.js',
+  './coach.js',
   './manifest.json',
   './app-icon.png',
   './intro.mp4',

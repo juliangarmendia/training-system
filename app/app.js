@@ -1306,6 +1306,9 @@ const state = {
   settings: { unit: 'kg', proteinTarget: 185, calorieTargetTraining: 2700, calorieTargetRest: 2400, calorieTarget: 2570, startDate: null, userName: '', goalWeight: null, idealVariant: 6 },
   sessionQuality: 3,
   quickMode: false,
+  // Objetivo de kg por ejercicio de la sesión en curso (v11.57). Lo llena `startWorkout` y lo
+  // sella `finishWorkout` en el registro; `clearActiveWorkout` lo limpia.
+  activeTargets: null,
   selectedStrengthLift: 'bench-press',
 };
 
@@ -3323,9 +3326,8 @@ function deriveExerciseFlags(exId) {
 }
 
 // Series/reps/RPE por defecto para un ejercicio elegido a mano, según su patrón. `notes` SIEMPRE
-// string: `generateCoachNote` devuelve `ex.notes` cuando no hay historial y la tarjeta lo interpola
-// crudo, así que un undefined pintaría literalmente "undefined". `reps` siempre string porque
-// `generateCoachNote` hace `.toString()` sobre él.
+// string: sin objetivo, la tarjeta interpola `ex.notes` crudo, así que un undefined pintaría
+// literalmente "undefined". `reps` siempre string porque `_coachParseReps` la normaliza.
 function defaultsForPattern(exId) {
   const p = MOVEMENT_PATTERNS[exId] || 'other';
   if (_COMPOUND_PATTERNS.has(p)) return { reps: '6-10', rpe: '7-8', defaultRest: 150 };
@@ -3463,7 +3465,10 @@ async function _rerenderAdHoc(focusExId) {
 
 // ==================== FIN SESIÓN LIBRE ====================
 
-async function startWorkout(sessionId) {
+// `opts.targets` repone los objetivos de una instantánea al reanudar (`restoreActiveWorkout`):
+// el kg que ves a mitad de sesión no puede cambiar porque otro dispositivo haya sincronizado
+// un entrenamiento nuevo entre medias. Sin instantánea se calculan.
+async function startWorkout(sessionId, opts = {}) {
   const baseSession = getSessionDef(sessionId);
   if (!baseSession) {
     // Antes fallaba en silencio. Este proyecto ya ha pagado cuatro veces el precio de no dejar
@@ -3531,6 +3536,23 @@ async function startWorkout(sessionId) {
     previous = picked.length ? { unit: u, exercises: picked } : null;
   } else {
     previous = workouts[0] || null;
+  }
+
+  // El kg objetivo de cada ejercicio (v11.57). Va al placeholder de las series y a la línea
+  // "Objetivo" de la tarjeta; se guarda en `state` para que `finishWorkout` pueda sellar en el
+  // registro lo que de verdad se prescribió.
+  //
+  // Los objetivos de la instantánea se CONSERVAN y sólo se calculan los que falten. Así el
+  // reanudado repone el mismo kg (el número no puede cambiar a mitad de sesión) y, a la vez, un
+  // ejercicio añadido en una sesión libre —que llega por el mismo round-trip
+  // guardar→restaurar— recibe el suyo en vez de quedarse sin objetivo.
+  {
+    const dados = (opts && opts.targets) || null;
+    const faltan = dados ? session.exercises.filter(e => !(e.id in dados)) : session.exercises;
+    const nuevos = faltan.length
+      ? await computeSessionTargets(sessionId, faltan, { deload, allWorkoutsDesc })
+      : {};
+    state.activeTargets = Object.assign({}, dados || {}, nuevos);
   }
 
   const restSettings = await dbGet('settings', 'restTimes') || { key: 'restTimes', data: {} };
@@ -3644,7 +3666,7 @@ async function startWorkout(sessionId) {
       inner.className = 'superset-group';
       inner.innerHTML = `<div class="superset-label">Superset ${group.label}</div>`;
       group.exercises.forEach(({ ex, idx }) => {
-        inner.appendChild(buildExerciseCard(ex, idx, previous, restSettings, exerciseNotes, deload, session, workouts));
+        inner.appendChild(buildExerciseCard(ex, idx, previous, restSettings, exerciseNotes, deload, session, workouts, (state.activeTargets || {})[ex.id] || null));
       });
       wrapper.appendChild(inner);
       container.appendChild(wrapper);
@@ -3654,7 +3676,7 @@ async function startWorkout(sessionId) {
       wrapper.className = 'block-wrapper';
       wrapper.dataset.blockId = block ? block.id : '';
       if (block) wrapper.insertAdjacentHTML('beforeend', blockHeaderHTML(block));
-      wrapper.appendChild(buildExerciseCard(group.ex, group.idx, previous, restSettings, exerciseNotes, deload, session, workouts));
+      wrapper.appendChild(buildExerciseCard(group.ex, group.idx, previous, restSettings, exerciseNotes, deload, session, workouts, (state.activeTargets || {})[group.ex.id] || null));
       container.appendChild(wrapper);
     }
   });
@@ -3697,6 +3719,17 @@ async function startWorkout(sessionId) {
       btn.classList.toggle('checked');
       const card = btn.closest('.exercise-card');
       const row = btn.closest('.set-row');
+      // ACEPTAR EL OBJETIVO CON EL CHECK (v11.57). Hasta ahora una serie marcada sin escribir
+      // peso se guardaba con `weight: 0` y DESAPARECÍA del historial (y del tonelaje, y del
+      // 1RM estimado): el gesto más rápido de la pantalla producía un dato falso. Con el
+      // objetivo en el placeholder, el número que se ve es la lectura honesta de lo que se
+      // acaba de hacer, así que se escribe. Si ya hay algo tecleado, NO se pisa.
+      if (btn.classList.contains('checked') && row) {
+        const wIn = row.querySelector('[data-field="weight"]');
+        if (wIn && wIn.value === '' && isFinite(parseFloat(wIn.placeholder))) {
+          wIn.value = wIn.placeholder;
+        }
+      }
       // Row flash feedback. (No vibration: iOS Safari doesn't implement
       // navigator.vibrate, so this would be Android-only dead code.)
       if (btn.classList.contains('checked')) {
@@ -3824,70 +3857,214 @@ async function startWorkout(sessionId) {
   saveActiveWorkout();
 }
 
-// Generate a smart coach note for an exercise based on recent performance
-function generateCoachNote(ex, allWorkouts) {
-  // During the re-entry ramp, always show the prescribed target note (with its
-  // kg load), never a dynamic hint derived from pre-layoff history — that history
-  // is stale (and pre-Spain it was logged in lb, so the hint numbers are wrong).
-  if (ex.notes && ex.notes.startsWith('Reentrada ')) return ex.notes;
+// ==================== OBJETIVO DEL SET (v11.57, incremento 3) ====================
+//
+// Sustituye a `generateCoachNote`, que calculaba la doble progresión y sólo emitía una FRASE
+// ("↑ All sets hit 8 reps… increase to 95") mientras el placeholder del set seguía mostrando el
+// peso anterior y el objetivo del cron vivía en otra pestaña: tres números para una decisión
+// (audit Change 7, F-4). Ahora el número lo pone `suggestSetTarget` y va al placeholder.
+//
+// ESTE WRAPPER es la única parte que toca IndexedDB: lee el historial y el objetivo del coach y
+// llama al motor puro (`app/coach-engine.js`), que es lo que `verify-set-target.mjs` recorre con
+// fixtures. La división es a propósito: nada que necesite IDB se puede probar en Node.
 
-  // Get last 2 sessions for this exercise (most recent first). Keep each
-  // session's unit so weights can be converted to the display unit below.
-  const history = allWorkouts
-    .map(w => ({ date: w.date, unit: w.unit, ex: w.exercises.find(e => e.exerciseId === ex.id) }))
-    .filter(h => h.ex && h.ex.sets.some(s => s.done && s.weight > 0))
-    .slice(0, 2);
-
-  if (history.length === 0) return ex.notes; // no data yet, keep static note
-
-  const last = history[0].ex;
-  const doneSets = last.sets.filter(s => s.done && s.weight > 0);
-  if (doneSets.length === 0) return ex.notes;
-
-  // Parse rep range: "5-8" → [5, 8], "10-12" → [10, 12]
-  const repRange = ex.reps.toString().replace(/\/side/, '').split('-').map(Number);
-  const minReps = repRange[0] || 0;
-  const maxReps = repRange[1] || repRange[0] || 0;
-  const targetRpe = parseFloat(ex.rpe) || 0;
-
-  const topWeight = convertWeight(Math.max(...doneSets.map(s => s.weight)), history[0].unit, state.settings.unit);
-  const avgReps = Math.round(doneSets.reduce((sum, s) => sum + s.reps, 0) / doneSets.length);
-  const avgRpe = doneSets.filter(s => s.rpe).length > 0
-    ? doneSets.filter(s => s.rpe).reduce((sum, s) => sum + s.rpe, 0) / doneSets.filter(s => s.rpe).length
-    : 0;
-
-  const allHitMax = doneSets.every(s => s.reps >= maxReps);
-  const allHitMin = doneSets.every(s => s.reps >= minReps);
-  const rpeControlled = avgRpe > 0 && avgRpe <= (targetRpe || 8);
-  const rpeHigh = avgRpe > 8.5;
-
-  // Decision logic
-  if (allHitMax && rpeControlled) {
-    const bump = state.settings.unit === 'lb' ? '5lb' : '2.5kg';
-    return `↑ All sets hit ${maxReps} reps @ RPE ${avgRpe.toFixed(1)}. Increase to ${topWeight + (state.settings.unit === 'lb' ? 5 : 2.5)}${state.settings.unit}, aim for ${minReps} reps.`;
-  }
-  if (allHitMax && rpeHigh) {
-    return `⚡ Hit ${maxReps} reps but RPE was ${avgRpe.toFixed(1)}. Stay at ${topWeight}${state.settings.unit} — bring RPE down to ${targetRpe || 8} before increasing.`;
-  }
-  if (!allHitMin) {
-    return `↓ Didn't hit min ${minReps} reps on all sets. Consider dropping to ${topWeight - (state.settings.unit === 'lb' ? 5 : 2.5)}${state.settings.unit} or repeat same weight.`;
-  }
-  if (history.length >= 2) {
-    const prev = history[1].ex;
-    const prevDone = prev.sets.filter(s => s.done && s.weight > 0);
-    const prevTop = convertWeight(Math.max(...prevDone.map(s => s.weight)), history[1].unit, state.settings.unit);
-    const prevAvgReps = Math.round(prevDone.reduce((sum, s) => sum + s.reps, 0) / prevDone.length);
-    if (topWeight === prevTop && avgReps === prevAvgReps) {
-      return `→ Same weight and reps as last time. Push for +1 rep per set to progress.`;
+/**
+ * Objetivos del coach para una sesión, tal y como los dejó el cron semanal en texto libre.
+ * ADAPTADOR LEGACY: mientras el plan activo no sea v2 (incremento 9), el objetivo del coach
+ * vive en `weekly_reviews[].nextWeekPlan.sessions[].exercises[].target` como '95 kg × 5-8'.
+ * @returns {Promise<{weekKey:string|null, byId:object}|null>}
+ */
+async function _legacyCoachTargets(sessionId) {
+  try {
+    if (typeof parseCoachTarget !== 'function') return null;
+    const all = await dbGetAll('weekly_reviews');
+    if (!all || !all.length) return null;
+    const latest = all.slice().sort((a, b) => (b.generatedAt || 0) - (a.generatedAt || 0))[0];
+    const sess = ((latest.nextWeekPlan || {}).sessions || []).find(s => s && s.id === sessionId);
+    if (!sess) return null;
+    const byId = {};
+    for (const ex of (sess.exercises || [])) {
+      if (!ex || !ex.id) continue;
+      const parsed = parseCoachTarget(ex.target);
+      byId[ex.id] = {
+        kg: parsed.kg, reps: parsed.reps, bw: parsed.bw, perHand: parsed.perHand,
+        rpe: ex.rpe || null, note: ex.note || null,
+      };
     }
-    if (topWeight > prevTop) {
-      return `✓ Weight up from ${prevTop} to ${topWeight}. Solid — build reps at this weight.`;
-    }
+    return { weekKey: latest.weekKey || null, byId };
+  } catch (e) {
+    console.warn('[Coach] objetivos legacy:', e);
+    return null;
   }
-  return `→ ${topWeight}${state.settings.unit} × ${avgReps} avg. Keep building reps within ${ex.reps} range.`;
 }
 
-function buildExerciseCard(ex, exIdx, previous, restSettings, exerciseNotes, deload, session, allWorkouts) {
+/**
+ * El objetivo de hoy para cada ejercicio de una sesión: `{ [exerciseId]: target }`.
+ *
+ * HISTORIAL DESDE CUALQUIER SESIÓN, no sólo desde ésta. Lo exigen los dos casos reales: la
+ * sesión libre (que nunca se repite igual) y los swaps — si hoy el jalón sustituye a las
+ * dominadas, el peso que importa es el del JALÓN, venga de la sesión que venga. Se busca por
+ * `ex.id` (el movimiento que se va a hacer), no por `_origId` (el hueco del plan).
+ *
+ * Los pesos se convierten a kg con `convertWeight`: los registros anteriores a junio de 2026
+ * están en lb y compararlos crudos daría un "sube a 95" sobre 95 libras.
+ *
+ * @param {string} sessionId
+ * @param {Array<object>} exercises  Ya resueltos con los swaps (`resolveSessionExercises`).
+ * @param {{deload?:boolean, allWorkoutsDesc?:Array<object>}} [opts]
+ */
+async function computeSessionTargets(sessionId, exercises, opts = {}) {
+  const out = {};
+  if (typeof suggestSetTarget !== 'function') {      // coach-engine.js no cargó
+    console.warn('[Coach] coach-engine.js no disponible; sin objetivos de set');
+    return out;
+  }
+  const list = Array.isArray(exercises) ? exercises : [];
+  if (!list.length) return out;
+  const all = opts.allWorkoutsDesc
+    || (await dbGetAll('workouts')).sort((a, b) => String(b.date).localeCompare(String(a.date)));
+  const planSession = (activePlan && activePlan.sessions && activePlan.sessions[sessionId]) || null;
+  const legacy = await _legacyCoachTargets(sessionId);
+  const ds = today();
+  const todayWeekKey = typeof isoWeekKey === 'function' ? isoWeekKey(ds) : null;
+
+  for (const ex of list) {
+    if (!ex || !ex.id) continue;
+    const history = [];
+    for (const w of all) {
+      const we = (w.exercises || []).find(e => e.exerciseId === ex.id);
+      if (!we || !Array.isArray(we.sets)) continue;
+      history.push({
+        date: w.date,
+        sets: we.sets.map(s => ({
+          weight: convertWeight(s.weight || 0, w.unit || 'kg', 'kg'),
+          reps: s.reps, rpe: s.rpe, done: !!s.done,
+        })),
+      });
+    }
+    // Prioridad del objetivo del coach: plan v2 primero, texto del cron después.
+    //
+    // UN SWAP INVALIDA EL OBJETIVO DEL HUECO. `_origId` sólo existe cuando hay un cambio activo,
+    // y el kg que el coach fijó era para el movimiento ORIGINAL: aplicar los 70 kg de un jalón a
+    // un pullover en polea prescribe un número absurdo con la etiqueta de autoridad más alta que
+    // tiene la app. Con swap sólo se acepta un objetivo que el coach haya escrito para el
+    // SUSTITUTO (posible desde el incremento 9, cuando el coach reescriba el plan después del
+    // cambio); si no lo hay, manda la regla sobre el historial del sustituto.
+    let coachTarget = null;
+    let coachWeekKey = null;
+    let planCreatedAt = null;
+    const slotId = ex._origId || ex.id;
+    const swapped = !!(ex._origId && ex._origId !== ex.id);
+    const findPlanEx = (id) => (planSession && Array.isArray(planSession.exercises)
+      ? planSession.exercises.find(e => e.id === id)
+      : null);
+    const planEx = findPlanEx(ex.id) || (swapped ? null : findPlanEx(slotId));
+    let fromPlanV2 = false;
+    if (planEx && planEx.target) {
+      coachTarget = typeof planEx.target === 'string'
+        ? parseCoachTarget(planEx.target)
+        : planEx.target;
+      if (planEx.rpe && !coachTarget.rpe) coachTarget = { ...coachTarget, rpe: planEx.rpe };
+      coachWeekKey = activePlan.weekKey || null;
+      planCreatedAt = activePlan.createdAt || null;
+      fromPlanV2 = true;
+    } else if (legacy) {
+      const t = legacy.byId[ex.id] || (swapped ? null : legacy.byId[slotId]);
+      if (t) { coachTarget = t; coachWeekKey = legacy.weekKey; }
+    }
+    // El cron semanal (adaptador legacy) NO conoce la semana del bloque: prescribe carga de
+    // construcción también en la descarga (audit Change 4, todavía sin hacer). En una semana de
+    // descarga su objetivo se descarta y manda la regla, que sí recorta el 10 %. El objetivo del
+    // plan v2 sobrevive: lo escribe el coach de dentro de la app, que ya sabe en qué semana está.
+    if (opts.deload && coachTarget && !fromPlanV2) coachTarget = null;
+    out[ex.id] = suggestSetTarget(ex, history, {
+      coachTarget,
+      coachWeekKey,
+      todayWeekKey,
+      planCreatedAt,
+      deload: !!opts.deload,
+      today: ds,
+      measureUnit: measureUnitFor(ex.id),
+    });
+  }
+  return out;
+}
+
+/**
+ * Adjunta `workout.readout` al registro que se está cerrando: qué se prescribió, qué se hizo y
+ * qué toca la próxima vez. Lo pinta `renderCoachReadout()` en Home (app/coach.js) y lo lee el
+ * facts pack del coach semanal (incremento 7).
+ *
+ * El `next` de cada ejercicio se calcula con la sesión de hoy YA metida en el historial, que es
+ * exactamente lo que verá la tarjeta la próxima vez. Se calcula con `deload: false` a propósito:
+ * el readout dice qué pide la regla, y si la próxima semana toca descarga la tarjeta de ese día
+ * lo aplicará entonces — prometer aquí un −10 % que depende del calendario sería adivinar.
+ */
+async function attachSessionReadout(workout, sessionDef) {
+  if (typeof sessionReadout !== 'function' || typeof suggestSetTarget !== 'function') return;
+  const targets = state.activeTargets || {};
+  const all = (await dbGetAll('workouts')).sort((a, b) => String(b.date).localeCompare(String(a.date)));
+  const ds = today();
+  const todayWeekKey = typeof isoWeekKey === 'function' ? isoWeekKey(ds) : null;
+  const exDefs = {};
+  const nextById = {};
+  for (const we of (workout.exercises || [])) {
+    const id = we.exerciseId;
+    const planEx = (sessionDef ? (sessionDef.exercises || []).find(e => e.id === id) : null)
+      || deriveExerciseFlags(id);
+    const def = {
+      id,
+      name: getExerciseName(id),
+      reps: planEx && planEx.reps ? planEx.reps : (targets[id] && targets[id].reps) || '',
+      rpe: planEx && planEx.rpe ? planEx.rpe : (targets[id] && targets[id].rpe) || '-',
+      db: !!(planEx && planEx.db), bw: !!(planEx && planEx.bw), compound: !!(planEx && planEx.compound),
+      measureUnit: measureUnitFor(id),
+    };
+    exDefs[id] = def;
+    // Historial en kg con la sesión de hoy delante (aún no está en `workouts`).
+    const history = [{
+      date: workout.date,
+      sets: (we.sets || []).map(s => ({
+        weight: convertWeight(s.weight || 0, workout.unit || 'kg', 'kg'),
+        reps: s.reps, rpe: s.rpe, done: !!s.done,
+      })),
+    }];
+    for (const w of all) {
+      if (w.id === workout.id) continue;
+      const prev = (w.exercises || []).find(e => e.exerciseId === id);
+      if (!prev || !Array.isArray(prev.sets)) continue;
+      history.push({
+        date: w.date,
+        sets: prev.sets.map(s => ({
+          weight: convertWeight(s.weight || 0, w.unit || 'kg', 'kg'),
+          reps: s.reps, rpe: s.rpe, done: !!s.done,
+        })),
+      });
+    }
+    nextById[id] = suggestSetTarget(def, history, {
+      coachTarget: null, coachWeekKey: null, todayWeekKey, planCreatedAt: null,
+      deload: false, today: ds, measureUnit: def.measureUnit,
+    });
+  }
+  workout.readout = sessionReadout(workout, targets, exDefs, nextById);
+}
+
+/**
+ * La línea "Objetivo: **92,5 kg** × 5-8 @7-8 [chip]" de la tarjeta.
+ * Devuelve '' cuando no hay kg que prescribir: sin objetivo la tarjeta queda EXACTAMENTE como
+ * antes de v11.57 (ejercicios de medida, primera vez, ab wheel). `verify-coach-wiring.mjs`
+ * compara el HTML sin objetivo contra la instantánea de v11.56.
+ */
+function coachObjectiveHtml(target, ex) {
+  if (!target || target.kg == null) return '';
+  const kgDisp = convertWeight(target.kg, 'kg', state.settings.unit);
+  const label = (ex && ex.bw ? '+' : '') + _coachFmtKg(kgDisp) + ' ' + state.settings.unit;
+  const chipTxt = target.source === 'coach' ? 'coach' : (target.source === 'last' ? 'último' : 'regla');
+  const rpeBit = target.rpe && target.rpe !== '-' ? ` @${escapeHtml(target.rpe)}` : '';
+  return `<div class="exercise-objective coach-objective"><span class="coach-obj-label">Objetivo:</span> <b>${label}</b> × ${escapeHtml(target.reps)}${rpeBit} <span class="coach-chip coach-chip-${target.source}">${chipTxt}</span></div>`;
+}
+
+function buildExerciseCard(ex, exIdx, previous, restSettings, exerciseNotes, deload, session, allWorkouts, target = null, adjustments = null) {
   const prevEx = previous ? previous.exercises.find(e => e.exerciseId === ex.id) : null;
   const customRest = (restSettings.data && restSettings.data[ex.id]) || ex.defaultRest;
   // Quick mode: keep compounds full (overload signal), trim accessories.
@@ -3906,9 +4083,20 @@ function buildExerciseCard(ex, exIdx, previous, restSettings, exerciseNotes, del
   const rpeDisplay = deload && ex.rpe !== '-' ? 'RPE 5-6' : `RPE ${ex.rpe}`;
   const muscleColor = MUSCLE_COLORS[ex.muscle] || '#666';
 
-  const coachNote = deload
-    ? '<strong>Deload:</strong> lighter weight, focus on form.'
-    : generateCoachNote(ex, allWorkouts);
+  // El objetivo manda sobre la nota estática. `source: 'none'` (medida, primera vez) NO cuenta
+  // como objetivo: en ese caso la tarjeta tiene que quedar idéntica a la de v11.56.
+  const hasTarget = !!(target && target.source !== 'none' && target.reason);
+  // La razón se escapa: cuando viene del coach es texto de un LLM y acaba en innerHTML. La
+  // frase del deload sí lleva HTML propio, así que sólo esa rama se interpola cruda.
+  const coachNote = hasTarget
+    ? escapeHtml(target.reason)
+    : (deload ? '<strong>Deload:</strong> lighter weight, focus on form.' : ex.notes);
+  const objectiveHTML = hasTarget ? coachObjectiveHtml(target, ex) : '';
+  // Placeholder de TODAS las series = el kg objetivo. La fila fantasma sigue mostrando lo
+  // anterior, así que no se pierde el dato: se gana el número que hay que poner hoy.
+  const targetKgDisp = (target && target.kg != null)
+    ? convertWeight(target.kg, 'kg', state.settings.unit)
+    : null;
 
   // Calculate est. 1RM from all history for this exercise
   let best1RM = 0;
@@ -3940,7 +4128,7 @@ function buildExerciseCard(ex, exIdx, previous, restSettings, exerciseNotes, del
       ${ghostHTML}
       <div class="set-row" data-set="${i}">
         <div class="set-num">${i + 1}</div>
-        <input type="number" class="set-input" data-field="weight" placeholder="${prevSet ? prevWeightDisp : (ex.bw ? '0' : '-')}" inputmode="decimal" step="0.5">
+        <input type="number" class="set-input" data-field="weight" placeholder="${targetKgDisp != null ? targetKgDisp : (prevSet ? prevWeightDisp : (ex.bw ? '0' : '-'))}" inputmode="decimal" step="0.5">
         <input type="number" class="set-input" data-field="reps" placeholder="${prevSet ? prevSet.reps : '-'}" inputmode="numeric" step="1">
         <select class="set-input" data-field="rpe" style="padding:8px 2px;font-size:12px">
           <option value="">RPE</option>
@@ -3968,7 +4156,7 @@ function buildExerciseCard(ex, exIdx, previous, restSettings, exerciseNotes, del
           <span class="exercise-name tappable" data-ex-id="${ex.id}">${ex.name} <span class="tap-hint">history</span></span>
           <span class="muscle-badge" style="background:${muscleColor}20;color:${muscleColor}">${ex.muscle}</span>
         </div>
-        <div class="exercise-target">${numSets} × ${ex.reps} @ ${rpeDisplay} · Rest ${Math.floor(customRest / 60)}:${(customRest % 60).toString().padStart(2, '0')}</div>
+        <div class="exercise-target">${numSets} × ${ex.reps} @ ${rpeDisplay} · Rest ${Math.floor(customRest / 60)}:${(customRest % 60).toString().padStart(2, '0')}</div>${objectiveHTML}
         ${prevHeaderHTML}
         ${e1rmHTML}
       </div>
@@ -4108,6 +4296,10 @@ function captureWorkoutState() {
     // emparejamiento por exerciseId descartaría en silencio todas las series. Es exactamente el
     // fallo que tenía el código de plantillas que se acaba de retirar.
     adHoc: state.adHocSession ? JSON.parse(JSON.stringify(state.adHocSession)) : null,
+    // Los objetivos viajan CON la instantánea (v11.57). Recalcularlos al reanudar los dejaría a
+    // merced de lo que haya sincronizado otro dispositivo a mitad de sesión: el kg que estás
+    // levantando no puede cambiar entre que cierras la app y la reabres.
+    targets: state.activeTargets ? JSON.parse(JSON.stringify(state.activeTargets)) : null,
   };
 }
 
@@ -4131,6 +4323,7 @@ async function clearActiveWorkout() {
   state.quickMode = false;
   state.workoutStartTime = null;
   state.adHocSession = null;
+  state.activeTargets = null;
   { const qb = document.getElementById('quick-mode-bar'); if (qb) qb.classList.remove('hidden'); }
   syncQuickModeUI();
 }
@@ -4241,7 +4434,7 @@ async function restoreActiveWorkout() {
   state.quickMode = !!saved.quickMode;
 
   // Rebuild the workout UI (reuse startWorkout rendering)
-  await startWorkout(saved.sessionId);
+  await startWorkout(saved.sessionId, { targets: saved.targets || null });
   // startWorkout resetea sessionQuality a 3 (bug de orden preexistente: la línea de arriba lo fija
   // y startWorkout lo pisa antes de que se repinten las estrellas). Con el round-trip de "añadir
   // ejercicio" esto pasaría en CADA añadido, así que se repone aquí.
@@ -4357,6 +4550,12 @@ async function finishWorkout() {
     if (planEx?.db) meta.db = true;
     if (planEx?.bw) meta.bw = true;
     if (planEx?.compound) meta.compound = true;
+    // Instantánea de lo que la tarjeta PRESCRIBIÓ (v11.57). Es lo que permite luego decir "te
+    // propuse 95, hiciste 92,5×8/8/7": sin guardarlo, el objetivo se recalcularía con el
+    // historial de después y el sistema no podría contrastar su propia decisión. Campo nuevo y
+    // opcional: la forma del registro sigue siendo compatible hacia atrás.
+    const t = (state.activeTargets || {})[exId];
+    if (t) meta.target = { kg: t.kg, reps: t.reps, rpe: t.rpe, source: t.source, reason: t.reason };
     exercises.push({ exerciseId: exId, sets, note, ...meta });
   });
 
@@ -4384,7 +4583,49 @@ async function finishWorkout() {
     quick: !!state.quickMode,
   };
 
+  // LECTURA DE LA SESIÓN (v11.57): objetivo vs. hecho, y qué toca la próxima vez. Se calcula
+  // ANTES de escribir porque `clearActiveWorkout()` limpia `state.activeTargets`, y entero
+  // dentro de un try/catch: terminar un entrenamiento no puede fallar por un resumen.
+  try {
+    await attachSessionReadout(workout, sessionDef);
+  } catch (e) {
+    console.warn('[Coach] lectura de sesión:', e);
+  }
+
   await smartPut('workouts', workout);
+
+  // El registro de decisiones es la memoria del coach (§B.7): UNA fila por sesión, con el
+  // detalle por ejercicio en `evidence.perExercise`. Nunca bloquea el cierre de la sesión.
+  if (workout.readout) {
+    try {
+      await logDecision({
+        date: workout.date,
+        source: 'rule',
+        type: 'session-readout',
+        what: workout.readout.line,
+        why: 'Doble progresión sobre la sesión registrada',
+        ruleIds: ['STR-001'],
+        evidence: {
+          perExercise: workout.readout.items.map(it => ({
+            id: it.exerciseId,
+            target: it.target ? it.target.kg : null,
+            source: it.target ? it.target.source : null,
+            topKg: it.done.topKg,
+            reps: it.done.reps,
+            avgRpe: it.done.avgRpe,
+            outcome: it.outcome,
+            next: it.next ? it.next.kg : null,
+          })),
+          summary: workout.readout.summary,
+        },
+        ref: { workoutId: workout.id, sessionId: workout.session },
+        outcome: 'done',
+      });
+    } catch (e) {
+      console.warn('[Coach] logDecision(session-readout):', e);
+    }
+  }
+
   await clearActiveWorkout();
 
   // Clear state and navigate home BEFORE running async PR detection so the
@@ -7817,6 +8058,9 @@ async function renderHomeView() {
     renderHardDayBudget(),      // T3 weekly hard-day budget (read-only)
     renderPlanSelector(),       // T5.1 day-count selector (3/4/5/Ideal)
     renderWeekCalendar(),
+    // Lectura del coach de la sesión de hoy (app/coach.js, v11.57). Con `typeof` porque el
+    // módulo se carga por <script> aparte: si no cargó, Home se pinta igual.
+    (typeof renderCoachReadout === 'function' ? renderCoachReadout() : Promise.resolve()),
     renderTodaysPlan(),
     renderHomeStatTrio(),
     renderHomeQueue(),
@@ -9329,13 +9573,43 @@ async function renderTodaysPlan() {
     ? `<span class="sh-cta-label">View session</span>`
     : `<span class="sh-cta-label">Start workout</span><span class="sh-cta-arrow">›</span>`;
 
+  // v11.57: el kg objetivo también en Home. La decisión de "¿con cuánto voy hoy?" se toma antes
+  // de entrar al gimnasio; verla sólo dentro de la sesión llega tarde. Se calcula sobre los
+  // ejercicios YA resueltos con los swaps (mismo orden que `s.exercises`, así que el índice
+  // empareja) y cualquier fallo aquí deja la fila como estaba: Home no puede caerse por esto.
+  const baseExercises = (s && Array.isArray(s.exercises)) ? s.exercises : [];
+  let rxTargets = {};
+  let rxResolved = baseExercises;
+  try {
+    if (baseExercises.length) {
+      rxResolved = resolveSessionExercises(plannedSession, baseExercises);
+      rxTargets = await computeSessionTargets(plannedSession, rxResolved, {
+        deload: isDeloadWeek(getWeekNumber()),
+        allWorkoutsDesc: allWorkouts.slice().sort((a, b) => String(b.date).localeCompare(String(a.date))),
+      });
+    }
+  } catch (e) {
+    rxTargets = {};
+    rxResolved = baseExercises;
+  }
+
   // v11.34: a strength day used to be a photo plus the string "6 exercises · 20 sets ·
   // 60-75 min · +20' Z2" — it never said WHAT to do. Cardio days already had a full
   // prescription card; this gives strength days the same, reusing .cardio-rx.
-  const rxExercises = (s && Array.isArray(s.exercises) ? s.exercises : []).map(ex => {
+  // Se itera la lista YA RESUELTA: hasta v11.56 Home pintaba el nombre del hueco del plan
+  // aunque hubiera un swap activo, y con el kg al lado eso sería el nombre de un ejercicio con
+  // el peso de otro. `resolveSessionExercises` conserva series/reps/RPE del hueco y sólo cambia
+  // el movimiento, así que el esquema no se mueve.
+  const rxExercises = rxResolved.map((ex) => {
     const sets = typeof ex.sets === 'number' ? ex.sets : (Array.isArray(ex.sets) ? ex.sets.length : 3);
     const scheme = `${sets}×${ex.reps || '—'}${ex.rpe ? ` @RPE ${ex.rpe}` : ''}`;
-    return `<div class="cardio-rx-row"><span>${ex.compound ? '<b class="rx-key">•</b> ' : ''}${ex.name}</span><b>${scheme}</b></div>`;
+    const tgt = rxTargets[ex.id];
+    const kgBit = (tgt && tgt.kg != null)
+      ? ` · <b>${(ex.bw ? '+' : '') + _coachFmtKg(convertWeight(tgt.kg, 'kg', state.settings.unit))} ${state.settings.unit}</b> <span class="coach-chip coach-chip-${tgt.source}">${tgt.source === 'coach' ? 'coach' : (tgt.source === 'last' ? 'último' : 'regla')}</span>`
+      : '';
+    // El kg va DENTRO del <b> de la derecha: `.cardio-rx-row` es un flex con space-between y un
+    // tercer hijo rompería la alineación de todas las filas.
+    return `<div class="cardio-rx-row"><span>${ex.compound ? '<b class="rx-key">•</b> ' : ''}${ex.name}</span><b>${scheme}${kgBit}</b></div>`;
   }).join('');
 
   // The Z2 finisher is a real prescription (IDEAL_BLOCK_V1.z2Finisher), not a label.
@@ -9817,6 +10091,14 @@ function showSwapUI(card, ex, session) {
       if (nameEl) { nameEl.childNodes[0].textContent = newName + ' '; nameEl.dataset.exId = newId; }
       const notesEl = card.querySelector('.exercise-notes');
       if (notesEl) notesEl.textContent = newId === origId ? '' : `Cambiado de ${origName}`;
+      // El objetivo en kg era del movimiento ANTERIOR: dejarlo bajo el nombre nuevo prescribiría
+      // el peso de otro ejercicio, que es justo el fallo que v11.57 viene a cerrar. Se quita, y
+      // se borra también del snapshot para que `finishWorkout` no lo sella contra el sustituto.
+      // El sustituto recibe SU objetivo (calculado sobre SU historial) la próxima vez que se
+      // arranque la sesión, que es cuando `resolveSessionExercises` ya lo trae resuelto.
+      const objEl = card.querySelector('.coach-objective');
+      if (objEl) objEl.remove();
+      if (state.activeTargets) { delete state.activeTargets[currentId]; delete state.activeTargets[newId]; }
       panel.remove();
       await saveActiveWorkout();
       toast(newId === origId ? `Volviste a ${newName}` : `Cambiado a ${newName}`);
@@ -11747,7 +12029,7 @@ async function runMigrations() {
   // el campo de nota. Los pesos son reales; las ETIQUETAS no lo son.
   //
   // No es cosmético: toda la progresión se resuelve por `exerciseId` sin ningún fallback. Un face
-  // pull de 60 kg hace que `generateCoachNote` sugiera "bajar a 57,5 kg", que la rampa automática
+  // pull de 60 kg hace que la doble progresión sugiera "bajar a 57,5 kg", que la rampa automática
   // genere calentamientos de face pull a 47,5 kg, y que el 1RM estimado quede en ~80 kg.
   if (!done.data.includes('fix-aug20-mislabeled')) {
     // Los ejercicios que esta corrección introduce se registran en el store en la migración
@@ -11794,6 +12076,33 @@ async function runMigrations() {
       console.log(`[Migration] ${changed} nombres de ejercicio normalizados a inglés`);
     }
     done.data.push('rename-exercises-en');
+    await dbPut('settings', done);
+  }
+
+  // Migración (v11.57, 2026-09-07): re-anclar el bloque al lunes 7-sep y registrar el hito de −5 kg.
+  //
+  // Decisión de Julian del 2026-09-07 ("sigo la recomendación del coach"). El ancla que la app fijó
+  // sola el 16-ago (semana 19 de la app) ponía el deload en la semana del 7-sep: quinta semana de un
+  // bloque en el que sólo hubo entrenamiento real desde el 17-ago (primera pierna completa el 3-sep,
+  // primer peso muerto el 5-sep, readiness ~89, RHR en mínimo histórico). LOAD-004 pide deload tras
+  // 4-6 semanas de carga acumulada, no de calendario; y el deload es también la pausa de dieta a
+  // mantenimiento, que habría frenado el déficit en su primera semana medible. Semana 1 del bloque
+  // B1 = 7-sep → primer deload la semana del 5-oct.
+  //
+  // Hito: "bajar 5 kg en el corto plazo" (Julian, 2026-09-07) → ~82 kg, antes de los 79-81 finales.
+  // Es un dato del usuario, no una estimación: el coach mide el progreso contra él.
+  if (!done.data.includes('coach-v2-reanchor-2026-09-07')) {
+    const st = state.settings;
+    st.deloadAnchorDate = '2026-09-07';
+    if (st.goals && st.goals.primary) {
+      st.goals.primary.milestoneKg = 82;
+      st.goals.primary.milestoneLabel = '−5 kg a corto plazo (2026-09-07)';
+      st.goals.updatedAt = new Date().toISOString();
+    }
+    await smartPut('settings', { key: 'userSettings', data: st });
+    const prox = (typeof blockWeek === 'function' && blockWeek().deloadMonday) || '?';
+    console.log(`[Migration] Bloque re-anclado al 2026-09-07 (próximo deload la semana del ${prox}); hito −5 kg → 82 kg`);
+    done.data.push('coach-v2-reanchor-2026-09-07');
     await dbPut('settings', done);
   }
 }
