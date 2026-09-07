@@ -1,6 +1,6 @@
 # Plan: Coach v2.1 — el coach semanal manda, la app no toca el día; integraciones de servidor (WHOOP, Withings)
 
-> Estado: **listo para aprobar** (2026-09-07). Contexto, decisiones, Parte A (integraciones), Parte B (coach +
+> Estado: **implementado** (aprobado 2026-09-07; código v11.62 → v11.64 + A-1…A-6 subido el 2026-09-08). Pendiente de Julian: URLs en los paneles, conectar, primera semana cerrada. Contexto, decisiones, Parte A (integraciones), Parte B (coach +
 > Home), incrementos en dos carriles y verificación.
 > Sustituye al plan Coach v2 (implementado hoy en v11.55-v11.61; copia en
 > `docs/architecture/coach-v2-implementation-plan.md`). Este plan corrige la dirección tras el uso real y
