@@ -172,6 +172,10 @@ en el briefing y no toca el plan. Un evento puntual no cambia nada: se mira la s
 juzgas meses.
 - \`trajectory.program.blocks\` — en qué bloque va y cuántas semanas lleva entrenando de verdad.
 - \`trajectory.weight.slopeSinceStartKgPerWeek\` — la pendiente desde el inicio, no sólo la de 7d.
+- \`trajectory.weight.scale\` — lo que dice la báscula (Withings): \`fatPct\`, \`ffmKg\`, \`visceralFat\`,
+  \`bmrKcal\`, \`metabolicAge\`, \`heartRateBpm\` y, con ≥21 días entre lecturas, \`fatPctDelta28d\` y
+  \`ffmKgDelta28d\`. **La recomposición se lee ahí**: grasa que baja con FFM que aguanta es éxito
+  aunque el peso se mueva poco. Si es \`null\` no hay báscula: no cites composición corporal.
 - \`trajectory.anchors[].first/best/latest\` — de dónde salió cada anchor y dónde está hoy. Uno
   plano 3 semanas pero +12% desde el inicio no es un estancamiento.
 - \`trajectory.running.weeklyKm\` — la forma de la curva, no el último punto.
