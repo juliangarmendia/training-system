@@ -67,6 +67,18 @@ export const CHANGE_KINDS = ["reorder", "remove", "add", "swap", "sets"] as cons
 
 export const SLOT_TYPES = ["gym", "run", "recovery", "rest"] as const;
 
+// Fases del bloque (contrato v2, 2026-09-07). El coach trabaja por SEMANAS y la Home enseña en
+// qué etapa está: `base` (1-2 tras un deload) · `build` (3-4) · `intensify` (sólo con adherencia
+// ≥75 % y rendimiento verde 2 semanas) · `deload` (obligatoria si `facts.block.isDeload`) ·
+// `maintenance` (la grasa manda y la fuerza aguanta). El enum vive aquí y el saneado de
+// `index.ts` lo vuelve a comprobar: el decodificador restringido no puede emitir otra cosa,
+// pero una revisión v1 en caché sí, y esa también pasa por el saneado.
+export const PHASES = ["base", "build", "intensify", "deload", "maintenance"] as const;
+
+// Estado de cada sesión de la semana en `proposal.weekSummary`. `kept` es el caso normal y por
+// eso lleva línea igual que los demás: mantener también se justifica.
+export const WEEK_SUMMARY_STATUS = ["kept", "changed", "new", "removed"] as const;
+
 export function CoachOutputSchema(allowed: Allowed) {
   const SessionId = idEnum(allowed?.sessionIds || []);
   const ExerciseId = idEnum((allowed?.exerciseIds || []).map((e) => e?.id).filter(Boolean) as string[]);
@@ -146,12 +158,35 @@ export function CoachOutputSchema(allowed: Allowed) {
     confidence: z.enum(["low", "medium", "high"]).describe("Confianza en la decisión dado el tamaño de muestra"),
   });
 
+  // Una fila por CADA sesión del plan activo, también las que no cambian. Es el campo que hace
+  // visible "por qué sigue igual" en Home: sin él, una semana estable se lee como una semana en
+  // la que el coach no miró nada.
+  const WeekSummaryRow = z.object({
+    sessionId: SessionId.describe("Id EXACTO de una de las sesiones permitidas"),
+    status: z.enum(WEEK_SUMMARY_STATUS).describe(
+      "'kept' si la sesión no cambia · 'changed' si cambia (y entonces va en `sessions`) · " +
+        "'new' si se añade · 'removed' si sale de la semana",
+    ),
+    line: z.string().describe(
+      "Una línea, máximo 160 caracteres, CON EL NÚMERO que la justifica. " +
+        "Ej: 'Upper A igual: 8/8/7 @7,5 el 1-sep, un dato más antes de subir'",
+    ),
+  });
+
   const Proposal = z.object({
     label: z.string().describe("Nombre corto de la semana, p. ej. 'B1 · S3 — base aeróbica'"),
-    phase: z.enum(["build", "deload"]).describe("Fase del bloque. 'deload' sólo si el bloque o LOAD-004 lo piden"),
+    phase: z.enum(PHASES).describe(
+      "Fase del bloque, la misma que `briefing.phase`. 'deload' es OBLIGATORIA si " +
+        "`facts.block.isDeload` es true o LOAD-004 la dispara",
+    ),
+    weekSummary: z.array(WeekSummaryRow).describe(
+      "UNA FILA POR CADA SESIÓN del plan activo, también las que NO cambian. Máximo 12. " +
+        "Es lo que la app enseña como 'qué cambia y qué sigue igual, y por qué'.",
+    ),
     sessions: z.array(Session).describe(
       "SÓLO las sesiones que cambian respecto al plan activo. Máximo 6. " +
-        "Una sesión que se mantiene igual NO se incluye: el servidor conserva la del plan activo byte a byte.",
+        "Una sesión que se mantiene igual NO se incluye: el servidor conserva la del plan activo byte a byte. " +
+        "Su motivo va igualmente en `weekSummary` con status 'kept'.",
     ),
     cardio: z.array(CardioSlot).describe("Slots de cardio de la semana"),
     running: z.object({
@@ -165,13 +200,31 @@ export function CoachOutputSchema(allowed: Allowed) {
   });
 
   const Briefing = z.object({
+    focus: z.string().describe(
+      "El enfoque de la semana en UNA frase, máximo 160 caracteres, con su número. " +
+        "Es el titular de la Home. Ej: 'Mantener los 6 anclas y subir el largo a 6,5 km'",
+    ),
+    phase: z.enum(PHASES).describe("La etapa de esta semana. La misma que `proposal.phase`"),
     lastWeek: z.string().describe(
       "Markdown con EXACTAMENTE dos secciones y en este orden: '## Qué pasó (semana {W}, {n} días de datos)' " +
-        "y '## Decisiones anteriores'. Números en todas las frases; n siempre.",
+        "y '## Decisiones anteriores'. Números en todas las frases; n siempre. " +
+        "Al menos un número de recorrido (desde el inicio) sacado de `facts.trajectory`.",
+    ),
+    lastWeekSummary: z.array(z.string()).describe(
+      "Máximo 3 líneas de ≤160 caracteres: hecho vs planificado y el número que importa. " +
+        "Ej: '3 de 4 sesiones · banca 95×8 ↑'. Es lo que se ve en la Home sin abrir nada",
+    ),
+    whyChanged: z.string().describe(
+      "Markdown, máximo 600 caracteres: POR QUÉ cambia lo que cambia, con el dato que lo dispara y " +
+        "al menos un número de recorrido de `facts.trajectory`. CADENA VACÍA si esta semana no cambia nada",
+    ),
+    whyKept: z.string().describe(
+      "Markdown, máximo 600 caracteres: POR QUÉ se mantiene lo que se mantiene, con el dato que lo sostiene " +
+        "y al menos un número de recorrido de `facts.trajectory`. NUNCA vacío: mantener también se justifica",
     ),
     nextWeek: z.string().describe(
-      "Markdown con EXACTAMENTE cuatro secciones y en este orden: '## Qué cambio — máx 3 prioridades', " +
-        "'## Por qué', '## Qué vigilo esta semana', '## Qué necesito de ti'.",
+      "Markdown con EXACTAMENTE cinco secciones y en este orden: '## Qué cambio — máx 3 prioridades', " +
+        "'## Por qué cambia', '## Por qué se mantiene', '## Qué vigilo esta semana', '## Qué necesito de ti'.",
     ),
     priorities: z.array(z.string()).describe(
       "Exactamente 3. Cada una una línea con su número. Son las mismas 3 que la sección 'Qué cambio'",

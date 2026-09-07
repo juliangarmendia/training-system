@@ -1,4 +1,5 @@
 // Coach v2 — incremento 8: el cableado de la edge function `coach-weekly-review`.
+// Coach v2.1 — incremento B-3: el contrato de salida v2 (fases, `weekSummary`, `whyKept`).
 //
 // EL FALLO QUE ESTE TEST EXISTE PARA IMPEDIR. Esta función es la única pieza del sistema que
 // puede escribir en la base de datos sin que nadie mire, y la única que cuesta dinero cada vez
@@ -27,13 +28,32 @@
 // las 70 reglas, el modelo cita Rule IDs de memoria y el saneado los descarta todos: decisiones
 // sin evidencia trazable. Este test falla mientras el placeholder esté ahí, a propósito.
 //
-// Es un test de texto sobre las fuentes TypeScript, no de ejecución: Node no puede importar
-// módulos Deno con `npm:` ni con import attributes de JSON. El type-check real es
+// Y una sexta, del contrato v2 (decisiones de Julian, 2026-09-07): **una Home que no sabe decir
+// por qué NO cambia nada**. El coach trabaja por semanas y la estabilidad es el estado normal;
+// si el contrato sólo obliga a explicar los cambios, la semana en que no cambia nada — que es la
+// mayoría — se lee como una semana en la que el coach no miró los datos. De ahí `whyKept`
+// (nunca vacío), `focus`, y `weekSummary` con **una fila por CADA sesión del plan, también las
+// que se mantienen**. La cobertura no se le pide al modelo: se comprueba en el saneado contra el
+// plan que viaja en el request, y la sesión sin motivo se rellena con "(sin motivo — el coach no
+// lo dio)" para que el hueco se vea en la app en vez de desaparecer.
+// Otras dos formas de romperlo en silencio, ambas cubiertas aquí:
+//   · **La caché v1.** `factsHash` es la idempotencia. Si `PROMPT_VERSION` no entra en el hash,
+//     la primera semana con el contrato v2 devuelve la fila v1 cacheada — sin `focus`, sin
+//     `whyKept`, sin `weekSummary` — y la Home nueva se queda muda sin ningún error.
+//   · **Un deload que progresa.** `phase` sale del modelo; si el bloque dice deload y el
+//     saneado no lo fuerza, una semana de descarga se prescribe como build (G-H3, LOAD-004).
+//
+// Es un test de texto sobre las fuentes TypeScript: Node no puede importar módulos Deno con
+// `npm:` ni con import attributes de JSON. La excepción es §14, que sí EJECUTA
+// `reconcileWeekSummary` extrayéndola del fuente y quitándole los tipos con
+// `module.stripTypeScriptTypes` — la cobertura y la consistencia de `weekSummary` son lógica con
+// ramas, y un grep no distingue "está escrito" de "funciona". El type-check real sigue siendo
 // `deno check supabase/functions/coach-weekly-review/index.ts`.
 //
 // Ejecutar desde la raíz del repo: node tests/verify-coach-fn-wiring.mjs
 
 import { readFileSync, existsSync } from 'node:fs';
+import { stripTypeScriptTypes } from 'node:module';
 
 const DIR = 'supabase/functions/coach-weekly-review';
 const read = (p) => (existsSync(p) ? readFileSync(p, 'utf8') : '');
@@ -56,6 +76,46 @@ const stripComments = (src) => src
 const INDEX_CODE = stripComments(INDEX);
 const PROMPT_CODE = stripComments(PROMPT);
 const SCHEMA_CODE = stripComments(SCHEMA);
+
+// El prompt vive dentro de plantillas literales, así que sus backticks van escapados (`\``).
+// Para comprobar el TEXTO que ve el modelo hay que deshacer ese escape primero.
+const PROMPT_TEXT = PROMPT.replace(/\\`/g, '`');
+
+/** Recorta desde `marker` hasta la llave que lo cierra, contando llaves. Suficiente para las
+ * funciones de este fichero, que no llevan llaves dentro de literales de cadena. */
+function extractBraced(src, marker) {
+  const start = src.indexOf(marker);
+  if (start < 0) throw new Error(`no encuentro "${marker}" en index.ts`);
+  const open = src.indexOf('{', start);
+  if (open < 0) throw new Error(`"${marker}" sin cuerpo`);
+  let depth = 0;
+  for (let i = open; i < src.length; i++) {
+    if (src[i] === '{') depth++;
+    else if (src[i] === '}' && --depth === 0) return src.slice(start, i + 1);
+  }
+  throw new Error(`"${marker}" sin cerrar`);
+}
+
+/** Saca del fuente de `index.ts` la función pedida más las constantes y ayudantes de los que
+ * depende, y la devuelve ejecutable. Es la única forma de PROBAR la lógica: `index.ts` importa
+ * `npm:` y `jsr:`, que Node no resuelve.
+ *
+ * Los tipos se quitan del fichero ENTERO antes de recortar, no después: una anotación como
+ * `Array<{ sessionId: string }>` mete una llave en la firma y el recorte por llaves cerraría
+ * ahí en vez de al final del cuerpo. `mode: 'strip'` sustituye los tipos por espacios, así que
+ * las posiciones se mantienen y el recorte es el mismo que sobre el TypeScript. */
+function loadFromIndex(fnName, constNames = [], helperNames = []) {
+  const js = stripTypeScriptTypes(INDEX, { mode: 'strip' });
+  const pieces = [];
+  for (const c of constNames) {
+    const m = js.match(new RegExp(`^const ${c}\\s*=[\\s\\S]*?;\\s*$`, 'm'));
+    if (!m) throw new Error(`no encuentro la constante ${c}`);
+    pieces.push(m[0]);
+  }
+  for (const h of helperNames) pieces.push(extractBraced(js, `function ${h}(`));
+  pieces.push(extractBraced(js, `function ${fnName}(`));
+  return new Function(`${pieces.join('\n\n')}\nreturn ${fnName};`)();
+}
 
 let failed = 0;
 const ok = (m) => console.log(`  ok   ${m}`);
@@ -134,6 +194,10 @@ yes(/\^\\d\{4\}-W\\d\{2\}\$/.test(INDEX), 'weekKey contra la regex YYYY-Wnn');
 yes(/200_000|200000/.test(INDEX), 'tope de 200 KB al facts pack');
 yes(/MAX_SESSION_IDS\s*=\s*12/.test(INDEX), 'tope de 12 sesiones permitidas');
 yes(/MAX_EXERCISE_IDS\s*=\s*150/.test(INDEX), 'tope de 150 ejercicios permitidos');
+yes(/MAX_PRIOR_REVIEWS\s*=\s*6/.test(INDEX),
+  'MAX_PRIOR_REVIEWS = 6 (con 4 no se ve un bloque entero, y el coach v2.1 razona sobre el recorrido)');
+yes(/priorReviews[\s\S]{0,200}slice\(0,\s*MAX_PRIOR_REVIEWS\)/.test(INDEX_CODE),
+  'y priorReviews se recorta de verdad con esa constante');
 
 // ── 6. Saneado en código, no en el decoder ───────────────────────────────────────────
 console.log('');
@@ -155,6 +219,38 @@ yes(/sanitized\.push\(/.test(INDEX), 'y todo lo recortado se anota en sanitized[
 yes(/no está en los ids permitidos|no está en la librería/.test(INDEX), 'los ids fuera de allowed se descartan con motivo');
 yes(/weeklyKmTarget/.test(INDEX) && /Math\.max\(0,\s*round1/.test(INDEX), 'weeklyKmTarget ≥ 0');
 yes(/dataGaps/.test(INDEX), 'y comprueba que el briefing repite los dataGaps del pack');
+
+// ── 6b. Contrato v2: los topes nuevos y las reglas que sostienen la Home ──────────────
+console.log('');
+console.log('6b. Saneado del contrato v2 (focus, whyKept, weekSummary, fase)');
+for (const [name, value] of [
+  ['MAX_FOCUS', 160], ['MAX_WHY', 600], ['MAX_LASTWEEK_BULLETS', 3],
+  ['MAX_WEEK_SUMMARY', 12], ['MAX_SUMMARY_LINE', 160],
+]) {
+  yes(new RegExp(`${name}\\s*=\\s*${value}\\b`).test(INDEX), `${name} = ${value}`);
+}
+yes(/PROMPT_VERSION\s*=\s*2\b/.test(INDEX), 'PROMPT_VERSION = 2 (el contrato subió de versión)');
+// Sin esto, la primera semana de v2 devuelve la revisión v1 cacheada y la Home nueva sale vacía.
+yes(/sha256Hex\([^)]*PROMPT_VERSION/.test(INDEX_CODE),
+  'y PROMPT_VERSION entra en el factsHash (si no, una fila v1 en caché se devuelve como v2)');
+yes(/PHASES\s*=\s*\[[^\]]*"base"[^\]]*"build"[^\]]*"intensify"[^\]]*"deload"[^\]]*"maintenance"/.test(INDEX_CODE),
+  'las 5 fases también en el saneado, no sólo en el esquema');
+yes(/no es una fase conocida; a 'build'/.test(INDEX), "fase fuera del enum → 'build' + nota");
+yes(/isDeload/.test(INDEX_CODE) && /forzada a 'deload'/.test(INDEX),
+  "facts.block.isDeload = true y otra fase → forzada a 'deload' + nota (G-H3, LOAD-004)");
+yes(/briefing\.whyKept vacío/.test(INDEX), 'whyKept vacío se anota (mantener también se justifica)');
+yes(/\(sin motivo — el coach no lo dio\)/.test(INDEX),
+  'la sesión sin fila en weekSummary se rellena con "(sin motivo — el coach no lo dio)"');
+yes(/function reconcileWeekSummary/.test(INDEX_CODE), 'con una función de cobertura + consistencia');
+yes(/corregido a 'changed'/.test(INDEX) && /corregido a 'kept'/.test(INDEX),
+  'y el status se corrige contra proposal.sessions en los dos sentidos');
+yes(/lastWeekSummary/.test(INDEX_CODE) && /MAX_LASTWEEK_BULLETS/.test(INDEX_CODE),
+  'lastWeekSummary recortado a 3 líneas');
+yes(/focus:\s*(clip|focus)/.test(INDEX_CODE) && /MAX_FOCUS/.test(INDEX_CODE), 'focus recortado a MAX_FOCUS');
+yes(/planSessionIdsOf/.test(INDEX_CODE) && /currentPlan/.test(INDEX_CODE),
+  'la cobertura se mide contra el plan del request (currentPlan), no contra el vocabulario');
+yes(/"## Por qué cambia"/.test(INDEX_CODE) && /"## Por qué se mantiene"/.test(INDEX_CODE),
+  'y nextWeek se comprueba con las 5 secciones nuevas');
 
 // ── 7. Coste medido, no estimado ─────────────────────────────────────────────────────
 console.log('');
@@ -184,6 +280,30 @@ yes(/exactamente 3|Exactamente 3/.test(SCHEMA), 'priorities descrito como exacta
 yes(/sólo las sesiones que cambian|SÓLO las sesiones que cambian/.test(SCHEMA),
   'proposal.sessions descrito como sólo las sesiones que cambian');
 yes(/DECISION_TYPES/.test(SCHEMA) && /CARDIO_SUBTYPES/.test(SCHEMA), 'enums de Decision.type y CardioSlot.subtype');
+
+// ── 8b. Esquema: el contrato v2 ──────────────────────────────────────────────────────
+console.log('');
+console.log('8b. Esquema: contrato v2 (5 fases, weekSummary, whyKept)');
+const phasesDecl = (SCHEMA_CODE.match(/PHASES\s*=\s*\[([^\]]*)\]/) || [])[1] || '';
+const phaseValues = (phasesDecl.match(/"([a-z_]+)"/g) || []).map((s) => s.replace(/"/g, ''));
+yes(phaseValues.length === 5, `PHASES tiene exactamente 5 valores (${phaseValues.length}: ${phaseValues.join(', ')})`);
+for (const p of ['base', 'build', 'intensify', 'deload', 'maintenance']) {
+  yes(phaseValues.includes(p), `PHASES incluye '${p}'`);
+}
+yes(/phase:\s*z\.enum\(PHASES\)/.test(SCHEMA_CODE), 'proposal.phase y briefing.phase usan z.enum(PHASES)');
+yes((SCHEMA_CODE.match(/phase:\s*z\.enum\(PHASES\)/g) || []).length >= 2,
+  'las dos: la propuesta y el briefing');
+yes(!/z\.enum\(\[\s*"build",\s*"deload"\s*\]\)/.test(SCHEMA_CODE), 'y ya no queda el enum viejo de 2 fases');
+yes(/WEEK_SUMMARY_STATUS\s*=\s*\[/.test(SCHEMA_CODE) && /"kept"/.test(SCHEMA_CODE) && /"removed"/.test(SCHEMA_CODE),
+  'estados de weekSummary: kept | changed | new | removed');
+yes(/weekSummary:\s*z\.array\(WeekSummaryRow\)/.test(SCHEMA_CODE), 'proposal.weekSummary es un array de filas');
+yes(/sessionId:\s*SessionId/.test(SCHEMA_CODE), 'con el sessionId cerrado por el mismo enum que las sesiones');
+yes(/UNA FILA POR CADA SESIÓN/i.test(SCHEMA), 'descrito como una fila por CADA sesión, también las que no cambian');
+for (const f of ['focus', 'whyChanged', 'whyKept', 'lastWeekSummary']) {
+  yes(new RegExp(`${f}:\\s*z\\.`).test(SCHEMA_CODE), `briefing.${f} existe en el esquema`);
+}
+yes(/NUNCA vacío/.test(SCHEMA), 'y whyKept está descrito como nunca vacío');
+yes(/cinco secciones/.test(SCHEMA), 'nextWeek descrito con cinco secciones');
 
 // ── 9. Prompt: ethos con las correcciones del audit ──────────────────────────────────
 console.log('');
@@ -236,6 +356,109 @@ yes(!/Date\.now\(\)|new Date\(/.test(PROMPT_CODE), 'sin fechas calculadas en el 
 for (const h of ['## Qué pasó', '## Qué cambio', '## Por qué', '## Decisiones anteriores',
                  '## Qué vigilo', '## Qué necesito de ti']) {
   yes(PROMPT.includes(h), `el contrato del briefing incluye "${h}"`);
+}
+
+// ── 11b. Prompt: el giro del contrato v2 ─────────────────────────────────────────────
+console.log('');
+console.log('11b. Prompt: rendimiento primero, el recorrido y la estabilidad con motivo');
+for (const m of ['Primero el rendimiento', 'nunca dosifica', 'facts.trajectory',
+                 'No cambies por variedad', 'Qué necesito de ti']) {
+  yes(PROMPT.includes(m), `contiene el marcador "${m}"`);
+}
+// Los campos de trayectoria se citan por su nombre exacto: el prompt y el facts pack (B.2)
+// tienen que hablar del mismo objeto o el coach pide un dato que nadie le manda.
+for (const f of ['trajectory.program.blocks', 'trajectory.weight.slopeSinceStartKgPerWeek',
+                 'trajectory.anchors[]', 'trajectory.running.weeklyKm',
+                 'trajectory.adherenceByWeek', 'trajectory.skippedPatterns',
+                 'trajectory.decisionsFollowUp']) {
+  yes(PROMPT.includes(f), `el paso "El recorrido" cita \`${f}\``);
+}
+yes(/Rendimiento y recuperación \(en ese orden\)/.test(PROMPT), 'el paso 2 es "Rendimiento y recuperación (en ese orden)"');
+yes(/recuperación sola nunca baja un kg/i.test(PROMPT), 'y la recuperación sola nunca baja un kg');
+yes(/no se hizo tres veces no se recuerda/.test(PROMPT),
+  'lo saltado 3 veces se reordena o se quita, no se vuelve a prescribir');
+yes(/número desde el inicio/.test(PROMPT), 'exige ≥1 número since-start en lastWeek / whyKept / whyChanged');
+yes(/La recuperación es información, no dosis/.test(PROMPT) && /2026-09-07/.test(PROMPT),
+  'ANCLAS: "La recuperación es información, no dosis" (decisión del usuario 2026-09-07)');
+yes(/dejar una sesión del plan sin su fila en/.test(PROMPT_TEXT),
+  'NUNCA: dejar una sesión del plan sin su fila en weekSummary');
+yes(/Cambiar una sesión sin un dato/.test(PROMPT_TEXT), 'NUNCA: cambiar una sesión sin un dato');
+for (const p of ['base', 'build', 'intensify', 'deload', 'maintenance']) {
+  yes(PROMPT_TEXT.includes(`- \`${p}\` —`), `el CONTRATO define la fase \`${p}\``);
+}
+yes(/adherencia ≥75%.{0,60}verde 2 semanas/s.test(PROMPT), 'intensify sólo con adherencia ≥75% y verde 2 semanas');
+yes(/whyKept/.test(PROMPT) && /whyChanged/.test(PROMPT) && /lastWeekSummary/.test(PROMPT) && /briefing\.focus/.test(PROMPT),
+  'el CONTRATO nombra focus, lastWeekSummary, whyChanged y whyKept');
+yes(/## Por qué se mantiene/.test(PROMPT), 'nextWeek lleva la sección "Por qué se mantiene"');
+
+// Los negativos: READ-007 aplicado al día es exactamente lo que Julian rechazó el 2026-09-07.
+// Si estas frases vuelven, el coach vuelve a razonar en días y la app vuelve a ajustar sesiones.
+for (const neg of ['una señal cambia el objetivo del día', 'una noche de 5 h']) {
+  yes(!PROMPT.includes(neg), `NO contiene "${neg}" (ajuste diario retirado, 2026-09-07)`);
+}
+yes(/señal o un día suelto no cambia nada/i.test(PROMPT),
+  'y en su lugar: "una señal o un día suelto no cambia nada: se anota y se mira la semana que viene"');
+
+// ── 14. `reconcileWeekSummary` ejecutada de verdad ───────────────────────────────────
+// Un grep confirma que el código está escrito; no confirma que rellene, corrija y no duplique.
+// Se extrae del fuente y se le quitan los tipos: no hay forma de importar index.ts desde Node.
+console.log('');
+console.log('14. Cobertura y consistencia de weekSummary (ejecutada con un fixture)');
+try {
+  const reconcile = loadFromIndex('reconcileWeekSummary', [
+    'MAX_WEEK_SUMMARY', 'MAX_SUMMARY_LINE', 'WEEK_SUMMARY_STATUSES', 'WEEK_SUMMARY_FILL',
+  ], ['clip']);
+
+  // Plan de 3 sesiones. El coach sólo dio fila para A, y cambió B en `proposal.sessions`.
+  const notes = [];
+  const rows = reconcile(
+    [{ sessionId: 'upper-a', status: 'kept', line: 'Igual: 8/8/7 @7,5 el 1-sep' }],
+    ['upper-a', 'lower-a', 'upper-b'],
+    new Set(['lower-a']),
+    notes,
+  );
+  const by = Object.fromEntries(rows.map((r) => [r.sessionId, r]));
+  yes(rows.length === 3, `una fila por cada sesión del plan (${rows.length} de 3)`);
+  yes(by['upper-a']?.status === 'kept', "A: la fila que dio el coach se respeta ('kept')");
+  yes(by['lower-a']?.status === 'changed', "B: falta la fila pero está en sessions → se rellena como 'changed'");
+  yes(by['upper-b']?.status === 'kept', "C: falta la fila y no cambia → 'kept'");
+  yes(by['upper-b']?.line === '(sin motivo — el coach no lo dio)', 'C: con la línea de relleno visible');
+  yes(notes.length === 2, `2 notas, una por sesión rellenada (${notes.length})`);
+  yes(notes.every((n) => /sin motivo — el coach no lo dio/.test(n)), 'y las dos dicen que el coach no dio motivo');
+
+  // Consistencia en los dos sentidos, sobre filas que el coach SÍ dio.
+  const notes2 = [];
+  const rows2 = reconcile(
+    [
+      { sessionId: 'upper-a', status: 'kept', line: 'igual' },     // pero está en sessions
+      { sessionId: 'lower-a', status: 'changed', line: 'sube' },   // pero NO está en sessions
+      { sessionId: 'upper-a', status: 'new', line: 'duplicada' },  // duplicada
+    ],
+    ['upper-a', 'lower-a'],
+    new Set(['upper-a']),
+    notes2,
+  );
+  const by2 = Object.fromEntries(rows2.map((r) => [r.sessionId, r]));
+  yes(rows2.length === 2, 'la fila duplicada se descarta');
+  yes(by2['upper-a']?.status === 'changed', "'kept' + está en sessions → corregido a 'changed'");
+  yes(by2['lower-a']?.status === 'kept', "'changed' + no está en sessions → corregido a 'kept'");
+  yes(notes2.length === 3, `3 notas: dos correcciones y la duplicada (${notes2.length})`);
+
+  // Topes: 12 filas y 160 caracteres por línea.
+  const notes3 = [];
+  const many = Array.from({ length: 15 }, (_, i) => ({ sessionId: `s${i}`, status: 'kept', line: 'x'.repeat(300) }));
+  const rows3 = reconcile(many, [], new Set(), notes3);
+  yes(rows3.length === 12, `weekSummary recortado a 12 filas (${rows3.length})`);
+  yes(rows3.every((r) => r.line.length <= 160), 'y cada línea a 160 caracteres');
+  yes(notes3.some((n) => /15 filas/.test(n)), 'con la nota del recorte');
+
+  // Un status inventado no rompe la fila: se degrada a 'kept' y se anota.
+  const notes4 = [];
+  const rows4 = reconcile([{ sessionId: 'a', status: 'reescrita', line: 'x' }], [], new Set(), notes4);
+  yes(rows4[0]?.status === 'kept', "un status desconocido cae a 'kept'");
+  yes(notes4.length === 1, 'y se anota');
+} catch (err) {
+  bad(`no se pudo ejecutar reconcileWeekSummary desde index.ts: ${err.message}`);
 }
 
 // ── 12. Config ───────────────────────────────────────────────────────────────────────

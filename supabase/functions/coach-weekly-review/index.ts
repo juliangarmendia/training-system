@@ -45,7 +45,11 @@ const corsHeaders = {
 };
 
 const TABLE = "coach_reviews";
-const PROMPT_VERSION = 1;
+// 2 = contrato v2 (2026-09-07): fases de 5 valores, `weekSummary` con una fila por sesión,
+// `focus`/`whyChanged`/`whyKept`/`lastWeekSummary` en el briefing, prompt rendimiento-primero.
+// Va DENTRO del `factsHash` a propósito: con el mismo pack, una revisión v1 en caché no puede
+// devolverse como si fuera v2 — le faltarían justo los campos que la Home nueva lee.
+const PROMPT_VERSION = 2;
 const MODEL = "claude-opus-5";
 // `effort: "high"` — la revisión semanal es la decisión más caras de deshacer del sistema y
 // corre una vez por semana, así que aquí se paga esfuerzo. La misma constante viaja a
@@ -72,7 +76,9 @@ const PRICE_CACHE_WRITE_1H = 10.00;
 const MAX_FACTS_BYTES = 200_000;
 const MAX_SESSION_IDS = 12;
 const MAX_EXERCISE_IDS = 150;
-const MAX_PRIOR_REVIEWS = 4;
+// 6 revisiones: el coach v2.1 razona sobre el RECORRIDO, y con 4 no se ve un bloque entero
+// (5 semanas). Las filas llegan ya compactas desde la PWA, así que el coste es marginal.
+const MAX_PRIOR_REVIEWS = 6;
 const MAX_USER_NOTE = 1200;
 
 // Límites de saneado de la salida.
@@ -85,6 +91,22 @@ const MAX_DECISIONS = 12;
 const MAX_TEMPLATE_CHANGES = 7;
 const MAX_REQUESTED_DATA = 8;
 const ROUND_KG = 1.25;
+
+// Contrato v2 (2026-09-07). `focus` es el titular de la Home; `whyChanged`/`whyKept` son el
+// "por qué cambia o por qué sigue igual"; `weekSummary` lleva UNA fila por sesión del plan.
+const MAX_FOCUS = 160;
+const MAX_WHY = 600;
+const MAX_LASTWEEK_BULLETS = 3;
+const MAX_WEEK_SUMMARY = 12;
+const MAX_SUMMARY_LINE = 160;
+
+// Las 5 fases del bloque. Duplicadas a propósito respecto a `schema.ts`: el esquema restringe al
+// modelo, esto sanea lo que llegue (una revisión vieja, un enum abierto, un reintento raro).
+const PHASES = ["base", "build", "intensify", "deload", "maintenance"];
+const WEEK_SUMMARY_STATUSES = ["kept", "changed", "new", "removed"];
+// La línea que se pinta cuando el coach dejó una sesión sin motivo. Se ve en la app en vez de
+// desaparecer: una sesión sin razón es un fallo del coach, no un hueco del formato.
+const WEEK_SUMMARY_FILL = "(sin motivo — el coach no lo dio)";
 
 const WEEK_KEY_RE = /^\d{4}-W\d{2}$/;
 
@@ -174,7 +196,11 @@ Deno.serve(async (req) => {
     // El hash se calcula sobre un stringify determinista: si el pack es byte a byte el mismo,
     // no se paga otra revisión. Un `JSON.stringify` normal no sirve — el orden de claves de un
     // objeto construido en otro orden cambiaría el hash y cada carga de la app costaría $0,60.
-    const factsHash = await sha256Hex(stableStringify(facts));
+    //
+    // `PROMPT_VERSION` entra en el hash: al subir el contrato, el mismo pack tiene que producir
+    // una revisión NUEVA. Sin esto, la primera semana de v2 devolvería la fila v1 cacheada — sin
+    // `focus`, sin `whyKept` y sin `weekSummary` — y la Home nueva se quedaría muda.
+    const factsHash = await sha256Hex(`promptVersion:${PROMPT_VERSION}\n${stableStringify(facts)}`);
 
     const { data: existingRows, error: listErr } = await admin
       .from(TABLE)
@@ -340,7 +366,12 @@ Deno.serve(async (req) => {
           return out;
         }
 
-        const { output, sanitized } = sanitizeOutput(parsed as Record<string, any>, allowed, facts);
+        const { output, sanitized } = sanitizeOutput(
+          parsed as Record<string, any>,
+          allowed,
+          facts,
+          currentPlan,
+        );
         if (retried) sanitized.push("El primer intento no devolvió JSON del esquema; se reintentó una vez");
         if (openEnums.sessions) sanitized.push("Sin ids de sesión permitidos: el esquema corrió sin enum de sesiones");
         if (openEnums.exercises) {
@@ -394,10 +425,40 @@ function sanitizeOutput(
   parsed: Record<string, any>,
   allowed: Allowed,
   facts: unknown,
+  currentPlan?: unknown,
 ): { output: Record<string, unknown>; sanitized: Sanitized } {
   const sanitized: Sanitized = [];
   const sessionSet = new Set(allowed.sessionIds || []);
   const exById = new Map((allowed.exerciseIds || []).map((e) => [e.id, e]));
+  const planSessionIds = planSessionIdsOf(currentPlan, facts, allowed);
+
+  // ── fase (contrato v2) ──
+  // Una sola fuente: se resuelve una vez y se estampa en `proposal` y en `briefing`, que el
+  // esquema deja declarar por separado y podrían discrepar. El deload del calendario NO es
+  // negociable: si el bloque dice deload, la semana es deload aunque el coach opine otra cosa
+  // (G-H3, LOAD-004) — progresar en deload es el fallo más caro que puede colarse.
+  const isDeloadBlock = (facts as { block?: { isDeload?: unknown } })?.block?.isDeload === true;
+  const rawPhase = String(parsed?.proposal?.phase ?? "");
+  const rawBriefPhase = String(parsed?.briefing?.phase ?? "");
+  let phase = PHASES.includes(rawPhase) ? rawPhase : "";
+  if (!phase) {
+    phase = PHASES.includes(rawBriefPhase) ? rawBriefPhase : "";
+    if (!phase) {
+      sanitized.push(`proposal.phase '${rawPhase || "(vacía)"}' no es una fase conocida; a 'build'`);
+      phase = "build";
+    }
+  }
+  if (rawBriefPhase && rawBriefPhase !== rawPhase) {
+    sanitized.push(
+      `briefing.phase ('${rawBriefPhase}') y proposal.phase ('${rawPhase}') no coincidían; ambas a '${phase}'`,
+    );
+  }
+  if (isDeloadBlock && phase !== "deload") {
+    sanitized.push(
+      `facts.block.isDeload = true y la fase venía '${phase}': forzada a 'deload' (G-H3, LOAD-004)`,
+    );
+    phase = "deload";
+  }
 
   // ── briefing ──
   const rawPriorities: string[] = Array.isArray(parsed?.briefing?.priorities)
@@ -415,14 +476,47 @@ function sanitizeOutput(
   }
   priorities = priorities.slice(0, N_PRIORITIES);
 
+  // `lastWeekSummary`: lo que la Home enseña sin abrir nada. ≤3 líneas, cada una ≤160.
+  const rawLastWeekSummary: string[] = Array.isArray(parsed?.briefing?.lastWeekSummary)
+    ? parsed.briefing.lastWeekSummary.map((s: unknown) => clip(String(s ?? ""), MAX_SUMMARY_LINE)).filter(Boolean)
+    : [];
+  if (rawLastWeekSummary.length > MAX_LASTWEEK_BULLETS) {
+    sanitized.push(
+      `briefing.lastWeekSummary con ${rawLastWeekSummary.length} líneas; se quedan las ${MAX_LASTWEEK_BULLETS} primeras`,
+    );
+  }
+  const lastWeekSummary = rawLastWeekSummary.slice(0, MAX_LASTWEEK_BULLETS);
+
+  const focus = clip(String(parsed?.briefing?.focus ?? ""), MAX_FOCUS);
+  if (!focus) sanitized.push("briefing.focus vacío: la Home se queda sin titular de la semana");
+
+  // `whyChanged` puede ir vacío (una semana en la que no cambia nada es una respuesta legítima).
+  // `whyKept` NO: mantener también se justifica, y es justo el punto del contrato v2.
+  const whyChanged = clip(String(parsed?.briefing?.whyChanged ?? ""), MAX_WHY);
+  const whyKept = clip(String(parsed?.briefing?.whyKept ?? ""), MAX_WHY);
+  if (!whyKept) {
+    sanitized.push("briefing.whyKept vacío: el coach no justificó lo que se mantiene (nunca debe estarlo)");
+  }
+
   const briefing = {
+    focus,
+    phase,
     lastWeek: String(parsed?.briefing?.lastWeek ?? ""),
+    lastWeekSummary,
+    whyChanged,
+    whyKept,
     nextWeek: String(parsed?.briefing?.nextWeek ?? ""),
     priorities,
   };
   for (const [field, headers] of [
     ["lastWeek", ["## Qué pasó", "## Decisiones anteriores"]],
-    ["nextWeek", ["## Qué cambio", "## Por qué", "## Qué vigilo", "## Qué necesito"]],
+    ["nextWeek", [
+      "## Qué cambio",
+      "## Por qué cambia",
+      "## Por qué se mantiene",
+      "## Qué vigilo",
+      "## Qué necesito",
+    ]],
   ] as const) {
     const text = briefing[field];
     const missing = headers.filter((h) => !text.includes(h));
@@ -577,6 +671,17 @@ function sanitizeOutput(
     });
   }
 
+  // ── proposal.weekSummary ──
+  // `sessions` es un DIFF (sólo lo que cambia); `weekSummary` es la foto completa. Las dos
+  // tienen que contar la misma historia o la Home miente: una sesión listada como 'kept' que en
+  // realidad cambió, o una semana en la que faltan filas y parece que el coach no miró.
+  const weekSummary = reconcileWeekSummary(
+    parsed?.proposal?.weekSummary,
+    planSessionIds,
+    seenSessions,
+    sanitized,
+  );
+
   // ── proposal.cardio ──
   const cardioIn: any[] = Array.isArray(parsed?.proposal?.cardio) ? parsed.proposal.cardio : [];
   const cardio: Record<string, unknown>[] = [];
@@ -640,7 +745,8 @@ function sanitizeOutput(
     decisions,
     proposal: {
       label: clip(String(parsed?.proposal?.label ?? ""), 80),
-      phase: parsed?.proposal?.phase === "deload" ? "deload" : "build",
+      phase,
+      weekSummary,
       sessions,
       cardio,
       running: {
@@ -659,6 +765,99 @@ function sanitizeOutput(
   };
 
   return { output, sanitized };
+}
+
+/** Los ids de sesión del plan ACTIVO — los que `weekSummary` tiene que cubrir enteros.
+ *
+ * No vale `allowed.sessionIds`: ése es el vocabulario (la librería), y puede traer sesiones que
+ * no están programadas esta semana. La cobertura se mide contra el plan que viaja en el request
+ * (`currentPlan.sessions`, objeto indexado por id), con el plan del pack como respaldo y el
+ * vocabulario como último recurso para no dejar la comprobación muerta. */
+function planSessionIdsOf(currentPlan: unknown, facts: unknown, allowed: Allowed): string[] {
+  const fromObj = (v: unknown): string[] => {
+    const s = (v as { sessions?: unknown })?.sessions;
+    if (Array.isArray(s)) {
+      return s.map((x) => String((x as { id?: unknown })?.id ?? "")).filter(Boolean);
+    }
+    if (s && typeof s === "object") return Object.keys(s as Record<string, unknown>);
+    return [];
+  };
+  const ids = fromObj(currentPlan);
+  if (ids.length) return [...new Set(ids)];
+  const fromFacts = fromObj((facts as { plan?: unknown })?.plan);
+  if (fromFacts.length) return [...new Set(fromFacts)];
+  return [...new Set(allowed?.sessionIds || [])];
+}
+
+/** Cobertura y consistencia de `proposal.weekSummary`.
+ *
+ * Tres invariantes, y cada uno tapa una forma distinta de que la Home mienta:
+ *   1. **Cobertura.** Toda sesión del plan lleva fila, también las que no cambian. Sin esto,
+ *      "por qué sigue igual" desaparece justo en la semana estable, que es cuando más falta hace.
+ *   2. **Consistencia con el diff.** `sessions` manda: si una sesión está ahí, cambió; si no
+ *      está, no cambió. Una fila que diga lo contrario se corrige, no se descarta.
+ *   3. **Tope.** ≤12 filas y ≤160 caracteres por línea.
+ * Todo lo que se toca se anota en `sanitized[]`: recortar en silencio sería peor que el fallo.
+ *
+ * Exportada (y sin dependencias del runtime de Deno) para que el test la ejecute con un fixture. */
+export function reconcileWeekSummary(
+  raw: unknown,
+  planSessionIds: string[],
+  changedIds: Set<string>,
+  sanitized: Sanitized,
+): Array<{ sessionId: string; status: string; line: string }> {
+  const rowsIn: any[] = Array.isArray(raw) ? raw : [];
+  const rows: Array<{ sessionId: string; status: string; line: string }> = [];
+  const seen = new Set<string>();
+
+  for (const r of rowsIn) {
+    const sessionId = String(r?.sessionId ?? "").trim();
+    if (!sessionId) {
+      sanitized.push("weekSummary con una fila sin sessionId; descartada");
+      continue;
+    }
+    if (seen.has(sessionId)) {
+      sanitized.push(`weekSummary: fila duplicada para '${sessionId}'; se queda la primera`);
+      continue;
+    }
+    seen.add(sessionId);
+
+    let status = String(r?.status ?? "").trim();
+    if (!WEEK_SUMMARY_STATUSES.includes(status)) {
+      sanitized.push(`weekSummary: '${sessionId}' con status '${status || "(vacío)"}' desconocido; a 'kept'`);
+      status = "kept";
+    }
+    // El diff es la verdad: `proposal.sessions` es lo que la app va a copiar al plan.
+    if (changedIds.has(sessionId) && status === "kept") {
+      sanitized.push(
+        `weekSummary: '${sessionId}' está en proposal.sessions pero venía como 'kept'; corregido a 'changed'`,
+      );
+      status = "changed";
+    } else if ((status === "changed" || status === "new") && !changedIds.has(sessionId)) {
+      sanitized.push(
+        `weekSummary: '${sessionId}' venía como '${status}' pero no está en proposal.sessions; corregido a 'kept'`,
+      );
+      status = "kept";
+    }
+
+    rows.push({ sessionId, status, line: clip(String(r?.line ?? ""), MAX_SUMMARY_LINE) });
+  }
+
+  // Cobertura: una sesión del plan sin fila se rellena con la razón de que no hay razón. El
+  // estado lo dicta el diff (si está en `sessions`, cambió), para no añadir una mentira encima
+  // de un hueco. Una nota por sesión: "faltan 3" no dice cuál mirar.
+  for (const sid of planSessionIds || []) {
+    if (!sid || seen.has(sid)) continue;
+    seen.add(sid);
+    const status = changedIds.has(sid) ? "changed" : "kept";
+    rows.push({ sessionId: sid, status, line: WEEK_SUMMARY_FILL });
+    sanitized.push(`weekSummary sin fila para '${sid}': añadida como '${status}' ${WEEK_SUMMARY_FILL}`);
+  }
+
+  if (rows.length > MAX_WEEK_SUMMARY) {
+    sanitized.push(`weekSummary con ${rows.length} filas; se quedan las ${MAX_WEEK_SUMMARY} primeras`);
+  }
+  return rows.slice(0, MAX_WEEK_SUMMARY);
 }
 
 function filterRuleIds(raw: unknown, sanitized: Sanitized, where: string): string[] {

@@ -103,6 +103,8 @@ ISO + intento.
   prompt:{ model, effort, rulesVersion, promptVersion },
   output:{
     briefing:{ lastWeek, nextWeek, priorities:[3] },      // markdown, secciones de §C.6
+                                                          // v2 añade focus/phase/whyChanged/whyKept/
+                                                          // lastWeekSummary — ver "Contrato v2" abajo
     decisions:[{ id, type:'progression'|'structure'|'running'|'nutrition'|'recovery',
                  what, why, evidence:{ numbers:{…} }, ruleIds, confidence,
                  applies:[{ sessionId, exId }] }],
@@ -116,6 +118,67 @@ ISO + intento.
 `applied` | `rejected`. Si arranca la semana siguiente sin aplicarse, pasa a `expired` y entra en
 `priorReviews` con `applied:false` — el coach ve que su propuesta no se usó. `failed` guarda el motivo
 (`refusal`, `parse`, timeout) como fila visible en lugar de un HTTP perdido.
+
+### Contrato v2 del `output` (`prompt.promptVersion = 2`, 2026-09-07)
+
+El coach trabaja **por semanas** y no ajusta el día (decisiones de Julian, 2026-09-07). La Home tiene
+que poder decir **por qué cambia o por qué sigue igual**, y eso obliga a dos cosas que v1 no tenía:
+justificar lo que se **mantiene**, y cubrir **todas** las sesiones, no sólo las que cambian.
+
+```js
+output: {
+  briefing: {
+    focus,                    // ≤160. El titular de la semana, con su número
+    phase,                    // 'base'|'build'|'intensify'|'deload'|'maintenance'
+    lastWeek,                 // markdown, 2 secciones (igual que v1) + ≥1 número since-start
+    lastWeekSummary: [≤3],    // líneas ≤160: hecho vs planificado. Lo que se ve en Home sin abrir
+    whyChanged,               // markdown ≤600. '' si esta semana no cambia nada
+    whyKept,                  // markdown ≤600. NUNCA vacío: mantener también se justifica
+    nextWeek,                 // markdown, 5 secciones (ver abajo)
+    priorities: [3],
+  },
+  proposal: {
+    label, phase,             // phase idéntica a briefing.phase
+    weekSummary: [≤12],       // { sessionId, status:'kept'|'changed'|'new'|'removed', line ≤160 }
+                              // UNA FILA POR CADA SESIÓN del plan activo, también las que no cambian
+    sessions: [≤6],           // sigue siendo un DIFF: sólo las que cambian
+    cardio, running, weekTemplateChanges,
+  },
+  decisions, requestedData,   // sin cambios respecto a v1
+}
+```
+
+`briefing.nextWeek` pasa de 4 a **5 secciones**: *Qué cambio · Por qué cambia · Por qué se mantiene ·
+Qué vigilo esta semana · Qué necesito de ti*.
+
+**Fases.** `base` = semanas 1-2 tras un deload · `build` = 3-4 · `intensify` sólo con adherencia ≥75 %
+y rendimiento verde 2 semanas · `deload` **obligatoria** si `facts.block.isDeload` · `maintenance`
+cuando la grasa manda y la fuerza aguanta.
+
+**Lo que garantiza el servidor** (`index.ts`, saneado en código; todo lo tocado se anota en
+`sanitized[]`, nada se descarta en silencio):
+
+| Regla | Qué hace |
+|---|---|
+| Fase desconocida | → `'build'` + nota |
+| `facts.block.isDeload` y fase ≠ `deload` | → forzada a `'deload'` + nota (G-H3, LOAD-004) |
+| Sesión del plan sin fila en `weekSummary` | se añade con `line: '(sin motivo — el coach no lo dio)'`, `status` según el diff, una nota por sesión |
+| Fila `kept` cuya sesión está en `proposal.sessions` | → `changed` + nota |
+| Fila `changed`/`new` cuya sesión NO está en `sessions` | → `kept` + nota |
+| `whyKept` vacío | nota (nunca debería estarlo) |
+| Topes | `focus` 160 · `whyChanged`/`whyKept` 600 · `lastWeekSummary` 3×160 · `weekSummary` 12 filas × 160 |
+
+La cobertura se mide contra `currentPlan.sessions` **del request**, no contra el vocabulario
+(`allowed.sessionIds`), que es la librería y trae sesiones no programadas.
+
+`PROMPT_VERSION` entra en el `factsHash` de idempotencia: con el mismo pack, una revisión v1 en caché
+no puede devolverse como v2 — le faltarían justo los campos que la Home nueva lee. `MAX_PRIOR_REVIEWS`
+sube de 4 a **6** (el coach razona sobre el recorrido, y con 4 no se ve un bloque de 5 semanas).
+
+**Lo que lee la PWA:** `briefing.focus` · `briefing.phase` · `briefing.whyChanged` ·
+`briefing.whyKept` · `briefing.lastWeekSummary` · `proposal.weekSummary`. Al aplicar, esos campos se
+estampan en la versión nueva del plan como `coachBrief` (§B.4 del plan v2.1), con fallback derivado de
+`diffPlanVersions` para revisiones v1.
 
 ## `decisions` — la memoria
 
