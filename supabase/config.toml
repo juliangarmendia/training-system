@@ -19,6 +19,38 @@ verify_jwt = true
 import_map = "./functions/parse-meal-photo/deno.json"
 entrypoint = "./functions/parse-meal-photo/index.ts"
 
+[functions.steps-ingest]
+enabled = true
+# verify_jwt = false: la llama un Atajo de iOS, que no tiene sesion de Supabase. La auth es un
+# secreto compartido (STEPS_INGEST_SECRET) comprobado dentro de la funcion, y el usuario es fijo
+# (STEPS_USER_ID). Sin esto el Atajo tendria que llevar un JWT que caduca.
+verify_jwt = false
+entrypoint = "./functions/steps-ingest/index.ts"
+
+[functions.strava-sync]
+enabled = true
+# verify_jwt: la PWA llama con la sesion del usuario y la funcion escribe sus carreras.
+verify_jwt = true
+entrypoint = "./functions/strava-sync/index.ts"
+
+[functions.integrations-oauth]
+enabled = true
+# verify_jwt: esta funcion crea la fila `oauth_states` que autenticara despues al callback, asi
+# que necesita saber de quien es la integracion. Es el unico punto autenticado del flujo.
+verify_jwt = true
+import_map = "./functions/integrations-oauth/deno.json"
+entrypoint = "./functions/integrations-oauth/index.ts"
+
+[functions.integrations-callback]
+enabled = true
+# verify_jwt = false A PROPOSITO: aqui llega el navegador del PROVEEDOR (WHOOP o Withings) tras
+# el consentimiento, sin JWT — en el iPhone la redireccion abre Safari, donde la PWA instalada
+# no tiene sesion. La auth es la fila `oauth_states`: la creo un `authorize` autenticado, lleva
+# el user_id, es de un solo uso (se borra en la misma sentencia que la lee) y caduca en 10 min.
+verify_jwt = false
+import_map = "./functions/integrations-callback/deno.json"
+entrypoint = "./functions/integrations-callback/index.ts"
+
 [functions.coach-weekly-review]
 enabled = true
 # verify_jwt: la PWA llama con la sesion de Supabase del usuario. La funcion escribe filas de
