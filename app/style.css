@@ -154,12 +154,12 @@ body::before {
 
 /* ========== Typography (Lovable: Inter Tight display + JetBrains Mono numerics) ========== */
 header h1, .modal-header h3, .section-label, .section-head-title, .wb-title,
-.rpb-title, .fatigue-title, .swap-title, .pin-prompt, #welcome-greeting,
+.rpb-title, .swap-title, .pin-prompt, #welcome-greeting,
 .whoop-recovery-label { font-family: var(--font-display); letter-spacing: -0.5px; }
 
 /* Numeric / data displays in monospace with tabular figures — the Whoop signature */
 .metric-hero, .metric-display, .wb-stat-val, .streak-num, .ring-value, .rtb-time,
-.workout-timer, .whoop-ring-score, .whoop-ring-pct, .fatigue-score, .hi-stat,
+.workout-timer, .whoop-ring-score, .whoop-ring-pct, .hi-stat,
 .ss-val, .bc-val, .ws-val, .wm-val-sm, .sp-ring-text, .wc-row .wc-val,
 .set-input, .rest-config input, .warmup-weight, .hm-total {
   font-family: var(--font-mono); font-variant-numeric: tabular-nums;
@@ -540,13 +540,6 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
 .streak-num { font-size: 24px; font-weight: 800; color: var(--accent); }
 .streak-label { font-size: 10px; color: var(--text2); font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; margin-top: 2px; }
 
-.fatigue-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 14px 16px; margin-bottom: 12px; }
-.fatigue-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-.fatigue-title { font-size: 13px; font-weight: 700; }
-.fatigue-score { font-size: 18px; font-weight: 800; }
-.fatigue-bar { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
-.fatigue-bar-fill { height: 100%; border-radius: 3px; transition: width 0.5s; }
-.fatigue-tip { font-size: 12px; color: var(--text2); margin-top: 8px; }
 
 .report-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 14px 16px; }
 .report-row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 13px; border-bottom: 1px solid var(--border); }
@@ -1510,7 +1503,7 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
 #view-stats .view-scroll > .week-compare,
 #view-stats .view-scroll > #activity-rings,
 #view-stats .view-scroll > .streak-row,
-#view-stats .view-scroll > .fatigue-card { margin-bottom: 12px; }
+#view-stats .view-scroll > .readiness-signals { margin-bottom: 12px; }
 
 /* ========== Stats sub-tabs ========== */
 .stats-tabs {
@@ -2537,3 +2530,49 @@ body[data-tab="home"] .home-scroll-v2 { padding-top: calc(var(--safe-top) + 10px
 .coach-outcome-hold { color: var(--teal); }
 .coach-outcome-down { color: var(--yellow); }
 .coach-outcome-skip { color: var(--text3); }
+
+/* ==================================================
+   COACH v2 — readiness: señales, propuesta y check-in (v11.59)
+   ================================================== */
+/* Las señales que justifican el color, en la tarjeta de Home. Una por línea porque cada una es
+   un hecho comprobable ("HRV 7d 62 ms vs 71 de base"), no un adorno. */
+.coach-signals { margin: 6px 0 0; padding-left: 16px; font-size: var(--fs-xs); color: var(--text2); line-height: 1.6; }
+.coach-signals li { margin: 0; }
+.coach-signals-note { margin-top: 6px; font-size: var(--fs-xs); color: var(--text3); line-height: 1.5; }
+
+/* La propuesta: qué cambia y por qué, con los dos botones debajo. Ninguno se deshabilita nunca
+   (los guardarraíles avisan, no bloquean). */
+.coach-proposal { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
+.coach-proposal-title { font-size: var(--fs-sm); font-weight: 700; color: var(--text); }
+.coach-changes { margin: 6px 0 0; padding-left: 16px; font-size: var(--fs-xs); color: var(--text); line-height: 1.6; }
+.coach-change-why { color: var(--text3); }
+.coach-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+.coach-btn { flex: 1; min-width: 130px; padding: 10px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface2); color: var(--text); font-size: var(--fs-xs); font-weight: 700; cursor: pointer; }
+.coach-btn-primary { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+.coach-btn:disabled { opacity: 0.5; }
+
+/* Check-in de 2 toques, sólo cuando falta el dato de hoy. Descartable con la ✕. */
+.coach-checkin { margin-top: 12px; padding: 10px 12px; background: var(--surface2); border-radius: var(--radius-sm); }
+.coach-checkin-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.coach-checkin-title { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--text3); }
+.coach-checkin-close { background: none; border: none; color: var(--text3); font-size: 14px; line-height: 1; padding: 2px 4px; cursor: pointer; }
+.coach-checkin-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.coach-checkin-q { font-size: var(--fs-xs); color: var(--text2); }
+.coach-checkin-opts { display: flex; gap: 6px; }
+.coach-checkin-opt { padding: 6px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg2); color: var(--text2); font-size: var(--fs-xs); font-weight: 600; cursor: pointer; }
+.coach-checkin-opt.selected { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+
+/* Stats › Today: la lista de señales que sustituye al score 0-100. Sin barra y sin número. */
+.readiness-signals { padding: 14px 16px; }
+.rs-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.rs-title { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.16em; color: var(--text2); }
+.rs-color { font-size: var(--fs-sm); font-weight: 700; }
+.rs-conf { font-size: 10px; color: var(--text3); margin-left: auto; }
+.rs-rows { margin-top: 8px; }
+.rs-row { display: flex; align-items: baseline; gap: 8px; padding: 5px 0; font-size: var(--fs-xs); line-height: 1.45; }
+.rs-dot { font-size: 10px; line-height: 1.6; color: var(--text3); }
+.rs-text { flex: 1; min-width: 0; }
+.rs-fired .rs-text { color: var(--text); font-weight: 600; }
+.rs-ok .rs-text { color: var(--text2); }
+.rs-none .rs-text { color: var(--text3); }
+.rs-foot { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); font-size: 10px; color: var(--text3); }

@@ -18,9 +18,10 @@
 //
 // v11.55 (incremento 1) trajo los cimientos: los objetivos por defecto y la clave de semana
 // ISO. v11.56 (incremento 2) añade la semana del bloque anclada a fecha (`blockWeekFromDates`,
-// `mondayOf`, `anchorDateFromWeek`) y la progresión de cardio (`progressCardioMin`). Los
-// incrementos siguientes añaden aquí `suggestSetTarget` (inc. 3), `computeReadinessFrom` /
-// `adjustSessionForReadiness` (inc. 5) y `suggestRunningWeek` / `goalProgress` (inc. 6).
+// `mondayOf`, `anchorDateFromWeek`) y la progresión de cardio (`progressCardioMin`). v11.57
+// (inc. 3) el kg del set (`suggestSetTarget`, `sessionReadout`). v11.59 (inc. 5) el readiness
+// único (`computeReadinessFrom`) y el ajuste de la sesión (`adjustSessionForReadiness`,
+// `_coachTrimAccessories`). El incremento 6 añade `suggestRunningWeek` / `goalProgress`.
 
 // ==================== OBJETIVOS ====================
 //
@@ -864,6 +865,643 @@ function sessionReadout(workout, targetsById, exDefs, nextById) {
   return { items, summary, line };
 }
 
+// ==================== READINESS: UN SOLO ESTADO PARA TODO ====================
+//
+// EL PROBLEMA QUE RESUELVE (audit 2026-09-05, F-5 + F-6 + F-8, Change 6). Hasta v11.58 había
+// TRES lecturas de recuperación, cada una con sus inputs y su criterio:
+//
+//   Home  · `computeTrainingAdvisory` → color WHOOP de un día + 2 flags → keep/modify/…
+//   Stats · `renderFatigueScore`      → score 0-100 compuesto (frecuencia + calidad + energía +
+//                                       días bajo proteína ×3 + RPE medio + WHOOP) → "Push hard"
+//   Stats · `checkDeloadNeeded`       → quality ≤2 ×2, RPE ≥8,5 ×3, media WHOOP 3d, + una rama
+//                                       muerta ("N semanas sin deload", inalcanzable — F-8)
+//
+// El usuario podía ver a la vez "Mantener", "Moderate fatigue" y ningún deload: tres lecturas de
+// la MISMA noche, y ninguna sabía cuál mandaba. Peor: la fatigue card derivaba un consejo de un
+// score compuesto, que es READ-003 al revés (el % de WHOOP es una bandera, nunca una calculadora
+// de dosis), y ponderaba "días bajo proteína ×3" como fatiga aguda.
+//
+// Ahora hay UNA función. Devuelve un color, la LISTA de señales que lo justifican (cada una con
+// su valor y su base) y una confianza. Los tres consumidores leen de aquí.
+//
+// LAS REGLAS QUE LA GOBIERNAN (`docs/architecture/readiness-rules.md`):
+//   READ-001 · tendencias de 7 días, nunca un día suelto.
+//   READ-002 · ≥2 señales CONCORDANTES antes de cambiar el plan. Una mala noche sola es amarillo
+//              como máximo — es la corrección explícita del comportamiento anterior.
+//   READ-003 · el Recovery de WHOOP es una bandera (verde/amarillo/rojo), no una dosis.
+//   READ-004 · la HRV se compara con la base PROPIA (media de los días 7..34), nunca con valores
+//              poblacionales ni con el día anterior.
+//   READ-005 · el subjetivo y el rendimiento pesan cuando el wearable falta o discrepa: de ahí
+//              `sleepSelf`/`feelSelf` (check-in de 2 toques) y `rpe2`/`quality2`.
+//   READ-006 · el sueño es la palanca primaria.
+//   READ-008 · el deload reactivo sale de un declive multi-señal SOSTENIDO, no de un mal día.
+//
+// LO QUE NO HACE, NUNCA: ni un score, ni una media ponderada, ni un número del que salga una
+// dosis. Tampoco mira la HRV de un solo día (su ruido diario es del orden del efecto que se
+// busca) ni la compara con nada que no sea el propio historial.
+//
+// LOS UMBRALES SON HEURÍSTICA PRUDENTE, NO UN HALLAZGO. −10 % de HRV 7d, +5 bpm de FC de reposo,
+// 6,5 h de sueño y RPE ≥9 son los que usa la práctica y los que el corpus cita como órdenes de
+// magnitud; ninguno sale de un ensayo con este sujeto. Están aquí, juntos y con nombre, para
+// poder discutirlos y cambiarlos — que es lo contrario de un score con pesos inventados
+// repartidos por 40 líneas de render.
+
+/** Corte de color de WHOOP. EL MISMO que `getRecoveryColor` (whoop.js): 67 / 34. No se toca. */
+const READ_CUTOFFS = { green: 67, yellow: 34 };
+/** Caída de la media de HRV de 7 días respecto a la base propia que cuenta como señal. */
+const READ_HRV_DROP_PCT = -10;
+/** Subida de la FC de reposo de 7 días sobre la base propia que cuenta como señal. */
+const READ_RHR_RISE_BPM = 5;
+/** Media de sueño de 7 días por debajo de la cual el sueño es señal (6,5 h). READ-006. */
+const READ_SLEEP_FLOOR_SECS = 23400;
+/** RPE medio de sesión a partir del cual la sesión cuenta como "al límite". */
+const READ_RPE_FLOOR = 9;
+/** Calidad de sesión (1-5) en o por debajo de la cual la sesión cuenta como mala. */
+const READ_QUALITY_CEIL = 2;
+/** Ventana reciente (0 = hoy .. 6) y base propia (7 .. 34). READ-001 + READ-004. */
+const READ_TREND_TO = 6;
+const READ_BASE_FROM = 7;
+const READ_BASE_TO = 34;
+/** Mínimos para que una tendencia cuente. Por debajo: `insufficient`, y se dice por qué. */
+const READ_MIN_TREND_VALUES = 5;
+const READ_MIN_BASE_VALUES = 14;
+const READ_MIN_SLEEP_NIGHTS = 4;
+/** Reglas que gobiernan el CÁLCULO. READ-007 gobierna el ajuste, no el cálculo. */
+const READ_RULE_IDS = ['READ-001', 'READ-002', 'READ-003', 'READ-004', 'READ-005', 'READ-006', 'READ-008'];
+
+const _READ_COLOR_ES = { green: 'verde', yellow: 'amarillo', red: 'rojo', unknown: 'sin dato' };
+
+/** Media aritmética, o null si no hay nada que promediar. */
+function _readMean(values) {
+  if (!values || !values.length) return null;
+  let s = 0;
+  for (const v of values) s += v;
+  return s / values.length;
+}
+
+/** '−13 %' / '+4 %' con el menos tipográfico (U+2212), como el resto de la UI en castellano. */
+function _readPct(pct) {
+  const n = Math.round(Number(pct));
+  return (n < 0 ? '−' : '+') + Math.abs(n) + ' %';
+}
+
+/** '+5' / '−2' para una diferencia absoluta (bpm). */
+function _readDelta(d) {
+  const n = Math.round(Number(d));
+  return (n < 0 ? '−' : '+') + Math.abs(n);
+}
+
+/** Nombre corto de cada señal, para la UI. El motivo (`reason`) NO lo repite. */
+const _READ_LABELS = {
+  whoop: 'WHOOP hoy', hrv7v28: 'HRV 7d', rhr7v28: 'FC reposo 7d', sleep7: 'Sueño 7d',
+  rpe2: 'RPE', quality2: 'Calidad', sleepSelf: 'Sueño (check-in)', feelSelf: 'Sensación (check-in)',
+};
+
+/** Señal sin dato suficiente. Lleva SIEMPRE el motivo: "no hay dato" no es una explicación. */
+function _readInsufficient(id, unit, reason) {
+  const label = _READ_LABELS[id] || id;
+  return {
+    id, label, fired: false, dir: null, value: null, baseline: null, unit,
+    text: label + ': sin dato — ' + reason, status: 'insufficient', reason,
+  };
+}
+
+/**
+ * El estado de recuperación de hoy, desde los datos y nada más.
+ *
+ * @param {object} inputs
+ * @param {string} inputs.today                'YYYY-MM-DD' LOCAL (nunca derivado de UTC — F-14).
+ * @param {Array}  inputs.wellness             Filas del store `wellness` de los últimos ~35 días:
+ *                                             `{date, readiness, hrv, restingHR, sleepSecs, subjective?}`.
+ *                                             Fuente: intervals.icu (histórico) + WHOOP directo (hoy).
+ * @param {object|null} inputs.whoopToday      `{score, source, fetchedAt}` SÓLO si es de HOY (F-6).
+ * @param {string} [inputs.whoopMissingReason] Por qué falta el dato de hoy, en castellano.
+ * @param {Array}  inputs.workouts             `workouts` en orden DESCENDENTE de fecha.
+ * @param {object} [inputs.cutoffs]            `{green:67, yellow:34}`.
+ * @returns {{color:'green'|'yellow'|'red'|'unknown',
+ *            signals:Array<{id:string, fired:boolean, dir:string|null, value:number|null,
+ *                           baseline:number|null, unit:string, text:string,
+ *                           status:'ok'|'insufficient', reason?:string}>,
+ *            fired:number, confidence:'high'|'medium'|'low', deloadHint:boolean, ruleIds:string[]}}
+ */
+function computeReadinessFrom(inputs = {}) {
+  const inp = inputs || {};
+  const day = _coachDayStr(inp.today);
+  const cut = Object.assign({}, READ_CUTOFFS, inp.cutoffs || {});
+  const rows = (Array.isArray(inp.wellness) ? inp.wellness : []).filter(r => r && _coachDayStr(r.date));
+  const workouts = (Array.isArray(inp.workouts) ? inp.workouts : []).filter(w => w && Array.isArray(w.exercises));
+
+  // Edad en días de una fila: 0 = hoy, 1 = ayer. Negativa = futuro (se descarta).
+  const age = (d) => (day ? _coachDaysBetween(d, day) : null);
+  const pick = (field, fromAgo, toAgo) => {
+    const out = [];
+    for (const r of rows) {
+      const a = age(r.date);
+      if (a == null || a < fromAgo || a > toAgo) continue;
+      const v = Number(r[field]);
+      if (isFinite(v) && v > 0) out.push(v);
+    }
+    return out;
+  };
+
+  const signals = [];
+
+  // ---- 1. WHOOP de HOY (READ-003). Rojo dispara; amarillo fija un suelo de color -----------
+  // El dato es de hoy o NO EXISTE (F-6). Lo garantiza quien llama: aquí nunca se coge "el último
+  // que haya" — ese bug decidía el entreno del martes con la noche del domingo.
+  const wt = (inp.whoopToday && inp.whoopToday.score != null) ? inp.whoopToday : null;
+  const whoopColor = wt
+    ? (wt.score >= cut.green ? 'green' : wt.score >= cut.yellow ? 'yellow' : 'red')
+    : null;
+  if (wt) {
+    const sc = Math.round(Number(wt.score));
+    signals.push({
+      id: 'whoop', label: _READ_LABELS.whoop, fired: whoopColor === 'red', dir: 'level',
+      value: sc, baseline: cut.yellow, unit: '%',
+      text: 'WHOOP hoy ' + sc + ' % · ' + _READ_COLOR_ES[whoopColor],
+      status: 'ok',
+    });
+  } else {
+    signals.push(_readInsufficient('whoop', '%', inp.whoopMissingReason || 'Sin dato de recuperación de hoy'));
+  }
+
+  // ---- 2. HRV: media 7d vs base propia de los días 7..34 (READ-001 + READ-004) -------------
+  {
+    const w = pick('hrv', 0, READ_TREND_TO);
+    const b = pick('hrv', READ_BASE_FROM, READ_BASE_TO);
+    if (w.length < READ_MIN_TREND_VALUES) {
+      signals.push(_readInsufficient('hrv7v28', 'ms', 'sólo ' + w.length + ' de 7 días'));
+    } else if (b.length < READ_MIN_BASE_VALUES) {
+      signals.push(_readInsufficient('hrv7v28', 'ms', 'base propia incompleta (' + b.length + ' de 28 días)'));
+    } else {
+      const m = _readMean(w);
+      const base = _readMean(b);
+      const pct = (m / base - 1) * 100;
+      signals.push({
+        id: 'hrv7v28', label: _READ_LABELS.hrv7v28, fired: pct <= READ_HRV_DROP_PCT, dir: pct < 0 ? 'down' : 'up',
+        value: Math.round(m), baseline: Math.round(base), unit: 'ms',
+        text: 'HRV 7d ' + Math.round(m) + ' ms vs ' + Math.round(base) + ' de base (' + _readPct(pct) + ')',
+        status: 'ok',
+      });
+    }
+  }
+
+  // ---- 3. FC de reposo: media 7d − base propia (READ-001) ---------------------------------
+  {
+    const w = pick('restingHR', 0, READ_TREND_TO);
+    const b = pick('restingHR', READ_BASE_FROM, READ_BASE_TO);
+    if (w.length < READ_MIN_TREND_VALUES) {
+      signals.push(_readInsufficient('rhr7v28', 'bpm', 'sólo ' + w.length + ' de 7 días'));
+    } else if (b.length < READ_MIN_BASE_VALUES) {
+      signals.push(_readInsufficient('rhr7v28', 'bpm', 'base propia incompleta (' + b.length + ' de 28 días)'));
+    } else {
+      const m = _readMean(w);
+      const base = _readMean(b);
+      const d = m - base;
+      signals.push({
+        id: 'rhr7v28', label: _READ_LABELS.rhr7v28, fired: d >= READ_RHR_RISE_BPM, dir: d > 0 ? 'up' : 'down',
+        value: Math.round(m), baseline: Math.round(base), unit: 'bpm',
+        text: 'FC reposo 7d ' + Math.round(m) + ' vs ' + Math.round(base) + ' (' + _readDelta(d) + ')',
+        status: 'ok',
+      });
+    }
+  }
+
+  // ---- 4. Sueño: media 7d (READ-006, palanca primaria) ------------------------------------
+  // Una noche de 4 h con la semana en 7 h NO dispara: es literalmente el "no obsesionarse con un
+  // mal día" de la tabla de señales de readiness-rules.md.
+  {
+    const w = pick('sleepSecs', 0, READ_TREND_TO);
+    if (w.length < READ_MIN_SLEEP_NIGHTS) {
+      signals.push(_readInsufficient('sleep7', 'h', 'sólo ' + w.length + ' de 7 noches'));
+    } else {
+      const m = _readMean(w);
+      const hrs = Math.round((m / 3600) * 10) / 10;
+      signals.push({
+        id: 'sleep7', label: _READ_LABELS.sleep7, fired: m < READ_SLEEP_FLOOR_SECS, dir: 'down',
+        value: hrs, baseline: Math.round((READ_SLEEP_FLOOR_SECS / 3600) * 10) / 10, unit: 'h',
+        text: 'Sueño 7d ' + _coachFmtKg(hrs) + ' h', status: 'ok',
+      });
+    }
+  }
+
+  // ---- 5. RPE de las 2 últimas sesiones de fuerza (READ-005: manda el rendimiento) --------
+  // Sólo cuentan las sesiones con al menos 3 series con RPE: dos series sueltas no son una sesión
+  // "al límite", son dos series con el RPE apuntado.
+  const rped = [];
+  for (const w of workouts) {
+    const rpes = [];
+    for (const ex of (w.exercises || [])) {
+      for (const s of ((ex && ex.sets) || [])) {
+        const v = Number(s && s.rpe);
+        if (s && s.done && isFinite(v) && v > 0) rpes.push(v);
+      }
+    }
+    if (rpes.length >= 3) rped.push({ date: w.date, avg: _readMean(rpes) });
+    if (rped.length === 2) break;
+  }
+  if (rped.length < 2) {
+    signals.push(_readInsufficient('rpe2', 'RPE', 'sólo ' + rped.length + ' sesión(es) con RPE apuntado'));
+  } else {
+    const both = rped[0].avg >= READ_RPE_FLOOR && rped[1].avg >= READ_RPE_FLOOR;
+    signals.push({
+      id: 'rpe2', label: _READ_LABELS.rpe2, fired: both, dir: 'up',
+      value: Math.round(rped[0].avg * 10) / 10, baseline: READ_RPE_FLOOR, unit: 'RPE',
+      text: both
+        ? 'RPE ≥9 en las 2 últimas sesiones'
+        : 'RPE medio ' + _coachFmtRpe(rped[0].avg) + ' y ' + _coachFmtRpe(rped[1].avg) + ' en las 2 últimas',
+      status: 'ok',
+    });
+  }
+
+  // ---- 6. Calidad percibida de las 2 últimas sesiones -------------------------------------
+  const quals = [];
+  for (const w of workouts) {
+    const q = Number(w.quality);
+    if (isFinite(q) && q > 0) quals.push(q);
+    if (quals.length === 2) break;
+  }
+  if (quals.length < 2) {
+    signals.push(_readInsufficient('quality2', '/5', 'sólo ' + quals.length + ' sesión(es) puntuada(s)'));
+  } else {
+    const both = quals[0] <= READ_QUALITY_CEIL && quals[1] <= READ_QUALITY_CEIL;
+    signals.push({
+      id: 'quality2', label: _READ_LABELS.quality2, fired: both, dir: 'down',
+      value: quals[0], baseline: READ_QUALITY_CEIL, unit: '/5',
+      text: both ? 'Calidad ≤2 en las 2 últimas' : 'Calidad ' + quals[0] + ' y ' + quals[1] + ' en las 2 últimas',
+      status: 'ok',
+    });
+  }
+
+  // ---- 7-8. Check-in de 2 toques (READ-005) ----------------------------------------------
+  // Cuando el wearable no tiene el dato de hoy, esto es lo único que habla de HOY. Es opcional:
+  // sin responder queda `insufficient` y no pasa nada.
+  const todayRow = day ? rows.find(r => _coachDayStr(r.date) === day) : null;
+  const subj = (todayRow && todayRow.subjective) || null;
+  if (!subj || !subj.sleepBand) {
+    signals.push(_readInsufficient('sleepSelf', 'h', 'sin responder hoy'));
+  } else {
+    const bad = String(subj.sleepBand) === '<6h';
+    signals.push({
+      id: 'sleepSelf', label: _READ_LABELS.sleepSelf, fired: bad, dir: 'down', value: null, baseline: null, unit: 'h',
+      // `band` es la respuesta CRUDA ('<6h', '6-7'…). La lleva la señal para que la UI pueda
+      // marcar el botón elegido sin volver a leer IndexedDB ni parsear su propio texto.
+      band: String(subj.sleepBand),
+      text: bad ? 'Dormiste <6 h (check-in)' : 'Dormiste ' + subj.sleepBand + ' (check-in)',
+      status: 'ok',
+    });
+  }
+  if (!subj || subj.feel == null || !isFinite(Number(subj.feel))) {
+    signals.push(_readInsufficient('feelSelf', '/5', 'sin responder hoy'));
+  } else {
+    const feel = Number(subj.feel);
+    signals.push({
+      id: 'feelSelf', label: _READ_LABELS.feelSelf, fired: feel <= 2, dir: 'down', value: feel, baseline: 2, unit: '/5',
+      text: 'Te sientes ' + _coachFmtKg(feel) + '/5 (check-in)', status: 'ok',
+    });
+  }
+
+  // ---- Color: ≥2 concordantes = rojo; 1 = amarillo (READ-002) -----------------------------
+  const byId = (id) => signals.find(s => s.id === id) || null;
+  const isFired = (id) => { const s = byId(id); return !!(s && s.fired); };
+  const fired = signals.filter(s => s.fired).length;
+  // "Sin tendencias" = las tres señales de wearable insuficientes. Con tendencias, la mañana sin
+  // dato de hoy da un color por TENDENCIA (§B.2.b) en vez de un `unknown` inútil.
+  const trendsInsufficient = ['hrv7v28', 'rhr7v28', 'sleep7']
+    .every(id => { const s = byId(id); return !s || s.status === 'insufficient'; });
+  let color;
+  if (fired >= 2) color = 'red';
+  else if (fired === 1) color = 'yellow';
+  else if (whoopColor === 'yellow') color = 'yellow';
+  else if (!wt && trendsInsufficient) color = 'unknown';
+  else color = 'green';
+
+  // ---- Confianza: de dónde sale el color, sin adornos -------------------------------------
+  const baseDates = new Set();
+  for (const r of rows) {
+    const a = age(r.date);
+    if (a == null || a < READ_BASE_FROM || a > READ_BASE_TO) continue;
+    if (Number(r.hrv) > 0 || Number(r.restingHR) > 0 || Number(r.sleepSecs) > 0) baseDates.add(_coachDayStr(r.date));
+  }
+  const hasBase = baseDates.size >= READ_MIN_BASE_VALUES;
+  const confidence = (wt && hasBase) ? 'high' : (wt || hasBase) ? 'medium' : 'low';
+
+  // ---- Deload reactivo (READ-008 + LOAD-004): declive SOSTENIDO, no un mal día ------------
+  const deloadHint = fired >= 3
+    || isFired('rpe2')
+    || (isFired('hrv7v28') && isFired('rhr7v28') && isFired('quality2'));
+
+  return { color, signals, fired, confidence, deloadHint, ruleIds: READ_RULE_IDS.slice() };
+}
+
+// ==================== EL AJUSTE DE LA SESIÓN (READ-007) ====================
+//
+// READ-007 dice que un día rojo cambia el OBJETIVO de la sesión, no sólo la carga. Esta función
+// es esa frase hecha código: devuelve la MISMA sesión con menos accesorios y un tope de RPE
+// (amarillo), o una sesión distinta (rojo + día exigente).
+//
+// LO QUE NO TOCA, NUNCA:
+//   · Los kg. La carga la fija `suggestSetTarget` (doble progresión) y la fatiga se gestiona por
+//     RPE y volumen — STR-001. Un readiness que mueve el kg es un score convertido en dosis, que
+//     es exactamente lo que READ-003 prohíbe.
+//   · Los compuestos en amarillo. En déficit lo que preserva fuerza es la intensidad de los
+//     compuestos (STR-001); lo primero que sobra son los accesorios.
+//   · El Z2 finisher ni los días de descanso/recuperación: ya son la parte fácil.
+//
+// Y NO BLOQUEA: esto devuelve una PROPUESTA. Los dos botones de Home arrancan, y las dos
+// decisiones quedan registradas (`logDecision`).
+
+/** Redondeo a 5 minutos: la duración de una sesión no se prescribe en minutos sueltos. */
+function _readRound5(x) { return Math.round(Number(x) / 5) * 5; }
+
+/** Copia superficial de la sesión + copia de cada ejercicio. `planned` NUNCA se muta. */
+function _readCopySession(planned) {
+  const s = Object.assign({}, planned || {});
+  if (Array.isArray(s.exercises)) s.exercises = s.exercises.map(e => Object.assign({}, e));
+  return s;
+}
+
+/**
+ * Recorte de accesorios por PERMANENCIA, no por orden de aparición.
+ *
+ * Permanencia (de más a menos): `compuesto > Core > miembro de superserie > accesorio suelto`.
+ * Se quita desde el FINAL dentro del grupo menos permanente que quede. Los ejercicios de
+ * potencia/pliometría salen SIEMPRE (INT-004: la potencia va en fresco y con intención máxima;
+ * en amarillo no hay intención máxima) y NO cuentan contra `n`.
+ *
+ * DOS PREDICADOS, NO UNO, y la diferencia importa:
+ *   · `isCompound` = la flag `compound` del plan. Es lo que el resto de app.js entiende por
+ *     compuesto (quick mode, bloques, `deriveExerciseFlags`) y lo que decide quién sobrevive a un
+ *     día rojo ("sólo compuestos y core").
+ *   · `isMainLift` = uno de los seis patrones del plan (sentadilla, bisagra, los dos empujes, los
+ *     dos tirones). PROTEGE del recorte de accesorios a movimientos que el plan no marca como
+ *     compuestos aunque lo sean: el RDL de `lowerA` no lleva la flag, y sin este predicado un
+ *     recorte de 2 accesorios se llevaría el peso muerto y dejaría el gemelo.
+ * Añadir la flag que falta en `PLAN` sería más limpio, pero `compound` también controla el
+ * recorte de quick mode: cambiarla movería series en la pantalla más usada por un motivo que no
+ * tiene nada que ver. Se arregla aquí, donde se necesita, y se dice por qué.
+ *
+ * @param {Array} exercises Ejercicios de la sesión, en orden.
+ * @param {number} n        Cuántos accesorios recortar.
+ * @param {object} [opts]
+ * @param {object|Set} [opts.powerIds] Ids de potencia (`COACH_POWER_IDS`).
+ * @param {function} [opts.isCore]     `(ex) => bool`. Por defecto `muscle === 'Core'`.
+ * @param {function} [opts.isCompound] `(ex) => bool`. Por defecto la flag `compound` del plan.
+ * @param {function} [opts.isMainLift] `(ex) => bool`. Por defecto ninguno.
+ * @returns {{kept:Array, dropped:Array, power:Array}}
+ */
+function _coachTrimAccessories(exercises, n, opts = {}) {
+  const o = opts || {};
+  const pw = o.powerIds || {};
+  const isPower = (ex) => !!(ex && ex.id && (pw instanceof Set ? pw.has(ex.id) : pw[ex.id]));
+  const isCore = typeof o.isCore === 'function' ? o.isCore : (ex) => !!(ex && ex.muscle === 'Core');
+  const isCompound = typeof o.isCompound === 'function' ? o.isCompound : (ex) => !!(ex && ex.compound);
+  const isMainLift = typeof o.isMainLift === 'function' ? o.isMainLift : () => false;
+  const list = Array.isArray(exercises) ? exercises : [];
+  const power = list.filter(isPower);
+  const rest = list.filter(ex => !isPower(ex));
+  const rank = (ex) => ((isCompound(ex) || isMainLift(ex)) ? 3 : isCore(ex) ? 2 : (ex && ex.superset) ? 1 : 0);
+  const slots = rest.map(ex => ({ ex, rank: rank(ex) }));
+  const dropped = [];
+  let left = Math.max(0, Math.floor(Number(n) || 0));
+  for (let tier = 0; tier <= 1 && left > 0; tier++) {          // 0 = suelto, 1 = superserie
+    for (let i = slots.length - 1; i >= 0 && left > 0; i--) {
+      if (slots[i] && slots[i].rank === tier) { dropped.push(slots[i].ex); slots[i] = null; left--; }
+    }
+  }
+  return { kept: slots.filter(Boolean).map(s => s.ex), dropped, power };
+}
+
+/**
+ * La sesión ajustada a la recuperación de hoy. Matriz completa en §B.2 del plan.
+ *
+ * @param {object} planned   Salida de `getPlannedSessionForDate`.
+ * @param {object} readiness Salida de `computeReadinessFrom`.
+ * @param {object} ctx
+ * @param {object} ctx.stress      Salida de `classifySessionStress` (`{level, family, subtype}`).
+ * @param {Array}  [ctx.alts]      Alternativas de `ALT_LIBRARY` (`getReplacementOptions`).
+ * @param {object|Set} [ctx.powerIds]
+ * @param {function} [ctx.isCore]
+ * @param {function} [ctx.isCompound] Quién es compuesto (flag del plan): decide el esqueleto del
+ *                                    día rojo y a quién se le quita una serie.
+ * @param {function} [ctx.isMainLift] Quién está protegido del recorte de accesorios (los seis
+ *                                    patrones). Ver `_coachTrimAccessories`.
+ * @param {number} [ctx.flags]     Nº de flags de interferencia NO redundantes (HYB-002…).
+ * @returns {{mode:'keep'|'modify'|'replace'|'recovery', session:object,
+ *            changes:Array<{type:string, exerciseId?:string, from:*, to:*, why:string, ruleIds:string[]}>,
+ *            reason:string[], alternatives:Array, confidence:string, ruleIds:string[]}}
+ */
+function adjustSessionForReadiness(planned, readiness, ctx = {}) {
+  const c = ctx || {};
+  const stress = c.stress || {};
+  const alts = Array.isArray(c.alts) ? c.alts : [];
+  const trimOpts = { powerIds: c.powerIds, isCore: c.isCore, isCompound: c.isCompound, isMainLift: c.isMainLift };
+  const color = (readiness && readiness.color) || 'unknown';
+  const confidence = color === 'unknown' ? 'low' : ((readiness && readiness.confidence) || 'low');
+  const level = stress.level || 'easy';
+  const family = stress.family
+    || (planned && planned.type === 'run' ? 'cardio' : (planned && planned.type === 'gym' ? 'strength' : 'recovery'));
+  const name = (planned && planned.name) || 'la sesión';
+
+  const session = _readCopySession(planned);
+  const changes = [];
+  const reason = [];
+  const rules = new Set();
+  let mode = 'keep';
+
+  const add = (ch) => { changes.push(ch); (ch.ruleIds || []).forEach(r => rules.add(r)); };
+  const out = () => ({
+    mode, session, changes, reason,
+    alternatives: mode === 'keep' ? [] : alts,
+    confidence, ruleIds: Array.from(rules),
+  });
+
+  const señales = (readiness && readiness.fired) || 0;
+  const plural = señales === 1 ? 'señal' : 'señales';
+  const firedText = ((readiness && readiness.signals) || []).filter(s => s.fired).map(s => s.text);
+
+  // ---- Descanso / recuperación: no hay nada que ajustar ----------------------------------
+  if (!planned || planned.type === 'rest' || planned.type === 'recovery' || family === 'recovery') {
+    rules.add('READ-007');
+    reason.push('Día de descanso o recuperación: ya es la parte fácil, no se toca.');
+    return out();
+  }
+
+  // ---- Sin dato de hoy: se mantiene el plan y se dice por qué (F-6) ----------------------
+  if (color === 'unknown') {
+    rules.add('READ-001'); rules.add('READ-003');
+    reason.push('Sin dato de recuperación de hoy: dejo el plan tal cual.');
+    return out();
+  }
+
+  if (color === 'green') {
+    rules.add('READ-002');
+    reason.push('Recuperación en verde: la sesión va tal cual.');
+    return out();
+  }
+
+  // ---- CARDIO ---------------------------------------------------------------------------
+  if (family === 'cardio') {
+    const dur = Number(session.durationMin) || null;
+    if (level === 'easy') {
+      // El Z2 fácil es la sesión que MENOS conviene quitar: mantiene el hábito y la base aeróbica
+      // sin coste de recuperación (END-001). En rojo sólo se le pone un tope.
+      rules.add('READ-007');
+      if (color === 'red' && dur && dur > 30) {
+        session.durationMin = 30;
+        add({
+          type: 'durationScale', from: dur, to: 30,
+          why: 'Tope de 30′ hoy: mantener el hábito sin sumar fatiga',
+          ruleIds: ['READ-007', 'END-001'],
+        });
+        reason.push('Recuperación en rojo: el Z2 se queda, con tope de 30′.');
+      } else {
+        reason.push('Cardio fácil: se mantiene igual.');
+      }
+      return out();
+    }
+    if (color === 'yellow') {
+      mode = 'modify';
+      if (dur) {
+        const to = Math.max(20, _readRound5(dur * 0.8));
+        session.durationMin = to;
+        add({
+          type: 'durationScale', from: dur, to,
+          why: 'Misma zona y mismo objetivo, 20 % menos de minutos',
+          ruleIds: ['END-002', 'READ-007'],
+        });
+      }
+      reason.push('Recuperación amarilla (' + señales + ' ' + plural + '): recorto la duración, no la zona.');
+      if (firedText.length) reason.push(firedText[0]);
+      return out();
+    }
+    // Rojo + cardio con carga: cambia el objetivo (READ-007), no los minutos.
+    mode = 'replace';
+    const alt = alts[0] || null;
+    session.type = 'recovery';
+    session.name = alt ? alt.label : 'Cardio muy suave';
+    session.durationMin = (alt && alt.durationMin) ? alt.durationMin : (dur ? Math.min(dur, 30) : 30);
+    session.replacedFrom = name;
+    if (alt && alt.subtype) session.subtype = alt.subtype;
+    add({
+      type: 'replaceSession', from: name, to: session.name,
+      why: 'Con la recuperación en rojo el día cambia de objetivo, no de carga',
+      ruleIds: ['READ-007', 'INT-002'],
+    });
+    reason.push('Recuperación en rojo (' + señales + ' ' + plural + '): cambio la sesión de calidad por algo de bajo impacto.');
+    if (firedText.length) reason.push(firedText[0]);
+    return out();
+  }
+
+  // ---- FUERZA / HÍBRIDO ------------------------------------------------------------------
+  const exs = Array.isArray(session.exercises) ? session.exercises : [];
+
+  if (level === 'easy') {                    // un día de fuerza clasificado como suave
+    reason.push('Sesión suave: se mantiene igual.');
+    return out();
+  }
+
+  const dropPower = (list) => {
+    for (const ex of list) {
+      add({
+        type: 'dropExercise', exerciseId: ex.id, from: ex.name || ex.id, to: null,
+        why: 'La potencia sólo en fresco: hoy pierde intención y sube el riesgo',
+        ruleIds: ['INT-004', 'ATH-004'],
+      });
+    }
+  };
+  const dropAccessory = (list) => {
+    for (const ex of list) {
+      add({
+        type: 'dropExercise', exerciseId: ex.id, from: ex.name || ex.id, to: null,
+        why: 'Menos volumen accesorio: el estímulo que preserva fuerza lo dan los compuestos',
+        ruleIds: ['STR-001', 'LOAD-004'],
+      });
+    }
+  };
+  const capRpe = () => {
+    add({
+      type: 'rpeCap', from: null, to: 7,
+      why: 'Sin llegar al fallo: mismos kg, menos fatiga',
+      ruleIds: ['STR-001', 'READ-007'],
+    });
+  };
+
+  if (color === 'yellow') {
+    mode = 'modify';
+    const n = level === 'hard' ? 2 : 1;      // exigente recorta 2 accesorios; moderada, 1
+    const t = _coachTrimAccessories(exs, n, trimOpts);
+    session.exercises = t.kept;
+    // Orden de los cambios = orden en que se leen en la tarjeta: primero qué desaparece, después
+    // cómo se hace lo que queda.
+    dropPower(t.power);
+    dropAccessory(t.dropped);
+    capRpe();
+    reason.push('Recuperación amarilla (' + señales + ' ' + plural + '): compuestos intactos, menos accesorios y tope de RPE 7.');
+    if (firedText.length) reason.push(firedText[0]);
+    return out();
+  }
+
+  // ---- ROJO ------------------------------------------------------------------------------
+  if (level === 'hard') {
+    // Pierna pesada, full body o híbrido con la recuperación en rojo: el objetivo del día cambia.
+    // Con una segunda bandera de interferencia (familia híbrida, HYB-002) se propone un CAMBIO de
+    // modalidad; sin ella, recuperación activa de 30′.
+    const alt = alts[0] || null;
+    mode = (Number(c.flags) || 0) >= 1 ? 'replace' : 'recovery';
+    const min = mode === 'recovery' ? 30 : ((alt && alt.durationMin) ? alt.durationMin : 30);
+    session.type = 'recovery';
+    session.name = alt ? alt.label : 'Recuperación activa';
+    session.durationMin = min;
+    session.replacedFrom = name;
+    delete session.exercises;
+    add({
+      type: 'replaceSession', from: name, to: session.name + ' · ' + min + '′',
+      why: 'Un día rojo cambia el objetivo de la sesión, no sólo el peso de la barra',
+      ruleIds: ['READ-007', 'LOAD-004'],
+    });
+    reason.push('Recuperación en rojo (' + señales + ' ' + plural + ') con una sesión exigente: cambio el objetivo del día.');
+    if (firedText.length) reason.push(firedText[0]);
+    return out();
+  }
+
+  // Rojo + sesión moderada (upper): se mantiene, pero sólo el esqueleto.
+  mode = 'modify';
+  const isCore = typeof c.isCore === 'function' ? c.isCore : (ex) => !!(ex && ex.muscle === 'Core');
+  const isCompound = typeof c.isCompound === 'function' ? c.isCompound : (ex) => !!(ex && ex.compound);
+  const pw = c.powerIds || {};
+  const isPower = (ex) => !!(ex && ex.id && (pw instanceof Set ? pw.has(ex.id) : pw[ex.id]));
+  const kept = [];
+  const fuera = [];
+  const potencia = [];
+  for (const ex of exs) {
+    if (isPower(ex)) { potencia.push(ex); continue; }
+    if (isCompound(ex) || isCore(ex)) kept.push(ex); else fuera.push(ex);
+  }
+  // −1 serie en los compuestos, con suelo de 2: por debajo de 2 series no queda estímulo que
+  // mantener, y el objetivo del día sigue siendo mantener (STR-001).
+  for (const ex of kept) {
+    if (!isCompound(ex)) continue;
+    const from = Number(ex.sets) || 0;
+    const to = Math.max(2, from - 1);
+    if (to !== from) {
+      ex.sets = to;
+      add({
+        type: 'setDelta', exerciseId: ex.id, from, to,
+        why: 'Una serie menos en los compuestos: mantener, no progresar',
+        ruleIds: ['STR-001', 'LOAD-004'],
+      });
+    }
+  }
+  session.exercises = kept;
+  dropPower(potencia);
+  dropAccessory(fuera);
+  capRpe();
+  reason.push('Recuperación en rojo (' + señales + ' ' + plural + '): sólo compuestos y core, una serie menos y tope de RPE 7.');
+  if (firedText.length) reason.push(firedText[0]);
+  return out();
+}
+
 // ==================== EXPORTS PARA LOS TESTS ====================
 // tests/verify-coach-wiring.mjs, verify-block-week.mjs y verify-set-target.mjs cargan este
 // fichero con `vm` y leen este bloque. En el navegador no estorba (no hay `module`).
@@ -902,5 +1540,24 @@ if (typeof module !== 'undefined' && module.exports) {
     parseCoachTarget,
     suggestSetTarget,
     sessionReadout,
+    // Readiness (incremento 5, v11.59)
+    READ_CUTOFFS,
+    READ_HRV_DROP_PCT,
+    READ_RHR_RISE_BPM,
+    READ_SLEEP_FLOOR_SECS,
+    READ_RPE_FLOOR,
+    READ_QUALITY_CEIL,
+    READ_MIN_TREND_VALUES,
+    READ_MIN_BASE_VALUES,
+    READ_MIN_SLEEP_NIGHTS,
+    READ_RULE_IDS,
+    _readMean,
+    _readPct,
+    _readDelta,
+    _readRound5,
+    _readCopySession,
+    _coachTrimAccessories,
+    computeReadinessFrom,
+    adjustSessionForReadiness,
   };
 }

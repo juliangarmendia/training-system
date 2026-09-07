@@ -61,7 +61,65 @@ Tests: `tests/verify-session-classification.mjs`, `tests/verify-advisory-matrix.
 `tests/verify-coach-wiring.mjs` §12. La ruta directa de WHOOP **no se puede probar contra la API
 real** desde los tests: el código devuelve `null` ante cualquier error y nunca lanza.
 
-## Matriz de decisión (conservadora, default = keep)
+## v11.59 — Un readiness para todo: advisory, deload reactivo y señales
+
+**El día rojo cambia el objetivo, no el kg.** El incremento 5 sustituye la matriz del v1 por
+`computeReadinessFrom` + `adjustSessionForReadiness` (`app/coach-engine.js`, puros y testeados) y
+consolida las **tres** lecturas de recuperación que discrepaban (audit F-5) en una sola:
+
+| Antes (v11.58) | Ahora (v11.59) |
+|---|---|
+| Home: color WHOOP de un día + 2 flags (uno redundante, otro inalcanzable) | `computeReadiness()` — 8 señales, ≥2 concordantes para el rojo (READ-002) |
+| Stats: `renderFatigueScore` → score 0-100 → "Push hard today" | `renderReadinessSignals` → la lista de señales con valor y base. Sin número, sin barra, sin consejo (READ-003) |
+| Stats: `checkDeloadNeeded` con su propio criterio + una rama muerta (F-8) | `deloadHint` del mismo readiness + la fecha del deload **programado** |
+
+**Señales y umbrales** (heurística prudente, no un hallazgo; todos declarados juntos en
+`coach-engine.js`): `whoop` (score de HOY; rojo dispara, amarillo fija suelo de color · 67/34) ·
+`hrv7v28` (media 7d vs media de los días 7..34, ≤ −10 %) · `rhr7v28` (≥ +5 bpm) · `sleep7`
+(< 6,5 h) · `rpe2` (RPE medio ≥9 en las 2 últimas sesiones con ≥3 series con RPE) · `quality2`
+(≤2 en las 2 últimas) · `sleepSelf` (`<6h` en el check-in) · `feelSelf` (≤2/5). Color: ≥2
+disparadas → rojo; 1 → amarillo; 0 → amarillo si WHOOP amarillo, `unknown` si no hay dato de hoy
+**y** las tendencias son insuficientes, si no verde. Confianza: alta = dato de hoy + ≥14 días de
+base; media = falta uno; baja = sólo entrenos/subjetivo.
+
+**Consecuencia buscada:** un WHOOP rojo de hoy, solo, es UNA señal → **amarillo** → la sesión se
+ajusta, no se cambia. Antes mandaba una pierna pesada a "Recuperar" con la noche de un solo día,
+y a veces con la de ayer (F-6). Con una segunda señal concordante sí escala.
+
+**Matriz del ajuste** (`adjustSessionForReadiness`; nunca toca kg, ni el Z2 finisher, ni los días
+de descanso, y nunca bloquea):
+
+| readiness \ sesión | rest/recuperación | cardio fácil | cardio con carga | gym moderada | gym exigente |
+|---|---|---|---|---|---|
+| `unknown` | keep | keep | keep | keep · low | keep · low |
+| verde | keep | keep | keep | keep | keep |
+| amarilla | keep | keep | **modify** ×0,8 (misma zona) | **modify**: RPE ≤7 · −1 accesorio · sin potencia | **modify**: RPE ≤7 · −2 accesorios · sin potencia (INT-004) · compuestos intactos |
+| roja | keep | keep, tope 30′ | **replace** → `ALT_LIBRARY.hard_cardio` | **modify**: RPE ≤7 · sólo compuestos+core · compuestos −1 serie (mín 2) | **recovery** → `ALT_LIBRARY.strength_lower`/`.hybrid` a 30′; **replace** con una 2ª bandera de interferencia |
+
+Recorte por permanencia `compuesto > Core > superserie > accesorio suelto`, desde el final. Dos
+predicados, no uno: `isCompound` es la flag del plan (decide el esqueleto del día rojo) e
+`isMainLift` son los seis patrones (protege del recorte al RDL, que no lleva la flag en `PLAN`).
+
+**Home**: la tarjeta propone la sesión ajustada con un bullet por cambio (con su *por qué*) y dos
+botones — `[Hacer la ajustada] [Hacer la planificada]`, o `[Registrar la alternativa] [Hacer la
+planificada igual]` cuando cambia el objetivo del día. Ninguno se deshabilita; las dos decisiones
+se registran (`logDecision type:'readiness-adjust'`, `outcome: accepted|declined`). El pie "no
+cambia tu plan" desaparece: ahora sí cambia la sesión del día. **Check-in de 2 toques** cuando
+falta el dato de hoy (READ-005): `¿Cómo dormiste? [<6h][6-7][7-8][>8]` y `¿Cómo te sientes? [1-5]`
+→ `wellness[hoy].subjective`, con merge (`smartPut`) para no pisar el histórico de intervals.icu
+(y la escritura de `intervalsFetchWellness` conserva `subjective`, o el check-in duraría minutos).
+
+**Entreno**: `startWorkout(id, {adjustments})` filtra `dropIds` (por `id` y por `_origId`, así el
+swap sigue funcionando), `buildExerciseCard` aplica `RPE ≤7` y `setDelta` con suelo de 2 series, y
+el encabezado dice "· ajustada (recuperación amarilla)". `captureWorkoutState` guarda `adjustments`
+y `readinessAtStart`, así que **al reanudar los ejercicios quitados siguen quitados**.
+`finishWorkout` sella `readinessAtStart`, `adjusted` y el resumen del ajuste: es la mitad del lazo
+que el coach semanal necesita para contrastar sus propias propuestas.
+
+Tests: `verify-readiness-trend.mjs`, `verify-session-adjust.mjs`, `verify-advisory-matrix.mjs`
+(matriz completa), `verify-coach-wiring.mjs` §13.
+
+## Matriz de decisión v1 (histórica — la vigente es la de v11.59, arriba)
 Solo se sale de `keep` con **confirmación multi-señal** (≥2 concordantes, READ-002):
 - rest / `easy` / recovery → **keep** siempre.
 - WHOOP `unknown`/null (**incluido "hay dato, pero no es de hoy"**, v11.58) → **keep**,
@@ -98,7 +156,7 @@ con block context). Ver `research/evidence-to-rules.md`.
 - Recovery de WHOOP suele venir más tarde en el día → muchas mañanas: keep + confidence baja.
   (v11.58 lo acota: si la app de WHOOP está conectada por OAuth, el dato de hoy se pide directo y la
   mañana deja de ser ciega; si no, la tarjeta dice "Sin dato de hoy" con el motivo. Las tendencias
-  7d/28d como respaldo llegan en el incremento 5 con `computeReadiness`.)
+  7d/28d como respaldo llegaron en el incremento 5 con `computeReadiness` — v11.59, arriba.)
 
 ## Roadmap
 T3 (esto) → T3b/E2 (aplicar swap con 1 tap) → T4 (Base Plan Engine: plan ideal desde el knowledge base) →

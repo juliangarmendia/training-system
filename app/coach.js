@@ -12,9 +12,10 @@
 // `verify-coach-wiring.mjs` las vigila: un módulo fuera del APP_SHELL funciona en el navegador
 // y falla sin conexión, que es justo donde se entrena (ya pasó con nutrition.js).
 //
-// v11.57 (incremento 3) trae `renderCoachReadout`. Los incrementos siguientes añaden aquí
-// `maybeRunWeeklyCoach`, `applyCoachProposal`, `rollbackPlanVersion`, `renderCoachWeekCard` y
-// la vista `view-coach` (incremento 9).
+// v11.57 (incremento 3) trae `renderCoachReadout`. v11.59 (incremento 5) trae
+// `renderReadinessSignals`, que sustituye al score 0-100 de la fatigue card. Los incrementos
+// siguientes añaden aquí `maybeRunWeeklyCoach`, `applyCoachProposal`, `rollbackPlanVersion`,
+// `renderCoachWeekCard` y la vista `view-coach` (incremento 9).
 
 // ==================== LECTURA DEL COACH (post-sesión) ====================
 //
@@ -105,7 +106,63 @@ async function renderCoachReadout() {
   }
 }
 
+// ==================== SEÑALES DE RECUPERACIÓN (Stats › Today, v11.59) ====================
+//
+// LO QUE SUSTITUYE. `renderFatigueScore` pintaba un "Readiness Score" 0-100 con una barra y una
+// frase de consejo ("Recovery looks good. Push hard today."). El número salía de sumar
+// frecuencia de entrenos, calidad media, energía de nutrición, DÍAS BAJO PROTEÍNA ×3 y RPE
+// medio, y de mezclarlo con el % de WHOOP: `fatigue*0.55 + whoopFatigue + fatigue*0.15`.
+//
+// Eso está mal por dos motivos distintos, los dos en el audit (F-5):
+//   · Es una DOSIS DERIVADA DE UN SCORE COMPUESTO, que es READ-003 al revés. Del 73 no se sigue
+//     "push hard"; del 41 no se sigue "reduce volumen".
+//   · Los pesos eran inventados: "≥6 sesiones = +30" sin distinguir una caminata de una pierna
+//     pesada, y la proteína baja no es fatiga aguda.
+//
+// Y además discrepaba de Home y del banner de deload, porque cada uno calculaba lo suyo.
+//
+// Ahora esta tarjeta MUESTRA las señales de `computeReadiness()` —el mismo objeto que decide en
+// Home— con su valor y su base. Sin número, sin barra, sin consejo. Lo que hay que hacer con
+// ellas está en la tarjeta de Home, que es donde se decide el entreno.
+async function renderReadinessSignals() {
+  const el = document.getElementById('readiness-signals');
+  if (!el) return;
+  let r;
+  try { r = await computeReadiness(); } catch (e) { console.warn('[readiness] card:', e); el.innerHTML = ''; return; }
+
+  const ES = { green: 'verde', yellow: 'amarilla', red: 'roja', unknown: 'sin dato de hoy' };
+  const COL = { green: 'var(--accent)', yellow: 'var(--yellow)', red: 'var(--red)', unknown: 'var(--text3)' };
+  const CONF = { high: 'confianza alta', medium: 'confianza media', low: 'confianza baja' };
+  const color = COL[r.color] || 'var(--text3)';
+
+  const rows = (r.signals || []).map(s => {
+    const cls = s.status === 'insufficient' ? 'rs-none' : (s.fired ? 'rs-fired' : 'rs-ok');
+    const txt = s.status === 'insufficient'
+      ? `${s.label || s.id}: sin dato — ${s.reason || ''}`
+      : s.text;
+    const dot = s.status === 'insufficient' ? '○' : '●';
+    return `<div class="rs-row ${cls}"><span class="rs-dot"${s.fired ? ` style="color:${color}"` : ''}>${dot}</span><span class="rs-text">${escapeHtml(String(txt))}</span></div>`;
+  }).join('');
+
+  // La honestidad de v11.58: si hay un dato pero NO es de hoy, se dice de cuándo es. Nunca se
+  // pinta el de ayer como si fuera de hoy (F-6).
+  const last = r.whoopLastAvailable;
+  const whoopSig = (r.signals || []).find(s => s.id === 'whoop') || {};
+  const lastLine = (whoopSig.status === 'insufficient' && last && last.score != null)
+    ? `<div class="rs-foot">Último dato de WHOOP: ${last.score}% (${(typeof whoopDayLabel === 'function' ? whoopDayLabel(last.date, today()) : last.date)}) — no cuenta como hoy.</div>`
+    : '';
+
+  el.innerHTML = `
+    <div class="rs-head">
+      <span class="rs-title">Recuperación</span>
+      <span class="rs-color" style="color:${color}">${ES[r.color] || r.color}</span>
+      <span class="rs-conf">${CONF[r.confidence] || ''}</span>
+    </div>
+    <div class="rs-rows">${rows}</div>
+    ${lastLine}`;
+}
+
 // Exports para los tests (Node los carga con `vm`); en el navegador no estorba.
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { renderCoachReadout };
+  module.exports = { renderCoachReadout, renderReadinessSignals };
 }

@@ -1381,6 +1381,13 @@ const state = {
   // Objetivo de kg por ejercicio de la sesión en curso (v11.57). Lo llena `startWorkout` y lo
   // sella `finishWorkout` en el registro; `clearActiveWorkout` lo limpia.
   activeTargets: null,
+  // Ajuste por recuperación con el que se arrancó la sesión (v11.59) y la instantánea del
+  // readiness de ese momento. Los dos viajan en `settings.activeWorkout` (para que el reanudado
+  // no devuelva los ejercicios quitados) y se sellan en el registro (`adjusted`,
+  // `readinessAtStart`), que es lo que luego permite al coach decir "te propuse quitar el box
+  // jump y lo hiciste igual". `clearActiveWorkout` los limpia.
+  activeAdjustments: null,
+  activeReadiness: null,
   selectedStrengthLift: 'bench-press',
 };
 
@@ -3540,6 +3547,11 @@ async function _rerenderAdHoc(focusExId) {
 // `opts.targets` repone los objetivos de una instantánea al reanudar (`restoreActiveWorkout`):
 // el kg que ves a mitad de sesión no puede cambiar porque otro dispositivo haya sincronizado
 // un entrenamiento nuevo entre medias. Sin instantánea se calculan.
+//
+// `opts.adjustments` (v11.59) es la sesión AJUSTADA por recuperación, tal como la propuso la
+// tarjeta de Home: `{mode, rpeCap, dropIds, setDelta, readiness}`. Filtra ejercicios, tapa el RPE
+// y recorta series de compuestos. Sin él la sesión arranca completa — que es lo que hace el CTA
+// del hero, siempre, sin importar el color: nada bloquea.
 async function startWorkout(sessionId, opts = {}) {
   const baseSession = getSessionDef(sessionId);
   if (!baseSession) {
@@ -3554,6 +3566,24 @@ async function startWorkout(sessionId, opts = {}) {
     ? { ...baseSession, exercises: baseSession.exercises.map(e => ({ ...e })) }
     // Apply persistent exercise swaps (T5.2). id is preserved so session.id works for the swap UI.
     : { ...baseSession, exercises: resolveSessionExercises(sessionId, baseSession.exercises) };
+
+  // AJUSTE POR RECUPERACIÓN (v11.59). Los ejercicios quitados se filtran ANTES de todo lo demás
+  // (calentamiento, bloques, objetivos), así que la sesión ajustada es una sesión normal para el
+  // resto de la pantalla. Se compara por `id` y por `_origId`: con un swap activo el id que ves
+  // es el del sustituto y el que propuso la tarjeta puede ser el del hueco del plan.
+  const adjustments = (opts && opts.adjustments) || null;
+  if (adjustments && Array.isArray(adjustments.dropIds) && adjustments.dropIds.length) {
+    const fuera = new Set(adjustments.dropIds);
+    session.exercises = session.exercises.filter(e => !fuera.has(e.id) && !fuera.has(e._origId || e.id));
+  }
+  state.activeAdjustments = adjustments;
+  // La instantánea del readiness se guarda SIEMPRE, incluso arrancando la planificada: es lo que
+  // permite luego leer "te propuse quitar el box jump y lo hiciste igual". Si el ajuste no la
+  // trae (hero, o sesión libre) se calcula aquí.
+  state.activeReadiness = (adjustments && adjustments.readiness) || null;
+  if (!state.activeReadiness) {
+    try { state.activeReadiness = _coachReadinessStamp(await computeReadiness()); } catch (e) { state.activeReadiness = null; }
+  }
 
   state.activeSession = sessionId;
   // Preserve workoutStartTime if user is just toggling Quick mode on the same
@@ -3738,7 +3768,7 @@ async function startWorkout(sessionId, opts = {}) {
       inner.className = 'superset-group';
       inner.innerHTML = `<div class="superset-label">Superset ${group.label}</div>`;
       group.exercises.forEach(({ ex, idx }) => {
-        inner.appendChild(buildExerciseCard(ex, idx, previous, restSettings, exerciseNotes, deload, session, workouts, (state.activeTargets || {})[ex.id] || null));
+        inner.appendChild(buildExerciseCard(ex, idx, previous, restSettings, exerciseNotes, deload, session, workouts, (state.activeTargets || {})[ex.id] || null, adjustments));
       });
       wrapper.appendChild(inner);
       container.appendChild(wrapper);
@@ -3748,7 +3778,7 @@ async function startWorkout(sessionId, opts = {}) {
       wrapper.className = 'block-wrapper';
       wrapper.dataset.blockId = block ? block.id : '';
       if (block) wrapper.insertAdjacentHTML('beforeend', blockHeaderHTML(block));
-      wrapper.appendChild(buildExerciseCard(group.ex, group.idx, previous, restSettings, exerciseNotes, deload, session, workouts, (state.activeTargets || {})[group.ex.id] || null));
+      wrapper.appendChild(buildExerciseCard(group.ex, group.idx, previous, restSettings, exerciseNotes, deload, session, workouts, (state.activeTargets || {})[group.ex.id] || null, adjustments));
       container.appendChild(wrapper);
     }
   });
@@ -3917,7 +3947,11 @@ async function startWorkout(sessionId, opts = {}) {
   showView('workout');
   { const b = document.getElementById('btn-add-exercise'); if (b) b.classList.toggle('hidden', !session.adHoc); }
   document.getElementById('header-title').textContent = session.name;
-  document.getElementById('header-subtitle').textContent = session.subtitle + (deload ? ' (Deload)' : '');
+  // El encabezado dice que la sesión está ajustada y por qué: sin esto, a mitad de sesión no hay
+  // forma de saber si faltan ejercicios porque los quitó el coach o porque se perdió el estado.
+  const ajusteTxt = (adjustments && adjustments.mode && adjustments.mode !== 'keep')
+    ? ` · ajustada (recuperación ${_READINESS_ES[(adjustments.readiness || {}).color] || 'baja'})` : '';
+  document.getElementById('header-subtitle').textContent = session.subtitle + (deload ? ' (Deload)' : '') + ajusteTxt;
   // Start the warmup block timer immediately (workoutStartTime is reference)
   if (!state.blockTimings.length && !state.activeBlockId) {
     state.activeBlockId = 'warmup';
@@ -4152,7 +4186,17 @@ function buildExerciseCard(ex, exIdx, previous, restSettings, exerciseNotes, del
   } else {
     numSets = ex.sets;
   }
-  const rpeDisplay = deload && ex.rpe !== '-' ? 'RPE 5-6' : `RPE ${ex.rpe}`;
+  // AJUSTE POR RECUPERACIÓN (v11.59). `adjustments` es null en todo lo demás, así que la tarjeta
+  // sin ajuste queda EXACTAMENTE como en v11.58 (`verify-coach-wiring.mjs` §10 lo compara byte a
+  // byte). Se aplica SOBRE el recorte que ya haya hecho el deload o el quick mode —los tres
+  // comprimen la sesión y componen— con suelo de 2 series: por debajo no queda estímulo.
+  // Y NUNCA toca el kg: el ajuste es de RPE y volumen (STR-001, READ-003).
+  if (adjustments && adjustments.setDelta && ex.compound) {
+    numSets = Math.max(2, numSets + Number(adjustments.setDelta));
+  }
+  const rpeCap = (adjustments && adjustments.rpeCap) || null;
+  const rpeDisplay = deload && ex.rpe !== '-' ? 'RPE 5-6'
+    : (rpeCap && ex.rpe !== '-' ? `RPE ≤${rpeCap}` : `RPE ${ex.rpe}`);
   const muscleColor = MUSCLE_COLORS[ex.muscle] || '#666';
 
   // El objetivo manda sobre la nota estática. `source: 'none'` (medida, primera vez) NO cuenta
@@ -4372,6 +4416,11 @@ function captureWorkoutState() {
     // merced de lo que haya sincronizado otro dispositivo a mitad de sesión: el kg que estás
     // levantando no puede cambiar entre que cierras la app y la reabres.
     targets: state.activeTargets ? JSON.parse(JSON.stringify(state.activeTargets)) : null,
+    // El ajuste por recuperación viaja también (v11.59). Sin esto, al reabrir la app los
+    // ejercicios que el coach quitó VOLVERÍAN —`startWorkout` los repinta desde el plan— y el
+    // emparejamiento por exerciseId los dejaría vacíos: la sesión ajustada se desharía sola.
+    adjustments: state.activeAdjustments ? JSON.parse(JSON.stringify(state.activeAdjustments)) : null,
+    readinessAtStart: state.activeReadiness ? JSON.parse(JSON.stringify(state.activeReadiness)) : null,
   };
 }
 
@@ -4396,6 +4445,8 @@ async function clearActiveWorkout() {
   state.workoutStartTime = null;
   state.adHocSession = null;
   state.activeTargets = null;
+  state.activeAdjustments = null;
+  state.activeReadiness = null;
   { const qb = document.getElementById('quick-mode-bar'); if (qb) qb.classList.remove('hidden'); }
   syncQuickModeUI();
 }
@@ -4506,7 +4557,10 @@ async function restoreActiveWorkout() {
   state.quickMode = !!saved.quickMode;
 
   // Rebuild the workout UI (reuse startWorkout rendering)
-  await startWorkout(saved.sessionId, { targets: saved.targets || null });
+  await startWorkout(saved.sessionId, { targets: saved.targets || null, adjustments: saved.adjustments || null });
+  // El readiness del ARRANQUE, no el de ahora: si entrenó a las 7:00 sin dato de hoy, el registro
+  // tiene que decir eso y no el verde que llegó a mediodía.
+  if (saved.readinessAtStart) state.activeReadiness = saved.readinessAtStart;
   // startWorkout resetea sessionQuality a 3 (bug de orden preexistente: la línea de arriba lo fija
   // y startWorkout lo pisa antes de que se repinten las estrellas). Con el round-trip de "añadir
   // ejercicio" esto pasaría en CADA añadido, así que se repone aquí.
@@ -4653,7 +4707,21 @@ async function finishWorkout() {
     unit: state.settings.unit || 'kg',
     blockTimings: (state.blockTimings || []).slice(),
     quick: !!state.quickMode,
+    // Con qué recuperación se arrancó y si se hizo la sesión ajustada (v11.59). Campos nuevos y
+    // OPCIONALES: los 31 registros anteriores siguen valiendo. Es la mitad del lazo que el coach
+    // semanal necesita para contrastar sus propias propuestas ("te propuse quitar el box jump").
+    readinessAtStart: state.activeReadiness || null,
+    adjusted: !!state.activeAdjustments,
   };
+  if (state.activeAdjustments) {
+    const adj = state.activeAdjustments;
+    workout.adjustments = {
+      mode: adj.mode || null,
+      rpeCap: adj.rpeCap || null,
+      dropIds: (adj.dropIds || []).slice(),
+      setDelta: adj.setDelta || 0,
+    };
+  }
 
   // Instantánea de la clasificación (F-7, v11.58): el registro se describe a sí mismo y deja de
   // depender de que el id siga en el plan mañana. Campos nuevos y opcionales — `toSession` los
@@ -4712,6 +4780,9 @@ async function finishWorkout() {
     }
   }
 
+  // El RPE y la calidad de la sesión que se acaba de cerrar son dos de las señales del
+  // readiness: la respuesta de mañana ya no es la de hace un minuto.
+  invalidateReadiness();
   await clearActiveWorkout();
 
   // Clear state and navigate home BEFORE running async PR detection so the
@@ -5058,7 +5129,10 @@ async function renderStats() {
   await renderBodyWeightChart();
   if (window.renderWhoopRecoveryCard) await renderWhoopRecoveryCard();
   await renderStreaks();
-  await renderFatigueScore();
+  // v11.59: el score 0-100 y su "Push hard today" salieron. Lo que se pinta ahora son las
+  // señales del readiness único, con su valor y su base (audit F-5). `typeof` porque vive en
+  // coach.js, que se carga por <script> aparte.
+  if (typeof renderReadinessSignals === 'function') await renderReadinessSignals();
   await renderDeloadReminder();
   try { await renderSyncWarning(); } catch (e) {}
   await renderWeeklySummary();
@@ -5149,109 +5223,6 @@ async function renderStreaks() {
       <div class="streak-num">${totalSessions}</div>
       <div class="streak-label">All-time sessions</div>
     </div>
-  `;
-}
-
-async function renderFatigueScore() {
-  const container = document.getElementById('fatigue-card');
-  const workouts = (await dbGetAll('workouts')).sort((a, b) => b.date.localeCompare(a.date));
-  const runs = (await dbGetAll('runs')).sort((a, b) => b.date.localeCompare(a.date));
-  const nutrition = (await dbGetAll('nutrition')).sort((a, b) => b.date.localeCompare(a.date));
-
-  // Last 7 days data
-  const last7 = [];
-  const now = new Date();
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(now);
-    d.setDate(now.getDate() - i);
-    last7.push(dateStr(d));
-  }
-
-  const recentWorkouts = workouts.filter(w => last7.includes(w.date));
-  const recentRuns = runs.filter(r => last7.includes(r.date));
-  const recentNutrition = nutrition.filter(n => last7.includes(n.date));
-
-  // Fatigue score: 0-100 (higher = more fatigued)
-  let fatigue = 0;
-
-  // Training frequency (0-30 points)
-  const sessions = recentWorkouts.length + recentRuns.length;
-  if (sessions >= 6) fatigue += 30;
-  else if (sessions >= 5) fatigue += 22;
-  else if (sessions >= 4) fatigue += 15;
-  else fatigue += sessions * 3;
-
-  // Session quality (0-30 points, lower quality = more fatigue)
-  const qualities = recentWorkouts.map(w => w.quality).filter(q => q);
-  if (qualities.length > 0) {
-    const avgQuality = qualities.reduce((a, b) => a + b, 0) / qualities.length;
-    fatigue += Math.round((5 - avgQuality) * 6); // 5→0, 1→24
-  }
-
-  // Energy from nutrition (0-20 points)
-  const energies = recentNutrition.map(n => n.energy).filter(e => e);
-  if (energies.length > 0) {
-    const avgEnergy = energies.reduce((a, b) => a + b, 0) / energies.length;
-    fatigue += Math.round((5 - avgEnergy) * 4);
-  }
-
-  // Protein deficit (0-20 points)
-  const proteinDays = recentNutrition.filter(n => n.protein < state.settings.proteinTarget).length;
-  fatigue += proteinDays * 3;
-
-  // Average RPE from recent workouts (0-20 points)
-  const allRpes = [];
-  recentWorkouts.forEach(w => {
-    w.exercises.forEach(ex => {
-      ex.sets.filter(s => s.done && s.rpe).forEach(s => allRpes.push(s.rpe));
-    });
-  });
-  if (allRpes.length > 0) {
-    const avgRpe = allRpes.reduce((a, b) => a + b, 0) / allRpes.length;
-    fatigue += Math.round(Math.max(0, avgRpe - 6) * 5); // RPE 6→0, 10→20
-  }
-
-  // Integrate WHOOP recovery if available
-  let whoopLabel = '';
-  if (window.whoopIsConnected && whoopIsConnected()) {
-    try {
-      const whoopData = await whoopSyncData();
-      const recs = (whoopData && Array.isArray(whoopData.recovery)) ? whoopData.recovery.filter(r => r && r.date) : [];
-      // v11.58 (F-6): sólo el dato de HOY entra en el score. Antes entraba el último elemento
-      // del array, así que el rojo de anteayer seguía puntuando el "readiness" de hoy. Si el de
-      // hoy no ha llegado, el último disponible se MUESTRA con su fecha pero no puntúa.
-      const t = today();
-      const todayRec = recs.find(r => r.date === t && r.score != null) || null;
-      if (todayRec) {
-        const whoopFatigue = Math.round((100 - todayRec.score) * 0.3);
-        fatigue = Math.round(fatigue * 0.55 + whoopFatigue + fatigue * 0.15);
-        whoopLabel = ` · WHOOP ${todayRec.score}% (hoy)`;
-      } else {
-        const sorted = recs.slice().sort((a, b) => a.date.localeCompare(b.date));
-        const last = sorted.length ? sorted[sorted.length - 1] : null;
-        if (last && last.score != null) {
-          const when = (typeof whoopDayLabel === 'function') ? whoopDayLabel(last.date, t) : last.date;
-          whoopLabel = ` · WHOOP ${last.score}% (${when})`;
-        }
-      }
-    } catch { /* ignore whoop errors */ }
-  }
-
-  fatigue = Math.min(100, Math.max(0, fatigue));
-
-  let color, tip;
-  if (fatigue <= 30) { color = 'var(--accent)'; tip = 'Recovery looks good. Push hard today.'; }
-  else if (fatigue <= 55) { color = 'var(--yellow)'; tip = 'Moderate fatigue. Train normally but monitor.'; }
-  else if (fatigue <= 75) { color = 'var(--orange)'; tip = 'Elevated fatigue. Consider reducing volume or intensity.'; }
-  else { color = 'var(--red)'; tip = 'High fatigue. Consider a rest day or very light session.'; }
-
-  container.innerHTML = `
-    <div class="fatigue-header">
-      <span class="fatigue-title">Readiness Score</span>
-      <span class="fatigue-score" style="color:${color}">${100 - fatigue}</span>
-    </div>
-    <div class="fatigue-bar"><div class="fatigue-bar-fill" style="width:${100 - fatigue}%;background:${color}"></div></div>
-    <div class="fatigue-tip">${tip}${whoopLabel}</div>
   `;
 }
 
@@ -5630,6 +5601,7 @@ async function runFullSync({ silent = true } = {}) {
     localStorage.removeItem('whoop_today_attempt');
     if (typeof whoopSyncData === 'function') {
       wellnessResult = await whoopSyncData();
+      invalidateReadiness();   // v11.59: puede haber llegado el dato de hoy
     }
   } catch (e) { console.warn('[sync] wellness failed:', e); }
 
@@ -5868,6 +5840,8 @@ async function intervalsIcuSync(opts = {}) {
 
     // v11.56: la importación puede traer el cardio de ayer; la progresión lee "días sin cardio".
     if (pulled + pulledSessions > 0) state._lastCardioDate = null;
+    // v11.59: y puede traer wellness nuevo, que mueve las tendencias de 7d/28d del readiness.
+    invalidateReadiness();
 
     if (!opts.skipCursor) localStorage.setItem('intervalsicu_last_sync', String(Date.now()));
 
@@ -8541,6 +8515,127 @@ async function getWhoopContext() {
   };
 }
 
+// ==================== READINESS (v11.59, incremento 5) ====================
+//
+// El envoltorio con IndexedDB del motor puro (`computeReadinessFrom` en coach-engine.js). Es el
+// ÚNICO sitio de la app que decide si hoy es verde, amarillo o rojo: lo consumen el advisory de
+// Home, el banner de deload de Stats y la lista de señales de Stats › Today. Antes había tres
+// cálculos con tres criterios (audit F-5) y el usuario podía ver los tres a la vez.
+//
+// DOS FUENTES CON PAPELES DISTINTOS (§B.2.b, requisito del usuario):
+//   · `wellness` (intervals.icu) = el HISTÓRICO. A la mañana está completo hasta ayer, que es
+//     exactamente lo que las tendencias de 7d/28d necesitan.
+//   · `getWhoopContext()` = el dato de HOY, y sólo si es de hoy (F-6). Si falta, se pasa el
+//     motivo real y el motor declara la señal `insufficient` en vez de usar el de ayer.
+//
+// CACHÉ POR DÍA porque `renderTrainingAdvisory`, `renderReadinessSignals` y `checkDeloadNeeded`
+// se llaman en el mismo render y cada una haría su propio `dbGetAll('wellness')`. Se invalida
+// cuando llega el dato de hoy (`whoopSyncData`), al importar (`intervalsIcuSync`), al terminar
+// una sesión y al guardar el check-in: los cuatro momentos en que la respuesta puede cambiar.
+const READINESS_WINDOW_DAYS = 35;   // 7 de tendencia + 28 de base propia
+
+function invalidateReadiness() { state._readinessCache = null; }
+
+async function computeReadiness({ date } = {}) {
+  const ds = date || today();
+  const c = state._readinessCache;
+  if (c && c.ds === ds && c.value) return c.value;
+
+  const wc = await getWhoopContext();
+  // `source !== 'none'` = getWhoopContext encontró la fila de HOY. Cualquier otra cosa es "no hay
+  // dato de hoy", con su motivo.
+  const whoopToday = (wc && wc.source !== 'none' && wc.score != null)
+    ? { score: wc.score, source: wc.source, fetchedAt: wc.fetchedAt || null }
+    : null;
+
+  let wellness = [];
+  try {
+    const all = await dbGetAll('wellness');
+    const desde = dateStr(new Date(Date.parse(ds + 'T12:00:00') - READINESS_WINDOW_DAYS * 86400000));
+    wellness = (all || []).filter(r => r && r.date && r.date >= desde && r.date <= ds);
+  } catch (e) { console.warn('[readiness] wellness:', e); }
+
+  let workouts = [];
+  try {
+    const all = await dbGetAll('workouts');
+    workouts = (all || [])
+      .filter(w => w && w.date && w.date <= ds)
+      .sort((a, b) => String(b.date).localeCompare(String(a.date)))
+      .slice(0, 10);
+  } catch (e) { console.warn('[readiness] workouts:', e); }
+
+  let value;
+  if (typeof computeReadinessFrom !== 'function') {
+    // coach-engine.js no cargó: se dice, y no se inventa un color.
+    value = { color: 'unknown', signals: [], fired: 0, confidence: 'low', deloadHint: false, ruleIds: [] };
+  } else {
+    value = computeReadinessFrom({
+      today: ds, wellness, whoopToday, whoopMissingReason: (wc && wc.reason) || null,
+      workouts, cutoffs: { green: 67, yellow: 34 },
+    });
+  }
+  // El último dato disponible viaja SÓLO para pintarlo con su fecha ("ayer"): no entra en
+  // ninguna decisión (F-6). La honestidad de v11.58, conservada.
+  value.whoopLastAvailable = (wc && wc.lastAvailable) || null;
+
+  state._readinessCache = { ds, ts: Date.now(), value };
+  return value;
+}
+
+// Quién está protegido del recorte de accesorios: los seis patrones del plan (CLAUDE.md
+// "Program around six movement patterns"). NO es lo mismo que `compound`: el RDL de `lowerA` no
+// lleva esa flag y sin esto un recorte de 2 accesorios se llevaría el peso muerto y dejaría el
+// gemelo. La flag `compound` no se toca porque también gobierna el recorte de quick mode.
+function _coachIsMainLift(ex) {
+  if (!ex || !ex.id) return false;
+  const p = MOVEMENT_PATTERNS[ex.id] || null;
+  return !!(p && _COMPOUND_PATTERNS.has(p));
+}
+function _coachIsCore(ex) { return !!(ex && ex.muscle === 'Core'); }
+
+// El `ctx` que espera `adjustSessionForReadiness`. Aquí porque lo necesitan el advisory y los
+// botones de Home, y tiene que ser el MISMO en los dos sitios.
+function _coachAdjustCtx(planned, stress, interference) {
+  return {
+    stress,
+    alts: getReplacementOptions(planned, { stress }),
+    powerIds: (typeof COACH_POWER_IDS !== 'undefined') ? COACH_POWER_IDS : {},
+    isCore: _coachIsCore,
+    isCompound: (ex) => !!(ex && ex.compound),
+    isMainLift: _coachIsMainLift,
+    // READ-002 pide señales CONCORDANTES: el flag `recovery` de detectInterference es "rojo +
+    // sesión exigente", o sea la misma señal otra vez, y no cuenta (F-6).
+    flags: ((interference && interference.flags) || []).filter(f => f.type !== 'recovery').length,
+  };
+}
+
+// Lo que `startWorkout` necesita para pintar la sesión ajustada, derivado de los `changes`.
+function _coachAdjustmentsPayload(adj, readiness) {
+  if (!adj || adj.mode === 'keep') return null;
+  const changes = adj.changes || [];
+  const rpeCap = (changes.find(c => c.type === 'rpeCap') || {}).to || null;
+  const setDeltaCh = changes.find(c => c.type === 'setDelta');
+  return {
+    mode: adj.mode,
+    rpeCap,
+    dropIds: changes.filter(c => c.type === 'dropExercise').map(c => c.exerciseId),
+    setDelta: setDeltaCh ? (Number(setDeltaCh.to) - Number(setDeltaCh.from)) : 0,
+    readiness: _coachReadinessStamp(readiness),
+  };
+}
+
+// La instantánea mínima del readiness que se guarda con la sesión: color, qué señales dispararon
+// y con qué confianza. Sin números crudos: el registro no es el sitio donde re-derivar nada.
+function _coachReadinessStamp(r) {
+  if (!r) return null;
+  return {
+    color: r.color,
+    signals: (r.signals || []).filter(s => s.fired).map(s => s.id),
+    confidence: r.confidence,
+    source: ((r.signals || []).find(s => s.id === 'whoop') || {}).status === 'ok' ? 'whoop-today' : 'trend',
+  };
+}
+
 // Weekly hard-day budget (programming guardrail, not a physiological score).
 async function computeHardDayBudget() {
   const weekDates = getWeekDates().map(d => dateStr(d));
@@ -8591,63 +8686,53 @@ function getReplacementOptions(planned, ctx) {
   return [];
 }
 
-// Orchestrator — pure read-only. Conservative: default 'keep'; only escalate on
-// concordant multi-signal (READ-002). No 'move' in v1 (→ T3b).
+// Orchestrator — read-only. v11.59: la matriz de decisión ya no la escribe esta función; la
+// escribe el motor puro (`adjustSessionForReadiness`), que además devuelve la sesión ajustada.
+// Aquí queda lo que necesita IndexedDB: la sesión planificada, la clasificación, el readiness,
+// el presupuesto (informativo) y la interferencia.
+//
+// LOS INVARIANTES DEL v1 SE CONSERVAN, y son los que fija `verify-advisory-matrix.mjs`:
+// `easy → keep`, `unknown → keep` con `confidence:'low'`, `moderate + amarillo → modify`,
+// `exigente + rojo → recovery`, `exigente + rojo + flag no redundante → replace`.
+//
+// LO QUE CAMBIA respecto al v1: el color ya no es "el de WHOOP de un día", es el de
+// `computeReadiness()` — ≥2 señales concordantes para el rojo (READ-002). Efecto buscado: un
+// WHOOP rojo de hoy, solo, es UNA señal → amarillo, y una sesión exigente se AJUSTA en vez de
+// cambiarse. Es la corrección explícita del "una mala noche modifica demasiado el entrenamiento".
 async function computeTrainingAdvisory() {
   const planned = await getPlannedSessionForDate(new Date());
   const stress = classifySessionStress(planned);
   const whoop = await getWhoopContext();
+  const readiness = await computeReadiness();
   const budget = await computeHardDayBudget();
   const interference = detectInterference(planned, { stress, whoop, budget });
+  const adj = adjustSessionForReadiness(planned, readiness, _coachAdjustCtx(planned, stress, interference));
 
-  let recommendation = 'keep';
-  let confidence = 'high';
-  const reason = [];
-
-  if (planned.type === 'rest' || stress.level === 'easy') {
-    reason.push('Sesión suave o de descanso — mantené.');
-  } else if (whoop.color === 'unknown') {
-    // Sin dato de HOY no se decide nada: se mantiene el plan y se dice por qué falta (F-6). El
-    // motivo viene de whoopSyncData ("intervals.icu aún tiene el de ayer…" / "WHOOP aún no
-    // puntuó la noche"), no de una frase genérica.
-    recommendation = 'keep'; confidence = 'low';
-    reason.push(`Sin dato de recuperación de hoy (${whoop.reason || 'sin datos'}) — mantengo el plan.`);
+  const reason = (adj.reason || []).slice();
+  // Sin dato de hoy se traslada el motivo CONCRETO (viene de whoopSyncData) y, si hay un dato
+  // anterior, se dice de cuándo es — nunca como si fuera de hoy.
+  if (readiness.color === 'unknown' || ((readiness.signals || []).find(s => s.id === 'whoop') || {}).status === 'insufficient') {
+    if (whoop.reason) reason.push(`Sin dato de recuperación de hoy (${whoop.reason}).`);
     if (whoop.lastAvailable && whoop.lastAvailable.score != null) {
       const when = (typeof whoopDayLabel === 'function') ? whoopDayLabel(whoop.lastAvailable.date, whoop.date) : whoop.lastAvailable.date;
       reason.push(`El último dato es de ${when}: ${whoop.lastAvailable.score}% (no cuenta como hoy).`);
     }
-  } else if (stress.level === 'hard') {
-    // v11.41: la carga acumulada YA NO decide nada. Antes `budget.overCap` contaba como señal y
-    // podía degradar o reemplazar la sesión por un número heurístico. Ahora el consejo se apoya solo
-    // en señales fisiológicas —recuperación e interferencia real— y la autorregulación del volumen
-    // la hace el usuario. La carga sigue visible en su tarjeta, como información.
-    // READ-002 pide DOS señales CONCORDANTES, y el flag `recovery` de detectInterference es
-    // "rojo + sesión exigente": la misma señal contada dos veces (F-6). Con eso, un rojo de un
-    // día ya daba `replace`. Sólo los flags no redundantes —hoy, la familia híbrida (HYB-002)—
-    // cuentan como segunda señal.
-    const concordant = interference.flags.filter(f => f.type !== 'recovery').length;
-    const signals = (whoop.color === 'red' ? 1 : 0) + (concordant >= 1 ? 1 : 0);
-    if (signals >= 2) { recommendation = 'replace'; }
-    else if (whoop.color === 'red') { recommendation = 'recovery'; }
-    else { recommendation = 'keep'; }
-    if (whoop.color === 'red') reason.push('Tu recuperación (WHOOP) está en rojo.');
-    const hybFlag = interference.flags.find(f => f.type === 'hybrid');
-    if (hybFlag) reason.push(hybFlag.note);
-    if (recommendation === 'keep') reason.push('Recuperación ok — mantené.');
-  } else if (stress.level === 'moderate' && whoop.color === 'yellow') {
-    recommendation = 'modify';
-    reason.push('Recuperación media — mantené, pero sin llegar al fallo y recortá 1-2 accesorios.');
-  } else {
-    reason.push('Recuperación y carga ok — mantené.');
   }
+  const hybFlag = (interference.flags || []).find(f => f.type === 'hybrid');
+  if (hybFlag && adj.mode !== 'keep') reason.push(hybFlag.note);
 
-  const alternatives = (recommendation === 'replace' || recommendation === 'recovery' || recommendation === 'modify')
-    ? getReplacementOptions(planned, { stress }) : [];
   const ruleIds = Array.from(new Set([
-    ...(stress.ruleIds || []), ...interference.flags.map(f => f.ruleId), 'BUD-001', 'READ-003', 'READ-005',
+    ...(stress.ruleIds || []), ...(adj.ruleIds || []), ...(readiness.ruleIds || []),
+    ...interference.flags.map(f => f.ruleId),
   ].filter(Boolean)));
 
-  return { plannedSession: planned, plannedStress: stress, recommendation, reason, alternatives, confidence, ruleIds, whoopContext: whoop, hardDayBudgetContext: budget, interferenceContext: interference };
+  return {
+    plannedSession: planned, plannedStress: stress,
+    recommendation: adj.mode, reason, alternatives: adj.alternatives || [],
+    confidence: adj.confidence, ruleIds,
+    readiness, adjusted: adj.session, changes: adj.changes || [],
+    whoopContext: whoop, hardDayBudgetContext: budget, interferenceContext: interference,
+  };
 }
 
 const _T3_REC = {
@@ -8666,14 +8751,7 @@ function _t3StressPlain(st) {
   const lvl = _T3_LEVEL_ES[st.level] || st.level;
   return region ? `${region} · ${lvl}` : lvl;
 }
-function _t3WhoopPlain(color) {
-  return ({ green: 'verde', yellow: 'amarillo', red: 'rojo' })[color] || 'sin dato';
-}
 function _t3WeightWord(w) { return w >= 2 ? 'exigente' : w >= 1 ? 'moderado' : w > 0 ? 'suave' : 'recuperación'; }
-function _t3BudgetWord(used, cap) {
-  const r = cap ? used / cap : 0;
-  return r >= 1 ? 'alta' : r >= 0.6 ? 'media-alta' : r >= 0.3 ? 'media' : 'baja';
-}
 // Descriptive session label from its actual main lifts (movement patterns), in
 // Spanish — e.g. "Sentadilla · Peso muerto" instead of the internal "Lower B".
 const _PATTERN_ES = {
@@ -8700,45 +8778,229 @@ function _t3SessionLabel(planned) {
   return out.length ? out.join(' · ') : (planned.name || 'Fuerza');
 }
 
-// Card 1 — Today's Training Advisory (read-only)
+// ==================== TARJETA DEL COACH EN HOME (v11.59) ====================
+//
+// EL PROBLEMA QUE RESUELVE. Hasta v11.58 esta tarjeta era un advisory read-only con el pie "es
+// una sugerencia — vos decidís; no cambia tu plan": decía "Ajustar" y ahí se quedaba. Quién
+// ajustaba, y qué, era trabajo del usuario a las 7 de la mañana. El propio doc del T3 lo
+// reconocía como su limitación principal ("advisory sin mutación lo hace débil").
+//
+// Ahora la tarjeta PROPONE la sesión ajustada, exercise por ejercicio, y ofrece los dos caminos
+// con un botón cada uno. Ninguno está deshabilitado nunca (memoria del usuario: "los
+// guardarraíles avisan, nunca bloquean") y las dos decisiones se registran (`logDecision`), que
+// es lo que le permite al coach semanal decir "te propuse quitar el box jump y lo hiciste igual".
+//
+// El pie cambia de "no cambia tu plan" a "las dos quedan registradas", que es lo que de verdad
+// pasa.
+let _coachAdvisory = null;      // la última tarjeta pintada, para los handlers de los botones
+
+// Etiquetas del color de recuperación, en castellano y sin el % (READ-003: bandera, no dosis).
+const _READINESS_ES = { green: 'verde', yellow: 'amarilla', red: 'roja', unknown: 'sin dato' };
+const _READINESS_COLOR = { green: 'var(--accent)', yellow: 'var(--yellow)', red: 'var(--red)', unknown: 'var(--text3)' };
+
+/**
+ * Las señales que justifican el color, en la tarjeta y en Stats. Con `fired` se pintan; el resto
+ * de la lista completa vive en Stats › Today (`renderReadinessSignals`).
+ */
+function _readinessLine(r) {
+  const n = (r && r.fired) || 0;
+  const col = _READINESS_ES[(r && r.color) || 'unknown'];
+  if (!r || r.color === 'unknown') return 'Recuperación: <b>sin dato de hoy</b>';
+  // Sin dato de HOY el color sale de las tendencias hasta ayer (§B.2.b), y la tarjeta lo dice:
+  // "verde" a secas junto a "sin dato de hoy" se lee como una contradicción.
+  const sinHoy = ((r.signals || []).find(s => s.id === 'whoop') || {}).status === 'insufficient';
+  const fuente = sinHoy ? ' <span class="coach-signals-note">(por tendencias)</span>' : '';
+  return `Recuperación: <b>${col}</b>${fuente} · ${n} señal${n === 1 ? '' : 'es'}`;
+}
+
 async function renderTrainingAdvisory() {
   const container = document.getElementById('training-advisory');
   if (!container) return;
   let a;
-  try { a = await computeTrainingAdvisory(); } catch (e) { console.warn('[T3] advisory failed', e); container.innerHTML = ''; return; }
+  try { a = await computeTrainingAdvisory(); } catch (e) { console.warn('[coach] advisory falló', e); container.innerHTML = ''; return; }
+  _coachAdvisory = a;
+  const r = a.readiness || {};
+  const planned = a.plannedSession || {};
   const rec = _T3_REC[a.recommendation] || _T3_REC.keep;
-  const whoopTxt = _t3WhoopPlain(a.whoopContext.color);
-  // Sin dato de hoy la tarjeta lo DICE, con el motivo; y cuando lo hay, de dónde sale y a qué
-  // hora si es de la ruta directa de WHOOP (§B.2.b).
-  const wc = a.whoopContext;
-  const recoveryTxt = wc.color === 'unknown'
-    ? `Recuperación: <b>sin dato de hoy</b>${wc.reason ? ` (${wc.reason})` : ''}`
-    : `recuperación <b>${whoopTxt}</b>${wc.source === 'whoop-direct' && typeof whoopClock === 'function' && whoopClock(wc.fetchedAt) ? ` · WHOOP ${whoopClock(wc.fetchedAt)}` : ''}`;
+  const dayLabel = _t3SessionLabel(planned);
+  const nameTag = (planned.type === 'gym' && planned.name && planned.name !== dayLabel)
+    ? ` <span class="t3-stress">${escapeHtml(planned.name)}</span>` : '';
+  const eyebrow = ['Hoy', _blockEyebrow(planned.block)].filter(Boolean).join(' · ');
   const stressTxt = _t3StressPlain(a.plannedStress);
-  const dayLabel = _t3SessionLabel(a.plannedSession);
-  const nameTag = (a.plannedSession.type === 'gym' && a.plannedSession.name && a.plannedSession.name !== dayLabel) ? ` <span class="t3-stress">${a.plannedSession.name}</span>` : '';
-  const budgetWord = _t3BudgetWord(a.hardDayBudgetContext.used, a.hardDayBudgetContext.cap);
-  _t3LastAlts = a.alternatives || [];
-  _t3PlannedName = a.plannedSession.name || '';
-  const alts = _t3LastAlts.slice(0, 3).map((o, i) => {
-    const btn = o.modality ? `<button class="t3-alt-btn" data-t3-alt="${i}">Registrar</button>` : '';
-    return `<li><div class="t3-alt-row"><span><strong>${o.label}</strong>${o.reason ? ` — <span class="t3-alt-why">${o.reason}</span>` : ''}</span>${btn}</div></li>`;
-  }).join('');
+
+  // Las señales disparadas, o —si no hay dato de hoy— el motivo y qué dicen las tendencias.
+  const fired = (r.signals || []).filter(s => s.fired);
+  const whoopSig = (r.signals || []).find(s => s.id === 'whoop') || {};
+  const sinDato = whoopSig.status === 'insufficient';
+  let señalesHtml = '';
+  if (fired.length) {
+    señalesHtml = `<ul class="coach-signals">${fired.map(s => `<li>${escapeHtml(s.text)}</li>`).join('')}</ul>`;
+  } else if (sinDato) {
+    const trend = (r.signals || []).filter(s => ['hrv7v28', 'rhr7v28', 'sleep7'].includes(s.id) && s.status === 'ok');
+    const resumen = trend.length ? trend.map(s => escapeHtml(s.text)).join(' · ') : 'sin datos suficientes';
+    señalesHtml = `<div class="coach-signals-note">sin dato de hoy (${escapeHtml(whoopSig.reason || 'motivo desconocido')}) · tendencias 7d: ${resumen}</div>`;
+  }
+
+  // La propuesta: un bullet por cambio, con el POR QUÉ. Sin cambios no hay propuesta ni botones.
+  let propuesta = '';
+  if (a.recommendation !== 'keep') {
+    const bullets = (a.changes || []).map(c => `<li>${escapeHtml(_coachChangeLabel(c))} <span class="coach-change-why">${escapeHtml(c.why)}</span></li>`).join('');
+    const esGym = planned.type === 'gym' && !!planned.sessionId;
+    const cambiaDia = a.recommendation === 'recovery' || a.recommendation === 'replace';
+    const titulo = cambiaDia ? 'Te propongo cambiar el objetivo del día:' : 'Te propongo la sesión ajustada:';
+    _t3LastAlts = a.alternatives || [];
+    _t3PlannedName = planned.name || '';
+    const botones = cambiaDia
+      ? `<button class="coach-btn coach-btn-primary" id="coach-do-alt">Registrar la alternativa</button>
+         ${esGym ? '<button class="coach-btn" id="coach-do-planned">Hacer la planificada igual</button>' : ''}`
+      : (esGym
+        ? `<button class="coach-btn coach-btn-primary" id="coach-do-adjusted">Hacer la ajustada</button>
+           <button class="coach-btn" id="coach-do-planned">Hacer la planificada</button>`
+        : '');
+    propuesta = `
+      <div class="coach-proposal">
+        <div class="coach-proposal-title">${titulo}</div>
+        <ul class="coach-changes">${bullets}</ul>
+        ${botones ? `<div class="coach-actions">${botones}</div>` : ''}
+      </div>`;
+  }
+
+  const checkin = _coachCheckinHtml(r);
+
   container.innerHTML = `
     <section class="card t3-card">
       <div class="t3-head">
-        <span class="t3-eyebrow">Entrenamiento de hoy</span>
+        <span class="t3-eyebrow">${escapeHtml(eyebrow)}</span>
         <span class="t3-rec" style="color:${rec.color};background:${rec.color}1a">${rec.label}</span>
       </div>
       <div class="t3-title">${dayLabel}${nameTag}</div>
-      <div class="t3-context">${stressTxt ? stressTxt + ' · ' : ''}${recoveryTxt} · carga de la semana <b>${budgetWord}</b></div>
-      <ul class="t3-reasons">${a.reason.slice(0, 3).map(r => `<li>${r}</li>`).join('')}</ul>
-      ${alts ? `<div class="t3-alts-label">Alternativas:</div><ol class="t3-alts">${alts}</ol>` : ''}
-      <div class="t3-foot">Es una sugerencia — vos decidís; no cambia tu plan.</div>
+      <div class="t3-context">${stressTxt ? escapeHtml(stressTxt) + ' · ' : ''}<span style="color:${_READINESS_COLOR[r.color] || 'var(--text2)'}">${_readinessLine(r)}</span></div>
+      ${señalesHtml}
+      ${checkin}
+      ${propuesta}
+      ${propuesta ? '<div class="t3-foot">Vos decidís. Las dos quedan registradas.</div>' : ''}
     </section>`;
-  container.querySelectorAll('[data-t3-alt]').forEach(btn => {
-    btn.addEventListener('click', () => t3LogAlternative(parseInt(btn.dataset.t3Alt, 10)));
+
+  const adjustments = _coachAdjustmentsPayload({ mode: a.recommendation, changes: a.changes }, r);
+  const decide = async (outcome, what) => {
+    try {
+      await logDecision({
+        source: 'readiness', type: 'readiness-adjust', what, why: (a.reason || []).join(' '),
+        ruleIds: a.ruleIds || [],
+        evidence: {
+          color: r.color,
+          signals: (r.signals || []).filter(s => s.fired).map(s => s.id),
+          changes: (a.changes || []).map(c => ({ type: c.type, exerciseId: c.exerciseId || null, from: c.from, to: c.to })),
+        },
+        ref: { sessionId: planned.sessionId || null },
+        outcome,
+      });
+    } catch (e) { console.warn('[coach] logDecision(readiness-adjust):', e); }
+  };
+  const btnAdj = document.getElementById('coach-do-adjusted');
+  if (btnAdj) btnAdj.addEventListener('click', async () => {
+    await decide('accepted', `Sesión ajustada (${_READINESS_ES[r.color] || r.color})`);
+    startWorkout(planned.sessionId, { adjustments });
   });
+  const btnPlan = document.getElementById('coach-do-planned');
+  if (btnPlan) btnPlan.addEventListener('click', async () => {
+    await decide('declined', 'Sesión planificada, sin ajuste');
+    startWorkout(planned.sessionId);
+  });
+  const btnAlt = document.getElementById('coach-do-alt');
+  if (btnAlt) btnAlt.addEventListener('click', async () => {
+    await decide('accepted', `Alternativa: ${(a.alternatives[0] || {}).label || 'recuperación'}`);
+    t3LogAlternative(0);
+  });
+  _coachBindCheckin();
+}
+
+// "sin Box Jump" · "RPE tope 7, mismos kg" · "48′ → 40′" · "Lower A → Bike Zone 2 · 30′"
+function _coachChangeLabel(c) {
+  if (!c) return '';
+  if (c.type === 'dropExercise') return `sin ${c.from}`;
+  if (c.type === 'rpeCap') return `RPE tope ${c.to}, mismos kg`;
+  if (c.type === 'setDelta') return `${c.exerciseId ? getExerciseName(c.exerciseId) : 'compuestos'}: ${c.from} → ${c.to} series`;
+  if (c.type === 'durationScale') return `${c.from}′ → ${c.to}′`;
+  if (c.type === 'replaceSession') return `${c.from} → ${c.to}`;
+  return c.type;
+}
+
+// ---- Check-in de 2 toques (§B.2.b, READ-005) ------------------------------------------------
+//
+// POR QUÉ EXISTE. A las 7:00 intervals.icu todavía tiene el readiness de ayer y la ruta directa
+// de WHOOP puede no estar disponible. Sin dato de hoy, lo único que habla de HOY es el usuario.
+// Dos toques —cómo dormiste, cómo te sientes— y las señales `sleepSelf`/`feelSelf` entran en el
+// recuento de ≥2 concordantes.
+//
+// Es OPCIONAL y DESCARTABLE: si no se responde, no pasa nada; la ✕ lo esconde hasta el próximo
+// arranque (en memoria, no en disco: no es un dato del usuario, es "ahora no").
+const _CHECKIN_BANDS = ['<6h', '6-7', '7-8', '>8'];
+
+function _coachCheckinHtml(r) {
+  const ds = today();
+  if (state._checkinDismissed === ds) return '';
+  const whoopSig = ((r && r.signals) || []).find(s => s.id === 'whoop') || {};
+  if (whoopSig.status !== 'insufficient') return '';       // con dato de hoy no se pregunta
+  const sleepSig = ((r && r.signals) || []).find(s => s.id === 'sleepSelf') || {};
+  const feelSig = ((r && r.signals) || []).find(s => s.id === 'feelSelf') || {};
+  const yaSleep = sleepSig.status === 'ok';
+  const yaFeel = feelSig.status === 'ok';
+  if (yaSleep && yaFeel) return '';                        // ya respondido: fuera
+  const band = yaSleep ? (sleepSig.band || null) : null;
+  const feel = yaFeel ? feelSig.value : null;
+  const bandBtns = _CHECKIN_BANDS.map(b =>
+    `<button class="coach-checkin-opt${band === b ? ' selected' : ''}" data-checkin-sleep="${b}">${b}</button>`).join('');
+  const feelBtns = [1, 2, 3, 4, 5].map(v =>
+    `<button class="coach-checkin-opt${feel === v ? ' selected' : ''}" data-checkin-feel="${v}">${v}</button>`).join('');
+  return `
+    <div class="coach-checkin">
+      <div class="coach-checkin-head">
+        <span class="coach-checkin-title">Sin dato de hoy — contame en 2 toques</span>
+        <button class="coach-checkin-close" id="coach-checkin-close" aria-label="Ahora no">✕</button>
+      </div>
+      <div class="coach-checkin-row"><span class="coach-checkin-q">¿Cómo dormiste?</span><span class="coach-checkin-opts">${bandBtns}</span></div>
+      <div class="coach-checkin-row"><span class="coach-checkin-q">¿Cómo te sientes?</span><span class="coach-checkin-opts">${feelBtns}</span></div>
+    </div>`;
+}
+
+function _coachBindCheckin() {
+  document.querySelectorAll('[data-checkin-sleep]').forEach(b => {
+    b.addEventListener('click', () => saveCheckin({ sleepBand: b.dataset.checkinSleep }));
+  });
+  document.querySelectorAll('[data-checkin-feel]').forEach(b => {
+    b.addEventListener('click', () => saveCheckin({ feel: parseInt(b.dataset.checkinFeel, 10) }));
+  });
+  const close = document.getElementById('coach-checkin-close');
+  if (close) close.addEventListener('click', () => {
+    state._checkinDismissed = today();      // sólo en memoria: mañana se vuelve a preguntar
+    renderTrainingAdvisory();
+  });
+}
+
+/**
+ * Guarda una respuesta del check-in en `wellness[hoy].subjective`, MEZCLANDO con la fila que ya
+ * haya: intervals.icu escribe ahí peso, pasos, CTL/ATL y las tendencias, y un `put` plano se los
+ * llevaría por delante. `smartPut` (no `dbPut`) porque es dato del usuario y sube a Supabase.
+ */
+async function saveCheckin(patch) {
+  const ds = today();
+  try {
+    let existing = null;
+    try { existing = await dbGet('wellness', ds); } catch (e) {}
+    const prev = (existing && existing.subjective) || {};
+    const row = Object.assign({}, existing || {}, {
+      date: ds,
+      subjective: Object.assign({}, prev, patch, { ts: Date.now() }),
+    });
+    if (!row.source) row.source = 'checkin';
+    await smartPut('wellness', row);
+    invalidateReadiness();
+    await renderTrainingAdvisory();
+  } catch (e) {
+    console.warn('[coach] check-in:', e);
+    toast('No se pudo guardar el check-in');
+  }
 }
 
 // Card 2 — Carga acumulada de la semana. INFORMATIVO, no un límite.
@@ -10875,93 +11137,83 @@ function closePlateSheet() {
 }
 
 // ==================== DELOAD REMINDER ====================
+//
+// v11.59: el deload reactivo consume `computeReadiness()` (audit F-5/F-8). Antes tenía su propio
+// criterio —quality ≤2 ×2, RPE ≥8,5 ×3, media WHOOP de 3 días— que podía contradecir al color de
+// Home, y una cuarta rama MUERTA: `weeksSinceLast = wk − Math.floor((wk−1)/4)*4` siempre daba
+// entre 1 y 4, así que la condición `>= 5` era inalcanzable (F-8). Encima asumía ciclos de 4
+// cuando el bloque es de 5 anclado a fecha desde v11.56. Un guardarraíl que aparenta existir es
+// peor que ninguno: se borra y en su lugar se dice cuándo toca el deload PROGRAMADO.
+//
+// Y NO MUEVE EL ANCLA. Adelantar un deload es un cambio de plan: el botón registra la petición
+// (`logDecision type:'deload-request'`) y la resuelve el coach semanal con aprobación.
 async function checkDeloadNeeded() {
-  const workouts = (await dbGetAll('workouts')).sort((a, b) => b.date.localeCompare(a.date));
   const wk = getWeekNumber();
-  const reasons = [];
+  if (isDeloadWeek(wk)) return null;      // ya estás en descarga: no hay nada que recomendar
+  let r;
+  try { r = await computeReadiness(); } catch (e) { return null; }
+  if (!r || !r.deloadHint) return null;
 
-  // If already on a deload week, no reminder needed
-  if (isDeloadWeek(wk)) return null;
-
-  // Check for 2 consecutive sessions with quality decline
-  const recent = workouts.slice(0, 4);
-  if (recent.length >= 2) {
-    const q1 = recent[0].quality || 3;
-    const q2 = recent[1].quality || 3;
-    if (q1 <= 2 && q2 <= 2) {
-      reasons.push('2 consecutive low-quality sessions');
-    }
+  const fired = (r.signals || []).filter(s => s.fired);
+  const blk = blockWeek();
+  const lunes = blk.deloadMonday || null;
+  // Semanas hasta el deload programado, contadas por FECHAS (el ancla es una fecha desde v11.56).
+  let enSemanas = null;
+  if (lunes && typeof mondayOf === 'function') {
+    const hoyLunes = mondayOf(today());
+    if (hoyLunes) enSemanas = Math.round((Date.parse(lunes + 'T12:00:00') - Date.parse(hoyLunes + 'T12:00:00')) / (7 * 86400000));
   }
-
-  // Check RPE trend: if average RPE of last 3 sessions > 8.5, fatigue is accumulating
-  if (recent.length >= 3) {
-    const sessionRpes = recent.slice(0, 3).map(w => {
-      const rpes = [];
-      w.exercises.forEach(ex => ex.sets.filter(s => s.done && s.rpe).forEach(s => rpes.push(s.rpe)));
-      return rpes.length > 0 ? rpes.reduce((a, b) => a + b) / rpes.length : 0;
-    }).filter(r => r > 0);
-    if (sessionRpes.length >= 2) {
-      const avgRpe = sessionRpes.reduce((a, b) => a + b) / sessionRpes.length;
-      if (avgRpe >= 8.5) {
-        reasons.push(`RPE averaging ${avgRpe.toFixed(1)} over last ${sessionRpes.length} sessions`);
-      }
-    }
-  }
-
-  // Check WHOOP recovery: if last 3 days average recovery < 34% (red zone)
-  if (window.whoopIsConnected && whoopIsConnected()) {
-    try {
-      const whoopData = await whoopSyncData();
-      // Tendencia de 3 días (no "hoy"), así que aquí SÍ vale el final del array — pero las filas
-      // sin readiness se descartan: con un solo null el promedio salía NaN y la señal no disparaba
-      // nunca en silencio.
-      const scored = (whoopData && Array.isArray(whoopData.recovery))
-        ? whoopData.recovery.filter(r => r && r.score != null) : [];
-      if (scored.length >= 2) {
-        const last3 = scored.slice(-3);
-        const avgRecovery = last3.reduce((s, r) => s + r.score, 0) / last3.length;
-        if (avgRecovery < 34) {
-          reasons.push(`WHOOP recovery averaging ${Math.round(avgRecovery)}% (red zone)`);
-        }
-      }
-    } catch { /* ignore */ }
-  }
-
-  // Check if it's been 5+ weeks without a deload
-  if (wk >= 5) {
-    const lastDeloadWeek = Math.floor((wk - 1) / 4) * 4 + (isDeloadWeek(wk) ? wk : 0);
-    const weeksSinceLast = wk - lastDeloadWeek;
-    if (weeksSinceLast >= 5) {
-      reasons.push(`${weeksSinceLast} weeks without a deload`);
-    }
-  }
-
-  if (reasons.length > 0) {
-    return { reasons, message: reasons.join(' + ') + '. Consider a deload.' };
-  }
-  return null;
+  const cuando = lunes
+    ? `Próximo deload programado: semana del ${lunes}${enSemanas != null ? ` (en ${enSemanas} semana${enSemanas === 1 ? '' : 's'})` : ''}.`
+    : 'No hay ancla de bloque, así que no hay deload programado.';
+  return {
+    reasons: fired.map(s => s.text),
+    nextDeload: nextDeloadWeek(),
+    deloadMonday: lunes,
+    message: `Fatiga sostenida en ${fired.length} señal${fired.length === 1 ? '' : 'es'}. ${cuando}`,
+  };
 }
 
 async function renderDeloadReminder() {
   const container = document.getElementById('deload-reminder');
   if (!container) return;
 
-  const reminder = await checkDeloadNeeded();
-  if (reminder) {
-    const severity = reminder.reasons.length >= 3 ? 'var(--red)' : reminder.reasons.length >= 2 ? 'var(--orange)' : 'var(--yellow)';
-    container.innerHTML = `
-      <div class="deload-banner" style="border-color:${severity}">
-        <span class="deload-icon">⚠️</span>
-        <div>
-          <div class="deload-text" style="font-weight:700">Deload recommended</div>
-          <div style="font-size:11px;color:var(--text2);margin-top:2px">${reminder.reasons.join(' · ')}</div>
-        </div>
+  let reminder = null;
+  try { reminder = await checkDeloadNeeded(); } catch (e) { console.warn('[deload]', e); }
+  if (!reminder) { container.classList.add('hidden'); container.innerHTML = ''; return; }
+
+  const severity = reminder.reasons.length >= 3 ? 'var(--red)' : 'var(--orange)';
+  container.innerHTML = `
+    <div class="deload-banner" style="border-color:${severity}">
+      <span class="deload-icon">⚠️</span>
+      <div style="flex:1;min-width:0">
+        <div class="deload-text" style="font-weight:700">Descarga recomendada</div>
+        <div style="font-size:11px;color:var(--text2);margin-top:2px">${escapeHtml(reminder.reasons.join(' · '))}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:4px">${escapeHtml(reminder.message)}</div>
+        <button class="coach-btn" id="deload-request" style="margin-top:8px">Proponer adelantar el deload</button>
       </div>
-    `;
-    container.classList.remove('hidden');
-  } else {
-    container.classList.add('hidden');
-  }
+    </div>
+  `;
+  container.classList.remove('hidden');
+  const btn = document.getElementById('deload-request');
+  if (btn) btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    try {
+      await logDecision({
+        source: 'readiness', type: 'deload-request',
+        what: 'Adelantar el deload',
+        why: reminder.reasons.join(' · '),
+        ruleIds: ['READ-008', 'LOAD-004'],
+        evidence: { reasons: reminder.reasons, deloadMonday: reminder.deloadMonday, nextDeload: reminder.nextDeload },
+        ref: { planVersion: activePlan.version || null },
+        outcome: null,
+      });
+      toast('Anotado para el coach');
+    } catch (e) {
+      console.warn('[deload] logDecision:', e);
+      btn.disabled = false;
+    }
+  });
 }
 
 // v11.35: a sync failure must be visible the same day, not seven weeks later.
@@ -11729,7 +11981,9 @@ function bindEvents() {
     }
     state.quickMode = !state.quickMode;
     syncQuickModeUI();
-    await startWorkout(state.activeSession);
+    // v11.59: los ajustes por recuperación viajan en el repintado. Sin esto, cambiar a quick mode
+    // devolvería los ejercicios que el coach había quitado y perdería el tope de RPE.
+    await startWorkout(state.activeSession, { adjustments: state.activeAdjustments || null });
   });
 
   // Cardio logging (unified)
@@ -12426,6 +12680,9 @@ async function init() {
       // v11.58: si esta sincronización trajo el dato de HOY (ruta directa de WHOOP, o intervals
       // que ya lo tiene), el Home se repinta solo. Sin esto, la tarjeta se quedaría con el "Sin
       // dato de hoy" del primer render aunque el dato hubiese llegado dos segundos después.
+      // v11.59: el readiness cacheado se calculó SIN el dato de hoy; en cuanto llega hay que
+      // recalcularlo, o la tarjeta se queda con el "sin dato de hoy" del primer render.
+      invalidateReadiness();
       if (d && d.todaySource && d.todaySource !== 'missing') {
         if (typeof renderRecoveryHero === 'function') renderRecoveryHero().catch(() => {});
         if (typeof renderTrainingAdvisory === 'function') renderTrainingAdvisory().catch(() => {});

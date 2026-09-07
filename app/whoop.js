@@ -475,6 +475,19 @@ async function intervalsFetchWellness() {
         compact.source = 'intervals.icu';
         compact.ts = Date.now();
 
+        // v11.59: el check-in subjetivo de la app vive en la MISMA fila (`subjective`) y esta
+        // escritura es un `put`, no un merge — sin esto, la primera sincronización de wellness
+        // se llevaría por delante el "dormí <6 h" que acabas de responder, y la señal duraría
+        // los minutos que tarda la app en refrescar. Sólo se conserva lo que intervals.icu no
+        // envía nunca: el resto de campos SÍ deben venir del histórico.
+        if (typeof dbGet === 'function') {
+          try {
+            const prev = await dbGet('wellness', r.id);
+            if (prev && prev.subjective) compact.subjective = prev.subjective;
+            if (prev && prev.readinessSource && compact.readiness == null) compact.readinessSource = prev.readinessSource;
+          } catch { /* fila nueva */ }
+        }
+
         // Only write if there's at least one signal beyond the metadata
         const signalCount = Object.keys(compact).length - 3;
         if (signalCount > 0) {

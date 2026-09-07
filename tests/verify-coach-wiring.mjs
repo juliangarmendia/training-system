@@ -359,8 +359,8 @@ yes(/wIn\.value = wIn\.placeholder/.test(SW_SRC), '…escribiendo el placeholder
 const CAP_SRC = fnSrc('function captureWorkoutState(');
 yes(/targets: state\.activeTargets/.test(CAP_SRC), 'captureWorkoutState() guarda los objetivos');
 const RES_SRC = fnSrc('async function restoreActiveWorkout(');
-yes(/startWorkout\(saved\.sessionId, \{ targets: saved\.targets \|\| null \}\)/.test(RES_SRC),
-  'restoreActiveWorkout() repone los MISMOS objetivos');
+yes(/startWorkout\(saved\.sessionId, \{ targets: saved\.targets \|\| null, adjustments: saved\.adjustments \|\| null \}\)/.test(RES_SRC),
+  'restoreActiveWorkout() repone los MISMOS objetivos (y los ajustes, v11.59)');
 const CLR_SRC = fnSrc('async function clearActiveWorkout(');
 yes(/state\.activeTargets = null/.test(CLR_SRC), 'clearActiveWorkout() los limpia');
 
@@ -647,13 +647,15 @@ yes(/lastAvailable/.test(GWC), 'y expone lastAvailable para pintar el último co
 yes(/source: 'none'/.test(GWC) && /'whoop-direct'/.test(GWC), "devuelve source 'none' | 'whoop-direct' | 'intervals'");
 const CTA = fnSrc('async function computeTrainingAdvisory()');
 yes(/whoop\.reason/.test(CTA), 'el advisory traslada el motivo de la falta de dato');
-yes(/confidence = 'low'/.test(CTA), 'y baja la confianza a low con unknown');
+// v11.59: la matriz (y con ella el `confidence:'low'` del unknown) vive en el motor puro. Lo que
+// el advisory tiene que hacer es DELEGAR y devolver lo que el motor decida.
+yes(/adjustSessionForReadiness\(/.test(CTA), 'y delega la matriz en adjustSessionForReadiness(');
+yes(/confidence: adj\.confidence/.test(CTA), 'devolviendo la confianza del motor (low con unknown)');
+yes(/color === 'unknown' \? 'low'/.test(ENGINE), "y el motor fija 'low' cuando el color es unknown");
 const RRH = fnSrc('async function renderRecoveryHero()');
 yes(/whoopDayLabel\(/.test(RRH), 'renderRecoveryHero etiqueta la fecha del dato (hoy/ayer/hace N días)');
 yes(/Sin dato de hoy/.test(RRH), 'y avisa "Sin dato de hoy" con el motivo');
-const RFS = fnSrc('async function renderFatigueScore()');
-yes(!/recovery\[whoopData\.recovery\.length - 1\]/.test(RFS), 'la fatigue card ya no puntúa con el último elemento');
-yes(/r\.date === t/.test(RFS), 'sólo el dato de hoy entra en el score');
+// v11.59: la fatigue card ya no puntúa nada porque ya no existe (se comprueba en §13).
 // F-7: la clasificación sale del dato.
 const TOS = fnSrc('function toSession(record, originStore)');
 yes(/SESSION_CLASS/.test(TOS), 'toSession usa la tabla SESSION_CLASS');
@@ -665,8 +667,205 @@ yes(/workout\.family = /.test(FIN), 'finishWorkout guarda la instantánea family
 yes(/workout\.subtype = /.test(FIN) && /workout\.budgetWeight = /.test(FIN), 'con subtype y budgetWeight');
 yes(!/workout\.sessionType = /.test(FIN), 'y NO guarda sessionType (activaría la rama de `sessions`)');
 
+
+// ── 13. Inc 5 — un readiness para todo, y la sesión ajustada llega al entreno (v11.59) ────────
+//
+// Los fallos que impide, todos silenciosos y todos ya vistos en este proyecto:
+//
+//   · El motor existe, sus tests pasan y `computeTrainingAdvisory` sigue con la matriz vieja: el
+//     readiness único no se usa y siguen habiendo dos criterios. El motor que nadie llama parece
+//     hecho y no lo está.
+//   · Vuelve el score compuesto ("Push hard today") en Stats y otra vez hay tres lecturas de la
+//     misma noche que se contradicen (F-5).
+//   · `captureWorkoutState` no guarda los ajustes: al reabrir la app los ejercicios que el coach
+//     quitó VUELVEN, y las series que ya habías apuntado se emparejan por exerciseId contra una
+//     lista distinta. La sesión ajustada se deshace sola a mitad de entreno.
+//   · `finishWorkout` no sella con qué recuperación se arrancó: el sistema pierde la única forma
+//     de contrastar su propia propuesta ("te propuse quitar el box jump y lo hiciste igual").
+//   · La rama muerta del deload sigue ahí (F-8) aparentando ser un guardarraíl.
+//   · El check-in de 2 toques pinta botones contra ids que `index.html` no tiene, o su guardado
+//     hace un `put` plano sobre `wellness` y se lleva por delante el histórico de intervals.icu.
+//   · Y el invariante de v11.57: la tarjeta de ejercicio SIN objetivo y SIN ajuste tiene que
+//     seguir siendo byte a byte la de v11.56 (§10 lo comprueba; aquí se fija que `adjustments`
+//     sea opcional y por defecto null).
+console.log('');
+console.log('13. Inc 5 · readiness único, sesión ajustada y check-in (v11.59)');
+
+// 13.a El motor puro
+yes(typeof E.computeReadinessFrom === 'function', 'coach-engine exporta computeReadinessFrom()');
+yes(typeof E.adjustSessionForReadiness === 'function', 'coach-engine exporta adjustSessionForReadiness()');
+yes(typeof E._coachTrimAccessories === 'function', 'coach-engine exporta _coachTrimAccessories()');
+eq(E.READ_CUTOFFS.green, 67, 'los cortes de color siguen siendo 67/34 (getRecoveryColor)');
+eq(E.READ_CUTOFFS.yellow, 34, '…el amarillo también');
+yes(Array.isArray(E.READ_RULE_IDS) && E.READ_RULE_IDS.includes('READ-002'),
+  'declara READ-002 (≥2 señales concordantes) entre sus reglas');
+// READ-003: ni un score, ni una dosis derivada de un score.
+const R_SRC = ENGINE.slice(ENGINE.indexOf('function computeReadinessFrom('), ENGINE.indexOf('function _readRound5('));
+yes(!/score:/.test(R_SRC.replace(/wt\.score|inp\.whoopToday|\bscore\b\s*[!=]/g, '')),
+  'computeReadinessFrom no devuelve ningún score compuesto');
+yes(!/0\.55|0\.70|0\.3\b/.test(R_SRC), 'y no queda ninguna ponderación del score viejo');
+yes(!/protein|proteína/i.test(R_SRC), 'la proteína ya no cuenta como fatiga (era una ponderación inventada)');
+const ADJ_SRC = ENGINE.slice(ENGINE.indexOf('function adjustSessionForReadiness('));
+yes(!/\.kg\s*=|kg:/.test(ADJ_SRC), 'adjustSessionForReadiness no escribe ningún kg (READ-003)');
+yes(/_readCopySession\(/.test(ADJ_SRC), 'trabaja sobre una COPIA de la sesión planificada');
+
+// 13.b El envoltorio en app.js
+yes(/async function computeReadiness\(\{ date \} = \{\}\)/.test(APP), 'app.js define computeReadiness({date})');
+const CR_SRC = fnSrc('async function computeReadiness(');
+yes(/computeReadinessFrom\(/.test(CR_SRC), 'y llama al motor puro');
+yes(/getWhoopContext\(\)/.test(CR_SRC), 'el dato de hoy sale de getWhoopContext (date-checked)');
+yes(/source !== 'none'/.test(CR_SRC), "…y sólo cuenta si su source no es 'none'");
+yes(/whoopMissingReason/.test(CR_SRC), 'pasa el motivo real cuando falta el dato de hoy');
+yes(/dbGetAll\('wellness'\)/.test(CR_SRC), 'lee el histórico del store wellness (tendencias 7d/28d)');
+yes(/state\._readinessCache/.test(CR_SRC), 'y cachea por día');
+yes(/whoopLastAvailable/.test(CR_SRC), 'expone el último dato disponible SÓLO para pintarlo con su fecha');
+yes(/function invalidateReadiness\(\)/.test(APP), 'existe invalidateReadiness()');
+// La caché tiene que caerse en los cuatro momentos en que la respuesta cambia.
+for (const [fn, label] of [
+  ['async function finishWorkout(', 'finishWorkout'],
+  ['async function intervalsIcuSync(', 'intervalsIcuSync'],
+  ['async function saveCheckin(', 'saveCheckin'],
+  ['async function runFullSync(', 'runFullSync'],
+]) {
+  yes(/invalidateReadiness\(\)/.test(fnSrc(fn)), `${label}() invalida la caché del readiness`);
+}
+yes(/invalidateReadiness\(\);[\s\S]{0,400}renderTrainingAdvisory\(\)/.test(APP),
+  'y al llegar el dato de hoy en init se invalida ANTES de repintar la tarjeta');
+
+// 13.c El advisory delega
+const CTA13 = fnSrc('async function computeTrainingAdvisory()');
+yes(/computeReadiness\(/.test(CTA13), 'computeTrainingAdvisory() llama computeReadiness(');
+yes(/adjustSessionForReadiness\(/.test(CTA13), 'y adjustSessionForReadiness(');
+yes(/_coachAdjustCtx\(/.test(CTA13), 'con el ctx compartido (_coachAdjustCtx)');
+for (const k of ['readiness', 'adjusted: adj.session', 'changes: adj.changes']) {
+  yes(CTA13.includes(k), `devuelve ${k}`);
+}
+yes(/recommendation: adj\.mode/.test(CTA13), 'y la recomendación ES el modo del motor');
+// El flag redundante no puede volver a contar como segunda señal (F-6).
+const ACTX_SRC = fnSrc('function _coachAdjustCtx(');
+yes(/f\.type !== 'recovery'/.test(ACTX_SRC), "el flag redundante 'recovery' no cuenta como 2ª señal");
+yes(/isMainLift/.test(ACTX_SRC), 'y pasa isMainLift (protege el RDL del recorte de accesorios)');
+
+// 13.d La tarjeta de Home
+const RTA_SRC = fnSrc('async function renderTrainingAdvisory()');
+yes(/_blockEyebrow\(/.test(RTA_SRC), 'la tarjeta lleva "Semana N/5 · build" en el eyebrow');
+yes(/coach-signals/.test(RTA_SRC), 'pinta las señales disparadas');
+yes(/Te propongo la sesión ajustada/.test(RTA_SRC), 'y el título de la propuesta del wireframe');
+yes(/Hacer la ajustada/.test(RTA_SRC) && /Hacer la planificada/.test(RTA_SRC),
+  'con los dos botones [Hacer la ajustada] [Hacer la planificada]');
+yes(/Registrar la alternativa/.test(RTA_SRC), 'y [Registrar la alternativa] cuando cambia el día');
+yes(/t3LogAlternative\(/.test(RTA_SRC), 'que reusa t3LogAlternative (no duplica el registro)');
+yes(/Vos decidís\. Las dos quedan registradas\./.test(RTA_SRC), 'el pie nuevo');
+// El pie viejo ("no cambia tu plan") ya no puede estar: ahora SÍ cambia la sesión del día. Se
+// mira el CÓDIGO, no los comentarios: los que explican qué se retiró sí pueden citar la frase.
+const APP_CODE = APP.split(/\r?\n/).filter(l => !/^\s*(\/\/|\*|\/\*)/.test(l)).join(String.fromCharCode(10));
+yes(!/no cambia tu plan/.test(APP_CODE), 'fuera el pie "es una sugerencia — no cambia tu plan"');
+yes(/type: 'readiness-adjust'/.test(RTA_SRC), "los dos botones registran type:'readiness-adjust'");
+yes(/outcome: 'accepted'|'accepted'/.test(RTA_SRC) && /'declined'/.test(RTA_SRC),
+  'con outcome accepted/declined según lo que elija');
+yes(/source: 'readiness'/.test(RTA_SRC), "y source:'readiness'");
+yes(/startWorkout\(planned\.sessionId, \{ adjustments \}\)/.test(RTA_SRC),
+  '"Hacer la ajustada" arranca con los ajustes');
+yes(/startWorkout\(planned\.sessionId\)/.test(RTA_SRC), 'y "Hacer la planificada" sin ellos');
+yes(!/disabled/.test(RTA_SRC), 'ningún botón se deshabilita (los guardarraíles avisan, no bloquean)');
+
+// 13.e Check-in de 2 toques
+const CHK_SRC = fnSrc('function _coachCheckinHtml(');
+yes(/status !== 'insufficient'/.test(CHK_SRC), 'el check-in sólo aparece si falta el dato de hoy');
+yes(/¿Cómo dormiste\?/.test(CHK_SRC) && /¿Cómo te sientes\?/.test(CHK_SRC), 'las dos preguntas del plan');
+yes(/_CHECKIN_BANDS/.test(CHK_SRC) && /'<6h', '6-7', '7-8', '>8'/.test(APP), 'las cuatro bandas de sueño');
+yes(/state\._checkinDismissed/.test(CHK_SRC), 'y se puede descartar');
+const SCK_SRC = fnSrc('async function saveCheckin(');
+yes(/smartPut\('wellness'/.test(SCK_SRC), "el check-in se guarda con smartPut('wellness') (sube a Supabase)");
+yes(/Object\.assign\(\{\}, existing \|\| \{\}/.test(SCK_SRC),
+  'MEZCLANDO con la fila existente (no pisa peso/pasos/CTL de intervals.icu)');
+yes(/subjective/.test(SCK_SRC), 'en el campo subjective');
+yes(/invalidateReadiness\(\)/.test(SCK_SRC), 'invalida el readiness');
+yes(/renderTrainingAdvisory\(\)/.test(SCK_SRC), 'y repinta la tarjeta');
+// Y el camino inverso: la sincronización de intervals.icu no puede borrar el check-in.
+const WPERSIST = readFileSync('app/whoop.js', 'utf8');
+yes(/prev && prev\.subjective/.test(WPERSIST),
+  'intervalsFetchWellness conserva `subjective` al reescribir la fila (si no, el check-in duraría minutos)');
+// El descarte es SÓLO en memoria: mañana se vuelve a preguntar.
+yes(!/checkinDismissed'/.test(APP) && !/dbPut\('settings', \{ key: 'checkin/.test(APP),
+  'el descarte del check-in no se persiste (es "ahora no", no una preferencia)');
+
+// 13.f startWorkout / buildExerciseCard / capture / restore / finish
+const SW13 = fnSrc('async function startWorkout(');
+yes(/opts\.adjustments/.test(SW13), 'startWorkout acepta opts.adjustments');
+yes(/adjustments\.dropIds/.test(SW13), 'y filtra los ejercicios quitados por dropIds');
+yes(/fuera\.has\(e\._origId \|\| e\.id\)/.test(SW13), '…comparando también por _origId (el swap sigue vivo)');
+yes(/state\.activeAdjustments = adjustments/.test(SW13), 'guarda state.activeAdjustments');
+yes(/state\.activeReadiness/.test(SW13), 'y la instantánea del readiness');
+yes(/_coachReadinessStamp\(await computeReadiness\(\)\)/.test(SW13),
+  'que se calcula también arrancando la planificada (el hero no pasa ajustes)');
+yes(/ajustada \(recuperación/.test(SW13), 'el encabezado dice que la sesión está ajustada');
+yes(/, adjustments\)\)/.test(SW13), 'y pasa los ajustes a buildExerciseCard');
+// El repintado por quick mode no puede perderlos: devolvería los ejercicios quitados.
+yes(/startWorkout\(state\.activeSession, \{ adjustments: state\.activeAdjustments/.test(APP),
+  'el toggle de quick mode repinta CON los ajustes');
+const CARD13 = fnSrc('function buildExerciseCard(');
+yes(/function buildExerciseCard\(ex, exIdx, previous, restSettings, exerciseNotes, deload, session, allWorkouts, target = null, adjustments = null\)/.test(APP),
+  'buildExerciseCard mantiene la firma con `adjustments = null` al final');
+yes(/adjustments && adjustments\.setDelta && ex\.compound/.test(CARD13), 'aplica setDelta sólo a compuestos');
+yes(/Math\.max\(2, numSets \+ Number\(adjustments\.setDelta\)\)/.test(CARD13), 'con suelo de 2 series');
+yes(/RPE ≤\$\{rpeCap\}/.test(CARD13), 'y pinta "RPE ≤7" cuando hay tope');
+yes(/deload && ex\.rpe !== '-' \? 'RPE 5-6'/.test(CARD13), 'el deload sigue mandando sobre el tope');
+const CAP13 = fnSrc('function captureWorkoutState(');
+yes(/adjustments: state\.activeAdjustments/.test(CAP13), 'captureWorkoutState guarda `adjustments`');
+yes(/readinessAtStart: state\.activeReadiness/.test(CAP13), 'y `readinessAtStart`');
+const CLR13 = fnSrc('async function clearActiveWorkout(');
+yes(/state\.activeAdjustments = null/.test(CLR13) && /state\.activeReadiness = null/.test(CLR13),
+  'clearActiveWorkout limpia los dos');
+const FIN13 = fnSrc('async function finishWorkout()');
+yes(/readinessAtStart: state\.activeReadiness \|\| null/.test(FIN13), 'finishWorkout sella readinessAtStart');
+yes(/adjusted: !!state\.activeAdjustments/.test(FIN13), 'y `adjusted`');
+yes(/workout\.adjustments = \{/.test(FIN13), 'con el resumen del ajuste cuando lo hubo');
+yes(FIN13.indexOf('readinessAtStart') < FIN13.indexOf('invalidateReadiness'),
+  'y lo hace ANTES de invalidar/limpiar el estado');
+
+// 13.g Stats: la lista de señales sustituye al score
+yes(!/function renderFatigueScore/.test(APP), 'renderFatigueScore ya NO existe en app.js');
+yes(!/Push hard/.test(APP_CODE), 'ni su consejo "Push hard" (dose-from-composite, READ-003)');
+yes(!/Moderate fatigue/.test(APP_CODE), 'ni "Moderate fatigue"');
+yes(!/fatigue-bar|fatigue-score/.test(APP_CODE), 'ni la barra ni el número del score');
+yes(/renderReadinessSignals/.test(APP), 'renderStats llama renderReadinessSignals');
+yes(/async function renderReadinessSignals\(\)/.test(COACHJS), 'que vive en coach.js');
+const RRS_SRC = COACHJS.slice(COACHJS.indexOf('async function renderReadinessSignals('));
+yes(/computeReadiness\(\)/.test(RRS_SRC), 'y lee el MISMO computeReadiness que Home (una sola verdad)');
+yes(/confianza alta/.test(RRS_SRC), 'muestra la confianza');
+yes(/sin dato/.test(RRS_SRC) && /s\.reason/.test(RRS_SRC), 'y las señales insuficientes con su motivo');
+yes(/whoopDayLabel\(/.test(RRS_SRC), 'conserva la honestidad de v11.58: el dato de ayer, con su fecha');
+yes(!/Push hard|score|bar/i.test(RRS_SRC.replace(/whoopDayLabel|last\.score|s\.score/g, '')),
+  'sin score, sin barra y sin consejo');
+yes(HTML.indexOf('id="readiness-signals"') > 0, 'index.html tiene #readiness-signals');
+yes(HTML.indexOf('id="fatigue-card"') < 0, 'y ya no tiene #fatigue-card');
+
+// 13.h Deload reactivo (F-8)
+const CDN_SRC = fnSrc('async function checkDeloadNeeded(');
+yes(/computeReadiness\(\)/.test(CDN_SRC), 'checkDeloadNeeded consume computeReadiness()');
+yes(/deloadHint/.test(CDN_SRC), 'y decide por deloadHint (READ-008)');
+yes(!/Math\.floor\(\(wk - 1\) \/ 4\)/.test(CDN_SRC), 'fuera la aritmética muerta de "N semanas sin deload" (F-8)');
+yes(!/weeksSinceLast/.test(CDN_SRC), 'y su variable');
+yes(/deloadMonday/.test(CDN_SRC), 'dice cuándo es el deload PROGRAMADO');
+yes(/Próximo deload programado/.test(CDN_SRC), 'con el texto del plan');
+const RDR_SRC = fnSrc('async function renderDeloadReminder(');
+yes(/Proponer adelantar el deload/.test(RDR_SRC), 'el banner lleva el botón de proponer');
+yes(/type: 'deload-request'/.test(RDR_SRC), "que registra type:'deload-request'");
+yes(/Anotado para el coach/.test(RDR_SRC), 'y avisa "Anotado para el coach"');
+yes(!/deloadAnchorDate =/.test(RDR_SRC), 'y NO mueve el ancla (eso lo aprueba Julian con el coach)');
+
+// 13.i Versión y CSS
+eq(vSw, vHtml, 'CACHE_NAME del service worker == versión de index.html (otra vez, tras el bump)');
+yes(vNum(vHtml) >= vNum('11.59'), `la versión (v${vHtml}) es >= v11.59`);
+for (const clase of ['coach-signals', 'coach-proposal', 'coach-changes', 'coach-btn', 'coach-btn-primary',
+                     'coach-checkin', 'coach-checkin-opt', 'coach-checkin-close',
+                     'readiness-signals', 'rs-row', 'rs-fired', 'rs-none']) {
+  yes(new RegExp(`\\.${clase}[\\s,{:]`).test(CSS), `.${clase} existe en style.css`);
+}
+
 console.log('');
 console.log(failed === 0
-  ? '✅ Coach v2 cableado: módulo, stores, sync, meta del plan, decisiones, bloque + cardio y el dato de hoy.'
+  ? '✅ Coach v2 cableado: módulo, stores, sync, plan, decisiones, bloque, dato de hoy y readiness que ajusta.'
   : `❌ ${failed} comprobación(es) fallaron.`);
 process.exit(failed === 0 ? 0 : 1);

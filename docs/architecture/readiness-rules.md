@@ -57,6 +57,30 @@ Cómo el Readiness Engine convierte datos de wearables + feedback subjetivo en u
 | Terminar/llamar un bloque | | ✅ |
 | Interpretar un YELLOW ambiguo | | ✅ |
 
+## Implementación (v11.59)
+
+Una sola función, `computeReadinessFrom` (`app/coach-engine.js`), consumida por el advisory de
+Home, el banner de deload y la lista de señales de Stats. Cada señal, su umbral y su regla:
+
+| Señal | Cálculo | Dispara | Regla |
+|---|---|---|---|
+| `whoop` | score con `date === hoy` (nunca el último del array) | rojo (<34); amarillo fija suelo de color | READ-003 |
+| `hrv7v28` | media días 0..6 vs media días 7..34 | ≤ −10 % | READ-001, READ-004 |
+| `rhr7v28` | media 7d − base propia | ≥ +5 bpm | READ-001 |
+| `sleep7` | media 7d (≥4 noches) | < 6,5 h | READ-006 |
+| `rpe2` | RPE medio de las 2 últimas sesiones con ≥3 series con RPE | ambas ≥ 9 | READ-005, LOAD-004 |
+| `quality2` | `quality` de las 2 últimas | ambas ≤ 2 | READ-005 |
+| `sleepSelf` | check-in de 2 toques | banda `<6h` | READ-005 |
+| `feelSelf` | check-in de 2 toques | ≤ 2/5 | READ-005 |
+
+Color: ≥2 disparadas → rojo · 1 → amarillo · 0 → amarillo si WHOOP amarillo, `unknown` si no hay
+dato de hoy **y** las tendencias son insuficientes, si no verde (READ-002). `deloadHint` = ≥3
+disparadas, o `rpe2`, o (`hrv7v28` ∧ `rhr7v28` ∧ `quality2`) — READ-008; **propone**, no mueve el
+ancla. El ajuste de la sesión (READ-007) vive en `adjustSessionForReadiness`: cambia RPE, volumen
+y objetivo del día; **nunca kg** (READ-003). Cada umbral es heurística prudente, declarada como
+constante con nombre; ninguno sale de un ensayo con este sujeto. Tests:
+`tests/verify-readiness-trend.mjs`, `tests/verify-session-adjust.mjs`.
+
 ## Anti-falsa-precisión (no negociable)
 
 - Nunca traducir un Recovery % a una carga exacta.
