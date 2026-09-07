@@ -9,6 +9,7 @@ import {
   upsertTokens,
 } from "../_shared/tokens.ts";
 import { syncWhoop } from "../_shared/whoop-sync.ts";
+import { subscribeWithingsNotify, syncWithings } from "../_shared/withings-sync.ts";
 
 // EL CALLBACK OAUTH ATERRIZA AQUÍ, NO EN UNA PÁGINA DE LA PWA.
 //
@@ -109,10 +110,12 @@ Deno.serve(async (req) => {
     await upsertTokens(supa, userId, provider, tokens, externalUserId);
     console.log(`[callback] ${provider} conectado (ext=${externalUserId ? "sí" : "no"}, scope=${tokens.scope || "?"})`);
 
-    // (5) Withings: suscripción a notificaciones. TODO(A-5).
+    // (5) Withings: suscripción a notificaciones. Se hace AQUÍ, en la conexión, que es el
+    // único momento en que hay con seguridad un token recién emitido; el cron la renueva
+    // luego a diario porque Withings la cancela tras 20 días de entregas fallidas.
     if (provider === "withings") {
-      const sub = await subscribeWithingsNotify(tokens.access_token);
-      if (!sub.skipped) console.log(`[callback] withings notify subscribe → ${sub.ok ? "ok" : "fallo"}`);
+      const sub = await subscribeWithingsNotify(userId, supa);
+      console.log(`[callback] withings notify subscribe → ${sub.ok ? "ok" : sub.reason}`);
     }
 
     // (6) Primer volcado en segundo plano (30 días de WHOOP; Withings en A-5).
@@ -131,34 +134,22 @@ Deno.serve(async (req) => {
   }
 });
 
-// ── Stubs cableados (se rellenan en los incrementos siguientes) ─────────────────────────────
-
 /**
- * TODO(A-5): `POST wbsapi.withings.net/notify action=subscribe&callbackurl=…&appli=1`.
- * Se deja CABLEADO y no pendiente de recordar: cuando A-5 rellene el cuerpo, la suscripción
- * ocurre en la conexión, que es el único momento en que seguro hay un token recién emitido.
- */
-async function subscribeWithingsNotify(_accessToken: string): Promise<{ ok: boolean; skipped: boolean }> {
-  await Promise.resolve();
-  return { ok: false, skipped: true };
-}
-
-/**
- * Primer volcado tras conectar: 30 días de historia de WHOOP. Va bajo `waitUntil` porque
- * tarda varios segundos (tres colecciones paginadas) y el usuario está esperando una
- * redirección, no un JSON. Si falla, no rompe la conexión: los tokens ya están guardados y
- * el cron de A-4 recogerá los datos en la siguiente pasada.
- * TODO(A-5): el equivalente de Withings (`syncWithings(userId, {days:90})`).
+ * Primer volcado tras conectar: 30 días de WHOOP, 90 de Withings (la báscula es barata de
+ * pedir y una pendiente de peso larga vale mucho para el coach). Va bajo `waitUntil` porque
+ * tarda varios segundos y el usuario está esperando una redirección, no un JSON. Si falla, no
+ * rompe la conexión: los tokens ya están guardados y el cron recogerá los datos.
  */
 async function initialSync(userId: string, provider: ProviderId): Promise<void> {
-  if (provider !== "whoop") {
-    console.log(`[callback] initialSync de ${provider} pendiente — lo rellena A-5`);
-    return;
-  }
   try {
-    const out = await syncWhoop(userId, { days: 30 });
-    console.log(`[callback] initialSync whoop → ${out.dates.length} días`);
+    if (provider === "whoop") {
+      const out = await syncWhoop(userId, { days: 30 });
+      console.log(`[callback] initialSync whoop → ${out.dates.length} días`);
+    } else {
+      const out = await syncWithings(userId, { days: 90 });
+      console.log(`[callback] initialSync withings → ${out.dates.length} días`);
+    }
   } catch (err) {
-    console.error(`[callback] initialSync whoop falló: ${err instanceof Error ? err.message : String(err)}`);
+    console.error(`[callback] initialSync ${provider} falló: ${err instanceof Error ? err.message : String(err)}`);
   }
 }

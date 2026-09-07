@@ -70,6 +70,24 @@ verify_jwt = false
 import_map = "./functions/whoop-webhook/deno.json"
 entrypoint = "./functions/whoop-webhook/index.ts"
 
+[functions.withings-sync]
+enabled = true
+# verify_jwt: mismos dos modos que whoop-sync (sesion de la PWA, o JWT anon + `x-cron-secret`).
+verify_jwt = true
+import_map = "./functions/withings-sync/deno.json"
+entrypoint = "./functions/withings-sync/index.ts"
+
+[functions.withings-webhook]
+enabled = true
+# verify_jwt = false: llama Withings, sin JWT. Y Withings NO FIRMA sus notificaciones, asi que
+# la auth es doble: (1) la propia URL lleva `?t=<WITHINGS_WEBHOOK_TOKEN>`, comparado en tiempo
+# constante, y (2) el `userid` del cuerpo tiene que existir como `external_user_id` en
+# `integration_tokens`. HEAD/GET responden 200 porque Withings comprueba la URL asi antes de
+# aceptar la suscripcion.
+verify_jwt = false
+import_map = "./functions/withings-webhook/deno.json"
+entrypoint = "./functions/withings-webhook/index.ts"
+
 [functions.coach-weekly-review]
 enabled = true
 # verify_jwt: la PWA llama con la sesion de Supabase del usuario. La funcion escribe filas de

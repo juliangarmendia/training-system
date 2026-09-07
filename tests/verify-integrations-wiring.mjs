@@ -1,8 +1,8 @@
 // Coach v2.1 · Parte A — cableado de las integraciones de servidor (texto, sin ejecutar Deno).
 //
-// Cubre A-1 (migración + `_shared` + `integrations-oauth` + `integrations-callback`) y A-2
-// (`whoop-sync.ts`, `whoop-sync`, `whoop-webhook`). A-3 añadirá la PWA y A-5 Withings; cada
-// incremento amplía este fichero, no lo sustituye.
+// Cubre A-1 (migración de tokens + `_shared` + `integrations-oauth` + `integrations-callback`),
+// A-2 (`whoop-sync.ts`, `whoop-sync`, `whoop-webhook`), A-4 (pg_cron + pg_net) y A-5 (Withings).
+// A-3 añadirá la PWA; cada incremento amplía este fichero, no lo sustituye.
 //
 // EL FALLO QUE ESTE TEST EXISTE PARA IMPEDIR. Nada de lo que hay aquí falla en desarrollo:
 // falla semanas después, de noche, y se manifiesta como "WHOOP se ha vuelto a desconectar".
@@ -41,9 +41,23 @@
 //     otra vez la primera página, y los días viejos no entran nunca.
 //   · Escribir `ctl`/`atl`/`steps`/`weight` desde WHOOP: pisa lo de intervals.icu y Withings.
 //
+// A-4 y A-5, otras tantas:
+//
+//   · Un JWT literal en la migración del cron: queda en el repo Y en `cron.job.command`, que
+//     cualquiera con acceso a la base puede leer con un `select`.
+//   · `cron.schedule` sin desprogramar antes: reaplicar la migración deja dos jobs iguales
+//     disparando a la vez, y el segundo refresca el token que el primero acaba de rotar.
+//   · Un job que no aborta cuando faltan los secretos de Vault: cuatro fallos silenciosos cada
+//     media hora, y nadie mira `cron.job_run_details`.
+//   · `withings-webhook` devolviendo 401 a un `HEAD`: Withings comprueba la URL así y
+//     `notify subscribe` falla con un error que no explica nada.
+//   · La báscula pisando un peso escrito a mano: el número que Julian tecleó cambia solo.
+//   · El forward-fill de intervals tratado como "manual": entonces la báscula NO entra nunca y
+//     la composición no aparece jamás.
+//
 // Ejecutar desde la raíz del repo: node tests/verify-integrations-wiring.mjs
 
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
 
 const read = (p) => (existsSync(p) ? readFileSync(p, 'utf8') : '');
 
@@ -61,6 +75,10 @@ const WSYNC = read('supabase/functions/_shared/whoop-sync.ts');
 const WWELL = read('supabase/functions/_shared/whoop-wellness.ts');
 const SYNCFN = read('supabase/functions/whoop-sync/index.ts');
 const HOOKFN = read('supabase/functions/whoop-webhook/index.ts');
+const CRONSQL = read('supabase/migrations/20260908_integrations_cron.sql');
+const WISYNC = read('supabase/functions/_shared/withings-sync.ts');
+const WISYNCFN = read('supabase/functions/withings-sync/index.ts');
+const WIHOOKFN = read('supabase/functions/withings-webhook/index.ts');
 
 let failed = 0;
 const ok = (m) => console.log(`  ok   ${m}`);
@@ -94,13 +112,27 @@ eq(verifyJwtOf('steps-ingest'), 'false', 'steps-ingest = false (Atajo de iOS con
 eq(verifyJwtOf('strava-sync'), 'true', 'strava-sync = true (sesión de la PWA)');
 eq(verifyJwtOf('whoop-sync'), 'true', 'whoop-sync = true (JWT del usuario, o anon + x-cron-secret)');
 eq(verifyJwtOf('whoop-webhook'), 'false', 'whoop-webhook = false (la auth es la firma HMAC)');
+eq(verifyJwtOf('withings-sync'), 'true', 'withings-sync = true (mismos dos modos que whoop-sync)');
+eq(verifyJwtOf('withings-webhook'), 'false', 'withings-webhook = false (token en la URL + userid)');
+// La invariante real no es un número: es que NINGUNA carpeta de función se quede sin bloque
+// (una función que falta en config.toml se despliega con el verify_jwt por defecto).
+const fnDirs = readdirSync('supabase/functions', { withFileTypes: true })
+  .filter((d) => d.isDirectory() && !d.name.startsWith('_'))
+  .map((d) => d.name)
+  .sort();
+for (const d of fnDirs) yes(!!fnBlock(d), `config.toml declara [functions.${d}]`);
+eq((CONFIG.match(/^\[functions\./gm) || []).length, fnDirs.length,
+   `hay un bloque por carpeta de función y ninguno de más (${fnDirs.length})`);
 yes(/oauth_states/.test(fnBlock('integrations-callback') || ''),
     'el bloque del callback explica en un comentario por qué va sin JWT');
 yes(/HMAC/i.test(fnBlock('whoop-webhook') || ''),
     'el bloque del webhook explica en un comentario que la auth es la firma');
 yes(/x-cron-secret/.test(fnBlock('whoop-sync') || ''),
     'el bloque de whoop-sync explica el doble modo');
-for (const fn of ['integrations-oauth', 'integrations-callback', 'whoop-sync', 'whoop-webhook']) {
+yes(/WITHINGS_WEBHOOK_TOKEN/.test(fnBlock('withings-webhook') || ''),
+    'el bloque del webhook de Withings explica que la auth es el token de la URL');
+for (const fn of ['integrations-oauth', 'integrations-callback', 'whoop-sync', 'whoop-webhook',
+                  'withings-sync', 'withings-webhook']) {
   yes(existsSync(`supabase/functions/${fn}/deno.json`), `${fn}/deno.json existe`);
   yes(new RegExp(`entrypoint = "\\./functions/${fn}/index\\.ts"`).test(CONFIG),
       `${fn} declara su entrypoint`);
@@ -263,7 +295,7 @@ yes(/fail\("no_refresh_token"\)/.test(CALLBACK) && /!tokens\.refresh_token/.test
 yes(/upsertTokens\(/.test(CALLBACK), 'alta de tokens por upsertTokens (status active, sin lock)');
 yes(/EdgeRuntime\.waitUntil\(initialSync\(/.test(CALLBACK), 'el primer volcado va bajo waitUntil');
 yes(/subscribeWithingsNotify/.test(CALLBACK), 'la suscripción de Withings está cableada (stub de A-5)');
-yes(/TODO\(A-5\)/.test(CALLBACK), 'el stub que queda (Withings) está marcado como TODO de A-5');
+yes(!/TODO\(A-[0-9]\)/.test(CALLBACK), 'ya no queda ningún stub pendiente en el callback');
 yes(/#settings\?connected=\$\{provider\}/.test(CALLBACK), '302 a #settings?connected=<provider>');
 // Ni un token interpolado en un log ni en una respuesta: el callback sólo redirige.
 yes(!/console\.[a-z]+\([^;]*\$\{[^}]*(access_token|refresh_token)[^}]*\}/.test(CALLBACK),
@@ -386,7 +418,105 @@ yes(/status: "error"|"error",/.test(HOOKFN), 'un fallo deja el evento en estado 
 // ── 15. El callback ya hace el primer volcado ──────────────────────────────────────────────
 console.log('15. integrations-callback → primer volcado real');
 yes(/syncWhoop\(userId, \{ days: 30 \}\)/.test(CALLBACK), 'initialSync vuelca 30 días de WHOOP');
-yes(/TODO\(A-5\)/.test(CALLBACK), 'y el de Withings sigue marcado como TODO de A-5');
+yes(/syncWithings\(userId, \{ days: 90 \}\)/.test(CALLBACK), 'y el de Withings vuelca 90 días');
+
+// ── 16. A-4 · pg_cron + pg_net ─────────────────────────────────────────────────────────────
+console.log('16. La migración del cron');
+yes(!!CRONSQL, '20260908_integrations_cron.sql existe');
+yes(/create extension if not exists pg_cron/.test(CRONSQL), 'instala pg_cron');
+yes(/create extension if not exists pg_net with schema extensions/.test(CRONSQL),
+    'instala pg_net en `extensions` (en `public` dispara el lint 0014)');
+yes(!/eyJ[A-Za-z0-9_-]{20,}/.test(CRONSQL),
+    'NINGÚN JWT literal en el fichero: el anon_key sale de Vault, no del repo ni de cron.job.command');
+yes(!/[0-9a-f]{48,}/.test(CRONSQL), 'ni ningún secreto hexadecimal pegado');
+yes((CRONSQL.match(/vault\.decrypted_secrets/g) || []).length >= 3,
+    'los tres secretos se leen de vault.decrypted_secrets');
+for (const s of ['project_url', 'anon_key', 'CRON_SECRET']) {
+  yes(CRONSQL.includes(`'${s}'`), `cron_call_fn lee ${s}`);
+}
+yes(/raise exception 'Faltan secretos en Vault/.test(CRONSQL),
+    'la migración ABORTA si Vault no está sembrado (mejor no instalar nada que 4 jobs fallando)');
+yes(/net\.http_post\(/.test(CRONSQL) && /timeout_milliseconds := 5000/.test(CRONSQL),
+    'net.http_post con timeout de 5 s');
+yes(/'x-cron-secret',\s*v_cron/.test(CRONSQL), 'manda la cabecera x-cron-secret');
+yes(/'Authorization',\s*'Bearer ' \|\| v_anon/.test(CRONSQL), 'y el JWT anon para pasar el verify_jwt');
+yes(/security definer/.test(CRONSQL) &&
+    /revoke execute on function public\.cron_call_fn\(text, jsonb\) from public, anon, authenticated/.test(CRONSQL),
+    'cron_call_fn es security definer con EXECUTE revocado a public/anon/authenticated');
+yes(/perform cron\.unschedule/.test(CRONSQL),
+    'desprograma por nombre antes de programar: reaplicar no duplica jobs');
+const JOBS = [
+  ['whoop-sync-30m', '*/30 3-12 * * *', 'whoop-sync', '{"days":2}'],
+  ['whoop-sync-daily', '0 12 * * *', 'whoop-sync', '{"days":7}'],
+  ['withings-sync-daily', '15 12 * * *', 'withings-sync', '{"days":3,"resubscribe":true}'],
+];
+for (const [name, sched, fn, body] of JOBS) {
+  const m = new RegExp(`cron\\.schedule\\('${name.replace(/[*]/g, '\\*')}',\\s*'${sched.replace(/[*]/g, '\\*')}'`);
+  yes(m.test(CRONSQL), `job ${name} con schedule ${sched}`);
+  const idx = CRONSQL.indexOf(`cron.schedule('${name}'`);
+  const near = idx >= 0 ? CRONSQL.slice(idx, idx + 220) : '';
+  yes(near.includes(`'${fn}'`) && near.includes(body), `  → llama a ${fn} con ${body}`);
+}
+yes(/cron\.schedule\('integration-events-gc', '30 4 \* \* 1'/.test(CRONSQL), 'job integration-events-gc semanal');
+yes(/delete from public\.integration_events where received_at < now\(\) - interval '60 days'/.test(CRONSQL),
+    '  → purga los eventos de más de 60 días');
+
+// ── 17. A-5 · _shared/withings-sync.ts ─────────────────────────────────────────────────────
+console.log('17. _shared/withings-sync.ts');
+yes(/action: "getmeas"/.test(WISYNC), 'action=getmeas');
+yes(/MEASTYPES = "1,5,6,8,76,77,88"/.test(WISYNC), 'los siete meastypes de la Body+');
+yes(/CATEGORY = "1"/.test(WISYNC), 'category=1 (medidas reales, no objetivos)');
+yes(/body\.more === 1/.test(WISYNC) && /form\.set\("offset"/.test(WISYNC), 'sigue more/offset');
+yes(/lastupdate/.test(WISYNC), 'admite la ventana barata `lastupdate` para el cron');
+yes(/groupByDay\(groups, timezone\)/.test(WISYNC),
+    'el día local sale del `timezone` que devuelve Withings (con INTEGRATION_TZ de respaldo)');
+yes(/buildBodyweightPatch\(/.test(WISYNC), 'el parche lo calcula el módulo puro (peso manual respetado)');
+yes(/\.from\("bodyweight"\)[\s\S]{0,200}\.select\("data"\)/.test(WISYNC),
+    'lee la fila previa antes de escribir');
+yes(/p_table: "bodyweight"/.test(WISYNC) && /p_table: "wellness"/.test(WISYNC),
+    'escribe bodyweight y su espejo en wellness, ambos por merge_generic_row');
+yes(/weightMeasured/.test(WISYNC) && /weightSource/.test(WISYNC) && /bodyFat/.test(WISYNC),
+    'el espejo lleva weightMeasured / bodyFat / weightSource');
+yes(/built\.manualKept \? "manual" : "withings"/.test(WISYNC),
+    'weightSource dice de quién es el NÚMERO, no quién escribió');
+yes(/markSynced\(supa, userId, "withings"/.test(WISYNC), 'actualiza integration_status');
+yes(!/"weight":/.test(WISYNC) && !/patch\.weight =/.test(WISYNC),
+    'withings-sync.ts nunca fija `weight` a mano: eso lo decide buildBodyweightPatch');
+yes(/source: "withings"/.test(MEASURES) && /measured: true/.test(MEASURES),
+    'la fila de la báscula lleva source withings y measured true (en measures.ts)');
+yes(/status === 342/.test(WISYNC) && /signature_required/.test(WISYNC),
+    'notify subscribe documenta el 342 (signature/nonce) sin implementarlo aún');
+yes(/action: "subscribe"/.test(WISYNC) && /appli: "1"/.test(WISYNC), 'notify subscribe con appli=1');
+
+// ── 18. A-5 · withings-sync y withings-webhook ─────────────────────────────────────────────
+console.log('18. Las funciones de Withings');
+yes(/x-cron-secret/.test(WISYNCFN) && /\}, 202\)/.test(WISYNCFN), 'withings-sync: modo cron con 202');
+yes(/EdgeRuntime\.waitUntil\(runForAll/.test(WISYNCFN), 'y waitUntil');
+yes(/status: "needs_reconnect"/.test(WISYNCFN) && /status: "refresh_in_progress" \}, 503\)/.test(WISYNCFN),
+    'mismas respuestas de estado que whoop-sync (la PWA no necesita un if por proveedor)');
+yes(/resubscribe/.test(WISYNCFN) && /subscribeWithingsNotify\(/.test(WISYNCFN),
+    'resubscribe renueva la suscripción antes de sincronizar');
+
+yes(/"HEAD"/.test(WIHOOKFN) && /req\.method === "HEAD"/.test(WIHOOKFN),
+    'HEAD responde 200: Withings comprueba la URL así antes de aceptar la suscripción');
+yes(/WITHINGS_WEBHOOK_TOKEN/.test(WIHOOKFN), 'exige WITHINGS_WEBHOOK_TOKEN');
+yes(/timingSafeEqual\(t, expected\)/.test(WIHOOKFN), 'comparado en tiempo constante');
+yes(/appli/.test(WIHOOKFN) && /TOLERATED_APPLI = "1"/.test(WIHOOKFN), 'sólo appli=1 (pesadas)');
+yes(/external_user_id/.test(WIHOOKFN) && /ignored: "unknown_user"/.test(WIHOOKFN),
+    'el userid tiene que existir como external_user_id; si no, 200 + ignored');
+yes(/integration_events/.test(WIHOOKFN) &&
+    /onConflict: "provider,trace_id", ignoreDuplicates: true/.test(WIHOOKFN),
+    'evento registrado y deduplicado');
+yes(/trace_id: traceId/.test(WIHOOKFN) &&
+    /\$\{externalUserId\}:\$\{startdate\}:\$\{enddate\}:\$\{appli\}/.test(WIHOOKFN),
+    'trace_id = userid:startdate:enddate:appli');
+yes(/EdgeRuntime\.waitUntil\(process\(/.test(WIHOOKFN), 'el volcado va bajo waitUntil');
+yes(/last_event_at/.test(WIHOOKFN), 'y adelanta last_event_at');
+yes(/syncWithings\(userId, win, supa\)/.test(WIHOOKFN), 'sincroniza el rango del aviso');
+
+yes(/subscribeWithingsNotify\(userId, supa\)/.test(CALLBACK),
+    'el callback suscribe las notificaciones al conectar Withings');
+yes(/syncWithings\(userId, \{ days: 90 \}\)/.test(CALLBACK), 'y vuelca 90 días de pesadas');
 
 console.log(failed === 0 ? '\nTODO OK' : `\n${failed} FALLOS`);
 process.exit(failed === 0 ? 0 : 1);

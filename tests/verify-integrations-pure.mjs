@@ -50,7 +50,7 @@ const wellnessMod = await import(pathToFileURL('supabase/functions/_shared/whoop
 const http = await import(pathToFileURL('supabase/functions/_shared/http.ts').href);
 
 const { dayOf, pickNight, pickNightsByDay, parseOffsetMinutes } = dates;
-const { decodeMeasure, groupByDay, mergeBodyweight, MEAS_TYPES } = measures;
+const { decodeMeasure, groupByDay, mergeBodyweight, buildBodyweightPatch, isManualRow, MEAS_TYPES } = measures;
 const { buildWellnessPatch, WELLNESS_KEYS, FORBIDDEN_KEYS } = wellnessMod;
 const { hmacBase64, timingSafeEqual } = http;
 
@@ -334,6 +334,54 @@ yes(!timingSafeEqual('abc', 'abd'), 'distintos → false');
 yes(!timingSafeEqual('abc', 'abcd'), 'longitudes distintas → false');
 yes(!timingSafeEqual('', 'a'), 'vacío contra no vacío → false');
 yes(timingSafeEqual('', ''), 'dos vacíos → true');
+
+// ── 12. isManualRow · quién manda sobre la báscula ─────────────────────────────────────────
+console.log('12. isManualRow · las tres procedencias de una fila de bodyweight');
+yes(isManualRow({ date: '2026-09-08', weight: 85.4, timestamp: 1 }),
+    'logBodyWeight() escribe sin `source` → es a mano y manda');
+yes(isManualRow({ date: '2026-09-08', weight: 85.4, source: 'intervals.icu', measured: true }),
+    'el formulario de composición arrastra el `source` de intervals pero marca `measured:true` → a mano');
+yes(!isManualRow({ date: '2026-09-08', weight: 88.4, source: 'intervals.icu', measured: false }),
+    'el peso suavizado de intervals (measured:false) NO es a mano: la báscula lo sustituye');
+yes(!isManualRow({ date: '2026-09-08', weight: 84.3, source: 'withings', measured: true }),
+    'una fila que ya era de Withings se resincroniza sin miramientos');
+yes(!isManualRow(null), 'sin fila previa → no hay nada manual que respetar');
+
+// ── 13. buildBodyweightPatch · el delta que va a merge_generic_row ─────────────────────────
+console.log('13. buildBodyweightPatch');
+const scale = rows['2026-09-08']; // la fila de la báscula de la sección 6
+
+const fresh = buildBodyweightPatch(scale, null);
+eq(fresh.manualKept, false, 'día sin fila previa: no hay peso manual que conservar');
+eq(fresh.weightUsed, 84.35, 'el peso que queda es el de la báscula');
+eq(fresh.patch.weight, 84.35, 'el parche lleva `weight`');
+eq(fresh.patch.source, 'withings', "y `source: 'withings'`");
+eq(fresh.patch.measured, true, 'y `measured: true`');
+eq(fresh.patch.date, '2026-09-08', 'y `date`, para que una fila nueva esté completa');
+eq(fresh.patch.fatPct, 17.3, 'con la composición entera');
+eq(fresh.patch.ffmKg, 69.75, '…');
+yes(!('weightWithings' in fresh.patch), 'sin `weightWithings`: no hay conflicto que registrar');
+
+const conManual = buildBodyweightPatch(scale, { date: '2026-09-08', weight: 85.4, timestamp: 111 });
+eq(conManual.manualKept, true, 'con pesada manual el día: se conserva');
+eq(conManual.weightUsed, 85.4, 'el peso que queda es el MANUAL');
+yes(!('weight' in conManual.patch),
+    'el parche NO toca `weight`: mandarlo aunque fuera el mismo valor invita a pisarlo mañana');
+eq(conManual.patch.weightWithings, 84.35, 'el de la báscula entra como `weightWithings`');
+eq(conManual.patch.fatPct, 17.3, 'y la composición, que la pesada manual no tiene');
+eq(conManual.patch.bfPct, 17.3, 'incluido el bfPct del dispositivo');
+yes(!('source' in conManual.patch), 'la fila sigue siendo manual: no se le pone `source`');
+
+const conIntervals = buildBodyweightPatch(scale, {
+  date: '2026-09-08', weight: 88.4, source: 'intervals.icu', measured: false, timestamp: 222,
+});
+eq(conIntervals.manualKept, false, 'el forward-fill de intervals no cuenta como manual');
+eq(conIntervals.patch.weight, 84.35, 'y su peso SÍ se sustituye por el de la báscula');
+eq(conIntervals.patch.source, 'withings', "con source 'withings'");
+
+const sinCambios = buildBodyweightPatch(scale, { ...scale });
+eq(Object.keys(sinCambios.patch).join(','), 'date',
+   'resincronizar el mismo día no genera delta (sólo `date`): nada de churn en updated_at');
 
 console.log(failed === 0 ? '\nTODO OK' : `\n${failed} FALLOS`);
 process.exit(failed === 0 ? 0 : 1);

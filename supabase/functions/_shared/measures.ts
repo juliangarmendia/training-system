@@ -119,12 +119,30 @@ export function groupByDay(
 }
 
 /**
+ * ¿Escribió Julian este peso a mano?
+ *
+ * Las filas de `bodyweight` vienen de tres sitios y sólo una de las tres manda sobre la
+ * báscula:
+ *   · `logBodyWeight()` escribe `{date, weight, timestamp}` — SIN `source`: es a mano.
+ *   · El formulario de composición escribe `{...fila previa, measured:true, …}`, así que puede
+ *     ARRASTRAR el `source:'intervals.icu'` del día. También es a mano (él tecleó ese peso).
+ *   · intervals.icu escribe `{source:'intervals.icu', measured:false}` — es el peso suavizado
+ *     con forward-fill, no una pesada: la báscula lo sustituye sin pensarlo.
+ * De ahí la regla: manual = no es de Withings Y (no tiene `source` O está marcada `measured`).
+ */
+export function isManualRow(row: BodyweightRow | null | undefined): boolean {
+  if (!row) return false;
+  if (row.source === "withings") return false;
+  return !row.source || row.measured === true;
+}
+
+/**
  * Fusión con lo que ya hay en `bodyweight[date]`.
  *
- * El peso MANUAL gana: una fila sin `source` la escribió Julian a mano y es la que él espera
- * ver. La báscula añade su propio peso como `weightWithings` y toda la composición, que la
- * pesada manual no tiene. Sin esta regla, sincronizar la báscula pisa en silencio un dato que
- * el usuario introdujo a propósito.
+ * El peso MANUAL gana y la báscula añade su propio peso como `weightWithings` más toda la
+ * composición, que la pesada manual no tiene. Sin esta regla, sincronizar la báscula pisa en
+ * silencio un dato que el usuario introdujo a propósito — y ver cambiar solo un número que
+ * tecleaste es la forma más rápida de dejar de fiarte de la app.
  */
 export function mergeBodyweight(
   manualRow: BodyweightRow | null | undefined,
@@ -133,9 +151,12 @@ export function mergeBodyweight(
   if (!withingsRow) return (manualRow || null) as BodyweightRow;
   if (!manualRow) return { ...withingsRow };
 
-  // Una fila que ya era de Withings no es "manual": se reemplaza con la nueva lectura.
-  const isManual = !manualRow.source;
-  if (!isManual) return { ...manualRow, ...withingsRow };
+  // Ni Withings previo ni pesada a mano (p. ej. el forward-fill de intervals): se reemplaza.
+  if (!isManualRow(manualRow)) return { ...manualRow, ...withingsRow };
+
+  // Fila manual SIN peso (sólo cintura, por ejemplo): no hay nada que preservar, la báscula
+  // aporta el número y las medidas de cinta se conservan por el spread.
+  if (typeof manualRow.weight !== "number") return { ...manualRow, ...withingsRow };
 
   const merged: BodyweightRow = { ...manualRow };
   merged.weight = manualRow.weight; // explícito: el manual manda
@@ -148,4 +169,36 @@ export function mergeBodyweight(
     if (typeof v === "number") merged[k] = v;
   }
   return merged;
+}
+
+export interface BodyweightPatchResult {
+  /** Lo que se manda a `merge_generic_row('bodyweight', …)`: SÓLO lo que cambia. */
+  patch: BodyweightRow;
+  /** El peso que queda en la fila (el manual si ganó, el de la báscula si no). */
+  weightUsed?: number;
+  /** true si se conservó un peso escrito a mano. */
+  manualKept: boolean;
+}
+
+/**
+ * Parche de `bodyweight[date]` a partir de la lectura de la báscula y de lo que ya había.
+ *
+ * Devuelve el DELTA, no la fila entera: el merge en SQL es `data || patch`, así que mandar
+ * claves que no cambian sólo hace ruido en `updated_at` y en el sync de la PWA.
+ */
+export function buildBodyweightPatch(
+  withingsRow: BodyweightRow,
+  existingRow: BodyweightRow | null | undefined,
+): BodyweightPatchResult {
+  const merged = mergeBodyweight(existingRow, withingsRow);
+  const manualKept = isManualRow(existingRow) && typeof existingRow?.weight === "number";
+
+  const patch: BodyweightRow = { date: merged.date };
+  for (const k of Object.keys(merged)) {
+    const v = merged[k];
+    if (v === undefined || v === null) continue;
+    if (existingRow && JSON.stringify(existingRow[k]) === JSON.stringify(v)) continue;
+    patch[k] = v;
+  }
+  return { patch, weightUsed: typeof merged.weight === "number" ? merged.weight : undefined, manualKept };
 }
