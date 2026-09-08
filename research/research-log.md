@@ -4,6 +4,85 @@
 
 ---
 
+## App audit and remediation plan (2026-09-08)
+
+Full audit of the app after the v11.55 → v11.65 sprint (weekly coach, removal of the daily readiness
+adjustment, server-side WHOOP/Withings). Report: **`docs/audits/2026-09-08-app-audit.md`**. Baseline was the
+2026-09-05 system audit (F-0…F-17): 12 closed, 4 partial (F-9, F-10, F-12, F-17), 2 open (F-11, F-15).
+
+**Research findings that change rules or guardrails:**
+- **G-H9 vs REC-008**: the hard kcal floor (2.500/2.300) put energy availability at ~27 kcal/kg FFM, below
+  the 30 threshold REC-008 forbids. Floor raised to **2.700 / 2.400** (user decision), consistent with
+  `plans/nutrition-notes.md`.
+- **REC-001** declared 1.8-2.7 g/kg protein; ACSM (Thomas 2016 §3:138-141) says 1.2-2.0, "2.0+" under
+  restriction. Range rewritten to 1.6-2.2 g/kg with the extrapolation declared.
+- **LOAD-004** carried no deload magnitudes; the engine's 0.6 sets / 0.7 km / 0.9 kg were apocryphal. Written
+  into the rule with grade `expert` (source: training-rules.md).
+- **STR-009** (reserved) now documents the double-progression rule the engine already runs (rep windows, 2.5 /
+  1.25 kg steps, dumbbell pair table, 10 % cap on any jump).
+- **END-009** new: weekly MVPA minutes (Jakicic 2024 §4:192-197: ≥150; 200-300 for weight loss) — the only
+  ACSM number the system had no rule for.
+- **Caveats reach the model**: `rules-compact.json` dropped the `caveats` field, so ATH-001 was applied at 80
+  contacts without its own caveat that low-dose optimality is unsupported. G-H10 (deload + diet break, on
+  REC-005 `weak_extrapolated`) and G-H11 (plyo contacts, ATH-001) demoted to soft guardrails.
+- Citation drift fixed: `coach-engine.js` called END-003 `expert`; the source says `moderate`.
+- 22 rules had no consumer beyond docs (3 fully orphan: STR-008, LONG-004, ENV-002; 7 strong among the rest).
+  A rule-coverage test now requires each rule to declare its consumer.
+
+**Engine/logic findings** (see the report §3): no percentage cap on rule-driven load jumps; missing RPE counted
+as low RPE; coach cardio minutes never expired; deload ignored for exercises without a coach target inside a
+coach plan; a residual recovery-driven dose in the running week (`deloadHint` froze the km ramp) — removed, the
+user decided on 2026-09-07 that recovery informs and never doses; the edge function did not run the plan
+validator although the docs said it did.
+
+**Process**: the 27 verification tests did not run in CI (the workflow only deployed). Added as a blocking job.
+
+---
+
+
+## ACSM Position Stands & Consensus Statements — intake (2026-05-02)
+
+Six ACSM papers added to `data/ACSM/`. Per-paper summaries with quoted numbers and program implications: **`research/acsm-summaries.md`**. This entry only logs the deltas vs. the existing 2026-04-06 cutting synthesis.
+
+**Papers ingested:**
+1. Currier et al. 2026 — ACSM RT Position Stand (replaces 2009).
+2. Garber et al. 2011 — ACSM Quantity & Quality of Exercise (cardio + RT + flexibility + neuromotor floors).
+3. Thomas, Erdman, Burke 2016 — Joint AND/DC/ACSM Nutrition & Athletic Performance.
+4. Jakicic et al. 2024 — ACSM Consensus on Physical Activity & Excess Body Weight.
+5. Burke et al. 2021 — ACSM Consensus on Weight Loss in Weight-Category Sports (low direct relevance; LEA principles only).
+6. Castellani et al. 2006 — ACSM Cold Injuries Position Stand (low relevance for Buenos Aires climate).
+
+### Validates the current setup
+- 2.0 g/kg/d protein during deficit — Thomas 2016 (1.2–2.0 g/kg/d, higher end during energy restriction).
+- Slow rate of loss (0.5–0.7% BW/wk) preserves LBM and performance — Thomas 2016 Q1, Burke 2021.
+- Each muscle 2×/wk, 80% 1RM for strength, full ROM, compound-first — Currier 2026 Tables 4 & 6.
+- RPE 7–9 / 1–3 RIR (no systematic failure) — Currier 2026 ("near-failure or 2–3 RIR").
+- 2–4 min rest on compounds — Garber 2011 (2–3 min); ≥48 h between sessions for same muscle.
+- Current weekly load (4 lift + 2 run, ~25–30 km/wk) sits in the 200–300 min/wk MVPA "enhanced weight loss" zone — Jakicic 2024.
+- Aerobic + RT combo preserves LBM during loss — Jakicic 2024 (multimodal recommended).
+
+### Refines the current setup (numbers to internalize)
+- **Hypertrophy dose-response plateau ~18–20 weekly sets** (Currier 2026 meta-regression). Current 10–14 sets/muscle/wk is the *deficit cap*, not the absolute hypertrophy ceiling — clarify in `training-rules.md`.
+- **EA threshold = 30 kcal/kg FFM/d**; optimal ~45 (Thomas 2016, Burke 2021). At 88.6 kg / ~21% BF (FFM ≈ 70 kg), 2,500 kcal − ~600 kcal EEE = ~27 kcal/kg FFM/d on training days — *below* the LEA threshold. Acceptable transiently in a planned cut but worth surfacing in weekly review (mood, sleep, libido, illness).
+- **Per-meal protein optimum = 0.25–0.3 g/kg (~22–27 g for Julian)**; current 40–50 g/meal is above the MPS-saturation ceiling (~0.55 g/kg ≈ 49 g) — fine, not superior.
+- **Carb periodization to training load** (Thomas 2016 Table 2): moderate program = 5–7 g/kg/d. Current ~3 g/kg sits below that band (deliberate trade for the deficit). Consider periodizing CHO higher on lower-body / long-run days (~4 g/kg) and lower on rest/upper days.
+- **Hydration**: 5–10 mL/kg pre-exercise (~500 mL for Julian) — add to nutrition-notes.
+- **Step floor**: ≥7,000 steps/d (Garber 2011). Worth tracking as NEAT proxy during the cut.
+
+### Contradicts or de-emphasizes prior beliefs
+- **Periodization is not significantly superior to non-periodized training** for healthy adults under volume-equated conditions (Currier 2026). Reframe weekly variation as a fatigue/adherence/exercise-rotation tool, not an adaptation lever.
+- **Training to failure is not necessary** and may be inadvisable for some — explicitly stated. Already aligned with current rules but worth reinforcing.
+- **Equipment type, set structure, time-under-tension, BFR, exercise complexity** do not consistently impact outcomes when load + volume + effort are matched (Currier 2026). Stop optimizing on these knobs.
+- **HIIT is not superior to MVPA for body-weight regulation** (Jakicic 2024). No reason to add HIIT for body-comp purposes.
+
+### Items deferred to next plan revision
+Logged in `plans/changelog.md` as candidates for the next monthly plan cycle (not this week's review):
+1. Document the volume cap as deficit-driven, not absolute (raises ceiling for the post-cut maintenance/lean-gain phase).
+2. Add eccentric overload (3–4 s eccentrics) on one accessory per session.
+3. Add hydration rule (500 mL pre-session) and step floor (≥7,000/d) to lifestyle notes.
+
+---
+
 ## Comprehensive Cutting Nutrition Research Review (2026-04-06)
 
 Context: 33 y/o male, 88.6 kg, 182 cm, ~21% BF, 4x/week strength + 2x/week running. Goal: lose 5-8 kg fat, preserve muscle. Web search was unavailable; all findings below are drawn from established literature through mid-2025.
