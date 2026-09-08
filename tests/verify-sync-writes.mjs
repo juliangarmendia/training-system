@@ -146,7 +146,11 @@ for (const fn of ['applyCoachProposal', 'rejectCoachProposal', '_coachExpireIfSt
   const i = COACHJS.indexOf(`function ${fn}(`);
   yes(i > 0, `se localiza ${fn}()`);
   if (i < 0) continue;
-  const cuerpo = COACHJS.slice(i, i + 5000);
+  // 9000 y no 5000: `applyCoachProposal` creció con el aviso de base obsoleta (E-15), la
+  // instantánea `preApply` (E-16) y las fechas de ajuste de kcal (E-18), y la escritura de la
+  // fila quedó fuera de la ventana. Una ventana corta convierte "esta función encola" en
+  // "esta función encola en sus primeras N líneas", que no es lo que se quiere afirmar.
+  const cuerpo = COACHJS.slice(i, i + 9000);
   yes(/smartPut\('coach_reviews'/.test(cuerpo), `${fn}() escribe la fila con smartPut`);
   yes(!/dbPut\('coach_reviews'/.test(cuerpo), `${fn}() no la escribe cruda`);
 }

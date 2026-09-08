@@ -14,8 +14,14 @@
 //     motor NO genera duras nunca: abre la puerta (`qualityUnlocked`) y la propone el coach.
 //   · **Largo > 50 % del volumen semanal.** El reparto es lo que convierte 18 km/semana en
 //     una lesión: 12 el sábado y 6 el miércoles no es la misma semana que 9 y 9.
-//   · **Progresar en deload o con `deloadHint`.** La semana de descarga recorta series al
-//     50 %; subir el volumen de carrera ahí es lo peor de los dos mundos (LOAD-004).
+//   · **Progresar en deload.** La semana de descarga recorta series al 50 %; subir el volumen
+//     de carrera ahí es lo peor de los dos mundos (LOAD-004).
+//   · **Dosificar por recuperación (E-7, auditoría 2026-09-08).** Hasta v11.66 un
+//     `readiness.deloadHint` congelaba la rampa de km y cerraba la puerta de la calidad. Era
+//     una dosis derivada de WHOOP y del RPE, aplicada sin que nadie la aprobara — justo lo que
+//     Julian retiró el 2026-09-07: *"nada de ajustar el entrenamiento por WHOOP"*. La
+//     recuperación INFORMA; la decisión semanal es del coach y del usuario. El test de la
+//     sección 4 es ahora un test NEGATIVO: con `deloadHint:true` no cambia ni un número.
 //   · **Bici / remo / ski contando como km de carrera.** Son minutos aeróbicos reales y
 //     cuentan para el presupuesto, pero no construyen tolerancia al impacto. Si suman km, el
 //     motor cree que hay una base de carrera que no hay.
@@ -186,9 +192,38 @@ yes(dl.weeklyKmTarget < 12, 'que es MENOS que la semana pasada, no más');
 yes(/descarga|deload/i.test(dl.reason), `y se dice por qué: "${dl.reason}"`);
 eq(byDow(dl, 6).km, 4.0, 'el largo baja con el volumen');
 
+// E-7 · TEST NEGATIVO: `deloadHint` no mueve NI UN NÚMERO.
+const verde = call({ history4w: BASE, slots: SLOTS2 });
 const hint = call({ history4w: BASE, slots: SLOTS2, readiness: { deloadHint: true } });
-eq(hint.weeklyKmTarget, 12, 'con deloadHint se MANTIENE la semana pasada (12 km), no se rampa');
-yes(/mantien|sin rampa/i.test(hint.reason), `y se dice: "${hint.reason}"`);
+eq(hint.weeklyKmTarget, verde.weeklyKmTarget,
+  `con deloadHint el objetivo semanal es el mismo (${verde.weeklyKmTarget} km): la recuperación informa, no dosifica`);
+eq(hint.weeklyMinTarget, verde.weeklyMinTarget, '…y los minutos tampoco cambian');
+eq(hint.phase, verde.phase, '…ni la fase');
+eq(hint.gates.qualityUnlocked, verde.gates.qualityUnlocked,
+  '…ni la puerta de la calidad (la abre la base construida, no la HRV)');
+eq(JSON.stringify(hint.sessions.map(s => [s.dow, s.km, s.min])),
+  JSON.stringify(verde.sessions.map(s => [s.dow, s.km, s.min])),
+  '…ni el reparto por sesión, km a km');
+yes(/fatiga/i.test(hint.reason), `la señal se NOMBRA en la razón, sin recortar: "${hint.reason}"`);
+yes(/revisión semanal/i.test(hint.reason), '…y dice a quién le toca decidir');
+
+// Y con la puerta de la calidad abierta, `deloadHint` tampoco la cierra.
+const conBase = {
+  history4w: [
+    { date: '2026-09-01', km: 5.5, min: 40, avgHR: 138 },
+    { date: '2026-09-05', km: 9.5, min: 68, avgHR: 140 },
+    { date: '2026-09-08', km: 5.5, min: 40, avgHR: 139 },
+    { date: '2026-09-12', km: 9.5, min: 68, avgHR: 141 },
+    { date: '2026-09-15', km: 5.5, min: 40, avgHR: 140 },
+    { date: '2026-09-19', km: 9.5, min: 68, avgHR: 142 },
+  ],
+  slots: SLOTS2,
+};
+const qVerde = call(conBase);
+const qHint = call(Object.assign({ readiness: { deloadHint: true } }, conBase));
+yes(qVerde.gates.baseWeeks >= 3, `el fixture tiene base construida (${qVerde.gates.baseWeeks} semanas)`);
+yes(qVerde.gates.qualityUnlocked, 'con base construida la calidad está desbloqueada');
+yes(qHint.gates.qualityUnlocked, '…y sigue desbloqueada con deloadHint: la abre la base, no el wearable');
 
 // La semana DE DESPUÉS de la descarga: la rampa reanuda el arco, no lo reinicia. Sin esto
 // cada bloque bajaba el volumen un escalón permanente (12 → 8,5 → 9,5 → …) y los 8,5 km de

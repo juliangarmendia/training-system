@@ -45,6 +45,43 @@ IndexedDB, sin `fetch`. El cableado a pantalla lo vigila `verify-coach-wiring.mj
 que el ajuste diario no vuelva y cuya §17 fija el orden de Home, el `coachBrief` en el plan y las
 tres fechas de `coachTargetWeekKey`.
 
+### v11.67 — lo que cambió en los motores (auditoría 2026-09-08, E-1…E-11)
+
+La auditoría del 8 de septiembre encontró tres motores prescribiendo sobre el calendario, sobre un
+dato ausente, o sobre una segunda aritmética. Esto es lo que se cambió y por qué:
+
+| Cambio | Antes | Ahora | Por qué |
+|---|---|---|---|
+| **E-1 · tope del salto de carga** | el escalón salía del material: 4 → 6 kg en mancuerna (**+50 %**), +2,5 en una máquina de 20 kg (+12,5 %) | `LOAD_JUMP_MAX_PCT = 0.10` en `coach-engine.js`; por encima del 10 % se mantiene el kg y se piden reps hasta cerrar el tope del rango **dos** veces seguidas | el validador del coach ya rechazaba esos saltos (`LOAD-JUMP`, `VP_LOAD_JUMP_PCT`) mientras la regla de la app los prescribía sin mirar. Un tope para las dos fuentes, o el coach queda sujeto a un límite que la app se salta. STR-009 |
+| **E-2 · RPE ausente** | la condición era `avgRpe == null` **o** `avgRpe <= rpeTop`: "no lo anoté" contaba igual que "me sobró", así que una sesión al fallo sin RPE sumaba +2,5 kg | sin RPE hace falta `allHitMax` en **dos** sesiones utilizables consecutivas; si no, mismo kg y *"sin RPE: subo sólo tras dos sesiones al tope"* | sin el dato no se puede saber si sobró margen. Una sesión al tope puede ser una sesión al límite; dos son una tendencia |
+| **E-3 · una fila por día** | dos registros del mismo ejercicio el mismo día entraban como dos sesiones: `usable[0]` y `usable[1]` eran el mismo entreno | `_coachDedupeHistory(hist, type)` deduplica por fecha y se queda con la de **más series hechas** | disparaba *"dos sesiones iguales"* el día del primer levantamiento, y `daysSince` salía 0 sobre un intervalo que no existía |
+| **E-4 · vigencia única** | los kg del coach caducaban (semana ISO actual o anterior) y sus **minutos de cardio no caducaban nunca** | `coachTargetIsCurrent(planWeekKey, todayStr)` en el motor, usada por `suggestSetTarget` **y** por `_coachCardioMin` (con el mismo respaldo de 14 días por `createdAt`) | un plan de hace tres semanas prescribía 50′ mientras sus kg ya habían cedido el paso a la regla: el mismo plan con dos vidas distintas |
+| **E-5 · descarga por ejercicio** | `deload` era `false` para **todo** el plan en cuanto `author === 'coach-llm'` | `deloadFor(exId)`: se libran del recorte sólo los ejercicios que traen `target` del coach; el resto recibe su −10 % y RPE 5-6 | cierto que el coach dosifica la descarga… de lo que escribe. Un accesorio que no tocó recibía progresión normal en deload, contra G-H3 / LOAD-004 |
+| **E-6 · la rampa de cardio** | `base × 1,1^(index−1)`: subía porque pasó una semana del bloque, no porque se hicieran los minutos | `progressCardioMin(base, block, {history})` rampa sobre la **mediana de los minutos de las dos últimas semanas ISO con dato en el mismo hueco**; sin dato, o con 14 días de hueco vacío, devuelve la base; el techo sigue siendo ×1,35 **sobre la base del slot** | cuatro semanas sin correr con una bici hace tres días seguían subiendo minutos: la puerta de los 14 días era global. El hueco del finisher y el de la sesión de cardio se leen por separado (`_cardioSlotHistory(jsDay, ds, kind)` en app.js) |
+| **E-7 · fuera la dosis por recuperación** | `readiness.deloadHint` congelaba `weeklyKmTarget` y cerraba `qualityUnlocked` en `suggestRunningWeek` | `deloadHint` **no cambia ningún número**: sigue en la firma y aparece, como mucho, en `note`/`reason` | era una dosis derivada de WHOOP y del RPE aplicada sin aprobación — exactamente lo que Julian retiró el 2026-09-07. **La recuperación informa; la decisión semanal es del coach y del usuario** |
+| **E-8 · el "próxima vez"** | `deload: false` fijo, "para no adivinar el calendario" | el deload **real** de la semana siguiente (`blockWeek(fecha + 7 d).isDeload`) | el bloque está anclado a fecha y se sabe con exactitud: la tarjeta del viernes prometía 95 kg y el lunes de descarga la pantalla prescribía 85 |
+| **E-9 · una fuente por concepto** | dos constantes lb→kg, dos tolerancias de Z2, tres FFM, bloques de 9 semanas en el banner y de 5 en el motor, tope de presupuesto 6 contra una barra sobre 8, y `_weekNumToDate` devolviendo "hoy" | `LB_TO_KG`, `RW_Z2_TOLERANCE_BPM`, `LOAD_JUMP_MAX_PCT` y `ffmKg({bodyweightRows, settings, todayStr})` exportados por `coach-engine.js`; el banner usa `blockWeek()`/`blockLabel()`; la barra usa `VP_MAX_BUDGET`; `_weekNumToDate` devuelve el lunes ISO correcto o `null` | dos números para el mismo concepto son dos pantallas que se contradicen y una decisión que depende de cuál se leyó primero |
+| **E-10 · lecturas dedupeadas** | doce agregaciones leían `runs`/`sessions` crudos | `getRunsDeduped()` / `getSessionsDeduped()`; las lecturas crudas que quedan están declaradas una por una en `tests/verify-dedupe-reads.mjs` con su motivo | la misma actividad de COROS llega por Strava **y** por intervals.icu: la racha contaba dos días donde había uno y el total del año se inflaba solo |
+| **E-11 · nutrición** | `recomputeNutritionDay()` en cada pintado (escribir al mirar) y EA intradía pintada como estado | `computeNutritionDay` calcula, `recomputeNutritionDay` escribe (sólo desde `saveMeal`/`deleteMeal`/`nutCloseDay`), `nutDayForRender` pinta sin escribir; la EA lleva color y "faltan N kcal" sólo si `day.closed` | un render que escribe hace que el último dispositivo que MIRE la pantalla gane el merge. Y la EA es una magnitud diaria (REC-008): intradía sale siempre "crítica" y no significa nada |
+
+**La precedencia de `ffmKg()`** — la que decide por qué número se divide la disponibilidad
+energética y con qué FFM se calcula el BMR de Katch-McArdle:
+
+1. `ffmKg` de una fila con `source:'withings'` de **menos de 14 días** (`FFM_FRESH_DAYS`);
+2. si no, la derivada `peso × (1 − bfPct/100)` de la última fila medida con %grasa;
+3. si no, la **declarada**: `settings.goals.preserve.ffmKg`, y si falta, `COACH_GOALS_DEFAULT` (72,8 kg).
+
+El retorno lleva `source`, `date` y `ageDays` a propósito: sin ellos, la tarjeta de nutrición y el
+pack del coach no pueden distinguir "28,9 medido ayer" de "28,9 sobre un número de agosto", que es
+la diferencia entre un dato y una suposición. Lo consumen `nutFfmKg()`/`nutFfmDetail()` en
+`nutrition.js` y `facts.nutrition.maintenance.ffmKg` en `coach-facts.js`.
+
+Tests: `verify-set-target` (§10 el tope del 10 %, §11 el mismo día, §12 la vigencia),
+`verify-cardio-progress` (nuevo), `verify-running-week` (§4, test **negativo** de `deloadHint`),
+`verify-block-week` (§8 el banner y las constantes únicas), `verify-dedupe-reads` (nuevo),
+`verify-nutrition-v2` (§13 recompute y EA, §14 la FFM), `verify-coach-wiring` (§18 aplicar contra la
+base correcta y deshacer sin perder nada).
+
 ### Lo que son decisiones de diseño, ya tomadas (7)
 
 | Motor del spec | Dónde está resuelto |
@@ -168,10 +205,10 @@ decisión sale con su Rule ID. **El primero cambió en v11.62** y por eso se ree
 - **No debe:** programar al fallo en compuestos en déficit (STR-004); subir volumen por encima del cap del bloque.
 
 ## 5b. Cardio Engine
-- **Inputs:** objetivo, modalidad (de Modality Engine), readiness, fase de progresión de running.
+- **Inputs:** objetivo, modalidad (de Modality Engine), fase de progresión de running, y **los minutos ya hechos en ese hueco** (v11.67, E-6). El `readiness` sigue entrando y **no mueve ningún número** (E-7).
 - **Outputs:** sesión cardio (zona, duración/estructura, intervals/threshold/easy/long).
 - **Reglas:** END-001..008.
-- **No debe:** más de 1 sesión dura de cardio que choque con pierna; prescribir paces antes de base aeróbica (END-002).
+- **No debe:** más de 1 sesión dura de cardio que choque con pierna; prescribir paces antes de base aeróbica (END-002); **rampar por el número de semana del bloque en vez de por lo hecho** (E-6); **recortar km o cerrar la puerta de la calidad por una señal de recuperación** — eso lo decide la revisión semanal, con el usuario delante (E-7).
 
 ## 5c. Hybrid Engine
 - **Inputs:** objetivo (work_capacity/strength_endurance), readiness, equipamiento, budget restante.
@@ -190,8 +227,8 @@ decisión sale con su Rule ID. **El primero cambió en v11.62** y por eso se ree
 - **Inputs:** logs de rendimiento, cualidad dominante del bloque, tendencias.
 - **Outputs:** nuevas cargas/volumen/paces para la próxima sesión.
 - **Decide:** qué avanza y qué se mantiene.
-- **Reglas:** GEN-001 (una cualidad), STR-001 (volumen antes que carga en déficit), END-003 (~10%/sem soft), LOAD-001 (sin spikes).
-- **No debe:** progresar todas las cualidades a la vez; saltar volumen/carga bruscamente.
+- **Reglas:** GEN-001 (una cualidad), STR-001 (volumen antes que carga en déficit), STR-009 (doble progresión y sus magnitudes, con el **tope del 10 %**), END-003 (~10%/sem soft, `moderate`), LOAD-001 (sin spikes), GEN-002 (ningún número sin dato de origen).
+- **No debe:** progresar todas las cualidades a la vez; saltar volumen/carga bruscamente; **pasar del +10 % del último top set** aunque el disco más pequeño del gimnasio lo obligue (v11.67, E-1: se piden reps y una sesión más al tope); **tratar un RPE ausente como RPE bajo** (E-2).
 
 ## 8. Recovery Engine (override) — **no existe como código, y no va a existir a escala diaria**
 - **Inputs:** readiness sostenida, señales de overreaching, dolor/tendón, adherencia.

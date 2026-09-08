@@ -27,7 +27,11 @@ import { createHash } from 'node:crypto';
 const SRC = 'research/evidence-to-rules.md';
 const OUT = 'supabase/functions/coach-weekly-review/rules-compact.json';
 const SHA_FILE = 'supabase/functions/coach-weekly-review/rules-compact.sha';
-const MIN_RULES = 70;
+const MIN_RULES = 72;
+const MAX_KB = 38;          // 26,1 KB de reglas + 2 caveats/regla recortados a 160 (R-7, 2026-09-08)
+const CAVEAT_CHARS = 160;
+const CAVEAT_MAX = 2;
+const CONSUMERS = ['engine', 'validator', 'guardrail', 'prompt', 'doc', 'none'];
 const LEVELS = ['strong', 'moderate', 'weak_extrapolated', 'expert'];
 
 let fail = 0;
@@ -103,11 +107,50 @@ eq(badSrcLevels.length, 0, 'y el propio .md no ha inventado un grado nuevo');
 eq((gen.rules || []).filter(r => !r.rule || !r.id).length, 0, 'toda regla lleva id y texto');
 eq((gen.rules || []).filter(r => !r.programmingAction).length, 0, 'toda regla lleva programmingAction (es lo que autoriza al coach a actuar)');
 
-sec('El compacto es COMPACTO (prefijo cacheable)');
+sec('Los `caveats` viajan al prompt (R-7, 2026-09-08)');
+// EL FALLO QUE ESTO IMPIDE. El grado dice cómo de firme es una regla; el caveat dice EN QUÉ SE
+// EQUIVOCA. Sin caveats el modelo aplicaba ATH-001 (40-80 contactos de plyo) sin saber que su
+// propio caveat dice que "la dosis baja es óptima" NO está soportado, y G-H10 era una regla DURA
+// sobre REC-005 `weak_extrapolated`, cuyo texto dice que el diet break no preserva más masa
+// magra. Los dos guardarraíles quedaron degradados a blandos en el mismo incremento.
+const srcWithCaveats = source.filter(r => Array.isArray(r.caveats) && r.caveats.length);
+const genWithCaveats = (gen.rules || []).filter(r => Array.isArray(r.caveats) && r.caveats.length);
+ok(genWithCaveats.length > 0, 'el compacto trae `caveats` (antes se descartaban)');
+eq(genWithCaveats.length, srcWithCaveats.length,
+  'y los trae para TODAS las reglas que los tienen en el .md');
+const tooLong = genWithCaveats.flatMap(r => r.caveats).filter(c => String(c).length > CAVEAT_CHARS);
+eq(tooLong.length, 0, `cada caveat recortado a ${CAVEAT_CHARS} caracteres`);
+const tooMany = genWithCaveats.filter(r => r.caveats.length > CAVEAT_MAX);
+eq(tooMany.length, 0, `y como mucho ${CAVEAT_MAX} por regla (el 3.º en adelante es rastro de auditoría)`);
+// Prefijo del caveat idéntico al del .md: un caveat "recortado" que en realidad se reescribió
+// sería una fuente de verdad silenciosamente distinta, que es el fallo que este test persigue.
+let cavMismatch = 0;
+for (const r of genWithCaveats) {
+  const s = byId.get(r.id);
+  const want = (s.caveats || []).slice(0, CAVEAT_MAX).map(c => String(c).replace(/\s+/g, ' ').trim());
+  r.caveats.forEach((c, i) => {
+    const w = want[i] || '';
+    const clipped = String(c).replace(/…$/, '');
+    if (!w.startsWith(clipped)) cavMismatch++;
+  });
+}
+eq(cavMismatch, 0, 'y cada uno es el prefijo literal del caveat del .md (no una reescritura)');
+// ATH-001 y REC-005 son los dos casos que motivaron el cambio: si sus caveats no llegan, la
+// degradación de G-S16/G-S15 en el prompt se queda sin la razón que la justifica.
+for (const id of ['ATH-001', 'REC-005', 'GEN-001', 'END-003']) {
+  const r = (gen.rules || []).find(x => x.id === id);
+  ok(!!(r && r.caveats && r.caveats.length), `${id} llega con su caveat al prompt`);
+}
+
+sec('`consumer` declarado en la fuente (R-8) y NO viaja al prompt');
+const noConsumer = source.filter(r => CONSUMERS.indexOf(r.consumer) === -1);
+eq(noConsumer.length, 0, `toda regla declara consumer ∈ {${CONSUMERS.join(', ')}}${noConsumer.length ? ` — sin él: ${noConsumer.map(r => r.id).join(', ')}` : ''}`);
+
+sec('El compacto sigue siendo COMPACTO (prefijo cacheable)');
 const bytes = Buffer.byteLength(readFileSync(OUT, 'utf8'), 'utf8');
 console.log(`       tamaño: ${(bytes / 1024).toFixed(1)} KB`);
-ok(bytes <= 25 * 1024, 'el JSON pesa ≤25 KB (~5k tokens)');
-const heavy = ['sources', 'caveats', 'domain', 'population', 'applicabilityToUser', 'goal'];
+ok(bytes <= MAX_KB * 1024, `el JSON pesa ≤${MAX_KB} KB (~9k tokens)`);
+const heavy = ['sources', 'domain', 'population', 'applicabilityToUser', 'goal', 'consumer', 'consumerNote'];
 const leaked = (gen.rules || []).flatMap(r => Object.keys(r)).filter(k => heavy.indexOf(k) !== -1);
 eq(leaked.length, 0, `los campos de auditoría (${heavy.join(', ')}) NO viajan al prompt`);
 

@@ -335,20 +335,32 @@ sec('G-H9 · PROTEIN-FLOOR / KCAL-FLOOR (hard) — REC-001, REC-008');
 fires(run({ nutrition: { proteinG: 170, kcalTraining: 2700, kcalRest: 2400, dietBreak: false } }), 'PROTEIN-FLOOR', 'hard', ['170', '185'], 'proteína a 170 g');
 silent(base, 'PROTEIN-FLOOR', 'proteína a 190 g');
 fires(run(null, { decisions: [{ id: 'n1', type: 'nutrition', what: 'Bajar proteína', why: 'x', ruleIds: ['REC-001'], evidence: { numbers: { proteinG: 150 } } }] }), 'PROTEIN-FLOOR', 'hard', ['150'], 'una DECISIÓN que baja la proteína a 150 g');
-fires(run({ nutrition: { proteinG: 190, kcalTraining: 2400, kcalRest: 2400, dietBreak: false } }), 'KCAL-FLOOR', 'hard', ['2400', '2500'], 'día de entreno a 2.400 kcal');
-fires(run({ nutrition: { proteinG: 190, kcalTraining: 2700, kcalRest: 2200, dietBreak: false } }), 'KCAL-FLOOR', 'hard', ['2200', '2300'], 'día de descanso a 2.200 kcal');
-silent(base, 'KCAL-FLOOR', '2.700 / 2.400');
+// R-1 (2026-09-08): los suelos son 2.700 / 2.400, no 2.500 / 2.300. El suelo viejo dejaba la EA
+// en ~27 kcal/kg FFM y REC-008 marca 30 — contradecía la regla que lo justificaba.
+fires(run({ nutrition: { proteinG: 190, kcalTraining: 2600, kcalRest: 2400, dietBreak: false } }), 'KCAL-FLOOR', 'hard', ['2600', '2700'], 'día de entreno a 2.600 kcal (pasaba con el suelo viejo)');
+fires(run({ nutrition: { proteinG: 190, kcalTraining: 2700, kcalRest: 2350, dietBreak: false } }), 'KCAL-FLOOR', 'hard', ['2350', '2400'], 'día de descanso a 2.350 kcal (pasaba con el suelo viejo)');
+silent(base, 'KCAL-FLOOR', '2.700 / 2.400 exactos: el plan ideal está justo en el suelo');
+eq(F.VP_FLOORS.kcalTraining, 2700, 'VP_FLOORS.kcalTraining = 2700 (R-1)');
+eq(F.VP_FLOORS.kcalRest, 2400, 'VP_FLOORS.kcalRest = 2400 (R-1)');
+// PROTEIN-FLOOR, aviso BLANDO nuevo: tocar la ingesta en déficit sin decir nada de la proteína.
+fires(run({ nutrition: { kcalTraining: 2700, kcalRest: 2400, dietBreak: false } },
+  { decisions: [{ id: 'n2', type: 'nutrition', what: 'Bajar 150 kcal', why: 'pendiente −0,15', ruleIds: ['REC-002'], evidence: { numbers: { slope: -0.15 } } }] }),
+  'PROTEIN-FLOOR', 'warn', ['185'], 'se toca la ingesta en déficit y la propuesta no menciona proteína');
+silent(base, 'PROTEIN-FLOOR', 'la cabecera declara 190 g');
 
 // ════════════════════════════════════════════════════════════════════════════════════
-sec('G-H10 · DELOAD-DIETBREAK (hard) — REC-005');
+sec('G-S15 · DELOAD-DIETBREAK (warn desde 2026-09-08) — REC-005');
 // ════════════════════════════════════════════════════════════════════════════════════
-fires(run({ block: { weekIndex: 5, weeksTotal: 5, phase: 'deload' } }, CTX_DELOAD), 'DELOAD-DIETBREAK', 'hard', ['sin diet break'], 'descarga sin subir a mantenimiento');
-fires(run({ nutrition: { proteinG: 190, kcalTraining: 3000, kcalRest: 2700, dietBreak: true } }), 'DELOAD-DIETBREAK', 'hard', ['Diet break en una semana de carga'], 'diet break en semana de carga');
+// R-7: era DURO sobre REC-005, `weak_extrapolated`, cuyo propio texto dice que el diet break
+// alineado con el deload mejora la EFICIENCIA de la pérdida y NO preserva más masa magra. Una
+// regla dura sobre esa base es certeza prestada, que es el patrón que la auditoría fue a buscar.
+fires(run({ block: { weekIndex: 5, weeksTotal: 5, phase: 'deload' } }, CTX_DELOAD), 'DELOAD-DIETBREAK', 'warn', ['sin diet break', 'weak_extrapolated'], 'descarga sin subir a mantenimiento');
+fires(run({ nutrition: { proteinG: 190, kcalTraining: 3000, kcalRest: 2700, dietBreak: true } }), 'DELOAD-DIETBREAK', 'warn', ['Diet break en una semana de carga'], 'diet break en semana de carga');
 silent(deloadOk, 'DELOAD-DIETBREAK', 'descarga + diet break juntos');
 silent(base, 'DELOAD-DIETBREAK', 'carga + déficit');
 
 // ════════════════════════════════════════════════════════════════════════════════════
-sec('G-H11 · PLYO-PLACEMENT (hard) — ATH-001, INT-004');
+sec('G-H10 · PLYO-PLACEMENT (hard, INT-004) / G-S16 · PLYO-CONTACTS (warn, ATH-001)');
 // ════════════════════════════════════════════════════════════════════════════════════
 const plyoLate = run({ sessions: Object.assign(clone(PLAN_OK.sessions), {
   lowerA: { id: 'lowerA', name: 'Lower A', mobilityMin: 8, exercises: [EX.squat, EX.legCurl, EX.boxJump] },
@@ -362,7 +374,13 @@ fires(plyoWrongSession, 'PLYO-PLACEMENT', 'hard', ['Upper A', 'lowerA'], 'box ju
 const plyoVolume = run({ sessions: Object.assign(clone(PLAN_OK.sessions), {
   lowerA: { id: 'lowerA', name: 'Lower A', mobilityMin: 8, exercises: [Object.assign({}, EX.boxJump, { sets: 6, reps: '15' }), EX.squat, EX.legCurl] },
 }) });
-fires(plyoVolume, 'PLYO-PLACEMENT', 'hard', ['90', '80'], '90 contactos');
+// R-7: la COLOCACIÓN sigue dura (INT-004, `strong`: el plyo no va después de aeróbico ni con
+// fatiga previa). El NÚMERO 80 baja a blando y a su propio id: el caveat de ATH-001 dice que "la
+// dosis baja es óptima" NO está soportado — la dosis-respuesta favorece MÁS volumen — y aquí la
+// dosis baja es mantenimiento de potencia en déficit y prudencia lumbar, no un óptimo.
+fires(plyoVolume, 'PLYO-CONTACTS', 'warn', ['90', '80', 'NO está soportado'], '90 contactos');
+silent(plyoVolume, 'PLYO-PLACEMENT', 'y el box jump sigue primero en Lower A: la colocación no se toca');
+silent(base, 'PLYO-CONTACTS', '15 contactos');
 const plyoAfterHard = run({ weekTemplate: Object.assign(clone(PLAN_OK.weekTemplate), {
   0: { type: 'run', label: 'Umbral', subtype: 'threshold', durationMin: 35 },
 }) });
@@ -409,11 +427,155 @@ fires(run(null, { decisions: [{ id: 'x', type: 'structure', what: 'Quitar el cur
 silent(base, 'DECISION-EVIDENCE', 'decisión con Rule IDs y números');
 
 // ════════════════════════════════════════════════════════════════════════════════════
-sec('SESSION-COUNT (warn) — BUD-001');
+sec('G-H13 · SESSION-COUNT (hard desde 2026-09-08) — BUD-001, LONG-002');
 // ════════════════════════════════════════════════════════════════════════════════════
+// EL CASO DE LA AUDITORÍA (E-14a): "añade un sexto día de gym" en la nota del usuario no lo
+// paraba nadie. Era BLANDO y además se SALTABA entero sin `ctx.variant`, así que el camino más
+// probable —la app sin variante elegida— era el que no tenía red.
+const SIX_DAYS = {
+  weekTemplate: {
+    0: { type: 'gym', session: 'upperA' }, 1: { type: 'gym', session: 'lowerA' },
+    2: { type: 'gym', session: 'upperA' }, 3: { type: 'gym', session: 'lowerB' },
+    4: { type: 'gym', session: 'upperB' }, 5: { type: 'gym', session: 'lowerA' },
+    6: { type: 'run', label: 'Cardio Z2', subtype: 'zone2', durationMin: 50 },
+  },
+};
+fires(run(SIX_DAYS, { variant: 4 }), 'SESSION-COUNT', 'hard', ['6', '5'], '6 días de fuerza con la variante 4');
+fires(run(SIX_DAYS, { variant: null }), 'SESSION-COUNT', 'hard', ['6', '5'], '6 días de fuerza SIN variante (antes se saltaba el chequeo)');
+fires(run(SIX_DAYS, { variant: 6 }), 'SESSION-COUNT', 'hard', ['6', '5'], '6 días de fuerza incluso con la variante 6: el techo absoluto son 5');
+// El blando sigue vivo por debajo del techo: 4 días con la variante de 4 (2 de fuerza).
 fires(run(null, { variant: 4 }), 'SESSION-COUNT', 'warn', ['4', '2'], '4 días de gimnasio con la variante de 4 días (2 de fuerza)');
 silent(base, 'SESSION-COUNT', 'la variante 6 permite 4 días de fuerza');
-silent(run(null, { variant: null }), 'SESSION-COUNT', 'sin variante en el ctx el chequeo se salta');
+silent(run(null, { variant: null }), 'SESSION-COUNT', 'sin variante, 4 días están por debajo del techo de 5');
+eq(F.VP_MAX_STRENGTH_DAYS, 5, 'VP_MAX_STRENGTH_DAYS = 5');
+
+// ════════════════════════════════════════════════════════════════════════════════════
+sec('G-H5 · el largo de ≥10 km y `running.hardSessions[]` cuentan como dura (E-14b)');
+// ════════════════════════════════════════════════════════════════════════════════════
+// Lo que se colaba: `_vpSlotIsHardCardio` sólo miraba el subtipo, así que un largo de 12 km el
+// domingo delante de la pierna del lunes era invisible — y 10 km es justo el objetivo del bloque,
+// de modo que "el largo del hito" era el caso más probable de todos.
+const longSun = run({ weekTemplate: Object.assign(clone(PLAN_OK.weekTemplate), {
+  0: { type: 'run', label: 'Largo fácil', subtype: 'long_easy', durationMin: 80, cardio: { subtype: 'long_easy', durationMin: 80, distanceKm: 12 } },
+}) });
+fires(longSun, 'RUN-BEFORE-LEGS', 'hard', ['domingo', 'lunes', '12'], 'largo de 12 km el domingo, pierna el lunes');
+const longShort = run({ weekTemplate: Object.assign(clone(PLAN_OK.weekTemplate), {
+  0: { type: 'run', label: 'Largo fácil', subtype: 'long_easy', durationMin: 55, cardio: { subtype: 'long_easy', durationMin: 55, distanceKm: 8 } },
+}) });
+silent(longShort, 'RUN-BEFORE-LEGS', 'largo de 8 km el domingo (por debajo de los 10)');
+// `running.hardSessions` como array de días: el día viaja en la propuesta aunque la plantilla no
+// lo refleje todavía.
+fires(run({ running: { weeklyKmTarget: 12, longRunKm: 6, hardSessions: [{ day: 0, subtype: 'threshold' }] } }),
+  'RUN-BEFORE-LEGS', 'hard', ['domingo', 'lunes'], '`running.hardSessions[{day:0}]` con pierna el lunes');
+fires(run({ running: { weeklyKmTarget: 12, longRunKm: 6, hardSessions: [{ day: 0 }, { day: 3 }] } }),
+  'HARD-CARDIO', 'hard', ['2'], 'dos días declarados en `running.hardSessions[]`');
+eq(F.VP_LONG_RUN_HARD_KM, 10, 'VP_LONG_RUN_HARD_KM = 10');
+
+// ════════════════════════════════════════════════════════════════════════════════════
+sec('G-S17 · ORDER-SAME-DAY (warn) — INT-003');
+// ════════════════════════════════════════════════════════════════════════════════════
+// "Levantar primero si comparten día" no existía en ningún guardarraíl (E-14c). Blando porque
+// INT-003 es `weak_extrapolated`: Schumann 2022 sostiene la interferencia intra-sesión, no el
+// orden concreto. Y sólo con señal POSITIVA de orden: el finisher de Z2 de los 4 días de gym va
+// después por definición, y avisar por la mera coexistencia sería ruido cada semana.
+const cardioFirst = run({ weekTemplate: Object.assign(clone(PLAN_OK.weekTemplate), {
+  1: { type: 'gym', session: 'lowerA', cardio: { subtype: 'zone2', durationMin: 30, order: 'before', note: 'Z2 30 min ≤143 bpm' } },
+}) });
+fires(cardioFirst, 'ORDER-SAME-DAY', 'warn', ['lunes', 'Lower A'], 'cardio declarado ANTES de Lower A (`order: before`)');
+const cardioNote = run({ weekTemplate: Object.assign(clone(PLAN_OK.weekTemplate), {
+  2: { type: 'gym', session: 'upperA', cardio: { subtype: 'zone2', durationMin: 25, note: '25 min de Z2 antes de levantar, ≤143 bpm' } },
+}) });
+fires(cardioNote, 'ORDER-SAME-DAY', 'warn', ['martes'], 'y también cuando lo dice la nota ("antes de levantar")');
+const cardioAfter = run({ weekTemplate: Object.assign(clone(PLAN_OK.weekTemplate), {
+  1: { type: 'gym', session: 'lowerA', cardio: { subtype: 'zone2', durationMin: 20, note: 'finisher de 20 min ≤143 bpm' } },
+}) });
+silent(cardioAfter, 'ORDER-SAME-DAY', 'un finisher sin marca de orden no dispara nada');
+silent(base, 'ORDER-SAME-DAY', 'los 4 días de gym del ideal llevan z2FinisherMin: va después');
+
+// ════════════════════════════════════════════════════════════════════════════════════
+sec('G-S18 · FREQ-FLOOR (warn) — STR-002 `strong`');
+// ════════════════════════════════════════════════════════════════════════════════════
+// 2×/semana por patrón no tenía suelo (E-14d): la regla `strong` más fácil de incumplir sin que
+// nada dijera nada. Cuenta por FAMILIA — la extensión de cuádriceps del jueves es la segunda
+// exposición de rodilla de la sentadilla del lunes — y por eso el plan ideal (4 días) CALLA.
+silent(base, 'FREQ-FLOOR', 'el ideal cubre las 4 familias 2× (rodilla, bisagra, empuje, tirón)');
+const noPull = run({ sessions: Object.assign(clone(PLAN_OK.sessions), {
+  upperB: { id: 'upperB', name: 'Upper B', exercises: [EX.ohp, EX.abWheel, EX.facePull] },
+}) });
+fires(noPull, 'FREQ-FLOOR', 'warn', ['tirón', '1', '2'], 'sin dominadas en Upper B: el tirón baja a 1 exposición');
+const noHinge = run({ sessions: Object.assign(clone(PLAN_OK.sessions), {
+  lowerB: { id: 'lowerB', name: 'Lower B', mobilityMin: 8, exercises: [EX.legExt, EX.abWheel] },
+}) });
+ok(pick(noHinge, 'FREQ-FLOOR').some(x => /bisagra/.test(x.text)), 'sin peso muerto en Lower B → avisa por la bisagra');
+// Variantes de 3 días: la frecuencia 2× es aritméticamente imposible, así que el aviso se calla.
+silent(run(null, { variant: 3 }), 'FREQ-FLOOR', 'variante de 3 días: el chequeo no aplica');
+silent(validatePlanVersion(Object.assign(clone(PLAN_OK), {
+  sessions: Object.assign(clone(PLAN_OK.sessions), {
+    upperB: { id: 'upperB', name: 'Upper B', exercises: [EX.ohp, EX.abWheel, EX.facePull] },
+  }),
+}), Object.assign({}, CTX_OK, { variant: 3 })), 'FREQ-FLOOR', 'el mismo plan sin tirón en la variante de 3 días');
+eq(F.VP_MIN_PATTERN_EXPOSURES, 2, 'VP_MIN_PATTERN_EXPOSURES = 2');
+
+// ════════════════════════════════════════════════════════════════════════════════════
+sec('G-S20 · MVPA-FLOOR (warn) — END-009, ACSM 2024');
+// ════════════════════════════════════════════════════════════════════════════════════
+// Ninguna regla codificaba los minutos MVPA/semana (R-5). 150 es el suelo de consenso y 200-300
+// la banda de pérdida de grasa; se cuentan minutos de CARDIO solamente (la fuerza también es
+// MVPA, así que el chequeo se queda corto a propósito).
+silent(base, 'MVPA-FLOOR', 'el ideal suma 190 min de cardio (2 slots + 4 finishers + recuperación)');
+const fewMin = run({ weekTemplate: {
+  0: { type: 'rest' }, 1: { type: 'gym', session: 'lowerA' }, 2: { type: 'gym', session: 'upperA' },
+  3: { type: 'run', label: 'Cardio Z2', subtype: 'zone2', durationMin: 30 },
+  4: { type: 'gym', session: 'lowerB' }, 5: { type: 'gym', session: 'upperB' }, 6: { type: 'rest' },
+} });
+fires(fewMin, 'MVPA-FLOOR', 'warn', ['30', '150', '200'], '30 min de cardio en la semana');
+eq(F.VP_MIN_MVPA_MIN, 150, 'VP_MIN_MVPA_MIN = 150');
+
+// ════════════════════════════════════════════════════════════════════════════════════
+sec('G-S19 · RECOVERY-ONLY (warn) — READ-005, READ-002');
+// ════════════════════════════════════════════════════════════════════════════════════
+// El residuo de E-17: el prompt autoriza bajar el volumen de la SEMANA "cuando el rendimiento lo
+// confirme" y nada exigía la parte del rendimiento. Una decisión que cita sólo READ-* y quita
+// series es dosificación por wearable con otro nombre — lo que Julian retiró el 2026-09-07.
+const readOnly = [{ id: 'r1', type: 'progression', what: 'Bajar 2 series en accesorios',
+  why: 'HRV −12 % y RHR +6 bpm en 7 días', ruleIds: ['READ-001', 'READ-004'],
+  evidence: { numbers: { hrvDelta: '-12%', rhrDelta: '+6' } } }];
+fires(run(null, { decisions: readOnly }), 'RECOVERY-ONLY', 'warn', ['READ-001', 'recuperación es contexto'],
+  'baja series citando sólo READ-*, sin dato de rendimiento');
+const readPlusPerf = [{ id: 'r2', type: 'progression', what: 'Bajar 2 series en accesorios',
+  why: 'HRV −12 % Y el top set de banca cayó a 95×6 desde 95×8', ruleIds: ['READ-001', 'STR-001'],
+  evidence: { numbers: { hrvDelta: '-12%', topSet: '95x6 el 5-sep' } } }];
+silent(run(null, { decisions: readPlusPerf }), 'RECOVERY-ONLY', 'la misma bajada con un top set citado');
+const readNoDrop = [{ id: 'r3', type: 'recovery', what: 'Vigilar el sueño esta semana',
+  why: 'media de 6,2 h en 7 días', ruleIds: ['READ-006'], evidence: { numbers: { sleepH: 6.2 } } }];
+silent(run(null, { decisions: readNoDrop }), 'RECOVERY-ONLY', 'una nota de recuperación que no baja nada');
+silent(base, 'RECOVERY-ONLY', 'la decisión del ideal se apoya en RPE y top set');
+
+// ════════════════════════════════════════════════════════════════════════════════════
+sec('G-H14 · KCAL-STEP (hard) — REC-002');
+// ════════════════════════════════════════════════════════════════════════════════════
+// E-18: el coach ya podía proponer `nutrition.kcalTarget` y nada acotaba el paso. Sin tope, el
+// "dial gobernado por rendimiento" es un interruptor: a las 2 semanas no se sabe si la pendiente
+// cambió por el ajuste o por el ruido, que es justo lo que la ventana de 14 días protege.
+const KCAL_CTX = { facts: Object.assign({}, FACTS_OK, {
+  nutrition: { daysLogged14: 12, ea: { daysUnder30: 0 }, kcal: { targetMean7: 2900 } },
+  progress: { weight: { validWindow: { ok: true, reasons: [], lastAdjustDate: '2026-08-20', daysSinceLastAdjust: 19 } } },
+}) };
+fires(run({ nutrition: { proteinG: 190, kcalTarget: 2700, kcalTraining: 2700, kcalRest: 2400, dietBreak: false } }, KCAL_CTX),
+  'KCAL-STEP', 'hard', ['2900', '2700', '200', '150'], 'salto de 200 kcal de golpe');
+silent(run({ nutrition: { proteinG: 190, kcalTarget: 2775, kcalTraining: 2775, kcalRest: 2400, dietBreak: false } }, KCAL_CTX),
+  'KCAL-STEP', 'un ajuste de 125 kcal con 19 días desde el último');
+const KCAL_RECENT = { facts: Object.assign({}, FACTS_OK, {
+  nutrition: { daysLogged14: 12, ea: { daysUnder30: 0 }, kcal: { targetMean7: 2900 } },
+  progress: { weight: { validWindow: { ok: true, reasons: [], lastAdjustDate: '2026-09-02', daysSinceLastAdjust: 6 } } },
+}) };
+fires(run({ nutrition: { proteinG: 190, kcalTarget: 2800, kcalTraining: 2800, kcalRest: 2400, dietBreak: false } }, KCAL_RECENT),
+  'KCAL-STEP', 'hard', ['6', '14', '2026-09-02'], '100 kcal pero sólo 6 días desde el último ajuste');
+silent(run({ nutrition: { proteinG: 190, kcalTarget: 2900, kcalTraining: 2900, kcalRest: 2400, dietBreak: false } }, KCAL_RECENT),
+  'KCAL-STEP', 'el mismo objetivo que ya había: no es un ajuste');
+silent(base, 'KCAL-STEP', 'el plan ideal no declara kcalTarget');
+eq(F.VP_KCAL_STEP_MAX, 150, 'VP_KCAL_STEP_MAX = 150');
+eq(F.VP_KCAL_ADJUST_DAYS, 14, 'VP_KCAL_ADJUST_DAYS = 14');
 
 // ════════════════════════════════════════════════════════════════════════════════════
 sec('EA-GATE (warn) — REC-008');
@@ -519,17 +681,44 @@ silent(base, 'Z2-CEILING', 'el plan no declara techo (se salta)');
 sec('G-S12 · CHURN / ROTATION (warn) — GEN-001, STR-010');
 // ════════════════════════════════════════════════════════════════════════════════════
 fires(run(null, { briefing: { priorities: ['a', 'b', 'c', 'd', 'e'] } }), 'CHURN', 'warn', ['5', '3'], '5 prioridades en el briefing');
+// E-14e: `CHURN` contaña el `changes[]` que el coach se AUTODECLARA, así que una propuesta que
+// reescribe media semana sin rellenar `changes[]` no se auditaba en absoluto — el único caso en
+// que este aviso hace falta. Ahora cuenta el DIFF real contra `ctx.basedOn`.
 const churn = run({ sessions: Object.assign(clone(PLAN_OK.sessions), {
+  // Cuatro cambios REALES y CERO `changes[]` declarados: es el caso que se colaba.
+  upperA: { id: 'upperA', name: 'Upper A', exercises: [EX.bench, EX.row, EX.pallof] },              // −1 face-pull
+  upperB: { id: 'upperB', name: 'Upper B', exercises: [EX.ohp, EX.chins, EX.abWheel, EX.facePull] }, // +1 face-pull
+  lowerB: { id: 'lowerB', name: 'Lower B', mobilityMin: 8, exercises: [EX.trap, EX.legExt, EX.abWheel, EX.legCurl] }, // +1
+  lowerA: { id: 'lowerA', name: 'Lower A', mobilityMin: 8, exercises: [EX.boxJump, EX.squat, EX.legExt] },            // swap
+}) }, { block: { index: 3, weeksTotal: 5, isDeload: false } });
+ok(pick(churn, 'CHURN').some(x => /cambios estructurales/.test(x.text) && /diff contra el plan activo/.test(x.text)),
+  '5 cambios reales SIN `changes[]` declarado → CHURN sobre el diff');
+fires(churn, 'ROTATION', 'warn', ['semana 1'], 'swaps fuera de la semana 1 del bloque');
+// Un solo swap real en la semana 1 del bloque: ROTATION calla.
+silent(run({ sessions: Object.assign(clone(PLAN_OK.sessions), {
+  upperA: { id: 'upperA', name: 'Upper A', exercises: [EX.bench, EX.row, EX.pallof, EX.abWheel] },
+}) }, { block: { index: 1, weeksTotal: 5, isDeload: false } }), 'ROTATION', 'un swap en la semana 1 del bloque');
+// Y el recíproco del fallo viejo: `changes[]` inflado sin ningún cambio real NO dispara.
+silent(run({ sessions: Object.assign(clone(PLAN_OK.sessions), {
   upperA: Object.assign(clone(PLAN_OK.sessions.upperA), { changes: [
     { kind: 'swap', exId: 'face-pull', why: 'a' }, { kind: 'add', exId: 'dips', why: 'b' },
     { kind: 'remove', exId: 'pallof-press', why: 'c' }, { kind: 'reorder', exId: 'bench-press', why: 'd' },
   ] }),
-}) }, { block: { index: 3, weeksTotal: 5, isDeload: false } });
-ok(pick(churn, 'CHURN').some(x => /cambios estructurales/.test(x.text)), '4 cambios estructurales en una semana → CHURN');
-fires(churn, 'ROTATION', 'warn', ['semana 1'], 'swaps fuera de la semana 1 del bloque');
-silent(run({ sessions: Object.assign(clone(PLAN_OK.sessions), {
-  upperA: Object.assign(clone(PLAN_OK.sessions.upperA), { changes: [{ kind: 'swap', exId: 'face-pull', why: 'hombro' }] }),
-}) }, { block: { index: 1, weeksTotal: 5, isDeload: false } }), 'ROTATION', 'un swap en la semana 1 del bloque');
+}) }, { block: { index: 3, weeksTotal: 5, isDeload: false } }), 'CHURN',
+  '4 `changes[]` declarados sobre un plan que no cambió (el diff manda)');
+// Sin `basedOn` no hay diff con el que comparar: `changes[]` vuelve a ser la fuente.
+{
+  const sinBase = validatePlanVersion(Object.assign(clone(PLAN_OK), {
+    sessions: Object.assign(clone(PLAN_OK.sessions), {
+      upperA: Object.assign(clone(PLAN_OK.sessions.upperA), { changes: [
+        { kind: 'swap', exId: 'face-pull', why: 'a' }, { kind: 'add', exId: 'dips', why: 'b' },
+        { kind: 'remove', exId: 'pallof-press', why: 'c' }, { kind: 'reorder', exId: 'bench-press', why: 'd' },
+      ] }),
+    }),
+  }), Object.assign({}, CTX_OK, { basedOn: null }));
+  ok(pick(sinBase, 'CHURN').some(x => /declarado por el coach/.test(x.text)),
+    'sin `basedOn`, `changes[]` sigue siendo el respaldo y se dice en el texto');
+}
 silent(base, 'CHURN', '3 prioridades y ningún cambio');
 
 // ════════════════════════════════════════════════════════════════════════════════════
@@ -565,11 +754,13 @@ sec('G-S14 · WEEK-SUMMARY (warn) — el contrato v2, v11.65');
 }
 
 // ════════════════════════════════════════════════════════════════════════════════════
-sec('El catálogo de ids: 33 y ni uno suelto');
+sec('El catálogo de ids: 39 y ni uno suelto');
 // ════════════════════════════════════════════════════════════════════════════════════
 // Cuenta los ids que el validador puede emitir, leyendo su propio fuente. Sirve para dos
 // cosas: que añadir un aviso obligue a mirar esta línea (y a traducirlo en `COACH_GUARD_ES`),
-// y que borrar uno no pase inadvertido. Eran 32 hasta v11.64; WEEK-SUMMARY hace 33.
+// y que borrar uno no pase inadvertido. Eran 32 hasta v11.64; WEEK-SUMMARY hizo 33; la auditoría
+// del 2026-09-08 añade 6 y hace 39 (E-14: ORDER-SAME-DAY, FREQ-FLOOR, SESSION-COUNT ya existía
+// · E-17: RECOVERY-ONLY · E-18: KCAL-STEP · R-5: MVPA-FLOOR · R-7: PLYO-CONTACTS).
 {
   const src = readFileSync('app/coach-facts.js', 'utf8');
   const i = src.indexOf('function validatePlanVersion(');
@@ -579,8 +770,19 @@ sec('El catálogo de ids: 33 y ni uno suelto');
     ...[...cuerpo.matchAll(/add\('([A-Z0-9-]+)'/g)].map(m => m[1]),
     ...[...cuerpo.matchAll(/out\.push\(\{ id: '([A-Z0-9-]+)'/g)].map(m => m[1]),
   ]);
-  eq(emitidos.size, 33, `el validador emite 33 ids distintos (${[...emitidos].sort().join(', ')})`);
-  ok(emitidos.has('WEEK-SUMMARY'), 'y WEEK-SUMMARY es el nuevo');
+  eq(emitidos.size, 39, `el validador emite 39 ids distintos (${[...emitidos].sort().join(', ')})`);
+  for (const id of ['ORDER-SAME-DAY', 'FREQ-FLOOR', 'RECOVERY-ONLY', 'KCAL-STEP', 'MVPA-FLOOR', 'PLYO-CONTACTS']) {
+    ok(emitidos.has(id), `${id} está en el catálogo (nuevo en fn v4)`);
+  }
+  ok(emitidos.has('WEEK-SUMMARY'), 'y WEEK-SUMMARY sigue ahí');
+  // Cada id lleva Rule IDs del corpus: un aviso sin regla es una opinión con formato de regla.
+  const CORPUS = new Set(Object.keys(JSON.parse(readFileSync('supabase/functions/coach-weekly-review/rules-compact.json', 'utf8'))
+    .rules.reduce((acc, r) => { acc[r.id] = 1; return acc; }, {})));
+  const citados = [...cuerpo.matchAll(/add\('([A-Z0-9-]+)',\s*'(hard|warn)',[\s\S]{0,1400}?\[((?:'[A-Z]{3,4}-\d{3}'(?:,\s*)?)+)\]\);/g)];
+  const fuera = new Set();
+  for (const m of citados) for (const rid of (m[3].match(/[A-Z]{3,4}-\d{3}/g) || [])) if (!CORPUS.has(rid)) fuera.add(rid);
+  eq([...fuera].join(', ') || 'ninguno', 'ninguno', 'y todos los Rule IDs que cita el validador existen en el corpus');
+  ok(citados.length >= 38, `se encontraron ${citados.length} avisos con Rule IDs en el fuente`);
   // Todos traducidos en la pantalla: un id crudo en un chip no se entiende.
   const coachjs = readFileSync('app/coach.js', 'utf8');
   const sinTraducir = [...emitidos].filter(id => !new RegExp(`'${id}':|\\b${id}:`).test(coachjs));

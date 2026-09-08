@@ -76,6 +76,17 @@ const Sx = (date, kg, repsArr, rpe) => ({
   sets: repsArr.map(r => ({ weight: kg, reps: r, rpe, done: true })),
 });
 const T = (o = {}) => Object.assign({ today: HOY, todayWeekKey: SEMANA, deload: false }, o);
+/**
+ * DOS sesiones consecutivas idénticas, la más reciente primero.
+ *
+ * Es lo que la regla del tope del 10 % (E-1) exige antes de dar un salto grande: con material
+ * discreto (mancuernas, máquinas) el escalón mínimo puede ser un +50 %, así que en vez de
+ * bloquearlo para siempre se pide más evidencia — cerrar el tope del rango dos veces.
+ */
+const DOS = (kg, reps, rpe, n = 3) => [
+  S('2026-09-04', kg, reps, rpe, n),
+  S('2026-08-31', kg, reps, rpe, n),
+];
 
 // ════════════════════════════════════════════════════════════════════════════════════
 sec('1. Los 8 fixtures del audit (Change 7, criterios de aceptación)');
@@ -206,15 +217,17 @@ eq(E._coachPrevDbPair(15), 12.5, '15 → 12,5 hacia abajo');
 eq(E._coachPrevDbPair(2), 0, 'el par más bajo baja a 0, no a negativo');
 eq(E._coachSnapDbDown(27), 25, 'ajuste hacia abajo: 27 → 25');
 {
-  const r = suggestSetTarget(INCLINE, [S('2026-09-04', 12.5, 12, 7)], T());
-  eq(r.kg, 15, 'incline DB 12,5 × 12 al tope → 15 kg/mano');
-  const raro = suggestSetTarget(INCLINE, [S('2026-09-04', 11, 12, 7)], T());
+  // Con DOS sesiones al tope el salto se da (12,5 → 15 es +20 %, más del 10 %: hace falta la
+  // segunda). Con una sola, la regla mantiene el kg — eso lo comprueba la sección 8.
+  const r = suggestSetTarget(INCLINE, DOS(12.5, 12, 7), T());
+  eq(r.kg, 15, 'incline DB 12,5 × 12 al tope dos veces → 15 kg/mano');
+  const raro = suggestSetTarget(INCLINE, DOS(11, 12, 7), T());
   eq(raro.kg, 12.5, 'un 11 kg de un registro viejo → 12,5, no 12,25');
   const pesado = suggestSetTarget(INCLINE, [S('2026-09-04', 40, 12, 7)], T());
-  eq(pesado.kg, 42.5, '40 kg/mano al tope → 42,5');
+  eq(pesado.kg, 42.5, '40 kg/mano al tope → 42,5 (+6 %: cabe en el tope del 10 %)');
   // Ningún kg prescrito puede caer fuera de los múltiplos de 1,25.
   for (const kg of [11, 12.5, 13, 17.5, 21.25, 33]) {
-    const t = suggestSetTarget(INCLINE, [S('2026-09-04', kg, 12, 7)], T());
+    const t = suggestSetTarget(INCLINE, DOS(kg, 12, 7), T());
     ok(E.COACH_DB_PAIRS_KG.includes(t.kg) || t.kg % 2.5 === 0,
       `desde ${kg} kg/mano el objetivo (${t.kg}) es un par real`);
   }
@@ -264,8 +277,8 @@ sec('4. Peso corporal con lastre, polea y unilateral');
   const r = suggestSetTarget(CHINS, [S('2026-09-04', 0, 8, 7, 4)], T());
   eq(r.kg, 2.5, 'dominadas 4×8 a peso corporal @7 → +2,5 kg de lastre');
   ok(/lastre/.test(r.reason), `dominadas: razón — "${r.reason}"`);
-  const conLastre = suggestSetTarget(CHINS, [S('2026-09-04', 5, 8, 7, 4)], T());
-  eq(conLastre.kg, 7.5, 'con +5 kg ya colgado y todo al tope → +7,5');
+  const conLastre = suggestSetTarget(CHINS, DOS(5, 8, 7, 4), T());
+  eq(conLastre.kg, 7.5, 'con +5 kg ya colgado y todo al tope dos veces → +7,5');
   const deload = suggestSetTarget(CHINS, [S('2026-09-04', 0, 8, 7, 4)], T({ deload: true }));
   eq(deload.kg, null, 'dominadas sin lastre en descarga: no hay carga que bajar');
   eq(deload.rpe, '5-6', '…pero sí baja el RPE prescrito');
@@ -282,7 +295,7 @@ sec('4. Peso corporal con lastre, polea y unilateral');
     'máquina sube 2,5');
 }
 {
-  const r = suggestSetTarget(BSS, [S('2026-09-04', 20, 10, 7)], T());
+  const r = suggestSetTarget(BSS, DOS(20, 10, 7), T());
   eq(r.reps, '8-10/side', 'unilateral: el sufijo /side se conserva en el objetivo');
   eq(r.kg, 22.5, 'unilateral: el rango se evalúa por lado (10 = tope) → siguiente par');
   const pierna = suggestSetTarget(
@@ -296,10 +309,21 @@ sec('4. Peso corporal con lastre, polea y unilateral');
 sec('5. Sin RPE anotado, dos sesiones iguales, y el rango por dentro');
 
 {
-  const r = suggestSetTarget(BENCH, [S('2026-09-04', 92.5, 8, null)], T());
-  eq(r.kg, 95, 'todo al tope sin RPE anotado → progresa igual');
-  ok(r.reason.includes('(sin RPE'), `…y lo declara: "${r.reason}"`);
-  eq(r.basis.avgRpe, null, 'basis.avgRpe = null (no se inventa)');
+  // E-2 · EL RPE AUSENTE NO ES RPE BAJO. Hasta v11.66 la condición era
+  // `avgRpe == null || avgRpe <= rpeTop`, así que una sesión llevada al fallo sin RPE anotado
+  // sumaba +2,5 kg. Ahora hace falta la evidencia que sí existe: cerrar el tope DOS veces.
+  const una = suggestSetTarget(BENCH, [S('2026-09-04', 92.5, 8, null)], T());
+  eq(una.kg, 92.5, 'al tope SIN RPE la primera vez → mismo kg, no sube');
+  ok(/sin RPE: subo sólo tras dos sesiones al tope/.test(una.reason),
+    `…y lo declara: "${una.reason}"`);
+  eq(una.basis.avgRpe, null, 'basis.avgRpe = null (no se inventa)');
+  const dos = suggestSetTarget(BENCH, DOS(92.5, 8, null), T());
+  eq(dos.kg, 95, 'al tope SIN RPE la segunda vez consecutiva → +2,5 kg');
+  ok(/sin RPE anotado, segunda al tope/.test(dos.reason),
+    `…y la razón dice de dónde sale el permiso: "${dos.reason}"`);
+  // Con RPE por debajo del objetivo basta UNA sesión: el dato está, no hace falta el sustituto.
+  eq(suggestSetTarget(BENCH, [S('2026-09-04', 92.5, 8, 7)], T()).kg, 95,
+    'con RPE 7 anotado sube a la primera (el margen es un dato, no una suposición)');
 }
 {
   const r = suggestSetTarget(BENCH, [Sx('2026-09-04', 90, [5, 6, 5], 7)], T());
@@ -508,6 +532,135 @@ for (const [ex, h, o] of raros) {
   eq(subeEnDeload, 0, '80 combinaciones en descarga: 0 subidas de carga');
   eq(subeTrasPausa, 0, '80 combinaciones tras 54 días de pausa: 0 subidas de carga');
 }
+
+// ════════════════════════════════════════════════════════════════════════════════════
+sec('10. E-1 · el tope del 10 % sobre el salto real (STR-009 / LOAD-JUMP)');
+
+// EL FALLO QUE ESTA SECCIÓN EXISTE PARA IMPEDIR (auditoría 2026-09-08, E-1). La regla de kg
+// no tenía tope porcentual: el escalón salía del material y no de la carga, así que una
+// mancuerna de 4 kg subía a 6 (+50 %) y una máquina de 20 kg a 22,5 (+12,5 %) — saltos que el
+// validador del coach rechaza como `LOAD-JUMP` cuando los propone el modelo y que la app
+// prescribía sin mirar. Ahora el tope es el mismo para las dos fuentes, y no bloquea: pide una
+// sesión más al tope antes de dar el salto grande.
+
+eq(E.LOAD_JUMP_MAX_PCT, 0.1, 'LOAD_JUMP_MAX_PCT = 0,10 exportado (una sola constante)');
+
+{
+  const DB4 = { id: 'db-curl', name: 'DB Curl', sets: 3, reps: '8-12', rpe: '7-8', db: true };
+  const una = suggestSetTarget(DB4, [S('2026-09-04', 4, 12, 7)], T());
+  eq(una.kg, 4, 'mancuerna de 4 kg al tope una vez → MISMO kg (4 → 6 sería +50 %)');
+  ok(/salto grande \(>10 %\)/.test(una.reason), `…y lo dice: "${una.reason}"`);
+  ok(/\+reps/.test(una.reason), '…y pide reps, que es lo que sí se puede subir hoy');
+  ok((una.ruleIds || []).includes('STR-009'), 'cita STR-009 (el método y sus magnitudes)');
+  eq(una.delta, 0, 'delta 0: no se mueve la carga');
+  const dos = suggestSetTarget(DB4, DOS(4, 12, 7), T());
+  eq(dos.kg, 6, '…y con la segunda sesión al tope sí sube al par siguiente (6 kg)');
+}
+{
+  // Máquina: +2,5 sobre 20 kg es +12,5 %. Misma puerta.
+  const una = suggestSetTarget(LEGEXT, [S('2026-09-04', 20, 15, 7)], T());
+  eq(una.kg, 20, 'máquina de 20 kg al tope una vez → mismo kg (+2,5 sería +12,5 %)');
+  const dos = suggestSetTarget(LEGEXT, DOS(20, 15, 7), T());
+  eq(dos.kg, 22.5, '…y a la segunda sube 2,5');
+  // Y con carga alta el mismo salto absoluto cabe de sobra: 60 → 62,5 es +4 %.
+  eq(suggestSetTarget(LEGEXT, [S('2026-09-04', 60, 15, 7)], T()).kg, 62.5,
+    'la misma máquina a 60 kg sube a la primera: +4 % no es un salto grande');
+}
+{
+  // Peso corporal CON lastre: +2,5 sobre +5 kg colgados es +50 %.
+  const una = suggestSetTarget(CHINS, [S('2026-09-04', 5, 8, 7, 4)], T());
+  eq(una.kg, 5, 'dominadas con +5 kg al tope una vez → mismo lastre');
+  ok(/salto grande/.test(una.reason), `…y con su razón: "${una.reason}"`);
+  // Sin lastre no hay porcentaje que medir (0 kg): empezar a colgar disco sigue siendo la
+  // progresión, y no se puede exigir un 10 % de cero.
+  eq(suggestSetTarget(CHINS, [S('2026-09-04', 0, 8, 7, 4)], T()).kg, 2.5,
+    'a peso corporal puro el primer disco entra igual (no hay % sobre 0)');
+}
+{
+  // La barra, que es donde el salto absoluto YA era pequeño en porcentaje, no cambia.
+  eq(suggestSetTarget(BENCH, [S('2026-09-04', 92.5, 8, 7)], T()).kg, 95,
+    'banca 92,5 → 95 (+2,7 %) sigue subiendo a la primera');
+  eq(suggestSetTarget(FACEPULL, [S('2026-09-04', 25, 15, 7)], T()).kg, 26.25,
+    'polea 25 → 26,25 (+5 %) también');
+}
+{
+  // El invariante: con UNA sola sesión de historial ningún objetivo de la regla pasa del
+  // +10 % del último top. La segunda sesión al tope es la única puerta que lo permite.
+  let excesos = 0;
+  for (const ex of [BENCH, INCLINE, LEGEXT, FACEPULL, CHINS]) {
+    for (const kg of [4, 6, 10, 20, 40, 60, 92.5]) {
+      for (const reps of [4, 8, 12, 15]) {
+        const t = suggestSetTarget(ex, [S('2026-09-04', kg, reps, 7)], T());
+        if (t.kg != null && kg > 0 && (t.kg - kg) / kg > 0.1 + 1e-9) excesos++;
+      }
+    }
+  }
+  eq(excesos, 0, '140 combinaciones con UNA sesión de historial: 0 saltos por encima del 10 %');
+}
+
+// ════════════════════════════════════════════════════════════════════════════════════
+sec('11. E-3 · dos registros del mismo día son UNA sesión');
+
+// EL FALLO QUE ESTA SECCIÓN EXISTE PARA IMPEDIR (auditoría 2026-09-08, E-3). El historial que
+// llega es "todos los entrenos con este ejercicio", y un mismo día puede traer dos filas: la
+// sesión del plan y una libre, o un registro reabierto y vuelto a guardar. Con dos filas de la
+// misma fecha, `usable[0]` y `usable[1]` eran el MISMO entreno: la regla concluía "dos
+// sesiones iguales: hoy +1 rep" el día en que se levantó ese peso por primera vez, y
+// `daysSince` salía 0 sobre un intervalo que no existía.
+
+ok(typeof E._coachDedupeHistory === 'function', '_coachDedupeHistory exportado');
+{
+  const dupe = [
+    S('2026-09-04', 90, 6, 7),                       // la sesión de verdad, 3 series
+    { date: '2026-09-04', sets: [{ weight: 90, reps: 6, rpe: 7, done: true }] },  // la abierta y dejada
+  ];
+  const dedup = E._coachDedupeHistory(dupe, 'barbell');
+  eq(dedup.length, 1, 'dos filas del 4-sep → una');
+  eq(dedup[0].sets.length, 3, '…y se queda la de más series hechas');
+
+  const r = suggestSetTarget(BENCH, dupe, T());
+  ok(!/Dos sesiones iguales/.test(r.reason),
+    `no se declara estancamiento con un solo día de historial: "${r.reason}"`);
+  ok(/\+1 rep por serie/.test(r.reason), '…y se pide la rep, que es lo que toca dentro del rango');
+  eq(r.basis.daysSince, 3, 'daysSince = 3 (del 4 al 7 de septiembre), no 0');
+}
+{
+  // Y el orden se conserva: la más reciente sigue siendo `usable[0]`.
+  const h = [
+    { date: '2026-08-31', sets: [{ weight: 85, reps: 8, rpe: 7, done: true }] },
+    S('2026-09-04', 90, 6, 7),
+    { date: '2026-09-04', sets: [{ weight: 90, reps: 6, rpe: 7, done: true }] },
+  ];
+  const dedup = E._coachDedupeHistory(h, 'barbell');
+  eq(dedup.length, 2, 'tres filas, dos fechas → dos sesiones');
+  eq(dedup[0].date, '2026-09-04', 'la más reciente primero, aunque llegara en medio');
+  eq(suggestSetTarget(BENCH, h, T()).basis.lastKg, 90, 'y el último top es el del 4-sep');
+}
+{
+  // El permiso que dan E-1 y E-2 (dos sesiones al tope) no se puede fabricar guardando dos
+  // veces el mismo día.
+  const dupeMax = [
+    S('2026-09-04', 92.5, 8, null),
+    S('2026-09-04', 92.5, 8, null),
+  ];
+  eq(suggestSetTarget(BENCH, dupeMax, T()).kg, 92.5,
+    'dos registros del mismo día al tope sin RPE NO cuentan como dos sesiones');
+}
+
+// ════════════════════════════════════════════════════════════════════════════════════
+sec('12. E-4 · una sola aritmética de vigencia (kg y minutos de cardio)');
+
+// `_coachCardioMin` en app.js no tenía ventana de vigencia: los minutos de un plan del coach
+// de hace tres semanas seguían prescribiéndose mientras los kg del MISMO plan ya habían
+// caducado. Ahora las dos cosas preguntan a la misma función.
+ok(typeof E.coachTargetIsCurrent === 'function', 'coachTargetIsCurrent exportado');
+ok(E.coachTargetIsCurrent('2026-W37', HOY), 'un objetivo de esta semana está vigente');
+ok(E.coachTargetIsCurrent('2026-W36', HOY), 'y uno de la semana pasada también');
+ok(!E.coachTargetIsCurrent('2026-W35', HOY), 'el de hace dos semanas ya no');
+ok(!E.coachTargetIsCurrent('2026-W38', HOY), 'ni uno del futuro');
+ok(!E.coachTargetIsCurrent(null, HOY), 'sin semana no hay vigencia que declarar');
+ok(E.coachTargetIsCurrent('2026-W53', '2027-01-04'),
+  'cruce de año: 2026-W53 sigue vigente el lunes 2027-W01 (se compara por fechas)');
 
 console.log(fail === 0
   ? '\nPASS — la app prescribe el kg del set, y no lo sube donde no debe\n'

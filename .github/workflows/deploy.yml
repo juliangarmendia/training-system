@@ -15,7 +15,41 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # ── El seguro que no existía ────────────────────────────────────────────────────────
+  # Hasta el 2026-09-08 este workflow SÓLO publicaba `app/` (auditoría R-10): los 30+ ficheros de
+  # `tests/` —el motor de progresión, los guardarraíles del coach, el dedupe de carreras, el
+  # corpus de reglas— dependían de que alguien se acordara de ejecutarlos a mano antes de un push.
+  # Todo el sistema de tests estaba escrito y ninguno bloqueaba nada.
+  #
+  # Node 24: `tests/verify-integrations-pure.mjs` importa `.ts` directamente
+  # (`supabase/functions/_shared/*.ts`) y eso necesita el borrado nativo de tipos, sin flag, que
+  # es estable desde Node 23.6/24. Con Node 22 ese fichero falla al importar y el fallo parecería
+  # un bug del código en vez de una versión de Node.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      # Los artefactos generados, ANTES de la suite: si `rules-compact.json` o
+      # `coach-facts.generated.js` se quedaron atrás respecto a su fuente, el fallo es
+      # "desincronizado" y se ve en una línea, no dentro de 30 ficheros de test.
+      - name: Artefactos generados al día
+        run: |
+          node scripts/build-rules-compact.mjs --check
+          node scripts/build-fn-assets.mjs --check
+      # Sin `set -e` explícito: `|| exit 1` corta en el primer fallo y deja el nombre del fichero
+      # como última línea del log, que es lo que se lee en la pestaña de Actions.
+      - name: Suite completa
+        run: |
+          for f in tests/verify-*.mjs; do
+            echo "── $f"
+            node "$f" || exit 1
+          done
+
   deploy:
+    needs: test
     runs-on: ubuntu-latest
     environment:
       name: github-pages

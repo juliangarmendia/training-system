@@ -61,7 +61,9 @@ function slice(fromAnchor, toAnchor, label) {
   return APP.slice(i, j);
 }
 const LOAD_SRC = slice('async function loadActivePlan()', '// Load exercise library into memory', 'loadActivePlan');
-const CNP_SRC = slice('async function createNewPlanVersion(modifications)', '// ==================== RE-ENTRY RAMP', 'createNewPlanVersion');
+// v11.66 (E-12): el ancla de cierre era `// ==== RE-ENTRY RAMP`, el bloque de la rampa de
+// re-entrada que se borró por muerto. Ahora cierra en la sección de la base de datos.
+const CNP_SRC = slice('async function createNewPlanVersion(modifications)', '// ==================== DATABASE ====================', 'createNewPlanVersion');
 
 const store = { plans: [] };
 const written = [];
@@ -221,6 +223,16 @@ const nuevo = await ctx.createNewPlanVersion({
       priorities: ['a', 'b', 'c'], lastWeekSummary: ['3 de 4 sesiones'],
       weekSummary: [{ sessionId: 'upperA', status: 'kept', line: 'sin cambios' }],
     },
+    // v11.67 (E-16): la instantánea de lo que `applyCoachProposal` está a punto de borrar —
+    // los swaps de ejercicio y los cambios de día del calendario. Viaja por `meta` como el
+    // brief, y `rollbackPlanVersion` la lee de la versión que deshace. Si el spread la
+    // filtrara, Deshacer devolvería el plan viejo SIN el trabajo manual que tenía encima.
+    baseVersion: 12,
+    appliedOnVersion: 12,
+    preApply: {
+      exerciseOverrides: { upperA: { chinups: { id: 'lat-pulldown', name: 'Lat Pulldown' } } },
+      weekSchedule: { '2026-09-10': 'upperA', '2026-09-11': null },
+    },
     // Lo que una propuesta maliciosa o un bug intentaría estampar:
     id: 'plan_vPROPUESTA', version: 999, createdAt: '1999-01-01T00:00:00.000Z',
   },
@@ -241,9 +253,19 @@ eq(nuevo.coachBrief.focus, 'mantener los 6 anclas', 'con su foco');
 eq(nuevo.coachBrief.phase, 'build', 'su fase');
 eq(nuevo.coachBrief.weekSummary.length, 1, 'y su weekSummary intacto');
 eq(nuevo.coachBrief.whyKept, 'Upper A igual: 8/8/7 @7,5 el 1-sep.', 'y el "por qué se mantiene"');
+// E-16 · `preApply` tiene que sobrevivir igual: es lo que hace reversible un apply.
+ok(!!nuevo.preApply, 'preApply sobrevive a createNewPlanVersion');
+eq(nuevo.preApply.exerciseOverrides.upperA.chinups.id, 'lat-pulldown',
+  'con el swap que había encima del plan anterior');
+eq(Object.keys(nuevo.preApply.weekSchedule).length, 2,
+  'y los dos cambios de día del calendario (uno movido, uno vaciado)');
+eq(nuevo.baseVersion, 12, 'y la base que el coach tenía delante (E-15)');
+eq(nuevo.appliedOnVersion, 12, 'y la base sobre la que se aplicó de verdad');
 await ctx.loadActivePlan();
 eq(ctx._active().coachBrief.focus, 'mantener los 6 anclas',
   'y sigue ahí tras releer el store (es un campo del plan, no un adorno del render)');
+eq(ctx._active().preApply.weekSchedule['2026-09-11'], null,
+  'preApply también sobrevive al store, con sus nulls intactos (null = día vaciado a mano)');
 eq(written.length, 1, 'una sola escritura');
 eq(written[0][0], 'plans', 'en el store plans');
 ok(written[0][1] === nuevo, 'la fila escrita es la que devuelve');

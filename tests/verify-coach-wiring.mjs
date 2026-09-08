@@ -209,10 +209,24 @@ yes(/blockWeek\(date\)/.test(GP_SRC), 'y sitúa la fecha en el bloque con blockW
 for (const f of ['durationSource', 'baseMin', 'block:', 'z2Source']) {
   yes(GP_SRC.includes(f), `devuelve ${f} (la UI necesita saber de dónde salen los minutos)`);
 }
-yes(/lastCardioDaysAgo\(/.test(GP_SRC), 'pasa lastCardioDaysAgo( (no se progresa tras una pausa)');
+// v11.67 (E-6): la puerta de la pausa y la referencia de la rampa pasan a ser DEL HUECO. Con
+// `lastCardioDaysAgo(ds)` global, una bici de anteayer dejaba que el miércoles siguiera
+// rampando después de un mes sin correr — la rampa iba por `block.index`, no por lo hecho.
+yes(/_cardioSlotHistory\(jsDay, ds, kind\)/.test(GP_SRC),
+  'lee el historial del hueco con _cardioSlotHistory(jsDay, ds, kind)');
+yes(/lastCardioDaysAgo: h\.lastDaysAgo/.test(GP_SRC),
+  'y la puerta de los 14 días mira ese hueco, no todo el cardio');
+yes(/history: h\.history/.test(GP_SRC), 'y pasa los minutos a progressCardioMin(');
+yes(/function _cardioSlotHistory\(/.test(APP), '_cardioSlotHistory() existe');
+yes(/r\.finisher !== wantFinisher/.test(fnSrc('async function _cardioSlotHistory(')),
+  'y separa el finisher post-fuerza de la sesión de cardio del mismo día de la semana');
+yes(/function lastCardioDaysAgo\(/.test(APP),
+  'lastCardioDaysAgo() sigue existiendo (la usa el fallback de la carrera de la semana)');
 
 // La invalidación de la caché: sin ella el cardio recién registrado tarda un minuto en contar.
-for (const fn of ['async function logRun(', 'async function logCardio(', 'async function logZ2Finisher(', 'async function intervalsIcuSync(']) {
+// v11.66 (E-12): `logRun` se borró — era código muerto (cero llamadores, y sus inputs no
+// existen en index.html desde el logger unificado de cardio). Quedan los tres vivos.
+for (const fn of ['async function logCardio(', 'async function logZ2Finisher(', 'async function intervalsIcuSync(']) {
   yes(/state\._lastCardioDate = null/.test(fnSrc(fn)), `${fn.replace('async function ', '')}) invalida state._lastCardioDate`);
 }
 // Los consumidores leen los minutos YA progresados, nunca IDEAL_BLOCK_V1 directamente.
@@ -303,8 +317,12 @@ yes(/swapped \? null : findPlanEx\(slotId\)/.test(CST_SRC),
   'con swap NO hereda el objetivo del movimiento original (sólo uno escrito para el sustituto)');
 yes(/swapped \? null : legacy\.byId\[slotId\]/.test(CST_SRC), '…y lo mismo con el objetivo legacy');
 // El cron no conoce la semana del bloque (Change 4 pendiente): en descarga manda la regla.
-yes(/if \(opts\.deload && coachTarget && !fromPlanV2\) coachTarget = null;/.test(CST_SRC),
+// v11.67 (E-5): la descarga es POR EJERCICIO (`deloadFor`), así que la comprobación también.
+yes(/const exDeload = typeof opts\.deloadFor === 'function' \? !!opts\.deloadFor\(ex\.id\) : !!opts\.deload;/.test(CST_SRC),
+  'la descarga se resuelve por ejercicio (deloadFor) y no para toda la sesión');
+yes(/if \(exDeload && coachTarget && !fromPlanV2\) coachTarget = null;/.test(CST_SRC),
   'en descarga se descarta el objetivo del cron legacy (no conoce el bloque) y manda la regla');
+yes(/deload: exDeload,/.test(CST_SRC), 'y suggestSetTarget recibe el deload de ESE ejercicio');
 const LEG_SRC = fnSrc('async function _legacyCoachTargets(');
 yes(/parseCoachTarget\(/.test(LEG_SRC) && /weekly_reviews/.test(LEG_SRC),
   '_legacyCoachTargets() parsea el texto de weekly_reviews');
@@ -349,14 +367,27 @@ yes(/opts\.targets/.test(SW_SRC), 'acepta objetivos ya calculados (reanudar no l
 yes(/session\.exercises\.filter\(e => !\(e\.id in dados\)\)/.test(SW_SRC),
   '…y sólo calcula los que faltan (un ejercicio añadido en la sesión libre recibe el suyo)');
 yes(/state\.activeTargets \|\| \{\}/.test(SW_SRC), 'y los pasa a cada tarjeta con guard');
-// v11.61: la bandera pasa a mirar también `activePlan.author`. Lo que este check protege sigue
-// siendo lo mismo: que la sesión LIBRE nunca reciba el recorte de deload (partiría a la mitad
-// las series que acabas de elegir a mano).
-yes(/const deload = baseSession\.adHoc \? false/.test(SW_SRC),
-  'la sesión libre sigue sin deload (comportamiento intacto)');
-yes(/activePlan && activePlan\.author === 'coach-llm'\) \? false/.test(SW_SRC),
-  'y un plan del coach tampoco lo recibe (ya trae el volumen de descarga: no hay doble recorte)');
-yes(/isDeloadWeek\(wk\)/.test(SW_SRC), 'el resto de los planes sí (isDeloadWeek sigue decidiendo)');
+// v11.67 (E-5): LA DESCARGA ES POR EJERCICIO CUANDO EL PLAN ES DEL COACH.
+//
+// El fallo que este bloque impide ahora: `deload` era `false` para TODO el plan en cuanto el
+// autor era `coach-llm`, con el argumento de que el coach ya trae el volumen de la descarga.
+// Cierto para los ejercicios que traen `target`; falso para los demás — un accesorio que el
+// coach no tocó recibía progresión normal en semana de deload, contra G-H3 y LOAD-004. Y sigue
+// en pie lo de v11.61: la sesión LIBRE nunca recibe el recorte (partiría a la mitad las series
+// que acabas de elegir a mano).
+yes(/const weekIsDeload = baseSession\.adHoc \? false : isDeloadWeek\(wk\);/.test(SW_SRC),
+  'la sesión libre sigue sin deload (comportamiento intacto), y el resto lo decide isDeloadWeek');
+yes(/const deloadFor = \(exId\) => weekIsDeload && !\(coachAuthored && _coachHasTargetFor\(sessionId, exId\)\);/.test(SW_SRC),
+  'sólo se libran del recorte los ejercicios con target del coach (deloadFor por ejercicio)');
+yes(/function _coachHasTargetFor\(/.test(APP), '_coachHasTargetFor() existe');
+yes(/hit && hit\.target/.test(fnSrc('function _coachHasTargetFor(')),
+  '…y mira `target` en el ejercicio de la sesión del plan activo');
+yes(/computeSessionTargets\(sessionId, faltan, \{ deloadFor, allWorkoutsDesc \}\)/.test(SW_SRC),
+  'los objetivos se calculan con el predicado, no con un booleano de sesión');
+yes(/computeBlocks\(session, deloadFor\)/.test(SW_SRC),
+  'y la estimación de tiempo también (si un ejercicio recorta series, el "~52 min" lo refleja)');
+yes(/buildExerciseCard\(ex, idx, previous, restSettings, exerciseNotes, deloadFor\(ex\.id\)/.test(SW_SRC),
+  'cada tarjeta recibe su propio deload');
 // El fallo que esto arregla de paso: un set marcado sin escribir peso se guardaba con weight 0
 // y desaparecía del historial, del tonelaje y del 1RM.
 yes(/wIn\.value === '' && isFinite\(parseFloat\(wIn\.placeholder\)\)/.test(SW_SRC),
@@ -384,7 +415,15 @@ yes(/try \{[\s\S]{0,200}attachSessionReadout/.test(FIN_SRC),
   'y va en try/catch: terminar una sesión no puede fallar por un resumen');
 const ATT_SRC = fnSrc('async function attachSessionReadout(');
 yes(/\.readout = sessionReadout\(/.test(ATT_SRC), 'attachSessionReadout() adjunta workout.readout');
-yes(/deload: false/.test(ATT_SRC), 'el "próxima vez" no promete el −10 % de una descarga futura');
+// v11.67 (E-8): el "próxima vez" se calculaba con `deload: false` "para no adivinar el
+// calendario". Pero el calendario del bloque está anclado a una fecha y se sabe con exactitud:
+// la tarjeta del viernes prometía "la próxima: 95 kg" y el lunes de descarga la pantalla
+// prescribía 85. Ahora usa el deload REAL de la semana siguiente.
+yes(/const nextWeekDeload = /.test(ATT_SRC), 'el "próxima vez" resuelve el deload de la semana que viene');
+yes(/blockWeek\(d\)\.isDeload/.test(ATT_SRC), '…con la misma aritmética anclada que la tarjeta de ese día');
+yes(/7 \* 86400000/.test(ATT_SRC), '…mirando +7 días (la próxima exposición del ejercicio)');
+yes(/deload: nextWeekDeload,/.test(ATT_SRC), '…y se lo pasa a suggestSetTarget');
+yes(!/deload: false/.test(ATT_SRC), 'y ya no hay un `deload: false` que prometa una subida imposible');
 
 // 9.f Home: el kg también antes de entrar al gimnasio
 const RTP_SRC = fnSrc('async function renderTodaysPlan(');
@@ -934,7 +973,8 @@ yes(/renderGoalsCard/.test(COACHJS.slice(COACHJS.indexOf('module.exports'))), 'y
 // 14.g La caché de la semana se invalida cuando llega una carrera
 yes(/state\._runningWeek = null/.test(APP), 'registrar cardio invalida state._runningWeek');
 const invals = (APP.match(/state\._runningWeek = null/g) || []).length;
-yes(invals >= 4, `en los mismos ${invals} sitios que la caché de "días sin cardio"`);
+// v11.66 (E-12): eran cuatro sitios; `logRun` se borró por muerto y quedan tres.
+yes(invals >= 3, `en los mismos ${invals} sitios que la caché de "días sin cardio"`);
 
 // 14.h Versión y CSS
 eq(vSw, vHtml, 'CACHE_NAME del service worker == versión de index.html (tras el bump a v11.60)');
@@ -998,7 +1038,9 @@ yes(/GENERADO — no editar/.test(RULESJS), 'coach-rules.js se declara generado'
 yes(RULESJS.includes(`sourceSha256: ${sha}`),
   'y su sha coincide con rules-compact.sha (si el .md cambia y nadie regenera, esto falla)');
 const nRules = (RULESJS.match(/evidenceLevel:/g) || []).length;
-eq(nRules, 70, `coach-rules.js trae las 70 reglas del corpus (${nRules})`);
+// 72 desde la auditoría del 2026-09-08: STR-009 (doble progresión, R-4) y END-009 (minutos
+// MVPA, R-5) estaban una reservada y vacía y la otra sin escribir.
+eq(nRules, 72, `coach-rules.js trae las 72 reglas del corpus (${nRules})`);
 yes(/const COACH_RULES = \{/.test(RULESJS), 'como script clásico (sin bundler no hay import)');
 // Por CLAVE y no por palabra: "sources" aparece dentro del texto de GEN-003 ("when sources
 // conflict…"), y buscarla suelta haría fallar el test por una regla escrita en inglés.
@@ -1880,6 +1922,91 @@ yes(!/@keyframes cwc-|animation:[^;]*cwc-/.test(CSS), 'y cero animaciones nuevas
   eq(b2.lastWeekSummary.length, 3, 'y lastWeekSummary se acota a 3 líneas');
   eq(b2.weekSummary.length, 4, 'con las filas que dio el coach');
 }
+
+// ── 18. Aplicar y deshacer sin perder trabajo (E-15, E-16, E-18 · v11.67) ──────────
+//
+// LOS TRES FALLOS QUE ESTE BLOQUE IMPIDE (auditoría 2026-09-08):
+//
+//   E-15 · **Base obsoleta.** `applyCoachProposal` mergea el diff contra el `activePlan` DEL
+//     MOMENTO DE APLICAR, no contra la versión que el coach tenía delante. Entre la propuesta
+//     del domingo y el toque del lunes cabe un `setIdealVariant` (4 → 5 días) o un rollback: el
+//     "sube la banca a 95" se estampaba sobre otra base y nadie se enteraba.
+//   E-16 · **Deshacer perdía los overrides.** Aplicar limpia los swaps de ejercicio absorbidos
+//     y los cambios de día hechos a mano. El rollback restauraba `sessions` y `weekTemplate` y
+//     NO esos overrides, así que Deshacer devolvía el plan viejo sin los cambios manuales que
+//     el usuario tenía encima — trabajo suyo, borrado por un botón que promete lo contrario.
+//   E-18 · **El piloto de kcal no tenía reloj.** `settings.kcalFirstAdjustDate` /
+//     `kcalLastAdjustDate` no existían, así que `nextEligibleAdjustDate` era `null` SIEMPRE y
+//     el gate de 14 días de `KCAL-STEP` (REC-002) no se podía comprobar.
+console.log('');
+console.log('18. E-15/E-16/E-18 · aplicar contra la base correcta y deshacer sin perder nada');
+
+const ACP18 = COACHJS.slice(COACHJS.indexOf('async function applyCoachProposal('),
+  COACHJS.indexOf('async function rejectCoachProposal('));
+
+// 18.a E-15 · el aviso de base obsoleta
+yes(/review\.facts\.plan \? Number\(review\.facts\.plan\.version\)/.test(ACP18),
+  'lee la versión que viajó en el pack (facts.plan.version)');
+yes(/baseVersion !== nowVersion/.test(ACP18), 'la compara con la del plan activo');
+yes(/The plan changed since this review \(v\$\{baseVersion\} → v\$\{nowVersion\}\)\. Apply anyway\?/.test(ACP18),
+  'y pregunta en inglés, con las dos versiones en la frase');
+yes(/confirm\(msg\)/.test(ACP18), 'con un confirm() (bloqueante: aplicar es irreversible sin Deshacer)');
+yes(/if \(!seguir\)[\s\S]{0,200}return null;/.test(ACP18), 'si se dice no, no se aplica nada');
+yes(ACP18.indexOf('confirm(msg)') < ACP18.indexOf('createNewPlanVersion('),
+  'el aviso llega ANTES de crear la versión, no después');
+yes(/baseVersion,/.test(ACP18) && /appliedOnVersion: nowVersion,/.test(ACP18),
+  'la versión nueva registra baseVersion y appliedOnVersion (sin las dos, "por qué dice esto" no se reconstruye)');
+
+// 18.b E-16 · la instantánea y su restauración
+yes(/const preApply = \{/.test(ACP18), 'applyCoachProposal construye preApply');
+yes(/exerciseOverrides: \(typeof exerciseOverrides === 'object' && exerciseOverrides\)/.test(ACP18),
+  '…con los swaps de ejercicio');
+yes(/weekSchedule: await/.test(ACP18), '…y con los cambios de día del calendario');
+yes(/JSON\.parse\(JSON\.stringify\(exerciseOverrides\)\)/.test(ACP18),
+  '…copiados en profundidad (una referencia se vaciaría con la limpieza de después)');
+yes(/preApply,/.test(ACP18), 'y viaja en la versión nueva (meta se esparce al nivel superior)');
+yes(ACP18.indexOf('const preApply') < ACP18.indexOf('_coachReconcileOverrides('),
+  'la instantánea se toma ANTES de limpiar los overrides');
+
+const RBK18 = COACHJS.slice(COACHJS.indexOf('async function rollbackPlanVersion('),
+  COACHJS.indexOf('async function _coachReconcileOverrides('));
+yes(/const snap = \(prev && prev\.preApply\) \|\| null;/.test(RBK18),
+  'el rollback lee la instantánea de la versión QUE SE DESHACE (no de la que restaura)');
+yes(/Object\.assign\(exerciseOverrides, JSON\.parse\(JSON\.stringify\(snap\.exerciseOverrides\)\)\)/.test(RBK18),
+  'restaura los swaps');
+yes(/smartPut\('settings', \{ key: 'exerciseOverrides'/.test(RBK18),
+  '…y los persiste por la ruta que sincroniza');
+yes(/saveWeekSchedule\(JSON\.parse\(JSON\.stringify\(snap\.weekSchedule\)\)\)/.test(RBK18),
+  'y restaura los cambios de día con saveWeekSchedule()');
+yes(/for \(const k of Object\.keys\(exerciseOverrides\)\) delete exerciseOverrides\[k\];/.test(RBK18),
+  'limpia antes de asignar (si no, quedarían mezclados los de después con los de antes)');
+yes(/overridesRestaurados/.test(RBK18), 'y la decisión registrada dice cuántos se restauraron');
+yes(/sin instantánea previa/.test(RBK18),
+  '…o que no había instantánea (las versiones anteriores a v11.67 no la llevan)');
+
+// 18.c E-18 · el reloj del piloto de kcal
+yes(/kcalLastAdjustDate: ds,/.test(ACP18), 'aplicar sella settings.kcalLastAdjustDate');
+yes(/kcalFirstAdjustDate: state\.settings\.kcalFirstAdjustDate \|\| ds,/.test(ACP18),
+  '…y kcalFirstAdjustDate sólo la primera vez');
+yes(/smartPut\('settings', \{ key: 'userSettings', data: state\.settings \}\)/.test(ACP18),
+  '…por la misma ruta que Ajustes, así que el pack del domingo siguiente la lee desde cualquier dispositivo');
+yes(/nut\.kcalTarget != null \? nut\.kcalTarget : nut\.kcal/.test(ACP18),
+  'el disparador es que la propuesta traiga nutrition.kcalTarget');
+yes(/!isFinite\(anterior\) \|\| anterior !== kcal/.test(ACP18),
+  'sólo si el número CAMBIA: repetir el mismo objetivo cada domingo reiniciaría el reloj de 14 días y el gate no dispararía nunca');
+yes(/kcalLastAdjustValue: kcal,/.test(ACP18), '…y para eso se guarda el último valor sellado');
+// El validador tiene que recibir esas fechas o `KCAL-STEP` no puede comprobar el gate.
+const CTX18 = COACHJS.slice(COACHJS.indexOf('async function _coachValidateCtx('),
+  COACHJS.indexOf('async function applyCoachProposal('));
+yes(/kcalLastAdjustDate: \(state && state\.settings && state\.settings\.kcalLastAdjustDate\)/.test(CTX18),
+  '_coachValidateCtx() pasa kcalLastAdjustDate al validador');
+yes(/daysSinceKcalAdjust:/.test(CTX18), '…y los días transcurridos');
+yes(/kcalTarget: \(\(\) => \{/.test(CTX18), '…y el objetivo vigente, para medir el paso');
+// Y coach-facts.js sigue leyendo esas claves (el contrato de coach-facts-schema.md:641-645).
+yes(/ctx\.settings\.kcalFirstAdjustDate/.test(FACTSJS), 'coach-facts.js lee settings.kcalFirstAdjustDate');
+yes(/_cfDate\(ctx\.settings\.kcalLastAdjustDate\)/.test(FACTSJS), '…y settings.kcalLastAdjustDate');
+yes(/nextEligibleAdjustDate: nextEligible/.test(FACTSJS),
+  '…y de ahí sale nextEligibleAdjustDate, que hasta ahora era null siempre');
 
 console.log('');
 console.log(failed === 0

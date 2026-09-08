@@ -17,6 +17,13 @@ reescriben la regla.
   `evidenceLevel: moderate` + `confidence: high`, nunca con un enum nuevo.
 - **`energyState`**: `deficit | maintenance | surplus`.
 - **`applicabilityToUser`** / **`confidence`**: `low | medium | high`.
+- **`consumer`** (obligatorio, desde 2026-09-08): quién APLICA la regla en el sistema —
+  `engine` (una computación de `coach-engine.js` / `nutrition.js` / las tablas del planificador) ·
+  `validator` (un id de `validatePlanVersion`) · `guardrail` (un G-H/G-S del prompt del coach) ·
+  `prompt` (texto del procedimiento, sin id de guardarraíl) · `doc` (sólo documentación) ·
+  `none` (nada). Una regla `strong` con `consumer: doc` o `none` **exige `consumerNote`** que
+  explique por qué: una regla fuerte sin consumidor y sin explicación es evidencia decorativa, y
+  es justo lo que la auditoría del 08-sep encontró en siete fichas.
 - Una fuente nombrada por claim. Las cifras exactas se verifican al adquirir el paper; las
   extrapoladas se marcan con `evidenceLevel: weak_extrapolated`.
 
@@ -34,6 +41,7 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "medium",
     "caveats": ["REATTRIBUTED 2026-08-16 (audit). Previously cited Huiberts 2024 + Soligard 2016 and graded moderate/high; NEITHER supports it. Huiberts 2024 finds interference REAL BUT MODEST, modulated by sex/training status, with trained individuals PROTECTED in VO2max - that is INT-005, and for a recreational profile it argues the opposite way. Soligard 2016 is the IOC load/injury consensus, silent on how many qualities to progress. The rule had NO ficha in source-coverage-audit.md and slipped through all 3 verification rounds. It survives as applied practice, downgraded to expert/medium.", "For a recreational adult in a moderate deficit doing 4 strength days + mostly easy cardio, progressing strength AND aerobic base simultaneously is normal and defensible - do not treat two progressing qualities as a violation.", "Maintenance still requires a minimum effective dose (e.g. heavy strength 2x/wk)."],
+    "consumer": "validator",
     "programmingAction": "Block Planner may set 1 dominant + 1-2 maintained qualities. The binding constraint is the hard-day budget (BUD-001), not the number of qualities. Never auto-enforced."
   },
   {
@@ -48,6 +56,7 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "high",
     "caveats": ["Most dose-response curves are derived outside a deficit and in mixed populations."],
+    "consumer": "validator",
     "programmingAction": "Evidence Engine tags every decision with population + energyState; mismatches are surfaced, not hidden."
   },
   {
@@ -62,6 +71,8 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "high",
     "caveats": ["Expert opinion only breaks ties when primary evidence is silent."],
+    "consumer": "doc",
+    "consumerNote": "Process rule about how the REPO records a conflict (research/research-log.md, \"Contradicts prior beliefs\"). There is no runtime surface to consume it and there should not be one.",
     "programmingAction": "Record conflicts in research/research-log.md (Contradicts prior beliefs section)."
   },
 
@@ -77,6 +88,7 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "high",
     "caveats": ["Strength is preserved across a wide deficit; hypertrophy is the casualty."],
+    "consumer": "validator",
     "programmingAction": "Strength Engine holds top-set loads; Progression Engine reduces volume before load when fatigued."
   },
   {
@@ -91,6 +103,7 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "high",
     "caveats": ["Frequency is mainly a tool to distribute weekly volume, not an independent driver."],
+    "consumer": "validator",
     "programmingAction": "Strength Engine distributes each pattern across 2 sessions/wk."
   },
   {
@@ -105,6 +118,7 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "high",
     "caveats": ["Recovery ceiling is lower in a deficit, so 'more is more' inverts; the cap is recovery-driven, not an absolute hypertrophy ceiling."],
+    "consumer": "validator",
     "programmingAction": "Strength Engine targets 10-14 sets/muscle/wk in cut blocks; raise only if Readiness supports it."
   },
   {
@@ -119,6 +133,7 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "high",
     "caveats": ["Hypertrophy improves modestly closer to failure; strength is largely RIR-insensitive (CIs include null). The marginal benefit doesn't justify recovery cost in a deficit. CITATION FIX: meta-regression is Robinson 2024, not 'Refalo 2024' (Refalo 2023 is hypertrophy-only; Refalo 2024 is an RCT, PMID 38970765). Estimated RIR, modest model fit -> moderate."],
+    "consumer": "engine",
     "programmingAction": "Strength Engine sets RIR targets per exercise; isolation may go 0-1 RIR."
   },
   {
@@ -133,6 +148,7 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "high",
     "caveats": ["Heavy strength is the anchor that preserves strength while dieting."],
+    "consumer": "engine",
     "programmingAction": "Strength Engine guarantees a heavy primary per pattern per week."
   },
   {
@@ -147,6 +163,7 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "high",
     "caveats": ["Load-bearing source is the Schoenfeld 2016 RCT (>=2-3 min > 1 min for strength AND hypertrophy in trained men). Grgic 2017 review is hypertrophy-only and equivocal. Likely mechanism: short rest truncates achievable volume - if volume is preserved, short rest costs less."],
+    "consumer": "engine",
     "programmingAction": "Strength Engine sets default rest by exercise role."
   },
   {
@@ -161,6 +178,7 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "medium",
     "caveats": ["Promising but young literature; do not sacrifice joint safety for length."],
+    "consumer": "engine",
     "programmingAction": "Exercise Selection Engine prefers exercises loading the lengthened position."
   },
   {
@@ -175,7 +193,24 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "medium",
     "caveats": ["Moesgaard: hypertrophy LP=UP when equated, but UP modestly beats LP for strength in TRAINED subgroups. Williams compares periodized vs non-periodized (favors periodization for strength), NOT LP vs UP - re-purposed accordingly."],
+    "consumer": "doc",
+    "consumerNote": "INFORMATIONAL. Its finding is a NEGATIVE (\"periodisation style buys no hypertrophy advantage\"), so there is nothing to enforce: it exists to stop the system from spending complexity on undulating schemes for hypertrophy reasons. The one positive half (undulating is modestly better for strength in trained lifters) is already how the week is written.",
     "programmingAction": "Block Planner may use undulating loading for strength; expects no hypertrophy advantage from periodization style."
+  },
+  {
+    "id": "STR-009",
+    "rule": "Progress by DOUBLE PROGRESSION: hold the load until the top of the prescribed rep window is reached on every working set at or below the target RPE, then add the smallest available increment and drop back to the bottom of the window. Reps first, load second, sets last.",
+    "domain": ["strength", "load_management", "progression"],
+    "population": ["trained_adults"],
+    "energyState": ["deficit", "maintenance"],
+    "goal": ["strength_maintenance", "hypertrophy"],
+    "evidenceLevel": "expert",
+    "sources": ["training-rules.md ('add reps within range, then add load, then add a set'); applied practice; bounded by LOAD-001 (progressive overload) and STR-004 (proximity to failure)"],
+    "applicabilityToUser": "high",
+    "confidence": "medium",
+    "caveats": ["EXPERT, not moderate: no double-progression RCT is in corpus-map.md (Plotkin 2022 is NOT in the corpus), so the METHOD is applied practice. What is evidence-backed is only what it is bounded by - LOAD-001 (progressive overload, strong) and STR-004 (1-3 RIR, moderate).", "The increments are equipment facts, not findings: they are the smallest plate/pin/dumbbell step the gym actually has.", "The 10% cap is the same heuristic as G-H1/LOAD-JUMP and inherits its status: prudent, not validated."],
+    "consumer": "engine",
+    "programmingAction": "Progression Engine (suggestSetTarget): rep windows by rep-range family (heavy 3-6, moderate 6-10, higher 10-15). All working sets at the TOP of the window with avgRPE <= target -> +1 increment and back to the bottom. Mid-window -> +1 rep, same load. Below the bottom of the window -> -1 increment or repeat. Increments: 2.5 kg barbell and machine (pin/plate step), 1.25 kg cable, next dumbbell PAIR (5->6->7.5->9->10->12.5->15->17.5->20->22.5->25 kg per hand), +2.5 kg of added load on weighted chin-ups. NEVER more than 10% of the last top set in one jump - if the smallest increment already exceeds 10% (a 4 kg dumbbell, a 20 kg machine), hold the load and ask for reps instead. RPE MISSING is not RPE low: without a logged RPE, require the top of the window on TWO consecutive sessions before adding load."
   },
   {
     "id": "STR-010",
@@ -189,12 +224,13 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "medium",
     "caveats": ["Weekly random rotation destroys progression tracking."],
+    "consumer": "validator",
     "programmingAction": "Exercise Selection Engine rotates accessories only at block edges."
   },
 
   {
     "id": "REC-001",
-    "rule": "Protein 1.8-2.7 g/kg bodyweight; bias higher when leaner or in a larger deficit.",
+    "rule": "Protein 1.6-2.2 g/kg bodyweight (ACSM says 1.2-2.0; extrapolated upward inside a deficit per Helms/ISSN); bias higher when leaner or in a larger deficit.",
     "domain": ["nutrition", "recomposition"],
     "population": ["trained_adults", "lean_athletes"],
     "energyState": ["deficit"],
@@ -203,8 +239,9 @@ reescriben la regla.
     "sources": ["Helms 2014", "ISSN Protein (Jager 2017)", "Morton 2018 meta", "Nunes 2022 (J Cachexia Sarcopenia Muscle; doi 10.1002/jcsm.12922)"],
     "applicabilityToUser": "high",
     "confidence": "high",
-    "caveats": ["Existing system floor (>=170 g/day) sits inside this range.", "Nunes 2022 (74 RCTs): >=1.6 g/kg/day benefits lean mass only WITH resistance training, and was studied mostly at maintenance -> deficit application is a reasonable extrapolation."],
-    "programmingAction": "Nutrition guidance enforces protein floor scaled to leanness/deficit."
+    "caveats": ["RANGE REWRITTEN 2026-09-08 (app audit R-6). The old declared range (1.8-2.7 g/kg) had no source behind its upper half: ACSM 2016 (acsm-summaries.md S3:138-141) says 1.2-2.0 g/kg/d, 2.0+ under energy restriction. The 1.6-2.2 band is ACSM's ceiling extrapolated one step up for a deficit on Helms 2014 / ISSN authority, and it still contains the operating floor of 185 g (2.12 g/kg at 87 kg).", "Existing system floor (185 g/day) sits at the top of this range, not above it.", "Nunes 2022 (74 RCTs): >=1.6 g/kg/day benefits lean mass only WITH resistance training, and was studied mostly at maintenance -> deficit application is a reasonable extrapolation."],
+    "consumer": "validator",
+    "programmingAction": "Nutrition guidance enforces protein floor scaled to leanness/deficit; validatePlanVersion PROTEIN-FLOOR blocks any proposal below 185 g and warns when a deficit week ships no protein guidance at all."
   },
   {
     "id": "REC-002",
@@ -218,6 +255,7 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "high",
     "caveats": ["Murphy & Koehler 2022 supports: deficit impairs lean-mass gain (not strength) and scales with deficit severity (~500 kcal/day threshold). It does NOT support 'leaner individuals lose more lean mass' - it found higher-BMI gained less (possibly confounded). The slower-when-lean idea rests on Garthe/Barakat (weaker), so treat that nuance as moderate, not strong."],
+    "consumer": "validator",
     "programmingAction": "Recovery/Progression Engines slow the deficit if strength or wellness trends decline."
   },
   {
@@ -232,6 +270,8 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "medium",
     "caveats": ["'Fast fat loss + muscle gain' is mostly a beginner/returning/high-bodyfat phenomenon.", "Barakat is a NARRATIVE review -> evidenceLevel expert. Its 2.3-3.1 g/kg protein figure is per LEAN BODY MASS (Helms 2014), not per bodyweight - do not conflate with REC-001's g/kg-bodyweight floor."],
+    "consumer": "doc",
+    "consumerNote": "Expectation framing, not a dose. It shapes the prose of goalProgress (\"slow recomposition in a trained adult\") but no branch reads it; making it executable would mean predicting recomposition rate, which the pack refuses to do.",
     "programmingAction": "Goal Engine frames trained-user recomp as slow; avoids promising both fast."
   },
   {
@@ -246,6 +286,8 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "medium",
     "caveats": ["User is in a re-entry block after a ~6-week layoff; window is temporary."],
+    "consumer": "doc",
+    "consumerNote": "The return-from-layoff window has no live consumer: the re-entry ramp (REENTRY_WEEKS / applyReentryPlan) is dead code with no callers and is being deleted (app audit 2026-09-08, E-12). The window itself is over - the June 2026 layoff was 12+ weeks ago - so re-implementing it now would be building for a case that has passed.",
     "programmingAction": "Block Planner prioritizes strength + adequate protein early to recapture lost mass."
   },
   {
@@ -260,6 +302,7 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "medium",
     "caveats": ["Existing system already runs diet breaks on weeks 5 & 9."],
+    "consumer": "validator",
     "programmingAction": "Block Planner co-locates diet breaks with deloads."
   },
   {
@@ -274,6 +317,8 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "high",
     "caveats": ["Already practised in plans/nutrition-notes.md since W19; formalised as a Rule ID 2026-08-16 so the engine can act on it.", "Interacts with ENV-001: heat raises sweat losses and blunts thirst, so the pre-session dose matters more in a Madrid summer.", "Supporting observation, not proof: the 2024-09-20 panel shows urine density 1.036 (very concentrated) alongside urea 59 mg/dL with normal creatinine/eGFR - consistent with dehydration at sampling. See data/processed/2026-08-16_blood-markers.md."],
+    "consumer": "doc",
+    "consumerNote": "STRONG AND UNCONSUMED, on purpose for now: there is no hydration field in any store, so a pre-session prompt would be an unverifiable nag. It reaches the user through plans/nutrition-notes.md only. Making it a real consumer needs a hydration log first (acquisition item).",
     "programmingAction": "Nutrition guidance surfaces a pre-session hydration prompt; Cardio Engine raises it under ENV-001 heat conditions."
   },
   {
@@ -288,6 +333,8 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "medium",
     "caveats": ["The user's baseline (~3.2 g/kg) sits BELOW the ACSM moderate band by deliberate choice - carbohydrate absorbs the deficit. Redistribution is the lever available; raising the total is not, without ending the deficit.", "The day-type table in plans/nutrition-notes.md names weekdays from the retired April plan (Lower Tue/Fri) and must be read as day TYPE, not weekday, under the current IDEAL.", "Performance benefit is inferred from CHO availability literature; no trial tests this exact redistribution in a deficit."],
+    "consumer": "doc",
+    "consumerNote": "CHO periodisation by day type is in plans/nutrition-notes.md but nutrition.js targets only kcal and protein: no CHO band is computed or shown, so nothing consumes it. It is the next nutrition increment, not a rule the coach can cite for an action today.",
     "programmingAction": "Nutrition guidance maps the day's session family to a CHO target band."
   },
   {
@@ -302,6 +349,7 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "medium",
     "caveats": ["The 30 kcal/kg FFM/d threshold comes largely from female athlete/RED-S literature; applicability to a male recreational lifter is an extrapolation of DIRECTION, not of the exact number.", "acsm-summaries.md #3 estimates ~27 kcal/kg FFM/d on training days for this user - marginal, transient low EA on hard days is common in a planned cut and is not by itself pathological.", "Burke 2021 is a consensus statement (expert by design) and its population is weight-category athletes.", "Symptom set to confirm against: mood, libido, sleep quality, illness frequency, morning HR - already tracked weekly in plans/nutrition-notes.md.", "Testosterone/SHBG have NEVER been measured (see data/processed/2026-08-16_blood-markers.md), so the endocrine limb of this rule is currently unverifiable for this user."],
+    "consumer": "validator",
     "programmingAction": "Recovery Engine treats 2+ worsening LEA markers over 2 weeks as a trigger for an early diet break plus a volume cut; never derives a calorie number from the EA estimate alone."
   },
   {
@@ -316,6 +364,7 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "medium",
     "caveats": ["Steps are ALREADY ingested (store `steps`, via the intervals.icu companion) - this is the cheapest unused signal in the system.", "Jakicic 2024: HIIT is NOT superior to moderate activity for body-weight regulation, and total energy expenditure matters more than modality - so steps compete on equal terms with structured cardio for fat loss.", "The specific 7,000 figure is a public-health floor, not an optimum for a trained adult in a deficit."],
+    "consumer": "prompt",
     "programmingAction": "Surface the weekly step trend as adherence context; never convert steps into a calorie prescription."
   },
 
@@ -331,6 +380,7 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "high",
     "caveats": ["Depends on running intensity and weekly volume; bike/row/ski may substitute when lower-limb fatigue is high."],
+    "consumer": "validator",
     "programmingAction": "Interference Engine moves hard running away from lower-heavy days or swaps modality."
   },
   {
@@ -345,6 +395,8 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "high",
     "caveats": ["Running specificity is still required to build running capacity (see END-007/SEL-004 trade-off)."],
+    "consumer": "doc",
+    "consumerNote": "Cited as a LABEL in SESSION_TYPES.evidenceTags and in the cardio swap catalogue, but no branch selects a modality from it: the erg-instead-of-run decision is made by hand. Flagged strong-without-a-consumer in the 2026-09-08 audit (R-8); the fix is a modality selector, not a new guardrail.",
     "programmingAction": "Modality Engine selects erg/bike over running when lower-limb load is high."
   },
   {
@@ -359,6 +411,7 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "medium",
     "caveats": ["Reverse if the day's dominant goal is aerobic.", "Schumann 2022 strongly supports SAME-SESSION interference (power most affected) but only weakly supports lift-FIRST order - that ordering claim should lean on primary ordering studies, not Schumann. Downgraded to weak_extrapolated."],
+    "consumer": "validator",
     "programmingAction": "Strength/Cardio Engines order intra-session work by dominant goal."
   },
   {
@@ -373,6 +426,7 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "high",
     "caveats": [],
+    "consumer": "validator",
     "programmingAction": "Hybrid/Athleticism Engines place power microdosing at session start on fresh days."
   },
   {
@@ -387,6 +441,8 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "high",
     "caveats": ["Interference is dose-dependent; high-volume/high-frequency endurance still matters."],
+    "consumer": "doc",
+    "consumerNote": "A REFUTATION, so there is nothing to compute: it exists to stop the system from treating cardio as a threat to strength. It is already honoured structurally - CLAUDE.md makes cardio a co-equal quality and the ideal week carries 2 cardio days next to 4 strength days - which is why no engine branches on it.",
     "programmingAction": "Goal Engine treats cardio as co-equal, not a threat to be minimized."
   },
   {
@@ -401,6 +457,8 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "medium",
     "caveats": ["Wilson 2012 supports volume-dependence (verified). Fyfe 2014 NAMES the levers (intensity/volume/modality) but explicitly does NOT prove that managing them reduces interference; Fyfe's own 2016 follow-up found endurance intensity did NOT mediate lower-body strength interference. Do not overstate."],
+    "consumer": "doc",
+    "consumerNote": "No endurance cap is implemented for strength-priority blocks: the only volume ceilings that exist are km-based (END-003 / KM-JUMP) and the hard-day budget (BUD-001). Would need a block-goal field the planner does not carry yet.",
     "programmingAction": "Block Planner caps weekly endurance when strength is dominant."
   },
 
@@ -416,6 +474,7 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "high",
     "caveats": ["TID literature is from competitive endurance athletes; for 2-3 runs/wk it simplifies to 'mostly easy + occasional quality'.", "Seiler's model is specifically POLARIZED (distinct from pyramidal) - do not conflate. Festa 2020 (recreational runners) found no difference polarized vs threshold, which tempers the polarized prescription for this user's profile. Sources: Seiler 2010, Stoggl & Sperlich 2014, Rosenblat 2019 (only 3 studies)."],
+    "consumer": "validator",
     "programmingAction": "Interacts with BUD-001/BUD-002 to bound weekly hard stress."
   },
   {
@@ -430,6 +489,7 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "high",
     "caveats": ["Daniels is a session toolbox here, not an authority."],
+    "consumer": "validator",
     "programmingAction": "Cardio Engine prescribes zones by HR/RPE until aerobic base is established."
   },
   {
@@ -444,6 +504,7 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "medium",
     "caveats": ["Bertelsen 2017 (verified) supports the load-vs-capacity MECHANISM (injury when load exceeds tissue capacity); the 'gradual progression' prescription is a model IMPLICATION, not a tested result. The ~10% number is a heuristic, NOT validated (Nielsen 2012 inconclusive; Buist RCT found no difference 10.5% vs 23.7%). Use gradual progression as a prudent default."],
+    "consumer": "validator",
     "programmingAction": "Progression Engine limits weekly running-volume jumps; Recovery Engine inserts down weeks."
   },
   {
@@ -458,6 +519,7 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "high",
     "caveats": [],
+    "consumer": "validator",
     "programmingAction": "Cardio + Interference Engines limit and place interval days."
   },
   {
@@ -472,6 +534,7 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "medium",
     "caveats": ["The decoupling METRIC and <5% threshold are practitioner methodology (expert), NOT validated diagnostics; underlying cardiovascular-drift PHYSIOLOGY is real (moderate). Confounded by heat/dehydration/glycogen - all elevated in a deficit + Madrid summer. ALSO: this data is NOT extracted today (see data-sources-audit.md) - rule is advisory + data-blocked. Control conditions (same route/fueling) before reading anything."],
+    "consumer": "engine",
     "programmingAction": "Cardio + Readiness Engines track decoupling and pace-to-HR trends from Intervals."
   },
   {
@@ -486,6 +549,7 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "medium",
     "caveats": [],
+    "consumer": "engine",
     "programmingAction": "Cardio Engine prescribes run/walk in early running phase."
   },
   {
@@ -500,6 +564,8 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "high",
     "caveats": [],
+    "consumer": "doc",
+    "consumerNote": "STRONG AND UNCONSUMED as a check, but honoured by construction: the ideal week keeps 4 heavy strength days and the box jump in Lower A even while running progresses, so there is no state in which it would fire. It should become a real check the day a running block is ever allowed to cut strength.",
     "programmingAction": "Block Planner keeps strength + plyo in maintenance even when running is dominant."
   },
   {
@@ -514,7 +580,24 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "high",
     "caveats": ["HIIT carries higher fatigue + interference cost; count it in the hard-day budget."],
+    "consumer": "doc",
+    "consumerNote": "Cited as a LABEL in SESSION_TYPES.intervals.evidenceTags. Nothing chooses between HIIT and MICT: the 1-hard-session cap (END-004 / G-H4) and the hard-day budget already bound the decision, so the choice rule never runs.",
     "programmingAction": "Cardio Engine balances HIIT vs MICT against BUD-001."
+  },
+  {
+    "id": "END-009",
+    "rule": "Hold at least 150 min/week of moderate-to-vigorous physical activity as the floor, and aim at 200-300 min/week while losing fat: the dose-response for weight loss runs across that band, and higher doses buy little extra once the loss is being maintained.",
+    "domain": ["endurance", "recomposition", "longevity"],
+    "population": ["adults", "trained_adults"],
+    "energyState": ["deficit", "maintenance"],
+    "goal": ["fat_loss", "aerobic_base", "healthspan"],
+    "evidenceLevel": "strong",
+    "sources": ["Jakicic et al. 2024 (ACSM Consensus Statement: Physical Activity and Excess Body Weight and Adiposity for Adults; Transl J ACSM 9(4):e000266; summarised in research/acsm-summaries.md S4:192-197; PDF in data/ACSM/)"],
+    "applicabilityToUser": "high",
+    "confidence": "high",
+    "caveats": ["The 150 min floor and the 200-300 min band are POPULATION doses for body-weight regulation in adults with excess adiposity, not a performance prescription for a trained adult - for this user they are a lower bound on aerobic volume, never a target to chase.", "Same source: HIIT is NOT superior to MVPA for body-weight regulation, and 225-300 min/wk is not clearly better than 150 for MAINTAINING a loss. So the band argues for more EASY minutes, not for harder sessions - it must never be read as licence to add a second hard day (G-H4, END-004).", "Counted as aerobic/cardio minutes only. Strength sessions are MVPA by ACSM's own definition, so the weekly check is deliberately conservative."],
+    "consumer": "validator",
+    "programmingAction": "Cardio Engine keeps weekly aerobic minutes >= 150 as a floor and treats 200-300 as the fat-loss band; validatePlanVersion MVPA-FLOOR warns when the proposed week sums under 150 min of cardio. The lever is easy minutes and steps (REC-009), never intensity."
   },
 
   {
@@ -529,6 +612,7 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "medium",
     "caveats": ["No direct HYROX programming RCTs; logic is principle-based."],
+    "consumer": "engine",
     "programmingAction": "Hybrid Engine bounds frequency by current block goal."
   },
   {
@@ -543,6 +627,7 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "medium",
     "caveats": ["Deceptively fatiguing; competes with both legs and runs for recovery."],
+    "consumer": "validator",
     "programmingAction": "Interference Engine + BUD-002 place and weight hybrid sessions."
   },
   {
@@ -557,6 +642,7 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "high",
     "caveats": [],
+    "consumer": "engine",
     "programmingAction": "Exercise Selection Engine filters by skillRequirement under fatigue."
   },
   {
@@ -571,6 +657,7 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "high",
     "caveats": ["Benchmarks are the highest hard-day cost (BUD weight 3)."],
+    "consumer": "engine",
     "programmingAction": "Block Planner schedules benchmarks at block edges only."
   },
   {
@@ -585,6 +672,7 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "medium",
     "caveats": [],
+    "consumer": "engine",
     "programmingAction": "Modality + Hybrid Engines select low-impact stations when legs are loaded."
   },
 
@@ -600,6 +688,7 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "medium",
     "caveats": ["Plyo improves jump/power and benefits trained subjects (verified). BUT 'low-dose is optimal' is NOT supported - the dose-response meta favors HIGHER volume (>20 sessions, >50 jumps). Reframe: in a deficit, use LOW-dose plyo as a low-fatigue MAINTENANCE tool for power, not a maximization protocol. Highest tendon/joint risk given lumbar history; low amplitude first."],
+    "consumer": "validator",
     "programmingAction": "Athleticism Engine caps contacts and gates plyo behind base-building."
   },
   {
@@ -614,6 +703,7 @@ reescriben la regla.
     "applicabilityToUser": "medium",
     "confidence": "medium",
     "caveats": ["TRADE-OFF (verified): low velocity-loss preserves STRENGTH + fast-fiber quality with less fatigue/volume; HIGHER velocity-loss drives MORE hypertrophy. So low-VL is ideal for strength-in-a-deficit, not for hypertrophy. REQUIRES a velocity device (LPT/accelerometer) - NOT available in the system today, so this is advisory only."],
+    "consumer": "engine",
     "programmingAction": "Athleticism Engine places power before fatiguing work."
   },
   {
@@ -628,6 +718,7 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "high",
     "caveats": ["Especially relevant given the user's lumbar history.", "IMPLEMENTATION NOTE (2026-08-17, v11.37): this rule was UNENFORCEABLE for months, not for lack of evidence but because the taxonomy could not express it. MOVEMENT_PATTERNS tagged every core movement as 'core', so a week of loaded spinal FLEXION (cable crunch + hanging leg raise) passed any 'core 2x/week' check while containing zero of what this rule actually asks for. Split into core-anti-rotation / core-anti-extension / core-flexion; a rule graded strong is worthless if the data model cannot represent its distinction."],
+    "consumer": "validator",
     "programmingAction": "Exercise Selection Engine favors anti-rotation/anti-extension core. Every strength week must contain >=1 core-anti-rotation AND >=1 core-anti-extension; flexion work is optional extra, never the whole allocation."
   },
   {
@@ -642,6 +733,7 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "medium",
     "caveats": ["Tendons adapt slowly; sequence plyo after base."],
+    "consumer": "validator",
     "programmingAction": "Block Planner sequences plyo after base blocks."
   },
   {
@@ -656,6 +748,7 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "medium",
     "caveats": ["VERIFIED but scope-limited: n=18 YOUNG MALE RUGBY players, 5 wk, sprint/agility outcomes (not the user's goals). Failure to detect a group difference in a small sample is not proven equivalence. Transferable takeaway: unilateral work is a joint-friendly, lower-axial-load substitute without a strength penalty -> weak_extrapolated for this user."],
+    "consumer": "engine",
     "programmingAction": "Exercise Selection Engine includes unilateral lower (BSS, lunges, step-ups) for athleticism and joint resilience."
   },
   {
@@ -670,6 +763,7 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "medium",
     "caveats": ["Garber 2011 prescribes a flexibility dose but does NOT establish that it prevents injury - do not oversell it as prophylaxis.", "The user-specific case is stronger than the general one: mobility was ZERO in the weeks preceding both lumbar episodes (W2 and W16), which is why the system already mandates 3x/wk.", "Garber 2011 also recommends neuromotor/balance work 2-3 d/wk; that remains deliberately OUT of scope during the cut (see acsm-summaries.md #2) and has no rule."],
+    "consumer": "validator",
     "programmingAction": "Block Planner keeps mobility slots on recovery/cardio days; Recovery Engine flags a week with fewer than 2."
   },
 
@@ -685,6 +779,7 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "high",
     "caveats": ["Whoop reports a proprietary HRV during sleep, NOT standardized morning RMSSD used in the literature - values/trends are not directly interchangeable. The valid signal is the individual's own trend vs personal baseline."],
+    "consumer": "validator",
     "programmingAction": "Readiness Engine computes rolling means; ignores single-day spikes."
   },
   {
@@ -699,6 +794,7 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "high",
     "caveats": [],
+    "consumer": "validator",
     "programmingAction": "Readiness Engine gates downgrades on concordant signals."
   },
   {
@@ -713,6 +809,7 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "high",
     "caveats": ["Composite score; do not derive set/rep numbers from it."],
+    "consumer": "validator",
     "programmingAction": "Readiness Engine maps recovery to green/yellow/red only."
   },
   {
@@ -727,6 +824,7 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "high",
     "caveats": ["HRV-guided RCT evidence (Vesterinen 2016 n=40 recreational; Javaloyes 2019 n=17 cyclists; Granero-Gallegos 2020 meta) supports trend-based use, with benefit larger in amateurs than elite. Whoop sleep-HRV is not the morning RMSSD of these studies."],
+    "consumer": "validator",
     "programmingAction": "Readiness Engine normalizes HRV to personal baseline."
   },
   {
@@ -741,6 +839,7 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "high",
     "caveats": [],
+    "consumer": "validator",
     "programmingAction": "Readiness Engine weights warm-up performance + subjective wellness above daily score."
   },
   {
@@ -755,6 +854,7 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "high",
     "caveats": ["Fullagar is a NARRATIVE review and notes the evidence is partly equivocal; 'sleep matters for recovery/performance' is well-supported broadly, but this single citation does not prove a strict hierarchy of recovery levers."],
+    "consumer": "engine",
     "programmingAction": "Readiness Engine flags sleep debt; Recovery Engine prioritizes sleep interventions."
   },
   {
@@ -769,6 +869,8 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "medium",
     "caveats": [],
+    "consumer": "doc",
+    "consumerNote": "RETIRED AS A DOSE on 2026-09-07 by the user: \"recovery is information, not a dose\" - the app no longer downgrades the objective of a session from a wearable number. What survives is the labelling of recovery/easy session types, which is not a consumer. The rule is kept because the CLASSIFICATION (a red day is about the objective, not the load) is still the right frame for a decision the USER takes in the gym.",
     "programmingAction": "Readiness Engine (upstream gate) can swap a hard session for recovery work."
   },
   {
@@ -783,6 +885,7 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "high",
     "caveats": ["Consensus statement (expert by design). It explicitly warns AGAINST relying on any single marker - prolonged performance decline confirmed by testing is the anchor, not a wearable score. True OTS is rare in recreational training."],
+    "consumer": "engine",
     "programmingAction": "Recovery Engine triggers deload; reuses existing weekly-checkin LEA triggers."
   },
 
@@ -798,6 +901,7 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "high",
     "caveats": ["The 'no rigid ACWR thresholds' part is strongly supported (Impellizzeri 2020, verified). The 'spikes drive injury' part is weaker - Nielsen 2012 was inconclusive (see END-003). Do NOT cite Coyne 2019 (PMID 31672929) - it argues coupling is minimal, the opposite. Coupling critique = Lolli et al."],
+    "consumer": "validator",
     "programmingAction": "Progression + Recovery Engines smooth weekly load changes without rigid ratios."
   },
   {
@@ -812,6 +916,8 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "high",
     "caveats": ["Complete rest deconditions tendons (Cook & Purdam). HSR/progressive loading well-supported (Malliaras 2013). Isometric analgesia: Rio 2015 verified but n=6 acute and replication inconsistent -> use isometrics as an OPTION, do not overstate superiority. Cook & Purdam is a model (expert)."],
+    "consumer": "doc",
+    "consumerNote": "STRONG AND UNCONSUMED: there is no tendon/rehab module. Nothing in the system can prescribe isometrics or heavy-slow resistance, and inventing a protocol from one rule would be exactly the kind of unsupported dosing GEN-002 forbids. It stays as the documented answer for when a tendon issue appears.",
     "programmingAction": "Recovery Engine substitutes progressive tendon loading, not removal."
   },
   {
@@ -826,6 +932,7 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "high",
     "caveats": ["User has lumbar history; sumo DL already RPE-gated."],
+    "consumer": "validator",
     "programmingAction": "Exercise Selection + Recovery Engines swap to lumbar-friendly variants."
   },
   {
@@ -835,12 +942,13 @@ reescriben la regla.
     "population": ["trained_adults"],
     "energyState": ["deficit", "maintenance"],
     "goal": ["fatigue_management"],
-    "evidenceLevel": "moderate",
-    "sources": ["applied periodization; existing training-rules.md"],
+    "evidenceLevel": "expert",
+    "sources": ["training-rules.md; applied periodization"],
     "applicabilityToUser": "high",
     "confidence": "high",
-    "caveats": [],
-    "programmingAction": "Block Planner schedules deloads; Recovery Engine triggers reactive ones."
+    "caveats": ["DOWNGRADED to expert 2026-09-08 (app audit R-3). There is no trial behind '4-6 weeks' or behind the reactive trigger; both are applied practice written into training-rules.md. The MAGNITUDES below were being applied by the code (coach-engine.js, coach-facts.js) with no source at all - they are now declared here as practice so nothing cites them as evidence."],
+    "consumer": "validator",
+    "programmingAction": "Block Planner schedules deloads; Recovery Engine triggers reactive ones. Deload MAGNITUDES (practice, not evidence): sets x0.6 of the loading week, running km x0.7, load x0.9 (85-90% of the working kg), RPE 5-6, no plyometrics, calories to maintenance, protein unchanged. validatePlanVersion DELOAD-VOLUME enforces the sets factor."
   },
 
   {
@@ -855,6 +963,7 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "high",
     "caveats": ["Verified: machine vs free = no hypertrophy/strength/jump difference; the ONLY reliable difference is test-specificity (you get better at what you train). So train priority test-lifts occasionally to capture specificity; use machines freely for fatigue management."],
+    "consumer": "validator",
     "programmingAction": "Exercise Selection Engine prefers machines when systemically taxed or for high-fatigue isolation."
   },
   {
@@ -869,6 +978,7 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "medium",
     "caveats": ["SFR is a qualitative heuristic, not a measured number (see exercise-schema-v1)."],
+    "consumer": "validator",
     "programmingAction": "Exercise Selection Engine ranks candidates by qualitative SFR buckets."
   },
   {
@@ -883,6 +993,7 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "high",
     "caveats": ["This rule REFUTES a common claim."],
+    "consumer": "validator",
     "programmingAction": "Evidence Engine flags EMG-only justifications as weak."
   },
   {
@@ -897,6 +1008,8 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "high",
     "caveats": ["Running specificity vs interference is the core trade-off; see cardio-modality-schema-v1."],
+    "consumer": "doc",
+    "consumerNote": "STRONG AND UNCONSUMED: SESSION_TYPES carries the metadata this rule needs (impact, interference, budgetWeight) but no code selects a cardio modality from it - the user picks. Same gap as INT-002 and the same fix (one modality selector consuming both). Flagged in the 2026-09-08 audit (R-8).",
     "programmingAction": "Modality Engine uses cardio metadata to pick run/treadmill/bike/row/ski."
   },
 
@@ -912,6 +1025,7 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "high",
     "caveats": ["The 80/20 distribution applies to the entire training week, not just running."],
+    "consumer": "validator",
     "programmingAction": "See hard-day-budget.md; Block Planner + Interference Engine enforce the cap."
   },
   {
@@ -926,7 +1040,8 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "medium",
     "caveats": ["Weights are heuristic starting points, refined with logged data; not falsely precise."],
-    "programmingAction": "See hard-day-budget.md for weights and cap; engines sum and constrain."
+    "consumer": "validator",
+    "programmingAction": "See hard-day-budget.md for weights and cap; engines sum and constrain. `SESSION_TYPES[*].budgetWeight` (app.js) carries the per-session weight and `_vpBudget()` sums it; validatePlanVersion HARD-BUDGET is the cap check."
   },
 
   {
@@ -941,6 +1056,7 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "high",
     "caveats": ["OBSERVATIONAL. A dose-response association, not a randomised demonstration that raising CRF lowers mortality; reverse causation and residual confounding are live concerns in a clinically-referred cohort.", "The user's CRF has NEVER been measured. Whoop/COROS VO2max estimates are not a graded exercise test - treat them as trend, not value (GEN-002).", "This rule justifies protecting aerobic work when time is scarce; it does NOT justify raising volume past the hard-day budget (BUD-001)."],
+    "consumer": "validator",
     "programmingAction": "Goal Engine keeps a minimum aerobic dose even in strength-dominant blocks; the aerobic quality is never the first thing cut for convenience."
   },
   {
@@ -955,6 +1071,7 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "high",
     "caveats": ["OBSERVATIONAL, both. Grip strength is a MARKER of overall health, not a target to train - do not infer that grip work lowers mortality.", "The 30-60 min/wk sweet spot with attenuation beyond it is a population-health finding; it does not imply the user's ~4 h/wk is counterproductive, only that the health return is already banked well below current volume.", "Practical consequence: on a compressed week, strength frequency is worth protecting even at heavily reduced volume - which is exactly what the 3-day IDEAL variant does."],
+    "consumer": "validator",
     "programmingAction": "Block Planner never drops strength below 2 sessions/wk; the minimum-dose variant is framed as health-preserving, not as a failure week."
   },
   {
@@ -969,6 +1086,7 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "high",
     "caveats": ["This is a GUARDRAIL, not a finding. A training system must not titrate lipids, prescribe supplements against a deficiency, or interpret an abnormal panel.", "Current data: last panel 2024-09-20 (~23 months old) -> historical baseline only, NO rule may fire on it (GEN-002 population/recency filter). See data/processed/2026-08-16_blood-markers.md.", "Two open items flagged there for a clinician, not for the engine: vitamin D 11.2 ng/mL (deficiency, 2023, never rechecked) and LDL 149 -> 170 mg/dL with ApoB 110.", "Where markers legitimately touch training, they do so through existing rules - REC-006 (hydration/urea), REC-008 (energy availability), READ-006 (sleep) - not through new dosing logic."],
+    "consumer": "engine",
     "programmingAction": "Surface marker trends and staleness in the profile; flag when a panel is older than ~12 months; never gate a session on a lab value."
   },
   {
@@ -983,6 +1101,8 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "medium",
     "caveats": ["OBSERVATIONAL and U-shaped: the long-sleep limb is widely read as reverse causation (illness causes long sleep), so do NOT treat a long night as a risk signal.", "Complements READ-006 (sleep as the primary recovery lever) with a different rationale; they share the same actionable target, so do not double-count them as independent evidence.", "Directly actionable here: sleep duration is one of the few fields classified `available` AND high-reliability in data-sources-audit.md.", "Observed precedent: the W18 review recorded a 6.3 h average alongside HRV down 14% and RHR +5 - the mechanism is not hypothetical for this user."],
+    "consumer": "engine",
+    "consumerNote": "Consumed through the rolling sleep trend that computeReadinessFrom() already builds (app/coach-engine.js) and that the facts pack ships as readiness.sleep. Shares its actionable target with READ-006 by its own caveat, so the two are deliberately NOT counted as independent evidence for the same decision.",
     "programmingAction": "Readiness Engine surfaces the rolling sleep trend against a 7-8 h band; Recovery Engine prioritises sleep before any other intervention."
   },
 
@@ -998,6 +1118,7 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "medium",
     "caveats": ["The PHYSIOLOGY is well established (HR up and stroke volume down for a given work rate in heat, partially reversing over ~1-2 weeks of acclimation). The PRESCRIPTION 'hold HR, let pace go' is the practical corollary and is applied practice, not a tested protocol.", "Direct consequence for this system: a pace slowdown in a Madrid summer is NOT evidence of lost fitness, and pace-at-fixed-HR (END-005) is confounded in these months - do not read aerobic progress from it until autumn.", "Acclimation partially closes the gap within 1-2 weeks of consistent heat exposure, so mid-summer comparisons are unstable in both directions."],
+    "consumer": "validator",
     "programmingAction": "Cardio Engine keeps zone/HR as the target in heat and annotates pace expectations; Readiness Engine suppresses pace-based aerobic-progress claims during hot months."
   },
   {
@@ -1012,6 +1133,7 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "medium",
     "caveats": ["NEITHER PDF is in data/ACSM/ - cited from verified bibliographic records, so the specific thresholds are NOT quoted here. Marked as an acquisition item in corpus-map.md; do not invent WBGT numbers.", "Both sources address exertional heat ILLNESS in competitive/occupational settings; the transfer to 'shift the easy run indoors on a hot afternoon' is prudent extrapolation, not their finding.", "The equipment inventory already supports this fully: treadmill, bike/erg, rower, SkiErg, plus pool and air-conditioned facility (docs/profile.md).", "A deficit compounds the risk: lower glycogen and fluid intake, both flagged in Thomas 2016."],
+    "consumer": "guardrail",
     "programmingAction": "Modality Engine prefers indoor low-impact options in heat (reuses INT-002/HYB-005 machinery); Nutrition guidance raises the REC-006 pre-session dose."
   }
 ]
@@ -1019,12 +1141,30 @@ reescriben la regla.
 
 ## Índice de Rule IDs
 
-GEN-001..003 · STR-001..008, STR-010 · REC-001..009 · INT-001..006 · END-001..008 · HYB-001..005 ·
+GEN-001..003 · STR-001..010 · REC-001..009 · INT-001..006 · END-001..009 · HYB-001..005 ·
 ATH-001..006 · READ-001..008 · LOAD-001..004 · SEL-001..004 · BUD-001..002 · **LONG-001..004** ·
-**ENV-001..002**. Total: **70 reglas** (59 + 11 añadidas en la ronda 4).
+**ENV-001..002**. Total: **72 reglas** (59 + 11 en la ronda 4 + 2 en la auditoría de la app).
 
-(STR-008 = periodización; STR-009 reservado para double-progression al poblarlo con cita formal.
-ATH-005 = unilateral, provisional hasta verificar Speirs.)
+(STR-008 = periodización. ATH-005 = unilateral, provisional hasta verificar Speirs.)
+
+**Añadidas 2026-09-08** (auditoría de la app, ver [`../docs/audits/2026-09-08-app-audit.md`](../docs/audits/2026-09-08-app-audit.md)):
+
+- `STR-009` — **doble progresión** (R-4). Estaba reservada y vacía mientras el motor la aplicaba:
+  los saltos de kg del código se declaraban "heurística" sin ficha. Grado `expert` y no `moderate`
+  porque Plotkin 2022 **no** está en `corpus-map.md`: el método es práctica, y lo único con
+  evidencia es aquello que lo acota (LOAD-001 `strong`, STR-004 `moderate`).
+- `END-009` — **minutos MVPA/semana** (R-5), de `acsm-summaries.md` §4:192-197 (Jakicic 2024).
+  Ninguna regla codificaba el suelo de 150 min ni la banda de 200-300 para pérdida de grasa, y es
+  el único número de dosis aeróbica con consenso ACSM detrás. Da consumidor a LONG-001 vía
+  `MVPA-FLOOR`.
+
+**Cambiadas 2026-09-08:** `REC-001` (rango 1,8-2,7 → **1,6-2,2 g/kg**, R-6: la mitad alta no tenía
+fuente; ACSM dice 1,2-2,0) · `LOAD-004` (`moderate` → **`expert`**, con las **magnitudes** de la
+descarga escritas en `programmingAction`, R-3: series ×0,6, km ×0,7, kg ×0,9, RPE 5-6) ·
+**`consumer` en las 72 fichas** (R-8): quién consume la regla —
+`engine | validator | guardrail | prompt | doc | none` — con `consumerNote` obligatoria cuando una
+regla `strong` no tiene más consumidor que la documentación. Lo comprueba
+`tests/verify-rule-coverage.mjs`.
 
 **Añadidas 2026-08-16** (auditoría del sistema, ver
 [`../assessments/2026-08-16_system-audit.md`](../assessments/2026-08-16_system-audit.md)):

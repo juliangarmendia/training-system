@@ -99,9 +99,12 @@ const threePoints = render([
   : bad('elige mal la referencia del delta: exagera el progreso usando el punto más antiguo');
 
 // ── 4. La llamada está await-eada ──────────────────────────────────────────────
-SRC.includes('await renderBodyCompEstimator();')
-  ? ok('el call site hace await: la función es async y lee IDB antes de pintar')
-  : bad('se llama sin await — pintaría antes de tener el histórico');
+// v11.66 (V-7c): `renderStats` dejó de ser veinte `await` en serie. La llamada vive ahora
+// dentro de una de las tres tandas (`await Promise.allSettled(...)`), así que sigue
+// esperada — pero ya no como `await renderBodyCompEstimator();` literal.
+/\['bodycomp', \(\) => renderBodyCompEstimator\(\)\]/.test(SRC)
+  ? ok('el call site va dentro de una tanda await-eada de renderStats (V-7c)')
+  : bad('renderBodyCompEstimator ya no se llama desde una tanda esperada de renderStats');
 
 // ── 5. Ejecución real: DOM y IDB simulados, y el click ────────────────────────
 // Lo que ni el análisis estático ni el VM de arriba cubren: que la plantilla y el handler

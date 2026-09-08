@@ -67,6 +67,111 @@ const COACH_GOALS_DEFAULT = {
   },
 };
 
+// ==================== UNA FUENTE POR CONCEPTO ====================
+//
+// EL FALLO QUE ESTA SECCIÓN EXISTE PARA IMPEDIR (E-9, auditoría 2026-09-08). El sistema tenía
+// DOS constantes de libras a kilos (`0.453592` en app.js, `0.45359237` aquí, dos veces), dos
+// tolerancias de Z2 (+2 bpm en el motor y en el pack, estricta en `performanceLine`) y TRES
+// formas de saber la masa libre de grasa (la declarada de 72,8, la de Withings y la derivada
+// `peso × (1 − %grasa)`). Dos números para el mismo concepto no son un detalle de estilo: son
+// dos pantallas que dicen cosas distintas del mismo dato y una decisión que depende de cuál se
+// leyó primero. Cada concepto se define UNA vez aquí y se importa desde donde se use.
+
+/**
+ * Libras a kilos, exacto (1 lb = 0,45359237 kg). Los registros anteriores a la mudanza a
+ * España están en lb y llevan su `unit`; todo lo que compare cargas históricas con las de
+ * hoy pasa por aquí. `0.453592` (el valor truncado que había en app.js) desvía 0,4 g/kg —
+ * irrelevante en un peso corporal y visible en un e1RM sobre 200 lb.
+ */
+const LB_TO_KG = 0.45359237;
+
+/**
+ * Tope porcentual del salto de carga entre sesiones (STR-009 / guardarraíl `LOAD-JUMP`).
+ *
+ * POR QUÉ UN PORCENTAJE Y NO SÓLO EL DISCO. Los saltos absolutos (2,5 kg en barra, el par
+ * siguiente de mancuernas) son los que hay en el gimnasio, pero sobre cargas pequeñas son
+ * enormes: 4 → 6 kg en una mancuerna es **+50 %**, y +2,5 sobre una máquina de 20 kg es
+ * +12,5 %. El validador del coach ya rechazaba esos saltos cuando los proponía el modelo
+ * (`VP_LOAD_JUMP_PCT` en coach-facts.js); la regla de la app los prescribía sin mirar. Mismo
+ * tope para las dos fuentes, o el coach queda sujeto a un límite que la app se salta.
+ */
+const LOAD_JUMP_MAX_PCT = 0.10;
+
+/** Días que una lectura de bioimpedancia sigue describiendo el cuerpo de hoy. */
+const FFM_FRESH_DAYS = 14;
+
+/**
+ * MASA LIBRE DE GRASA, una sola vez y con su procedencia (E-9).
+ *
+ * Había tres respuestas a la misma pregunta y ninguna decía de dónde venía: los 72,8 kg
+ * declarados de `docs/profile.md` (Tanita, 2026-08-11), la lectura de la báscula Withings
+ * (`bodyweightRows[].ffmKg`) y la derivada `peso × (1 − %grasa)` que calculaba `nutrition.js`.
+ * Con la EA dividiendo por una u otra, el mismo día salía 26,4 (bajo el suelo REC-008) o 28,9
+ * (que parece otro problema). Y el pack del coach leía una tercera.
+ *
+ * PRECEDENCIA, de más medido a más declarado:
+ *   1. **Withings ≤ 14 días** — bioimpedancia real y reciente. 14 días porque la FFM se mueve
+ *      despacio: una lectura de anteayer describe el cuerpo de hoy, una de hace un mes no.
+ *   2. **Derivada de la última fila medida con %grasa** — `peso × (1 − bfPct/100)`. Es la que
+ *      cubre la Tanita del gimnasio y cualquier báscula que dé porcentaje.
+ *   3. **Declarada** (`settings.goals.preserve.ffmKg` → `COACH_GOALS_DEFAULT`). El último
+ *      recurso, y va marcado como tal: una EA calculada sobre una FFM de hace un mes es una
+ *      estimación, no una medida.
+ *
+ * `source` viaja en el retorno a propósito. Sin él, la tarjeta de nutrición y el pack del
+ * coach no pueden distinguir "28,9 medido ayer" de "28,9 sobre un número de agosto", que es la
+ * diferencia entre un dato y una suposición.
+ *
+ * @param {object} input
+ * @param {Array<object>} [input.bodyweightRows] Filas del store `bodyweight`
+ *        (`{date, weight, bfPct|fatPct, ffmKg, measured, source}`), en cualquier orden.
+ * @param {object} [input.settings]  `state.settings` (usa `goals.preserve.ffmKg`).
+ * @param {string} [input.todayStr]  'YYYY-MM-DD'. Por defecto, hoy.
+ * @returns {{kg:number, source:'withings'|'derived'|'declared', date:string|null,
+ *           ageDays:number|null, note:string}}
+ */
+function ffmKg(input) {
+  const inp = input || {};
+  const rows = Array.isArray(inp.bodyweightRows) ? inp.bodyweightRows : [];
+  const todayStr = _coachDayStr(inp.todayStr) || _coachDayStr(new Date().toISOString());
+  const declared = (() => {
+    const s = inp.settings || {};
+    const fromSettings = Number(((s.goals || {}).preserve || {}).ffmKg);
+    if (isFinite(fromSettings) && fromSettings > 0) return fromSettings;
+    return Number(COACH_GOALS_DEFAULT.preserve.ffmKg);
+  })();
+  const r1 = (v) => Math.round(Number(v) * 10) / 10;
+  const conFecha = rows
+    .filter(r => r && r.date && (!todayStr || String(r.date).slice(0, 10) <= todayStr))
+    .slice()
+    .sort((a, b) => String(b.date).slice(0, 10).localeCompare(String(a.date).slice(0, 10)));
+
+  // 1. Withings con lectura de bioimpedancia dentro de la ventana.
+  for (const r of conFecha) {
+    if (String(r.source || '').toLowerCase() !== 'withings') continue;
+    const kg = Number(r.ffmKg);
+    if (!isFinite(kg) || kg <= 0) continue;
+    const age = _coachDaysBetween(r.date, todayStr);
+    if (age != null && age > FFM_FRESH_DAYS) continue;
+    return { kg: r1(kg), source: 'withings', date: String(r.date).slice(0, 10), ageDays: age,
+      note: `Withings, hace ${age == null ? '?' : age} d` };
+  }
+
+  // 2. Derivada de la última fila con %grasa.
+  for (const r of conFecha) {
+    const w = Number(r.weight != null ? r.weight : r.kg);
+    const bf = Number(r.bfPct != null ? r.bfPct : r.fatPct);
+    if (!isFinite(w) || w <= 0 || !isFinite(bf) || bf <= 0 || bf >= 100) continue;
+    const age = _coachDaysBetween(r.date, todayStr);
+    return { kg: r1(w * (1 - bf / 100)), source: 'derived', date: String(r.date).slice(0, 10),
+      ageDays: age, note: `derivada de ${r1(w)} kg y ${r1(bf)} % de grasa` };
+  }
+
+  // 3. Declarada.
+  return { kg: r1(declared), source: 'declared', date: null, ageDays: null,
+    note: 'FFM declarada (docs/profile.md): estimación, no medida' };
+}
+
 // ==================== SEMANA ISO ====================
 //
 // Clave de semana canónica del sistema: 'YYYY-Www'. La usan `coach_reviews[id]`, el
@@ -274,7 +379,8 @@ function anchorDateFromWeek(startDateStr, anchorWeek) {
 // EL 10 % ES UNA HEURÍSTICA PRUDENTE, NO UN HALLAZGO. Buist 2008 (n=532) comparó rampas de
 // 10,5 % y 23,7 % por semana y **no encontró diferencia** en lesiones. Así que el 10 % no
 // está aquí porque el 20 % lesione: está porque el techo real de esta persona no se conoce y
-// una rampa lenta cuesta poco (`research/evidence-to-rules.md`, END-003 marcada `expert`).
+// una rampa lenta cuesta poco (`research/evidence-to-rules.md`, END-003 marcada `moderate`,
+// confianza media: Bertelsen 2017 respalda el MECANISMO carga-vs-capacidad, no el 10 %).
 // El techo ×1,35 es del mismo tipo: impide que un bloque largo convierta 40' en 115'.
 //
 // SÓLO VOLUMEN. La zona, la FC objetivo y el ritmo NO progresan (END-002): la base aeróbica
@@ -296,9 +402,15 @@ function roundStep(x, step) {
  * @param {object} block         Salida de `blockWeekFromDates` (`{index, isDeload}`).
  * @param {object} [opts]
  * @param {number} [opts.variant]            `settings.idealVariant`. 0 = viaje.
- * @param {number|null} [opts.lastCardioDaysAgo] Días desde el último cardio registrado;
- *                                            null = nunca se registró.
+ * @param {number|null} [opts.lastCardioDaysAgo] Días desde el último cardio registrado EN ESTE
+ *                                            HUECO (mismo slot / día de la semana) cuando se
+ *                                            pasa `history`; null = nunca se registró.
  * @param {number|null} [opts.coachMin]       Objetivo del coach para este día, si lo hay.
+ * @param {Array<{weekKey:string, min:number}>} [opts.history] Minutos ya hechos en este hueco,
+ *                                            una entrada por sesión, con su semana ISO. Si se
+ *                                            pasa (aunque venga vacío), la rampa sale de la
+ *                                            MEDIANA de las dos últimas semanas con dato y el
+ *                                            `index` del bloque deja de decidir (E-6).
  * @returns {{min: number|null, source: 'coach'|'rule'|'base', note: string|null}}
  */
 function progressCardioMin(baseMin, block, opts = {}) {
@@ -316,9 +428,6 @@ function progressCardioMin(baseMin, block, opts = {}) {
   if (o.variant === 0) {
     return { min: base, source: 'base', note: 'viaje: repite base' };
   }
-  if (b.index == null) {
-    return { min: base, source: 'base', note: 'sin ancla de bloque: repite base' };
-  }
   if (o.lastCardioDaysAgo == null) {
     // Sin historial no se inventa una rampa: progresar sobre la nada es prescribir a ciegas.
     return { min: base, source: 'base', note: 'sin cardio registrado: repite base' };
@@ -326,14 +435,81 @@ function progressCardioMin(baseMin, block, opts = {}) {
   if (Number(o.lastCardioDaysAgo) > 14) {
     return { min: base, source: 'base', note: `${o.lastCardioDaysAgo} d sin cardio: repite base` };
   }
-  // 3. Descarga: −30 %. Es el punto entero del bloque; progresar aquí sería lo peor de los dos
+
+  // 3. LA RAMPA SALE DE LO HECHO, NO DEL CALENDARIO (E-6, auditoría 2026-09-08).
+  //
+  // El fallo que cierra: la rampa iba sobre `block.index`, así que la semana 4 del bloque
+  // prescribía base × 1,1³ AUNQUE las tres semanas anteriores no se hubiese corrido — una bici
+  // de hace tres días bastaba para pasar la puerta de los 14 días y el número seguía subiendo
+  // sobre una base aeróbica que no existía. Ahora la referencia es la MEDIANA de los minutos
+  // de las dos últimas semanas ISO CON DATO EN ESTE HUECO: se progresa desde donde se está.
+  //
+  // La mediana y no la media: un día en que se cortó la sesión a la mitad no debe arrastrar la
+  // prescripción de la semana siguiente. Y el techo sigue siendo relativo a la BASE del slot
+  // (× 1,35), que es lo que impide que un hueco de 40′ acabe pidiendo 115′.
+  if (Array.isArray(o.history)) {
+    const ref = _cardioRefMin(o.history);
+    if (ref == null) {
+      return { min: base, source: 'base', note: 'sin minutos registrados en este hueco: repite base' };
+    }
+    if (b.isDeload) {
+      return { min: roundStep(ref * 0.7, step), source: 'rule', note: `deload: −30 % sobre ${_cardioFmtMin(ref)}′` };
+    }
+    const rawH = Math.min(ref * 1.1, base * 1.35);
+    return {
+      min: roundStep(rawH, step),
+      source: 'rule',
+      note: `+10 % sobre ${_cardioFmtMin(ref)}′ (mediana de las 2 últimas semanas con dato)`,
+    };
+  }
+
+  if (b.index == null) {
+    return { min: base, source: 'base', note: 'sin ancla de bloque: repite base' };
+  }
+  // 4. Descarga: −30 %. Es el punto entero del bloque; progresar aquí sería lo peor de los dos
   //    mundos (series de fuerza al 50 % Y pico de cardio en la misma semana).
   if (b.isDeload) {
     return { min: roundStep(base * 0.7, step), source: 'rule', note: 'deload: −30 %' };
   }
-  // 4. Regla: +10 % por semana desde la 1 (la semana 1 ES la base), con techo.
+  // 5. Sin historial del hueco: +10 % por semana desde la 1 (la semana 1 ES la base), con techo.
+  //    Es el camino LEGACY, para los llamadores que todavía no pasan `history`.
   const raw = Math.min(base * Math.pow(1.1, b.index - 1), base * 1.35);
   return { min: roundStep(raw, step), source: 'rule', note: `semana ${b.index} del bloque` };
+}
+
+/** Minutos con coma decimal y sin ceros de relleno: 42,5 → '42,5' · 45 → '45'. */
+function _cardioFmtMin(v) {
+  const n = Number(v);
+  if (!isFinite(n)) return '';
+  return (Math.round(n * 10) / 10).toFixed(1).replace(/[,.]0$/, '').replace('.', ',');
+}
+
+/**
+ * La referencia de la rampa: la MEDIANA de los minutos de las DOS ÚLTIMAS semanas ISO con dato.
+ *
+ * Se agrupan las entradas por `weekKey`, se ordenan las semanas de más reciente a más antigua
+ * (las claves 'YYYY-Www' ordenan lexicográficamente igual que en el tiempo), se toman las dos
+ * primeras que tengan algún minuto útil y se saca la mediana del conjunto de las dos juntas.
+ *
+ * @returns {number|null} null si no hay ni un minuto utilizable (→ el llamador repite la base).
+ */
+function _cardioRefMin(history) {
+  const porSemana = new Map();
+  for (const h of (history || [])) {
+    const min = Number(h && h.min);
+    const wk = h && h.weekKey ? String(h.weekKey) : null;
+    if (!wk || !isFinite(min) || min <= 0) continue;
+    if (!porSemana.has(wk)) porSemana.set(wk, []);
+    porSemana.get(wk).push(min);
+  }
+  if (!porSemana.size) return null;
+  const semanas = Array.from(porSemana.keys()).sort().reverse().slice(0, 2);
+  const pool = [];
+  for (const wk of semanas) for (const m of porSemana.get(wk)) pool.push(m);
+  if (!pool.length) return null;
+  pool.sort((a, b) => a - b);
+  const mid = pool.length >> 1;
+  return pool.length % 2 ? pool[mid] : (pool[mid - 1] + pool[mid]) / 2;
 }
 
 // ==================== PROGRESIÓN: EL KG DEL SET ====================
@@ -618,6 +794,64 @@ function parseCoachTarget(str) {
 }
 
 /**
+ * UNA FILA POR DÍA (E-3, auditoría 2026-09-08).
+ *
+ * EL FALLO QUE CIERRA. El historial que llega es "todas las sesiones en que se hizo este
+ * ejercicio", y un mismo día puede traer DOS: la sesión del plan y una libre, o un registro
+ * reabierto y vuelto a guardar. Con dos filas de la misma fecha, `usable[0]` y `usable[1]`
+ * eran el mismo entreno y la regla concluía "dos sesiones iguales: hoy +1 rep" el mismo día en
+ * que se levantó por primera vez ese peso. Y `daysSince` salía 0, así que la puerta de la
+ * pausa larga se leía sobre un intervalo que no existía.
+ *
+ * SE QUEDA LA DE MÁS SERIES HECHAS: entre un registro con 3 series y otro con 1, el de 3 es la
+ * sesión y el de 1 es el que se abrió y se dejó. A igualdad de series, la primera que venía
+ * (el llamador entrega el historial ordenado de más reciente a más antiguo, y dentro del mismo
+ * día el orden de `workouts` ya es el que decide todo lo demás).
+ *
+ * @param {Array} hist  Historial de UN ejercicio.
+ * @param {'measure'|'db'|'bw'|'cable'|'barbell'|'machine'} type
+ */
+function _coachDedupeHistory(hist, type) {
+  const porDia = new Map();
+  const hechas = (h) => (Array.isArray(h && h.sets) ? h.sets : []).filter(
+    s => s && s.done && (Number(s.weight) > 0 || type === 'bw')).length;
+  for (const h of (hist || [])) {
+    const d = _coachDayStr(h && h.date);
+    if (d == null) continue;                       // sin fecha no se puede deduplicar: se cae
+    const prev = porDia.get(d);
+    if (!prev || hechas(h) > hechas(prev)) porDia.set(d, h);
+  }
+  const sinFecha = (hist || []).filter(h => _coachDayStr(h && h.date) == null);
+  return Array.from(porDia.values())
+    .sort((a, b) => String(b.date).slice(0, 10).localeCompare(String(a.date).slice(0, 10)))
+    .concat(sinFecha);
+}
+
+/**
+ * ¿Sigue vigente un objetivo que el coach fijó en la semana ISO `planWeekKey`?
+ *
+ * Vigente = esa semana es la de hoy o la ANTERIOR. Se compara por FECHAS y no restando números
+ * de semana: en el cruce de año ('2027-W01' menos '2026-W53') la resta daría −52 y un objetivo
+ * de la semana pasada se declararía vencido justo en Nochevieja.
+ *
+ * Lo usan `suggestSetTarget` (para el kg) y `_coachCardioMin` en app.js (para los minutos):
+ * el mismo objetivo con dos vidas distintas era el fallo E-4 — los kg del coach caducaban y
+ * sus minutos de cardio no, así que un plan de hace tres semanas seguía prescribiendo 50′.
+ *
+ * @param {string|null} planWeekKey   Semana ISO en que el coach lo fijó ('2026-W37').
+ * @param {string|null} todayStr      'YYYY-MM-DD'. Por defecto, hoy.
+ * @param {string|null} [todayWeekKey] Semana ISO de hoy, si el llamador ya la tiene.
+ */
+function coachTargetIsCurrent(planWeekKey, todayStr, todayWeekKey) {
+  const ds = _coachDayStr(todayStr) || _coachDayStr(new Date().toISOString());
+  const ctMonday = _coachWeekKeyMonday(planWeekKey);
+  const todayMonday = _coachWeekKeyMonday(todayWeekKey) || mondayOf(ds);
+  if (!ctMonday || !todayMonday) return false;
+  const d = _coachDaysBetween(ctMonday, todayMonday);
+  return d != null && d >= 0 && d <= 7;
+}
+
+/**
  * EL MOTOR. Qué kg toca hoy en este ejercicio, y por qué, en una línea en castellano.
  *
  * @param {object} ex  Ejercicio del plan: `{id, name, reps, rpe, sets, db, bw, compound}`.
@@ -666,8 +900,10 @@ function suggestSetTarget(ex, history, opts = {}) {
 
   // Sesiones utilizables: las que tienen alguna serie hecha con carga. En peso corporal una
   // serie hecha con 0 kg SÍ cuenta (unas dominadas sin lastre son un dato, no un hueco).
-  const usable = hist.filter(h => Array.isArray(h && h.sets) && h.sets.some(
-    s => s && s.done && (Number(s.weight) > 0 || type === 'bw')));
+  // Y UNA POR DÍA (E-3): dos registros del mismo día no son dos sesiones.
+  const usable = _coachDedupeHistory(hist, type).filter(
+    h => Array.isArray(h && h.sets) && h.sets.some(
+      s => s && s.done && (Number(s.weight) > 0 || type === 'bw')));
   const lastSession = usable[0] || null;
   const doneSets = lastSession
     ? lastSession.sets.filter(s => s && s.done && (Number(s.weight) > 0 || type === 'bw'))
@@ -698,12 +934,11 @@ function suggestSetTarget(ex, history, opts = {}) {
   let expiredPrefix = '';
   if (ct && ct.kg != null && isFinite(Number(ct.kg))) {
     const ctMonday = _coachWeekKeyMonday(o.coachWeekKey);
-    const todayMonday = _coachWeekKeyMonday(o.todayWeekKey) || mondayOf(todayStr);
     let vigente = false;
     let ageDays = null;
-    if (ctMonday && todayMonday) {
-      const d = _coachDaysBetween(ctMonday, todayMonday);
-      vigente = d != null && d >= 0 && d <= 7;          // esta semana o la anterior
+    if (ctMonday) {
+      // Una sola aritmética de vigencia, compartida con los minutos de cardio (E-4).
+      vigente = coachTargetIsCurrent(o.coachWeekKey, todayStr, o.todayWeekKey);
       ageDays = _coachDaysBetween(ctMonday, todayStr);
     } else if (!o.coachWeekKey && o.planCreatedAt != null) {
       ageDays = _coachDaysBetween(o.planCreatedAt, todayStr);
@@ -769,6 +1004,33 @@ function suggestSetTarget(ex, history, opts = {}) {
   const rpeTop = rpeTopParsed != null ? rpeTopParsed : 8;
   const allHitMax = doneSets.length > 0 && lastReps.every(r => r >= range.max);
   const allHitMin = doneSets.length > 0 && lastReps.every(r => r >= range.min);
+  // La penúltima sesión utilizable, que hace falta dos veces: para la puerta del RPE ausente
+  // (E-2) y para detectar el estancamiento de "dos sesiones iguales".
+  const prev = usable[1] || null;
+  const prevDoneSets = prev
+    ? prev.sets.filter(s => s && s.done && (Number(s.weight) > 0 || type === 'bw'))
+    : [];
+  const prevAllHitMax = prevDoneSets.length > 0
+    && prevDoneSets.every(s => (Number(s.reps) || 0) >= range.max);
+
+  /**
+   * ¿El salto propuesto pasa del 10 % del último top set? (E-1 · STR-009 / LOAD-JUMP)
+   *
+   * Se mide DESPUÉS del redondeo al disco o al par de mancuernas, que es donde vive el
+   * problema: el salto no es "2,5 kg", es el salto que de verdad se va a poner en la barra.
+   * 4 → 6 kg en una mancuerna es +50 %; +2,5 sobre una máquina de 20 kg es +12,5 %. Sin este
+   * tope, la regla de la app prescribía saltos que el validador del coach rechaza.
+   */
+  const jumpPct = (from, to) => {
+    const a = Number(from);
+    const b = Number(to);
+    if (!isFinite(a) || a <= 0 || !isFinite(b)) return null;
+    return (b - a) / a;
+  };
+  const tooBigJump = (from, to) => {
+    const p = jumpPct(from, to);
+    return p != null && p > LOAD_JUMP_MAX_PCT + 1e-9;
+  };
   const rule = (kg, reason, ruleIds = ['STR-001']) => withBasis({
     kg: kg == null ? null : +Number(kg).toFixed(2),
     reps: baseReps,
@@ -789,6 +1051,19 @@ function suggestSetTarget(ex, history, opts = {}) {
       : 'Completa el rango antes de tocar nada más');
   }
 
+  // RPE AUSENTE NO ES RPE BAJO (E-2, auditoría 2026-09-08).
+  //
+  // El fallo que cierra: la condición era `avgRpe == null || avgRpe <= rpeTop`, o sea que
+  // "no anoté el esfuerzo" contaba igual que "me sobró". Una sesión llevada al fallo sin RPE
+  // apuntado sumaba +2,5 kg a la siguiente. Sin el dato no se puede saber si sobró margen, así
+  // que hace falta la otra evidencia que sí existe: haber cerrado el rango DOS veces seguidas.
+  // Una sesión al tope puede ser una sesión al límite; dos son una tendencia.
+  if (allHitMax && avgRpe == null && !prevAllHitMax) {
+    return rule(lastTopKg,
+      'sin RPE: subo sólo tras dos sesiones al tope. Hoy: mismo kg, y anota el RPE',
+      ['STR-001', 'GEN-002']);
+  }
+
   if (allHitMax && (avgRpe == null || avgRpe <= rpeTop)) {
     // Peso corporal al tope y sin lastre: el salto es empezar a colgar disco.
     if (type === 'bw' && (lastTopKg == null || lastTopKg <= 0)) {
@@ -796,7 +1071,20 @@ function suggestSetTarget(ex, history, opts = {}) {
         `${doneSets.length}×${range.max} a peso corporal → añade ${_coachFmtKg(COACH_INC.bw)} kg de lastre`);
     }
     const next = _coachIncrement(e, lastTopKg, 1, o.measureUnit);
-    const rpeTxt = avgRpe == null ? '(sin RPE anotado)' : `@${_coachFmtRpe(avgRpe)}`;
+    // EL TOPE PORCENTUAL (E-1) NO BLOQUEA: PIDE UNA SESIÓN MÁS AL TOPE.
+    //
+    // Con material discreto no siempre se puede subir dentro del 10 %: el par siguiente de una
+    // mancuerna de 4 kg es 6 (+50 %) y no hay nada en medio, igual que +2,5 en una máquina de
+    // 20 kg es +12,5 %. Prohibir el salto dejaría esas cargas congeladas para siempre; lo que
+    // se exige es más evidencia antes de darlo: cerrar el tope del rango DOS veces seguidas.
+    // Una sesión al tope puede ser un buen día; dos son margen real (misma lógica que E-2).
+    if (tooBigJump(lastTopKg, next) && !prevAllHitMax) {
+      const pct = Math.round(jumpPct(lastTopKg, next) * 100);
+      return rule(lastTopKg,
+        `De ${_coachFmtKg(lastTopKg)} a ${_coachFmtKg(next)} kg serían +${pct} % — salto grande (>10 %): una sesión más al tope antes de subir. Hoy: mismo kg y +reps (+1 por serie)`,
+        ['STR-001', 'STR-009']);
+    }
+    const rpeTxt = avgRpe == null ? '(sin RPE anotado, segunda al tope)' : `@${_coachFmtRpe(avgRpe)}`;
     return rule(next,
       `Todas las series al tope (${range.max}) ${rpeTxt} → +${_coachFmtKg((next || 0) - (lastTopKg || 0))} kg. Apunta al mínimo del rango.`);
   }
@@ -823,13 +1111,11 @@ function suggestSetTarget(ex, history, opts = {}) {
   }
 
   // Dentro del rango pero sin llegar al tope: lo que progresa son reps, no kg.
-  const prev = usable[1] || null;
   const mean = (arr) => (arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : null);
   if (prev) {
-    const prevDone = prev.sets.filter(s => s && s.done && (Number(s.weight) > 0 || type === 'bw'));
-    const prevTop = prevDone.length ? Math.max(...prevDone.map(s => Number(s.weight) || 0)) : null;
+    const prevTop = prevDoneSets.length ? Math.max(...prevDoneSets.map(s => Number(s.weight) || 0)) : null;
     if (prevTop != null && prevTop === lastTopKg
-        && mean(prevDone.map(s => Number(s.reps) || 0)) === mean(lastReps)) {
+        && mean(prevDoneSets.map(s => Number(s.reps) || 0)) === mean(lastReps)) {
       return rule(lastTopKg,
         `Dos sesiones iguales: hoy +1 rep o RPE ${_coachFmtKg(rpeTop)} en la última`);
     }
@@ -1263,7 +1549,6 @@ const COACH_LIFT_ES = {
 
 /** Cuántas anclas caben en la línea antes de que deje de leerse de un vistazo. */
 const PERF_MAX_LIFTS = 3;
-const PERF_LB_TO_KG = 0.45359237;
 /**
  * La flecha sale del `outcome` que ya calculó `sessionReadout` — no se recalcula aquí. Un
  * segundo criterio de "ha subido" se desincronizaría del de la tarjeta post-sesión, y entonces
@@ -1277,7 +1562,7 @@ const PERF_OUTCOME_ARROW = {
 function _perfToKg(v, unit) {
   const n = Number(v);
   if (!isFinite(n)) return null;
-  return String(unit || 'kg').toLowerCase() === 'lb' ? n * PERF_LB_TO_KG : n;
+  return String(unit || 'kg').toLowerCase() === 'lb' ? n * LB_TO_KG : n;
 }
 
 /**
@@ -1313,15 +1598,18 @@ function _perfItems(w) {
  * "Rendimiento: banca 95×8 ↑ · sentadilla 105×8 → · Z2 5,1 km @141".
  *
  * La última lectura de cada ancla (máximo 3, la más reciente primero) más la última carrera.
- * La carrera se llama "Z2" SÓLO si su pulso medio está en el techo de Z2 o por debajo: las
- * cuatro carreras de agosto iban a 147-155 sobre un techo de 143, y llamarlas Z2 sería la
- * falsa precisión que este sistema tiene prohibida.
+ * La carrera se llama "Z2" SÓLO si su pulso medio está en el techo de Z2 (más la tolerancia de
+ * la correa) o por debajo: las cuatro carreras de agosto iban a 147-155 sobre un techo de 143,
+ * y llamarlas Z2 sería la falsa precisión que este sistema tiene prohibida.
  *
  * @param {Array}  workouts        Registros de fuerza (cualquier orden), con `readout` o sin él.
  * @param {Array}  runs            Carreras `{date, distance, avgHR}` (o `{km}`).
  * @param {object} [opts]
  * @param {string[]} [opts.anchorIds]  Por defecto `COACH_GOALS_DEFAULT.preserve.anchorLifts`.
- * @param {number} [opts.z2Ceiling]    Techo de Z2 en bpm. Por defecto `RW_Z2_DEFAULT[1]`.
+ * @param {number} [opts.z2Ceiling]    Techo de Z2 en bpm. Por defecto `RW_Z2_DEFAULT[1]`. Se le
+ *                                 suma `RW_Z2_TOLERANCE_BPM` (E-9), la misma tolerancia que usan
+ *                                 `_rwInZ2` y el facts pack: sin ella, la Home y el pack daban
+ *                                 dos veredictos distintos de la misma carrera.
  * @param {number} [opts.maxLifts]     Por defecto 3.
  * @returns {string} '' si no hay ni lecturas ni carreras (Home no pinta un contenedor vacío).
  */
@@ -1332,7 +1620,11 @@ function performanceLine(workouts, runs, opts = {}) {
     : ((((COACH_GOALS_DEFAULT || {}).preserve || {}).anchorLifts) || []).slice();
   const anchors = new Set(anchorIds);
   const maxLifts = Number(o.maxLifts) > 0 ? Number(o.maxLifts) : PERF_MAX_LIFTS;
-  const z2Ceiling = Number(o.z2Ceiling) > 0 ? Number(o.z2Ceiling) : RW_Z2_DEFAULT[1];
+  // MISMA TOLERANCIA QUE EL MOTOR Y QUE EL PACK (E-9). Sin ella, una carrera a 144 bpm sobre
+  // un techo de 143 se llamaba "carrera" en Home y "Z2 cumplida" en el pack del coach: el mismo
+  // dato con dos veredictos, y el que lee la Home concluye que no cumplió cuando sí lo hizo.
+  const z2Ceiling = (Number(o.z2Ceiling) > 0 ? Number(o.z2Ceiling) : RW_Z2_DEFAULT[1])
+    + RW_Z2_TOLERANCE_BPM;
 
   const partes = [];
   const vistos = new Set();
@@ -1401,8 +1693,14 @@ function performanceLine(workouts, runs, opts = {}) {
 //   · **No genera sesiones duras. Nunca.** END-004 permite una a la semana, pero sólo con
 //     base construida; y quién y cuándo la mete es decisión del coach, que la propone y
 //     Julian la aprueba. Aquí se abre la puerta (`gates.qualityUnlocked`) y se deja abierta.
-//   · **No progresa en descarga ni con `readiness.deloadHint`.** La semana de deload recorta
-//     series al 50 %; subir km ahí es lo peor de los dos mundos (LOAD-004).
+//   · **No progresa en descarga.** La semana de deload recorta series al 50 %; subir km ahí
+//     es lo peor de los dos mundos (LOAD-004).
+//   · **No dosifica por recuperación.** Hasta v11.66, `readiness.deloadHint` congelaba la
+//     rampa de km y cerraba la puerta de la calidad: una dosis derivada de WHOOP y del RPE,
+//     aplicada sin que nadie la aprobara, justo lo que Julian retiró (E-7 de la auditoría
+//     2026-09-08). **La recuperación informa; la decisión semanal es del coach y del usuario**
+//     (2026-09-07). `deloadHint` sigue viajando en el facts pack y puede aparecer en una NOTA;
+//     ningún número del motor sale de él.
 //   · **No cuenta bici, remo ni ski como kilómetros de carrera.** Son minutos aeróbicos
 //     reales y cuentan en el presupuesto de la semana, pero no construyen tolerancia al
 //     impacto. Si sumaran km, el motor creería que hay una base de carrera que no hay.
@@ -1422,7 +1720,9 @@ const RW_Z2_DEFAULT = [131, 143];
  * ejecución: es la precisión del sensor. Sin este margen, el motor devolvería a run/walk a
  * alguien que corrió bien, y eso es peor que dejarle progresar de más una semana.
  */
-const RW_STRAP_NOISE_BPM = 2;
+const RW_Z2_TOLERANCE_BPM = 2;
+/** Alias histórico. Se conserva porque el nombre viejo aparece en comentarios y notas. */
+const RW_STRAP_NOISE_BPM = RW_Z2_TOLERANCE_BPM;
 /** Modalidades que construyen tolerancia al impacto. El resto no suma km de carrera. */
 const RW_RUN_MODALITIES = ['run_outdoor', 'treadmill', 'run', 'trail_run', 'virtualrun'];
 const RW_Z2_WINDOW = 3;          // el cumplimiento de Z2 se mide sobre las 3 últimas
@@ -1650,6 +1950,10 @@ function _rwGates(runs, opts) {
 function _rwPhase(gates, opts) {
   const o = opts || {};
   const deload = !!(o.block && o.block.isDeload);
+  // E-7 (auditoría 2026-09-08): `readiness.deloadHint` ya NO congela la rampa ni cierra la
+  // calidad. Era una dosis derivada de WHOOP/RPE aplicada sin aprobación — exactamente lo que
+  // Julian retiró el 2026-09-07. `hold` se conserva en el retorno para que el llamador pueda
+  // NOMBRAR la señal en la nota; ningún número sale de él.
   const hold = !!(o.readiness && o.readiness.deloadHint);
   const needRunWalk = gates.aboveZ2 >= 2
     || gates.runCount < RW_MIN_RUNS
@@ -1664,7 +1968,7 @@ function _rwPhase(gates, opts) {
   else phase = 'base';
   // END-004: la sesión de calidad se DESBLOQUEA, nunca se genera. Cerrada en descarga y con
   // señal de fatiga: una dura ahí no es calidad, es la gota.
-  const qualityUnlocked = !needRunWalk && !deload && !hold
+  const qualityUnlocked = !needRunWalk && !deload
     && gates.baseWeeks >= RW_BASE_WEEKS_FOR_QUALITY;
   return { phase, qualityUnlocked, deload, hold, needRunWalk };
 }
@@ -1721,7 +2025,11 @@ function _rwMinDsl(min) { return `- ${Math.round(Number(min))}m Z2 HR`; }
  *                                  decoupling?, avgHRHalves?, pctZ2?, modality?}`).
  *                                  Bici/remo/ski se descartan aquí dentro, no fuera.
  * @param {object} input.block      Salida de `blockWeekFromDates`.
- * @param {object} input.readiness  `{deloadHint}` de `computeReadiness()`.
+ * @param {object} input.readiness  `{deloadHint}` de `computeReadiness()`. **Sólo informa**:
+ *                                  desde v11.67 no cambia ni un kilómetro ni abre o cierra la
+ *                                  calidad (E-7). Se conserva en la firma para poder NOMBRAR
+ *                                  la señal en `note`, que es lo que la recuperación puede
+ *                                  hacer: contar lo que pasa, no dosificar.
  * @param {object} input.goals      `settings.goals` (usa `secondary.run10k.targetKm`).
  * @param {object} input.zones      `{z2:[lo,hi]}` de `settings.icuZones`.
  * @param {Array}  input.slots      `[{dow, base, subtype, optional?}]` del `weekTemplate`.
@@ -1732,7 +2040,7 @@ function _rwMinDsl(min) { return `- ${Math.round(Number(min))}m Z2 HR`; }
 function suggestRunningWeek(input) {
   const inp = input || {};
   const zones = _rwZones(inp.zones);
-  const z2max = zones[1] + RW_STRAP_NOISE_BPM;
+  const z2max = zones[1] + RW_Z2_TOLERANCE_BPM;
   const hrCap = zones[1];
   const todayStr = String(inp.todayStr || '').slice(0, 10) || null;
   const block = inp.block || {};
@@ -1800,8 +2108,6 @@ function suggestRunningWeek(input) {
     const last = gates.rampFromKm;
     if (ph.deload) {
       weeklyKmTarget = _rwCeilHalf(last * RW_DELOAD_FACTOR);
-    } else if (ph.hold) {
-      weeklyKmTarget = _rwCeilHalf(last);
     } else {
       weeklyKmTarget = Math.min(
         _rwCeilHalf(Math.max(last * RW_RAMP, last + RW_RAMP_MIN_KM)),
@@ -1811,7 +2117,7 @@ function suggestRunningWeek(input) {
     const shares = _rwShares(slots.ordered.length);
     let longKm = _rwFloorHalf(weeklyKmTarget * shares[0]);
     if ((ph.phase === 'build' || ph.phase === 'ready10k') && gates.lastWeekLongKm > 0
-        && !ph.deload && !ph.hold) {
+        && !ph.deload) {
       // El largo es el que manda en build: crece +10 % o +1 km, el MENOR de los dos, y el
       // reparto sigue siendo su techo (nunca más del 40-50 % de la semana).
       const grow = Math.min(gates.lastWeekLongKm * RW_RAMP, gates.lastWeekLongKm + 1);
@@ -1854,8 +2160,6 @@ function suggestRunningWeek(input) {
     if (ph.deload) {
       ruleIds.push('LOAD-004');
       reason = `Semana de descarga: ${_rwFmt(weeklyKmTarget)} km (−30 % sobre ${_rwFmt(last)}), el largo baja con ella`;
-    } else if (ph.hold) {
-      reason = `Señal de fatiga acumulada: se mantienen los ${_rwFmt(weeklyKmTarget)} km de referencia, sin rampa`;
     } else if (ph.phase === 'ready10k') {
       reason = `Largo de ${_rwFmt(gates.longestZ2Km)} km en Z2 con deriva bajo control y ${_rwFmt(last)} km/sem: el 10 km cómodo está a tiro`;
     } else if (ph.phase === 'build') {
@@ -1866,6 +2170,13 @@ function suggestRunningWeek(input) {
       const ref = last === gates.lastWeekKm ? 'la semana pasada' : 'de referencia';
       reason = `${_rwFmt(last)} km ${ref} con ${gates.z2Compliance} de ${gates.z2Sample} en Z2: ${_rwFmt(weeklyKmTarget)} km esta semana, largo de ${_rwFmt(longKm)} km`;
     }
+  }
+
+  // LA RECUPERACIÓN, COMO INFORMACIÓN Y EN UN SOLO SITIO. Va al final de la razón, después
+  // del número, y sin cambiarlo: quien decide si esta semana se recorta es el coach con el
+  // usuario delante, no una tendencia de HRV leída por el motor.
+  if (ph.hold && reason) {
+    reason += ' · señal de fatiga acumulada en la recuperación: dato para la revisión semanal, no un recorte automático';
   }
 
   if (ph.qualityUnlocked) { ruleIds.push('END-004'); ruleIds.push('INT-001'); }
@@ -1936,7 +2247,6 @@ const GP_STRENGTH_DROP_PCT = -5;
 const GP_ANCHOR_NOW_DAYS = 14;    // mejor e1RM de los últimos 14 días
 const GP_ANCHOR_THEN_FROM = 42;   // contra el mejor de la ventana −42..−28
 const GP_ANCHOR_THEN_TO = 28;
-const GP_LB_TO_KG = 0.45359237;
 
 const _GP_STATUS_ES = {
   'at-target': 'en la banda objetivo',
@@ -2037,7 +2347,7 @@ function goalProgress(goals, facts) {
   const exName = typeof f.exName === 'function' ? f.exName : ((id) => id);
   const toKg = typeof f.toKg === 'function'
     ? f.toKg
-    : ((v, unit) => (String(unit).toLowerCase() === 'lb' ? Number(v) * GP_LB_TO_KG : Number(v)));
+    : ((v, unit) => (String(unit).toLowerCase() === 'lb' ? Number(v) * LB_TO_KG : Number(v)));
   const banda = ((g.primary || {}).targetWeightKg) || [];
   const targetHi = banda.length === 2 ? Number(banda[1]) : null;
   const milestone = Number((g.primary || {}).milestoneKg);
@@ -2111,7 +2421,7 @@ function goalProgress(goals, facts) {
 
   // ---- Carrera ----
   const zones = _rwZones(f.zones);
-  const z2max = zones[1] + RW_STRAP_NOISE_BPM;
+  const z2max = zones[1] + RW_Z2_TOLERANCE_BPM;
   const runs = _rwNormalizeRuns(f.runs4w);
   const rGates = _rwGates(runs, { z2max, todayStr: today });
   const rPh = _rwPhase(rGates, { block: f.block, readiness: f.readiness });
@@ -2198,6 +2508,11 @@ function goalProgress(goals, facts) {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     COACH_GOALS_DEFAULT,
+    // Una fuente por concepto (E-9, v11.67)
+    LB_TO_KG,
+    LOAD_JUMP_MAX_PCT,
+    FFM_FRESH_DAYS,
+    ffmKg,
     isoWeekKey,
     coachTargetWeekKey,
     PHASE_ES,
@@ -2230,6 +2545,9 @@ if (typeof module !== 'undefined' && module.exports) {
     _coachFmtRpe,
     _coachWeekKeyMonday,
     _coachDaysBetween,
+    _coachDedupeHistory,
+    _cardioRefMin,
+    coachTargetIsCurrent,
     parseCoachTarget,
     suggestSetTarget,
     sessionReadout,
@@ -2257,6 +2575,7 @@ if (typeof module !== 'undefined' && module.exports) {
     performanceLine,
     // Carrera hacia el 10k y objetivos (incremento 6, v11.60)
     RW_Z2_DEFAULT,
+    RW_Z2_TOLERANCE_BPM,
     RW_STRAP_NOISE_BPM,
     RW_RUN_MODALITIES,
     RW_BASE_WEEK_KM,

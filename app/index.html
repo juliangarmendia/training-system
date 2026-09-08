@@ -227,6 +227,10 @@
             <div class="wo-live"><span class="wo-live-dot"></span>Live</div>
             <div class="workout-timer" id="workout-timer">00:00</div>
           </div>
+          <!-- B-1 (v11.66): notas de un entreno GUARDADO, de sólo lectura. El textarea que
+               vivía aquí se retiró hace versiones y tres `getElementById` se quedaron
+               apuntando a la nada. `viewCompletedWorkout` lo llena escapado. -->
+          <div id="wo-completed-notes" hidden></div>
           <div class="unit-toggle wo-unit" id="unit-toggle">
             <button class="unit-opt" data-unit="kg">KG</button>
             <button class="unit-opt" data-unit="lb">LB</button>
@@ -479,6 +483,9 @@
                y como texto suelto rompía el dashboard. Aquí es una tarjeta más, junto a las
                señales y a la carga de la semana. Sin color de estado y sin botones. -->
           <div id="coach-recovery-line" class="coach-recovery-line" data-group="today"></div>
+          <!-- E-12 (v11.66): `renderStepsCard()` existía y no tenía dónde pintar, así que los
+               pasos que llegan de intervals.icu se perdían. Aquí es donde se ven. -->
+          <div class="card" id="steps-card" data-group="today"></div>
           <div class="card coach-goals" id="coach-goals" data-group="today"></div>
           <div class="section-label" data-group="today">This Week</div>
           <div class="card" id="weekly-summary" data-group="today"></div>
@@ -795,7 +802,7 @@
           </div>
           <div class="section-label" style="margin-top:24px">App</div>
           <div class="card">
-            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v11.65<br>Data stored locally + cloud sync.<br>Works offline.</p>
+            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v11.66<br>Data stored locally + cloud sync.<br>Works offline.</p>
             <button id="btn-force-update" class="btn-secondary btn-full" style="text-align:center">Force Update App</button>
           </div>
         </div>

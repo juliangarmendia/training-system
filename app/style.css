@@ -337,7 +337,6 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
 .ss-sub { font-size: 11px; color: var(--text2); font-weight: 500; }
 
 /* ========== Week Strip ========== */
-.week-strip { padding-bottom: 4px; }
 .ws-label { font-size: 9px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; margin: 6px 0 4px; }
 .ws-label:first-child { margin-top: 0; }
 .ws-row { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
@@ -376,6 +375,12 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
 .warmup-title { font-size: 14px; font-weight: 600; }
 .warmup-chevron { font-size: 14px; color: var(--text3); transition: transform 0.2s; }
 .warmup-card.expanded .warmup-chevron { transform: rotate(180deg); }
+/* B-1 (v11.66): notas de un entreno guardado, de sólo lectura, bajo la cabecera. */
+.wo-notes-ro {
+  margin: 0 0 14px; padding: 10px 14px; border-radius: 14px;
+  background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);
+  color: var(--text2); font-size: 13px; line-height: 1.5; white-space: pre-wrap;
+}
 .warmup-body { max-height: 0; overflow: hidden; transition: max-height 0.3s; }
 .warmup-card.expanded .warmup-body { max-height: 60vh; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
 .warmup-list { padding: 0 16px 14px; list-style: none; }
@@ -2021,12 +2026,6 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
 .stat-card-sub { font-family: var(--font-mono); font-size: 8.5px; text-transform: uppercase; letter-spacing: 0.1em; line-height: 1.35; color: var(--text3); margin-top: 4px; }
 
 /* ---- Week strip: rounded glass cells, today = white (Lovable) ---- */
-#week-strip .ws-row { gap: 6px; }
-#week-strip .ws-cell { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 16px; }
-#week-strip .ws-cell.today { background: var(--text); border-color: var(--text); box-shadow: 0 8px 24px -12px rgba(255,255,255,0.3); }
-#week-strip .ws-cell.today .ws-day, #week-strip .ws-cell.today .ws-session, #week-strip .ws-cell.today .ws-sub { color: var(--bg); }
-#week-strip .ws-cell.done { background: var(--accent-dim); border-color: rgba(104,227,113,0.25); }
-#week-strip .ws-run-cell.today .ws-day { color: var(--bg); }
 
 /* ---- Recent activity → queue rows (individual glass cards) ---- */
 #recent-activity.recent-list { display: flex; flex-direction: column; gap: 10px; border-radius: 0; overflow: visible; box-shadow: none; }

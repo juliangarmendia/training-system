@@ -7,8 +7,8 @@
 //
 //   node scripts/build-rules-compact.mjs
 //
-// sourceSha256: 7dde7a0311412ec78d56bea0857f56837a5baf5df61ad762b5199907ff4779a8
-// count: 70
+// sourceSha256: 8222692765c569fec90afd5015d10c5c617ebe6d920d635416a186097d93fa9b
+// count: 72
 //
 // POR QUÉ EXISTE. La vista Coach escribe "Regla STR-001 (evidencia fuerte): <texto>" debajo de
 // cada decisión del coach. Los Rule ID crudos en pantalla son ruido (§B.9) y el texto no puede
@@ -29,8 +29,9 @@ const COACH_RULES = {
   "STR-006": { rule: "Rest at least 2 min on compounds (2-3 min), 1-2 min on accessories.", evidenceLevel: "strong" },
   "STR-007": { rule: "Use full ROM and emphasize lengthened (long muscle length) positions where joint-safe.", evidenceLevel: "strong" },
   "STR-008": { rule: "Periodization model is hypertrophy-insensitive when volume/intensity are equated; for strength, undulating is modestly superior to linear in trained lifters, and any periodization beats none. Periodize for strength, variety and adherence, not for a hypertrophy advantage.", evidenceLevel: "moderate" },
+  "STR-009": { rule: "Progress by DOUBLE PROGRESSION: hold the load until the top of the prescribed rep window is reached on every working set at or below the target RPE, then add the smallest available increment and drop back to the bottom of the window. Reps first, load second, sets last.", evidenceLevel: "expert" },
   "STR-010": { rule: "Keep main compounds stable for progression; rotate accessories at block boundaries (4-6 wk) with purpose, not weekly.", evidenceLevel: "expert" },
-  "REC-001": { rule: "Protein 1.8-2.7 g/kg bodyweight; bias higher when leaner or in a larger deficit.", evidenceLevel: "strong" },
+  "REC-001": { rule: "Protein 1.6-2.2 g/kg bodyweight (ACSM says 1.2-2.0; extrapolated upward inside a deficit per Helms/ISSN); bias higher when leaner or in a larger deficit.", evidenceLevel: "strong" },
   "REC-002": { rule: "Rate of loss is a dial of 0.5-1.0% bodyweight/week, governed by performance and wellness; go slower the leaner/more trained.", evidenceLevel: "strong" },
   "REC-003": { rule: "Recomposition magnitude decreases with training age and leanness; set realistic expectations (slow simultaneous gain/loss in trained adults).", evidenceLevel: "expert" },
   "REC-004": { rule: "Exploit the return-from-layoff window: muscle-memory favors recomposition for the first weeks back.", evidenceLevel: "moderate" },
@@ -53,6 +54,7 @@ const COACH_RULES = {
   "END-006": { rule: "Use run/walk intervals when aerobic base is low or HR drift is high.", evidenceLevel: "moderate" },
   "END-007": { rule: "Maintain heavy strength and low-dose plyometrics during running blocks; they improve running economy.", evidenceLevel: "strong" },
   "END-008": { rule: "HIIT and MICT both raise VO2max; choose by fatigue cost, time, and specificity rather than dogma.", evidenceLevel: "strong" },
+  "END-009": { rule: "Hold at least 150 min/week of moderate-to-vigorous physical activity as the floor, and aim at 200-300 min/week while losing fat: the dose-response for weight loss runs across that band, and higher doses buy little extra once the loss is being maintained.", evidenceLevel: "strong" },
   "HYB-001": { rule: "Hybrid/HYROX-like frequency: 0-1 session/week in a cut or strength block; up to 2 only in a dedicated work-capacity block.", evidenceLevel: "weak_extrapolated" },
   "HYB-002": { rule: "Hybrid conditioning counts as a hard day and a partial leg/systemic stressor; space it from heavy legs and hard runs.", evidenceLevel: "weak_extrapolated" },
   "HYB-003": { rule: "Under fatigue, use only low-skill movements in hybrid sessions (sled, carries, lunges, wall ball, ergs); no Olympic lifts or gymnastics.", evidenceLevel: "expert" },
@@ -75,7 +77,7 @@ const COACH_RULES = {
   "LOAD-001": { rule: "Avoid abrupt load spikes and build chronic capacity as a PRINCIPLE; do not apply rigid ACWR thresholds.", evidenceLevel: "strong" },
   "LOAD-002": { rule: "For tendon issues, load progressively (isometrics/heavy-slow resistance); do not rest to zero.", evidenceLevel: "strong" },
   "LOAD-003": { rule: "On low-back pain, modify variant/ROM/load; do not reflexively remove strength training.", evidenceLevel: "moderate" },
-  "LOAD-004": { rule: "Deload every 4-6 weeks, or reactively after two consecutive sessions of performance decline.", evidenceLevel: "moderate" },
+  "LOAD-004": { rule: "Deload every 4-6 weeks, or reactively after two consecutive sessions of performance decline.", evidenceLevel: "expert" },
   "SEL-001": { rule: "Machines and free weights produce similar hypertrophy/strength when matched; choose by ROI, stability, joint comfort, and fatigue.", evidenceLevel: "strong" },
   "SEL-002": { rule: "Select exercises by stimulus-to-fatigue ratio and joint-stress profile, not novelty or variety for its own sake.", evidenceLevel: "expert" },
   "SEL-003": { rule: "Do not use EMG amplitude as a direct proxy for hypertrophy; ignore EMG-based exercise hype.", evidenceLevel: "weak_extrapolated" },

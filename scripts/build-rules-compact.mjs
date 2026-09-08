@@ -3,16 +3,31 @@
 // build-rules-compact.mjs — corpus de reglas para el prompt del coach
 // ============================================================
 //
-// QUÉ HACE. Extrae el único bloque ```json de `research/evidence-to-rules.md` (las 70 reglas
+// QUÉ HACE. Extrae el único bloque ```json de `research/evidence-to-rules.md` (las 72 reglas
 // con su evidencia) y escribe la versión COMPACTA que consume la edge function del coach:
 // `supabase/functions/coach-weekly-review/rules-compact.json`.
 //
-// POR QUÉ COMPACTA. El .md completo son ~90 KB: `sources`, `caveats`, `domain`, `population`
-// y `applicabilityToUser` son imprescindibles para auditar una regla y completamente inútiles
-// para aplicarla. Al modelo le hacen falta seis campos: qué dice la regla (`rule`), cómo está
-// graduada (`evidenceLevel`, `confidence`), en qué estado energético aplica (`energyState`) y
-// qué le autoriza a hacer (`programmingAction`). Con eso el bloque baja a ~24 KB (~5k tokens),
-// que es lo que cabe en un prefijo cacheable de una llamada semanal.
+// POR QUÉ COMPACTA. El .md completo son ~100 KB: `sources`, `domain`, `population`,
+// `applicabilityToUser` y `consumer` son imprescindibles para auditar una regla y completamente
+// inútiles para aplicarla. Al modelo le hacen falta siete campos: qué dice la regla (`rule`),
+// cómo está graduada (`evidenceLevel`, `confidence`), en qué estado energético aplica
+// (`energyState`), qué le autoriza a hacer (`programmingAction`) y **qué NO dice** (`caveats`).
+//
+// POR QUÉ LOS `caveats` SÍ VIAJAN (2026-09-08, auditoría R-7). Hasta aquí se descartaban, y era
+// el peor recorte del sistema: el grado de evidencia dice cómo de firme es una regla, pero el
+// caveat dice EN QUÉ SE EQUIVOCA. El modelo aplicaba ATH-001 ("plyo 40-80 contactos") sin saber
+// que su propio caveat dice que "la dosis baja es óptima" NO está soportado, y G-H10 era una
+// regla DURA sobre REC-005 (`weak_extrapolated`) cuyo texto dice que el diet break no preserva
+// más masa magra. Cada caveat se recorta a 160 caracteres: lo que importa está en la primera
+// frase (la convención del corpus es poner ahí la corrección, en mayúsculas cuando reatribuye).
+//
+// CUÁNTOS. Los 102 caveats del corpus cuestan ~117 bytes cada uno ya recortados, así que
+// llevarlos todos deja el bloque en 39,7 KB. Se lleva un máximo de DOS por regla (37 KB): la
+// convención del corpus pone la corrección en el PRIMER caveat y el matiz operativo en el
+// segundo; del tercero en adelante es rastro de auditoría (papers pendientes de adquirir, notas
+// de verificación) que no cambia ninguna decisión. El tope del test es 38 KB — la auditoría
+// estimó 32 sobre una base de 24 KB, pero la base son ahora 26,1 KB (STR-009 y END-009 nuevas y
+// las magnitudes de LOAD-004 dentro de `programmingAction`).
 //
 // POR QUÉ UN FICHERO GENERADO Y NO UNA LECTURA EN CALIENTE. La edge function corre en Deno y
 // no tiene el repo: importa el JSON con `with {type:'json'}`. Y el `sourceSha256` que se
@@ -42,11 +57,16 @@ const OUT = path.join(OUT_DIR, 'rules-compact.json');
 const OUT_SHA = path.join(OUT_DIR, 'rules-compact.sha');
 const OUT_JS = 'app/coach-rules.js';
 
-// Los seis campos que viajan al prompt. El orden importa: es el orden en que se serializan y
-// por tanto el que ve el modelo (id primero, acción al final: "qué regla, cómo de firme, qué
-// me autoriza a hacer").
-const FIELDS = ['id', 'rule', 'evidenceLevel', 'confidence', 'energyState', 'programmingAction'];
+// Los siete campos que viajan al prompt. El orden importa: es el orden en que se serializan y
+// por tanto el que ve el modelo (id primero, acción y caveats al final: "qué regla, cómo de
+// firme, qué me autoriza a hacer, en qué se equivoca").
+const FIELDS = ['id', 'rule', 'evidenceLevel', 'confidence', 'energyState', 'programmingAction', 'caveats'];
 const LEVELS = new Set(['strong', 'moderate', 'weak_extrapolated', 'expert']);
+const CONSUMERS = new Set(['engine', 'validator', 'guardrail', 'prompt', 'doc', 'none']);
+// Un caveat entero puede tener 600 caracteres de reatribución; la corrección está siempre en la
+// primera frase. 160 es lo que cabe en una línea del prompt sin doblar el tamaño del bloque.
+const CAVEAT_CHARS = 160;
+const CAVEAT_MAX = 2;
 
 const check = process.argv.includes('--check');
 
@@ -75,10 +95,27 @@ function main() {
     if (!LEVELS.has(r.evidenceLevel)) {
       throw new Error(`${r.id}: \`evidenceLevel\` "${r.evidenceLevel}" fuera del enum único del repo (${[...LEVELS].join(' | ')}).`);
     }
+    // `consumer` es obligatorio desde 2026-09-08 (R-8): una regla sin consumidor declarado no se
+    // puede auditar, y el fallo que se persigue —evidencia decorativa— es invisible sin él.
+    if (!CONSUMERS.has(r.consumer)) {
+      throw new Error(`${r.id}: \`consumer\` "${r.consumer}" fuera del enum (${[...CONSUMERS].join(' | ')}). Lo exige tests/verify-rule-coverage.mjs.`);
+    }
     // Sólo los campos que EXISTEN: un `confidence: null` en el prompt es una casilla vacía que
     // el modelo puede leer como "sin confianza" en vez de "no aplica".
     const out = {};
-    for (const f of FIELDS) if (r[f] !== undefined && r[f] !== null) out[f] = r[f];
+    for (const f of FIELDS) {
+      if (r[f] === undefined || r[f] === null) continue;
+      if (f === 'caveats') {
+        const cav = (Array.isArray(r.caveats) ? r.caveats : [r.caveats])
+          .map((c) => String(c || '').replace(/\s+/g, ' ').trim())
+          .filter(Boolean)
+          .map((c) => (c.length > CAVEAT_CHARS ? `${c.slice(0, CAVEAT_CHARS - 1)}…` : c))
+          .slice(0, CAVEAT_MAX);
+        if (cav.length) out.caveats = cav;
+        continue;
+      }
+      out[f] = r[f];
+    }
     return out;
   });
 
@@ -155,7 +192,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = { COACH_RU
   console.log(`${OUT} — ${compact.length} reglas, ${kb} KB`);
   console.log(`${OUT_SHA} — ${sourceSha256}`);
   console.log(`${OUT_JS} — ${compact.length} reglas, ${kbJs} KB`);
-  if (Number(kb) > 25) console.warn(`AVISO: ${kb} KB por encima del objetivo de 25 KB del prefijo cacheable.`);
+  if (Number(kb) > 38) console.warn(`AVISO: ${kb} KB por encima del objetivo de 38 KB del prefijo cacheable.`);
 }
 
 main();

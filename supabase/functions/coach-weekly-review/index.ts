@@ -11,6 +11,14 @@ import {
   SYSTEM_STATIC,
 } from "./prompt.ts";
 import { type Allowed, CoachOutputSchema, enumsAreOpen } from "./schema.ts";
+// El validador de planes, generado desde `app/coach-facts.js` por `scripts/build-fn-assets.mjs`.
+// Una sola implementación: dos validadores (uno en el teléfono, otro aquí) divergirían y nadie
+// sabría cuál manda. `tests/verify-fn-assets.mjs` falla si la copia se queda atrás.
+import {
+  diffPlanVersions,
+  mergeProposal,
+  validatePlanVersion,
+} from "./coach-facts.generated.js";
 
 // Revisión semanal del coach: convierte el facts pack determinista de la PWA en una PROPUESTA
 // de plan v2 + briefing + decisiones trazadas a Rule IDs.
@@ -105,8 +113,31 @@ const MAX_SUMMARY_LINE = 160;
 const PHASES = ["base", "build", "intensify", "deload", "maintenance"];
 const WEEK_SUMMARY_STATUSES = ["kept", "changed", "new", "removed"];
 // La línea que se pinta cuando el coach dejó una sesión sin motivo. Se ve en la app en vez de
-// desaparecer: una sesión sin razón es un fallo del coach, no un hueco del formato.
-const WEEK_SUMMARY_FILL = "(sin motivo — el coach no lo dio)";
+// desaparecer: una sesión sin razón es un fallo del coach, no un hueco del formato. En INGLÉS
+// desde el 2026-09-08: la app es entera en inglés y esta frase se pinta tal cual en la Home.
+const WEEK_SUMMARY_FILL = "(no reason — the coach did not give one)";
+
+// ── Guardarraíles: UNA regeneración ───────────────────────────────────────────────────
+// Tope de intentos del bucle de guardarraíles. UNO, y el número es la decisión, no un detalle:
+//   · Cero era lo que había (auditoría E-13): los `hard` se calculaban en el teléfono al
+//     aplicar, cuando la propuesta ya estaba escrita y pagada.
+//   · Dos o tres convertirían un `hard` persistente —una regla que el modelo no puede cumplir
+//     con este pack, que existe— en 3 × $0,60 por semana y 3 × 90 s de latencia, para acabar en
+//     el mismo sitio: la app pinta los `hard` en rojo y Julian decide. El coste sube y la
+//     información no.
+// El coste extra se paga SÓLO cuando algún `hard` falla, y con `cached: false` porque el
+// prefijo estático es el mismo (la caché de 5 min sí acierta dentro de la misma ejecución).
+const MAX_GUARDRAIL_ATTEMPTS = 2;
+// Cuántos `hard` se le enumeran al modelo en el mensaje de corrección. Con más de 6 el mensaje
+// deja de ser "corrige esto" y se convierte en otra propuesta.
+const MAX_GUARDRAIL_LIST = 6;
+// Músculos de tren inferior, para deducir qué sesiones son "de pierna" y poder ejecutar
+// `RUN-BEFORE-LEGS` en el servidor. La PWA lo saca de `sessionClassMap()`; aquí, del propio plan.
+const LOWER_MUSCLE_RE = /quad|ham|glute|calf|adduct|abduct|pierna|leg|hip/i;
+// Por ID, para los casos en que el ejercicio llega sin `muscle`. Los ids reales de la librería
+// (`trap-bar-dl`, `leg-curl-a`, `bss`) no contienen la palabra del patrón, así que se enumeran.
+const LOWER_PATTERN_RE =
+  /squat|deadlift|-dl$|-dl-|\brdl\b|rdl$|leg-(curl|press|extension)|lunge|^bss$|step-up|hip-thrust|glute|calf|good-morning|split-squat|nordic|ghr/i;
 
 const WEEK_KEY_RE = /^\d{4}-W\d{2}$/;
 
@@ -186,6 +217,14 @@ Deno.serve(async (req) => {
     const userNote = typeof body?.userNote === "string"
       ? body.userNote.trim().slice(0, MAX_USER_NOTE)
       : "";
+    // Ids de sesión de PIERNA, para que `RUN-BEFORE-LEGS` funcione aquí igual que en la PWA.
+    // La app los saca de `sessionClassMap()` (que sabe de `full` e `hybrid`, no sólo de `lower`)
+    // y puede mandarlos en el body con una línea; si no llegan, se deducen del plan por músculo
+    // y por patrón. La deducción es peor —no reconoce una sesión `full` sin ejercicios de
+    // pierna— pero es mejor que saltarse la regla dura que más cuesta cuando falla.
+    const lowerIdsFromBody: string[] = Array.isArray(body?.lowerSessionIds)
+      ? body.lowerSessionIds.filter((x: unknown) => typeof x === "string" && x).slice(0, MAX_SESSION_IDS)
+      : [];
     const regenerate = body?.regenerate === true;
     const mode: "async" | "sync" = body?.mode === "sync" ? "sync" : "async";
     const clientVersion = typeof body?.clientVersion === "string" ? body.clientVersion.slice(0, 40) : null;
@@ -278,6 +317,9 @@ Deno.serve(async (req) => {
     };
 
     const todayStr = nowIso.slice(0, 10);
+    const lowerIds = lowerIdsFromBody.length
+      ? lowerIdsFromBody
+      : deriveLowerSessionIds(currentPlan, facts, allowed);
     const anthropic = new Anthropic({ apiKey });
 
     const run = async (): Promise<Record<string, unknown>> => {
@@ -366,28 +408,136 @@ Deno.serve(async (req) => {
           return out;
         }
 
-        const { output, sanitized } = sanitizeOutput(
+        let { output, sanitized } = sanitizeOutput(
           parsed as Record<string, any>,
           allowed,
           facts,
           currentPlan,
         );
-        if (retried) sanitized.push("El primer intento no devolvió JSON del esquema; se reintentó una vez");
-        if (openEnums.sessions) sanitized.push("Sin ids de sesión permitidos: el esquema corrió sin enum de sesiones");
+
+        // ── Guardarraíles: validar y, si hay `hard`, UNA regeneración ─────────────────
+        //
+        // EL FALLO QUE ESTO CIERRA (auditoría 2026-09-08, E-13). `plan-v2-schema.md:284-287` y
+        // `coach-facts-schema.md:499-503` decían desde el diseño que un `hard` le cuesta al
+        // coach una regeneración. No era verdad: aquí sólo se saneaba (topes, ids, redondeos) y
+        // los guardarraíles se calculaban en el teléfono AL APLICAR — cuando la propuesta ya
+        // estaba escrita y la llamada ya estaba pagada. Una propuesta con un sexto día de gym o
+        // un salto de 300 kcal llegaba entera a la pantalla, en rojo, y la única salida era
+        // rechazarla y volver a pagar la revisión a mano.
+        //
+        // El validador se ejecuta sobre el plan MERGEADO, no sobre la propuesta: la propuesta es
+        // un diff (sólo las sesiones que cambian) y la mitad de los chequeos —series por músculo,
+        // exposiciones de patrón, minutos de cardio, días de fuerza— sólo tienen sentido sobre la
+        // semana completa. Es la misma llamada que hace `applyCoachProposal` en la PWA, con el
+        // mismo `ctx`, para que el rojo que ve Julian sea el mismo que vio el servidor.
+        let guardrails = runGuardrails(output, facts, currentPlan, allowed, todayStr, lowerIds, sanitized);
+        let attempts = 1;
+        let regenerated = false;
+        let hard = guardrails.filter((g) => g.level === "hard");
+
+        if (hard.length && attempts < MAX_GUARDRAIL_ATTEMPTS) {
+          attempts++;
+          regenerated = true;
+          console.log(
+            `[coach-weekly-review] ${id} guardrails hard=${hard.length} (${
+              hard.map((g) => g.id).join(", ")
+            }) → regenerando 1 vez`,
+          );
+          response = await call(buildGuardrailTurn(hard));
+          if (response.stop_reason === "refusal") {
+            // Un refusal en la SEGUNDA llamada no invalida la primera propuesta: se guarda la
+            // que había, con sus `hard` visibles. Perderla para dejar la fila en `failed` sería
+            // cambiar una propuesta mejorable por ninguna.
+            sanitized.push(
+              "The guardrail regeneration was declined by the safety classifier; the first proposal is kept with its hard warnings",
+            );
+          } else {
+            const reparsed = response.parsed_output;
+            if (!reparsed) {
+              sanitized.push(
+                "The guardrail regeneration did not return schema JSON; the first proposal is kept with its hard warnings",
+              );
+            } else {
+              const second = sanitizeOutput(
+                reparsed as Record<string, any>,
+                allowed,
+                facts,
+                currentPlan,
+              );
+              const secondGuards = runGuardrails(
+                second.output,
+                facts,
+                currentPlan,
+                allowed,
+                todayStr,
+                lowerIds,
+                second.sanitized,
+              );
+              const secondHard = secondGuards.filter((g) => g.level === "hard");
+              // Se queda la mejor de las dos por número de `hard`. Si la segunda no mejora, la
+              // primera se conserva: regenerar no puede empeorar la propuesta que se entrega.
+              if (secondHard.length < hard.length) {
+                output = second.output;
+                sanitized = second.sanitized;
+                sanitized.push(
+                  `Regenerated once for hard guardrails: ${
+                    hard.map((g) => g.id).join(", ")
+                  } → ${secondHard.length ? secondHard.map((g) => g.id).join(", ") : "all clear"}`,
+                );
+                guardrails = secondGuards;
+                hard = secondHard;
+              } else {
+                sanitized.push(
+                  `Regenerated once for hard guardrails (${
+                    hard.map((g) => g.id).join(", ")
+                  }) and the second attempt did not improve on it (${secondHard.length} hard); keeping the first proposal`,
+                );
+              }
+            }
+          }
+        }
+
+        if (retried) sanitized.push("The first attempt did not return schema JSON; retried once");
+        if (openEnums.sessions) sanitized.push("No allowed session ids: the schema ran without a session enum");
         if (openEnums.exercises) {
-          sanitized.push("Sin ids de ejercicio permitidos: el esquema corrió sin enum de ejercicios");
+          sanitized.push("No allowed exercise ids: the schema ran without an exercise enum");
         }
         if (RULES_VERSION === "placeholder" || RULES_COUNT === 0) {
-          sanitized.push("rules-compact.json es el placeholder: el prompt corrió sin corpus de reglas");
+          sanitized.push("rules-compact.json is the placeholder: the prompt ran without the rules corpus");
         }
 
         const latencyMs = Date.now() - t0;
         const usage = usageOf(response, latencyMs);
-        const out = await finish({ status: "proposed", output, sanitized, usage, latencyMs });
+        const out = await finish({
+          status: "proposed",
+          output,
+          sanitized,
+          // `guardrails` es el ARRAY que la PWA ya lee (`coach.js:1617` hace `Array.isArray`, y
+          // `_coachGuardChipsHtml` filtra por `g.level`). No se cambia de forma: un objeto aquí
+          // dejaría a la app recalculándolo en el teléfono y perdiendo el trabajo del servidor.
+          guardrails,
+          // Y el resumen que la fila necesita para poder responder "¿regeneró?" sin recorrer el
+          // array: es lo que la vista Coach y el informe semanal van a querer contar.
+          guardrailsMeta: {
+            hard: hard.length,
+            warn: guardrails.length - hard.length,
+            regenerated,
+            attempts,
+            ids: guardrails.map((g) => g.id),
+            hardIds: hard.map((g) => g.id),
+            // Cuántos cambios estructurales trae de verdad la propuesta frente al plan activo.
+            // Es el mismo número que audita `CHURN` y el que la vista Coach necesita para poder
+            // decir "esta semana cambian 2 cosas" sin recorrer el diff en el teléfono.
+            structuralChanges: structuralChangeCount(currentPlan, facts, output),
+          },
+          usage,
+          latencyMs,
+        });
         console.log(
           `[coach-weekly-review] ${id} status=proposed in=${usage.input} out=${usage.output} ` +
             `cacheRead=${usage.cacheRead} cacheWrite=${usage.cacheWrite} cost=$${usage.costUsd} ` +
-            `latency=${latencyMs}ms sanitized=${sanitized.length}`,
+            `latency=${latencyMs}ms sanitized=${sanitized.length} ` +
+            `guardrails=${guardrails.length} hard=${hard.length} regenerated=${regenerated}`,
         );
         return out;
       } catch (err) {
@@ -418,6 +568,161 @@ Deno.serve(async (req) => {
   }
 });
 
+// ── Guardarraíles ─────────────────────────────────────────────────────────────────────
+
+type Guardrail = { id: string; level: "hard" | "warn"; text: string; ruleIds: string[] };
+
+/**
+ * Merge + validación, con el MISMO `ctx` que usa `applyCoachProposal` en la PWA.
+ *
+ * Por qué importa que sea el mismo: si el servidor validara con un contexto más pobre, un `hard`
+ * que aquí no se ve aparecería en el teléfono al aplicar, y el rojo llegaría después de la única
+ * oportunidad de corregirlo. Los trozos del `ctx` que el request no trae se derivan del pack:
+ *   · `variant`         ← `facts.plan.idealVariant` (la PWA lo mete en el pack, B.2).
+ *   · `libraryIds`      ← el vocabulario `allowed` + los ids que ya están en el plan activo.
+ *   · `lowerSessionIds` ← `body.lowerSessionIds`, o deducido del plan por músculo/patrón.
+ *   · `block`, `goals`, `zones`, `bodyweightKg` ← del pack.
+ *   · `exerciseLibrary` NO viaja (el pack no lleva `movementPattern`): el validador cae a sus
+ *     tablas por id (`VP_PATTERN_IDS`, `FACTS_PRESS_IDS`), que cubren la librería real.
+ *
+ * NUNCA LANZA. Un validador que revienta en el servidor dejaría la fila en `failed` por un aviso,
+ * que es exactamente al revés de para qué está: se anota el fallo en `sanitized[]` y la propuesta
+ * sigue su camino sin guardarraíles, como antes de este incremento.
+ */
+function runGuardrails(
+  output: Record<string, unknown>,
+  facts: unknown,
+  currentPlan: unknown,
+  allowed: Allowed,
+  todayStr: string,
+  lowerSessionIds: string[],
+  sanitized: Sanitized,
+): Guardrail[] {
+  try {
+    const proposal = (output?.proposal ?? {}) as Record<string, unknown>;
+    const briefing = (output?.briefing ?? {}) as Record<string, unknown>;
+    const decisions = Array.isArray(output?.decisions) ? output.decisions : [];
+    const base = (currentPlan ?? (facts as { plan?: unknown })?.plan ?? {}) as Record<string, unknown>;
+
+    const merged = mergeProposal(base, proposal) as Record<string, unknown>;
+    const f = (facts ?? {}) as Record<string, any>;
+    const block = f?.block ?? null;
+
+    const libraryIds = new Set<string>((allowed.exerciseIds || []).map((e) => e.id));
+    for (const s of Object.values((base?.sessions ?? {}) as Record<string, any>)) {
+      for (const ex of (s?.exercises ?? [])) if (ex?.id) libraryIds.add(String(ex.id));
+    }
+
+    // El plan que se valida = el merge + la cabecera que el merge no lleva (bloque, nutrición) +
+    // el brief, para que `WEEK-SUMMARY` pueda dispararse. Idéntico a `applyCoachProposal`.
+    const candidate = {
+      ...merged,
+      block: (merged as { block?: unknown }).block ?? block,
+      nutrition: (proposal as { nutrition?: unknown }).nutrition ??
+        (base as { nutrition?: unknown }).nutrition ?? null,
+      decisions,
+      briefing,
+      coachBrief: {
+        focus: briefing?.focus ?? null,
+        phase: briefing?.phase ?? null,
+        whyChanged: briefing?.whyChanged ?? null,
+        whyKept: briefing?.whyKept ?? null,
+        weekSummary: Array.isArray(proposal?.weekSummary) ? proposal.weekSummary : [],
+      },
+    };
+
+    const ctx = {
+      basedOn: base && Object.keys(base).length ? base : null,
+      facts: f,
+      variant: f?.plan?.idealVariant ?? null,
+      libraryIds,
+      lowerSessionIds: new Set(lowerSessionIds || []),
+      block,
+      isDeload: block?.isDeload === true,
+      bodyweightKg: f?.progress?.weight?.latestKg ?? f?.trajectory?.weight?.latestKg ?? null,
+      goals: f?.goals ?? null,
+      zones: f?.cardio?.z2Ceiling ?? null,
+      decisions,
+      briefing,
+      todayStr,
+    };
+
+    const out = validatePlanVersion(candidate, ctx);
+    if (!Array.isArray(out)) return [];
+    return out.filter((g: Guardrail) => g && g.id && (g.level === "hard" || g.level === "warn"));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[coach-weekly-review] guardrails", err);
+    sanitized.push(`The guardrail validator failed (${message.slice(0, 200)}): this proposal ships unvalidated`);
+    return [];
+  }
+}
+
+/** Cambios estructurales de la propuesta frente al plan activo, con el mismo `diffPlanVersions`
+ *  que usa la PWA (un cambio de kg NO es estructural: la progresión normal no es churn). */
+function structuralChangeCount(currentPlan: unknown, facts: unknown, output: Record<string, unknown>): number | null {
+  try {
+    const base = (currentPlan ?? (facts as { plan?: unknown })?.plan ?? null) as Record<string, unknown> | null;
+    if (!base) return null;
+    const merged = mergeProposal(base, (output?.proposal ?? {}) as Record<string, unknown>);
+    const d = diffPlanVersions(base, merged) as { structural?: number };
+    return Number.isFinite(Number(d?.structural)) ? Number(d.structural) : null;
+  } catch (_err) {
+    return null;
+  }
+}
+
+/**
+ * El turno de corrección. Se le da al modelo EXACTAMENTE lo que rompió y nada más: el mensaje de
+ * usuario original sigue en la conversación, así que repetir el contexto sólo invitaría a
+ * reescribir la propuesta entera. "Corrige sólo eso" es la mitad importante de la instrucción —
+ * una regeneración que cambia la semana completa no se puede comparar con la primera.
+ */
+export function buildGuardrailTurn(hard: Guardrail[]): string {
+  const list = hard.slice(0, MAX_GUARDRAIL_LIST)
+    .map((g, i) => `${i + 1}. [${g.id}] ${g.text}${g.ruleIds?.length ? ` (${g.ruleIds.join(", ")})` : ""}`)
+    .join("\n");
+  const extra = hard.length > MAX_GUARDRAIL_LIST
+    ? `\n(y ${hard.length - MAX_GUARDRAIL_LIST} más del mismo tipo)`
+    : "";
+  return `Tu propuesta anterior incumple estas reglas duras:
+
+${list}${extra}
+
+Corrige sólo eso; no cambies nada más. Devuelve el JSON completo del esquema con el resto de la
+propuesta IDÉNTICO al anterior: los mismos ejercicios, los mismos kg, el mismo briefing y las
+mismas decisiones, salvo lo que haga falta tocar para arreglar los puntos de arriba. Si el
+arreglo cambia una decisión, actualiza su \`why\` y sus \`evidence.numbers\`; si cambia una sesión,
+actualiza su fila de \`weekSummary\`. Si crees que una de estas reglas no debería aplicar a este
+caso, cúmplela igualmente y dilo en \`requestedData\`.`;
+}
+
+/**
+ * Qué sesiones son "de pierna", deducido del plan. Respaldo de `body.lowerSessionIds`.
+ *
+ * Dos señales, y las dos son del propio plan porque el pack no trae `movementPattern`: el
+ * MÚSCULO de los ejercicios (`Quads`, `Hamstrings`, `Glutes`, `Calves`) y el ID mapeado a un
+ * patrón de pierna. Con una sola exposición basta: una sesión `full` con sentadilla carga las
+ * piernas igual que una `lower`, y para `RUN-BEFORE-LEGS` es lo que cuenta.
+ */
+export function deriveLowerSessionIds(currentPlan: unknown, facts: unknown, allowed: Allowed): string[] {
+  const sessions = ((currentPlan as { sessions?: unknown })?.sessions ??
+    (facts as { plan?: { sessions?: unknown } })?.plan?.sessions ?? null) as Record<string, any> | null;
+  const out: string[] = [];
+  if (!sessions || typeof sessions !== "object") return out;
+  const byId = new Map((allowed.exerciseIds || []).map((e) => [e.id, e]));
+  for (const [sid, s] of Object.entries(sessions)) {
+    const list = (s?.exercises ?? []) as Array<Record<string, unknown>>;
+    const isLower = list.some((ex) => {
+      const id = String(ex?.id ?? "");
+      const muscle = String(ex?.muscle ?? byId.get(id)?.muscle ?? "");
+      return LOWER_MUSCLE_RE.test(muscle) || LOWER_PATTERN_RE.test(id);
+    });
+    if (isLower) out.push(sid);
+  }
+  return out;
+}
+
 // ── Saneado ───────────────────────────────────────────────────────────────────────────
 type Sanitized = string[];
 
@@ -444,18 +749,18 @@ function sanitizeOutput(
   if (!phase) {
     phase = PHASES.includes(rawBriefPhase) ? rawBriefPhase : "";
     if (!phase) {
-      sanitized.push(`proposal.phase '${rawPhase || "(vacía)"}' no es una fase conocida; a 'build'`);
+      sanitized.push(`proposal.phase '${rawPhase || "(empty)"}' is not a known phase; set to 'build'`);
       phase = "build";
     }
   }
   if (rawBriefPhase && rawBriefPhase !== rawPhase) {
     sanitized.push(
-      `briefing.phase ('${rawBriefPhase}') y proposal.phase ('${rawPhase}') no coincidían; ambas a '${phase}'`,
+      `briefing.phase ('${rawBriefPhase}') and proposal.phase ('${rawPhase}') disagreed; both set to '${phase}'`,
     );
   }
   if (isDeloadBlock && phase !== "deload") {
     sanitized.push(
-      `facts.block.isDeload = true y la fase venía '${phase}': forzada a 'deload' (G-H3, LOAD-004)`,
+      `facts.block.isDeload = true but the phase came back '${phase}': forced to 'deload' (G-H3, LOAD-004)`,
     );
     phase = "deload";
   }
@@ -466,13 +771,13 @@ function sanitizeOutput(
     : [];
   let priorities = rawPriorities.slice(0, N_PRIORITIES);
   if (rawPriorities.length > N_PRIORITIES) {
-    sanitized.push(`El coach devolvió ${rawPriorities.length} prioridades; se quedan las 3 primeras`);
+    sanitized.push(`The coach returned ${rawPriorities.length} priorities; keeping the first 3`);
   }
   while (priorities.length < N_PRIORITIES) {
-    sanitized.push(`El coach devolvió ${rawPriorities.length} prioridades; falta${
-      N_PRIORITIES - rawPriorities.length > 1 ? "n" : ""
-    } ${N_PRIORITIES - rawPriorities.length}`);
-    priorities.push("(sin prioridad — el coach no la dio)");
+    sanitized.push(
+      `The coach returned ${rawPriorities.length} priorities; ${N_PRIORITIES - rawPriorities.length} missing`,
+    );
+    priorities.push("(no priority — the coach did not give one)");
   }
   priorities = priorities.slice(0, N_PRIORITIES);
 
@@ -482,20 +787,20 @@ function sanitizeOutput(
     : [];
   if (rawLastWeekSummary.length > MAX_LASTWEEK_BULLETS) {
     sanitized.push(
-      `briefing.lastWeekSummary con ${rawLastWeekSummary.length} líneas; se quedan las ${MAX_LASTWEEK_BULLETS} primeras`,
+      `briefing.lastWeekSummary came back with ${rawLastWeekSummary.length} lines; keeping the first ${MAX_LASTWEEK_BULLETS}`,
     );
   }
   const lastWeekSummary = rawLastWeekSummary.slice(0, MAX_LASTWEEK_BULLETS);
 
   const focus = clip(String(parsed?.briefing?.focus ?? ""), MAX_FOCUS);
-  if (!focus) sanitized.push("briefing.focus vacío: la Home se queda sin titular de la semana");
+  if (!focus) sanitized.push("briefing.focus is empty: Home has no headline for the week");
 
   // `whyChanged` puede ir vacío (una semana en la que no cambia nada es una respuesta legítima).
   // `whyKept` NO: mantener también se justifica, y es justo el punto del contrato v2.
   const whyChanged = clip(String(parsed?.briefing?.whyChanged ?? ""), MAX_WHY);
   const whyKept = clip(String(parsed?.briefing?.whyKept ?? ""), MAX_WHY);
   if (!whyKept) {
-    sanitized.push("briefing.whyKept vacío: el coach no justificó lo que se mantiene (nunca debe estarlo)");
+    sanitized.push("briefing.whyKept is empty: the coach did not justify what stays (it must never be)");
   }
 
   const briefing = {
@@ -508,19 +813,22 @@ function sanitizeOutput(
     nextWeek: String(parsed?.briefing?.nextWeek ?? ""),
     priorities,
   };
+  // Las cabeceras se comprueban LITERALMENTE, y desde el 2026-09-08 en INGLES: el prompt las
+  // pide en ingles (la app es entera en ingles) y una comprobacion en castellano marcaria las
+  // cinco secciones como ausentes en cada revision, que es peor que no comprobarlas.
   for (const [field, headers] of [
-    ["lastWeek", ["## Qué pasó", "## Decisiones anteriores"]],
+    ["lastWeek", ["## What happened", "## Previous decisions"]],
     ["nextWeek", [
-      "## Qué cambio",
-      "## Por qué cambia",
-      "## Por qué se mantiene",
-      "## Qué vigilo",
-      "## Qué necesito",
+      "## What I am changing",
+      "## Why it changes",
+      "## Why it holds",
+      "## What I am watching",
+      "## What I need from you",
     ]],
   ] as const) {
     const text = briefing[field];
     const missing = headers.filter((h) => !text.includes(h));
-    if (missing.length) sanitized.push(`briefing.${field} sin las secciones: ${missing.join(", ")}`);
+    if (missing.length) sanitized.push(`briefing.${field} is missing the sections: ${missing.join(", ")}`);
   }
 
   // Los `dataGaps` del pack tienen que aparecer literalmente en el briefing (ethos).
@@ -530,13 +838,13 @@ function sanitizeOutput(
   const briefingText = `${briefing.lastWeek}\n${briefing.nextWeek}`;
   const missingGaps = gaps.filter((g) => !briefingText.includes(g));
   if (missingGaps.length) {
-    sanitized.push(`El briefing no repite ${missingGaps.length} de ${gaps.length} dataGaps del pack`);
+    sanitized.push(`The briefing does not repeat ${missingGaps.length} of the ${gaps.length} dataGaps in the pack`);
   }
 
   // ── decisions ──
   const decisionsIn: any[] = Array.isArray(parsed?.decisions) ? parsed.decisions : [];
   if (decisionsIn.length > MAX_DECISIONS) {
-    sanitized.push(`${decisionsIn.length} decisiones; se quedan las ${MAX_DECISIONS} primeras`);
+    sanitized.push(`${decisionsIn.length} decisions; keeping the first ${MAX_DECISIONS}`);
   }
   const decisions = decisionsIn.slice(0, MAX_DECISIONS).map((d, i) => {
     const idIn = String(d?.id ?? `d${i + 1}`).slice(0, 80);
@@ -544,7 +852,7 @@ function sanitizeOutput(
     const ruleIds = ruleIdsIn.filter((r) => RULE_IDS.has(r));
     const unknownRules = ruleIdsIn.filter((r) => r && !RULE_IDS.has(r));
     if (unknownRules.length) {
-      sanitized.push(`Decisión ${idIn}: Rule IDs que no están en el corpus, descartados: ${unknownRules.join(", ")}`);
+      sanitized.push(`Decision ${idIn}: Rule IDs that are not in the corpus, dropped: ${unknownRules.join(", ")}`);
     }
     const numbers: Record<string, string> = {};
     const rawNumbers = d?.evidence?.numbers;
@@ -554,8 +862,8 @@ function sanitizeOutput(
       }
     }
     // G-H14: sin número o sin regla no es una decisión. No se borra (Julian la ve), se marca.
-    if (!ruleIds.length) sanitized.push(`Decisión ${idIn} sin ruleIds del corpus (G-H14)`);
-    if (!Object.keys(numbers).length) sanitized.push(`Decisión ${idIn} sin evidence.numbers (G-H14)`);
+    if (!ruleIds.length) sanitized.push(`Decision ${idIn} has no ruleIds from the corpus (G-H15)`);
+    if (!Object.keys(numbers).length) sanitized.push(`Decision ${idIn} has no evidence.numbers (G-H15)`);
     return {
       id: idIn,
       type: String(d?.type ?? "structure"),
@@ -574,15 +882,15 @@ function sanitizeOutput(
   for (const s of sessionsIn) {
     const sid = String(s?.id ?? "");
     if (sessionSet.size && !sessionSet.has(sid)) {
-      sanitized.push(`Sesión '${sid}' no está en los ids permitidos; descartada`);
+      sanitized.push(`Session '${sid}' is not in the allowed ids; dropped`);
       continue;
     }
     if (seenSessions.has(sid)) {
-      sanitized.push(`Sesión '${sid}' duplicada; se queda la primera`);
+      sanitized.push(`Session '${sid}' is duplicated; keeping the first`);
       continue;
     }
     if (sessions.length >= MAX_SESSIONS) {
-      sanitized.push(`Más de ${MAX_SESSIONS} sesiones; '${sid}' descartada`);
+      sanitized.push(`More than ${MAX_SESSIONS} sessions; '${sid}' dropped`);
       continue;
     }
     seenSessions.add(sid);
@@ -594,15 +902,15 @@ function sanitizeOutput(
       const exId = String(ex?.id ?? "");
       const meta = exById.get(exId);
       if (exById.size && !meta) {
-        sanitized.push(`Ejercicio '${exId}' (sesión ${sid}) no está en la librería; descartado`);
+        sanitized.push(`Exercise '${exId}' (session ${sid}) is not in the library; dropped`);
         continue;
       }
       if (seenEx.has(exId)) {
-        sanitized.push(`Ejercicio '${exId}' duplicado en ${sid}; se queda el primero`);
+        sanitized.push(`Exercise '${exId}' is duplicated in ${sid}; keeping the first`);
         continue;
       }
       if (exercises.length >= MAX_EX_PER_SESSION) {
-        sanitized.push(`Sesión ${sid} con más de ${MAX_EX_PER_SESSION} ejercicios; '${exId}' descartado`);
+        sanitized.push(`Session ${sid} has more than ${MAX_EX_PER_SESSION} exercises; '${exId}' dropped`);
         continue;
       }
       seenEx.add(exId);
@@ -619,12 +927,12 @@ function sanitizeOutput(
       let kg: number | null = null;
       if (isMeasure) {
         if (ex?.target?.kg !== null && ex?.target?.kg !== undefined) {
-          sanitized.push(`Ejercicio '${exId}' es measure (cm/reps): target.kg forzado a null`);
+          sanitized.push(`Exercise '${exId}' is a measure (cm/reps): target.kg forced to null`);
         }
       } else if (Number.isFinite(Number(ex?.target?.kg))) {
         const raw = Number(ex.target.kg);
         if (raw < 0) {
-          sanitized.push(`Ejercicio '${exId}' con target.kg negativo (${raw}); a null`);
+          sanitized.push(`Exercise '${exId}' had a negative target.kg (${raw}); set to null`);
         } else {
           kg = roundKg(raw);
         }
@@ -647,9 +955,9 @@ function sanitizeOutput(
           rpe: clip(String(ex?.target?.rpe ?? ex?.rpe ?? ""), 24),
           // Sin nota y sin kg, la tarjeta del ejercicio se queda muda. La frase es la que el
           // ethos exige para un objetivo sin dato de origen.
-          note: note || (kg === null && !isMeasure ? "ajustar por RPE, sin dato" : note),
+          note: note || (kg === null && !isMeasure ? "adjust by RPE, no data" : note),
           source: "coach",
-          evidence: filterRuleIds(ex?.target?.evidence, sanitized, `target de ${exId}`),
+          evidence: filterRuleIds(ex?.target?.evidence, sanitized, `target of ${exId}`),
           decisionId: ex?.target?.decisionId ? String(ex.target.decisionId).slice(0, 80) : null,
         },
       });
@@ -688,11 +996,11 @@ function sanitizeOutput(
   for (const c of cardioIn) {
     const dow = Number(c?.dow);
     if (!Number.isInteger(dow) || dow < 0 || dow > 6) {
-      sanitized.push(`Slot de cardio con dow=${c?.dow} fuera de 0..6; descartado`);
+      sanitized.push(`Cardio slot with dow=${c?.dow} outside 0..6; dropped`);
       continue;
     }
     if (cardio.length >= MAX_CARDIO_SLOTS) {
-      sanitized.push(`Más de ${MAX_CARDIO_SLOTS} slots de cardio; el resto descartado`);
+      sanitized.push(`More than ${MAX_CARDIO_SLOTS} cardio slots; the rest dropped`);
       break;
     }
     cardio.push({
@@ -708,11 +1016,11 @@ function sanitizeOutput(
   // ── proposal.running ──
   const kmRaw = Number(parsed?.proposal?.running?.weeklyKmTarget);
   const weeklyKmTarget = Number.isFinite(kmRaw) ? Math.max(0, round1(kmRaw)) : 0;
-  if (Number.isFinite(kmRaw) && kmRaw < 0) sanitized.push(`weeklyKmTarget negativo (${kmRaw}); a 0`);
+  if (Number.isFinite(kmRaw) && kmRaw < 0) sanitized.push(`Negative weeklyKmTarget (${kmRaw}); set to 0`);
   const hardRaw = Number(parsed?.proposal?.running?.hardSessions);
   const hardSessions = clampInt(hardRaw, 0, 1, 0);
   if (Number.isFinite(hardRaw) && hardRaw > 1) {
-    sanitized.push(`${hardRaw} sesiones duras de cardio; recortado a 1 (G-H4, END-004)`);
+    sanitized.push(`${hardRaw} hard cardio sessions; trimmed to 1 (G-H4, END-004)`);
   }
 
   // ── proposal.weekTemplateChanges ──
@@ -723,12 +1031,12 @@ function sanitizeOutput(
   for (const t of tplIn.slice(0, MAX_TEMPLATE_CHANGES)) {
     const dow = Number(t?.dow);
     if (!Number.isInteger(dow) || dow < 0 || dow > 6) {
-      sanitized.push(`Cambio de plantilla con dow=${t?.dow} fuera de 0..6; descartado`);
+      sanitized.push(`Week-template change with dow=${t?.dow} outside 0..6; dropped`);
       continue;
     }
     const sid = t?.sessionId ? String(t.sessionId) : null;
     if (sid && sessionSet.size && !sessionSet.has(sid)) {
-      sanitized.push(`Cambio de plantilla (dow ${dow}) apunta a la sesión '${sid}', que no existe; descartado`);
+      sanitized.push(`Week-template change (dow ${dow}) points at session '${sid}', which does not exist; dropped`);
       continue;
     }
     weekTemplateChanges.push({
@@ -813,29 +1121,29 @@ export function reconcileWeekSummary(
   for (const r of rowsIn) {
     const sessionId = String(r?.sessionId ?? "").trim();
     if (!sessionId) {
-      sanitized.push("weekSummary con una fila sin sessionId; descartada");
+      sanitized.push("weekSummary had a row with no sessionId; dropped");
       continue;
     }
     if (seen.has(sessionId)) {
-      sanitized.push(`weekSummary: fila duplicada para '${sessionId}'; se queda la primera`);
+      sanitized.push(`weekSummary: duplicate row for '${sessionId}'; keeping the first`);
       continue;
     }
     seen.add(sessionId);
 
     let status = String(r?.status ?? "").trim();
     if (!WEEK_SUMMARY_STATUSES.includes(status)) {
-      sanitized.push(`weekSummary: '${sessionId}' con status '${status || "(vacío)"}' desconocido; a 'kept'`);
+      sanitized.push(`weekSummary: '${sessionId}' had unknown status '${status || "(empty)"}'; set to 'kept'`);
       status = "kept";
     }
     // El diff es la verdad: `proposal.sessions` es lo que la app va a copiar al plan.
     if (changedIds.has(sessionId) && status === "kept") {
       sanitized.push(
-        `weekSummary: '${sessionId}' está en proposal.sessions pero venía como 'kept'; corregido a 'changed'`,
+        `weekSummary: '${sessionId}' is in proposal.sessions but came back as 'kept'; corrected to 'changed'`,
       );
       status = "changed";
     } else if ((status === "changed" || status === "new") && !changedIds.has(sessionId)) {
       sanitized.push(
-        `weekSummary: '${sessionId}' venía como '${status}' pero no está en proposal.sessions; corregido a 'kept'`,
+        `weekSummary: '${sessionId}' came back as '${status}' but is not in proposal.sessions; corrected to 'kept'`,
       );
       status = "kept";
     }
@@ -851,11 +1159,11 @@ export function reconcileWeekSummary(
     seen.add(sid);
     const status = changedIds.has(sid) ? "changed" : "kept";
     rows.push({ sessionId: sid, status, line: WEEK_SUMMARY_FILL });
-    sanitized.push(`weekSummary sin fila para '${sid}': añadida como '${status}' ${WEEK_SUMMARY_FILL}`);
+    sanitized.push(`weekSummary had no row for '${sid}': added as '${status}' ${WEEK_SUMMARY_FILL}`);
   }
 
   if (rows.length > MAX_WEEK_SUMMARY) {
-    sanitized.push(`weekSummary con ${rows.length} filas; se quedan las ${MAX_WEEK_SUMMARY} primeras`);
+    sanitized.push(`weekSummary came back with ${rows.length} rows; keeping the first ${MAX_WEEK_SUMMARY}`);
   }
   return rows.slice(0, MAX_WEEK_SUMMARY);
 }
@@ -864,7 +1172,7 @@ function filterRuleIds(raw: unknown, sanitized: Sanitized, where: string): strin
   const list = Array.isArray(raw) ? raw.map((x) => String(x ?? "").trim()).filter(Boolean) : [];
   const good = list.filter((r) => RULE_IDS.has(r));
   const bad = list.filter((r) => !RULE_IDS.has(r));
-  if (bad.length) sanitized.push(`${where}: Rule IDs fuera del corpus, descartados: ${bad.join(", ")}`);
+  if (bad.length) sanitized.push(`${where}: Rule IDs outside the corpus, dropped: ${bad.join(", ")}`);
   return good;
 }
 

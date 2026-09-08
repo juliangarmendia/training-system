@@ -216,7 +216,7 @@ yes(/lastre/.test(INDEX) && /uno de los 6 anchors/.test(INDEX),
 yes(/dow < 0 \|\| dow > 6/.test(INDEX), 'dow del cardio dentro de 0..6');
 yes(/RULE_IDS\.has\(/.test(INDEX), 'ruleIds filtrados contra el corpus real');
 yes(/sanitized\.push\(/.test(INDEX), 'y todo lo recortado se anota en sanitized[] en vez de desaparecer');
-yes(/no está en los ids permitidos|no está en la librería/.test(INDEX), 'los ids fuera de allowed se descartan con motivo');
+yes(/is not in the allowed ids|is not in the library/.test(INDEX), 'los ids fuera de allowed se descartan con motivo');
 yes(/weeklyKmTarget/.test(INDEX) && /Math\.max\(0,\s*round1/.test(INDEX), 'weeklyKmTarget ≥ 0');
 yes(/dataGaps/.test(INDEX), 'y comprueba que el briefing repite los dataGaps del pack');
 
@@ -235,22 +235,22 @@ yes(/sha256Hex\([^)]*PROMPT_VERSION/.test(INDEX_CODE),
   'y PROMPT_VERSION entra en el factsHash (si no, una fila v1 en caché se devuelve como v2)');
 yes(/PHASES\s*=\s*\[[^\]]*"base"[^\]]*"build"[^\]]*"intensify"[^\]]*"deload"[^\]]*"maintenance"/.test(INDEX_CODE),
   'las 5 fases también en el saneado, no sólo en el esquema');
-yes(/no es una fase conocida; a 'build'/.test(INDEX), "fase fuera del enum → 'build' + nota");
-yes(/isDeload/.test(INDEX_CODE) && /forzada a 'deload'/.test(INDEX),
+yes(/is not a known phase; set to 'build'/.test(INDEX), "fase fuera del enum → 'build' + nota");
+yes(/isDeload/.test(INDEX_CODE) && /forced to 'deload'/.test(INDEX),
   "facts.block.isDeload = true y otra fase → forzada a 'deload' + nota (G-H3, LOAD-004)");
-yes(/briefing\.whyKept vacío/.test(INDEX), 'whyKept vacío se anota (mantener también se justifica)');
-yes(/\(sin motivo — el coach no lo dio\)/.test(INDEX),
-  'la sesión sin fila en weekSummary se rellena con "(sin motivo — el coach no lo dio)"');
+yes(/briefing\.whyKept is empty/.test(INDEX), 'whyKept vacío se anota (mantener también se justifica)');
+yes(/\(no reason — the coach did not give one\)/.test(INDEX),
+  'la sesión sin fila en weekSummary se rellena con "(no reason — the coach did not give one)"');
 yes(/function reconcileWeekSummary/.test(INDEX_CODE), 'con una función de cobertura + consistencia');
-yes(/corregido a 'changed'/.test(INDEX) && /corregido a 'kept'/.test(INDEX),
+yes(/corrected to 'changed'/.test(INDEX) && /corrected to 'kept'/.test(INDEX),
   'y el status se corrige contra proposal.sessions en los dos sentidos');
 yes(/lastWeekSummary/.test(INDEX_CODE) && /MAX_LASTWEEK_BULLETS/.test(INDEX_CODE),
   'lastWeekSummary recortado a 3 líneas');
 yes(/focus:\s*(clip|focus)/.test(INDEX_CODE) && /MAX_FOCUS/.test(INDEX_CODE), 'focus recortado a MAX_FOCUS');
 yes(/planSessionIdsOf/.test(INDEX_CODE) && /currentPlan/.test(INDEX_CODE),
   'la cobertura se mide contra el plan del request (currentPlan), no contra el vocabulario');
-yes(/"## Por qué cambia"/.test(INDEX_CODE) && /"## Por qué se mantiene"/.test(INDEX_CODE),
-  'y nextWeek se comprueba con las 5 secciones nuevas');
+yes(/"## Why it changes"/.test(INDEX_CODE) && /"## Why it holds"/.test(INDEX_CODE),
+  'y nextWeek se comprueba con las 5 secciones nuevas, en inglés');
 
 // ── 7. Coste medido, no estimado ─────────────────────────────────────────────────────
 console.log('');
@@ -322,7 +322,7 @@ yes(!/\b140\b/.test(PROMPT_CODE), 'y no hay ningún techo de 140 escrito a mano'
 yes(/facts\.plan\.weekTemplate/.test(PROMPT), 'los días de pierna salen de facts.plan.weekTemplate');
 yes(/dataGaps/.test(PROMPT), 'los dataGaps se repiten literalmente');
 yes(/no hay señal/i.test(PROMPT), '"no hay señal" cuando falla un gate');
-yes(/ajustar por RPE, sin dato/.test(PROMPT), 'kg null + "ajustar por RPE, sin dato" en vez de inventar');
+yes(/adjust by RPE, no data/.test(PROMPT), 'kg null + "adjust by RPE, no data" en vez de inventar');
 yes(/Propones\. Julian decide|propone.*el usuario decide/i.test(PROMPT), 'propone; el usuario decide');
 yes(/se llama progreso/.test(PROMPT), 'mantener en déficit se llama progreso');
 yes(/expert|weak_extrapolated/.test(PROMPT), 'grado de evidencia cuando la regla es expert/weak');
@@ -332,8 +332,33 @@ yes(/\+10%/.test(PROMPT), 'sin saltos de carga >+10% sin decisión');
 yes(/21 días/.test(PROMPT), '>21 días sin exposición → reentrada, no progresión');
 yes(/isDeload/.test(PROMPT), 'nada progresa en deload (facts.block.isDeload)');
 yes(/24 h/.test(PROMPT), 'nada duro <24 h antes de una sesión de pierna');
-yes(/G-H14/.test(PROMPT) && /G-H1\b/.test(PROMPT), 'guardarraíles duros G-H1..G-H14 como MUST');
-yes(/G-S13/.test(PROMPT), 'y los blandos G-S1..G-S13 como SHOULD');
+yes(/G-H15/.test(PROMPT) && /G-H1\b/.test(PROMPT), 'guardarraíles duros G-H1..G-H15 como MUST');
+yes(/G-S20/.test(PROMPT), 'y los blandos G-S1..G-S20 como SHOULD');
+// R-7 (2026-09-08): los DOS guardarraíles duros que descansaban sobre evidencia débil bajaron a
+// blandos, y el diff de este test es la mitad del arreglo. El otro fallo que impide: que alguien
+// los devuelva a duros sin volver a mirar la ficha.
+//   · deload + diet break estaba DURO sobre REC-005 `weak_extrapolated`, cuyo texto dice que el
+//     diet break mejora la EFICIENCIA de la pérdida y NO preserva más masa magra.
+//   · el tope de 80 contactos de plyo estaba DURO sobre ATH-001, cuyo caveat dice que "la dosis
+//     baja es óptima" NO está soportado (la dosis-respuesta favorece MÁS volumen).
+yes(/\*\*G-S15\*\*[\s\S]{0,240}diet break/.test(PROMPT), 'G-S15: deload + diet break, ahora BLANDO');
+yes(/\*\*G-S16\*\*[\s\S]{0,240}contactos/.test(PROMPT), 'G-S16: el tope de 80 contactos de plyo, ahora BLANDO');
+yes(/G-S15[\s\S]{0,300}weak_extrapolated/.test(PROMPT), 'y G-S15 dice sobre qué grado descansa');
+yes(/G-S16[\s\S]{0,300}NO está soportado/.test(PROMPT), 'y G-S16 cita el caveat de ATH-001');
+// Lo que NO baja: la COLOCACIÓN del plyo (INT-004, `strong`) sigue siendo dura.
+yes(/\*\*G-H10\*\*[\s\S]{0,200}INT-004/.test(PROMPT), 'G-H10: la colocación del plyo sigue DURA, por INT-004 `strong`');
+// Y los dos ids nuevos que suben a duros con esta auditoría.
+yes(/\*\*G-H13\*\*[\s\S]{0,200}variante/.test(PROMPT), 'G-H13: días de fuerza ≤ variante+1 y nunca >5 (E-14a)');
+yes(/\*\*G-H14\*\*[\s\S]{0,220}150/.test(PROMPT), 'G-H14: el paso de kcal no pasa de 150 ni llega antes de 14 días (E-18)');
+// Los cinco blandos nuevos.
+for (const [id, needle] of [['G-S14', 'weekSummary'], ['G-S17', 'INT-003'], ['G-S18', 'STR-002'],
+                            ['G-S19', 'READ-005'], ['G-S20', 'END-009']]) {
+  yes(new RegExp(`\\*\\*${id}\\*\\*[\\s\\S]{0,320}${needle}`).test(PROMPT), `${id} existe y cita ${needle}`);
+}
+// El corpus ya no tiene G-H10 "deload y mantenimiento van juntos" en la lista DURA.
+const DUROS_BLOCK = PROMPT.slice(PROMPT.indexOf('const DUROS'), PROMPT.indexOf('const BLANDOS'));
+yes(!/diet\s*break/i.test(DUROS_BLOCK), 'y el bloque DURO ya no menciona el diet break');
+yes(!/80 contactos/.test(DUROS_BLOCK), 'ni el tope de 80 contactos');
 yes(/MUST/.test(PROMPT) && /SHOULD/.test(PROMPT), 'con los dos niveles etiquetados');
 
 console.log('');
@@ -343,6 +368,64 @@ yes(/2026-09-07/.test(PROMPT), 'bloque re-anclado al 2026-09-07');
 yes(/2026-10-05/.test(PROMPT), 'con el primer deload la semana del 2026-10-05');
 yes(/\b82\b/.test(PROMPT), 'hito de −5 kg → 82 kg');
 yes(/185/.test(PROMPT), 'y la proteína de 185 g como suelo que no cede');
+// R-1 (decisión de Julian, 2026-09-08): el suelo sube de 2.500/2.300 a 2.700/2.400. EL FALLO QUE
+// IMPIDE: con 2.500 kcal en día de entreno la disponibilidad energética cae a ~27 kcal/kg FFM y
+// REC-008 marca 30 como umbral — el suelo viejo contradecía la regla que lo justificaba, y lo
+// hacía en la dirección que más cuesta deshacer (masa magra y sueño).
+yes(/2\.700/.test(PROMPT), 'suelo de kcal en día de entreno: 2.700');
+yes(/2\.400/.test(PROMPT), 'y 2.400 en día de descanso');
+yes(!/2\.500 kcal en día de entreno/.test(PROMPT), 'y el suelo viejo de 2.500 ya no se prescribe');
+yes(/REC-008/.test(PROMPT) && /EA|disponibilidad energética/i.test(PROMPT),
+  'con REC-008 y la disponibilidad energética como razón del cambio');
+
+console.log('');
+console.log('10b. Prompt: la prosa de salida en INGLÉS (decisión de producto 2026-09-08)');
+// EL FALLO QUE IMPIDE. La app pasa a inglés entero (V-1); si el prompt sigue exigiendo castellano,
+// la Home queda con tiles en inglés y la tarjeta del coach en español — la costura actual al
+// revés, y la más visible de todas porque `focus` es el titular de la pantalla. Las INSTRUCCIONES
+// se quedan en castellano (las lee Julian); lo que cambia es lo que el modelo ESCRIBE.
+yes(/IDIOMA DE LA SALIDA: INGLÉS/.test(PROMPT), 'el prompt tiene una sección "IDIOMA DE LA SALIDA: INGLÉS"');
+yes(/Toda la prosa que devuelves va en inglés/.test(PROMPT), 'y dice que toda la prosa va en inglés');
+for (const f of ['briefing.focus', 'briefing.whyKept', 'briefing.whyChanged', 'briefing.nextWeek',
+                 'briefing.priorities', 'proposal.weekSummary[].line', 'decisions[].what']) {
+  yes(PROMPT_TEXT.includes(f), `enumera \`${f}\` entre los campos en inglés`);
+}
+yes(/Lo que NO se traduce/.test(PROMPT), 'y dice explícitamente qué NO se traduce');
+yes(/Rule IDs/.test(PROMPT) && /ids de sesión y de ejercicio/.test(PROMPT),
+  'los Rule IDs y los ids de sesión/ejercicio se quedan como están');
+yes(/Punto decimal, no coma/.test(PROMPT), 'y los números van con punto decimal');
+// Las cabeceras markdown son literales: el saneado del servidor las busca una por una, así que
+// prompt e `index.ts` tienen que decir exactamente lo mismo o las cinco secciones saldrían
+// "ausentes" en cada revisión.
+const EN_HEADERS = ['## What happened', '## Previous decisions', '## What I am changing',
+                    '## Why it changes', '## Why it holds', '## What I am watching',
+                    '## What I need from you'];
+for (const h of EN_HEADERS) {
+  yes(PROMPT_TEXT.includes(h), `el contrato pide la cabecera literal "${h}"`);
+  yes(INDEX.includes(h), `y el saneado de index.ts comprueba "${h}"`);
+}
+for (const h of ['## Qué pasó', '## Qué cambio', '## Por qué cambia', '## Qué vigilo']) {
+  yes(!INDEX_CODE.includes(h), `index.ts ya no busca la cabecera en castellano "${h}"`);
+}
+// Las frases que el modelo COPIA literalmente, ahora en inglés.
+for (const phrase of ['everything else holds', 'adjust by RPE, no data',
+                      'this is practice, not strong evidence']) {
+  yes(PROMPT_TEXT.includes(phrase), `el prompt pide la frase literal "${phrase}"`);
+}
+yes(INDEX.includes('adjust by RPE, no data'), 'y el saneado rellena la nota con "adjust by RPE, no data"');
+yes(!/ajustar por RPE, sin dato/.test(INDEX), 'sin el resto en castellano');
+yes(/\(no reason — the coach did not give one\)/.test(INDEX),
+  'la sesión sin fila se rellena con "(no reason — the coach did not give one)"');
+yes(!/sin motivo — el coach no lo dio/.test(INDEX), 'y la frase en castellano desapareció');
+yes(/\(no priority — the coach did not give one\)/.test(INDEX), 'y la prioridad que falta, igual');
+// Los mensajes de `sanitized[]` se pintan en la app: ninguno puede quedar en castellano.
+{
+  const ES = /(sesi[óo]n|ejercicio|descartad|prioridad|semana|vac[íi]o|falta|corregid|qued[ae]|a[ñn]adid|coach devolvi)/i;
+  const pushes = [...INDEX.matchAll(/sanitized\.push\(([\s\S]{0,400}?)\);/g)].map((m) => m[1]);
+  const spanish = pushes.filter((t) => ES.test(t));
+  yes(spanish.length === 0,
+    `los ${pushes.length} mensajes de sanitized[] están en inglés${spanish.length ? ` — en castellano: ${spanish.slice(0, 3).map((t) => t.slice(0, 60)).join(' | ')}` : ''}`);
+}
 
 console.log('');
 console.log('11. Prompt: estructura cacheable y contrato de salida');
@@ -353,8 +436,8 @@ yes(/export const RULES_VERSION/.test(PROMPT), 'RULES_VERSION exportado para est
 yes(/rules-compact\.json["']\s+with\s*\{\s*type:\s*["']json["']\s*\}/.test(PROMPT),
   'el corpus se importa con import attributes');
 yes(!/Date\.now\(\)|new Date\(/.test(PROMPT_CODE), 'sin fechas calculadas en el prompt estático (invalidaría la caché)');
-for (const h of ['## Qué pasó', '## Qué cambio', '## Por qué', '## Decisiones anteriores',
-                 '## Qué vigilo', '## Qué necesito de ti']) {
+for (const h of ['## What happened', '## What I am changing', '## Why it changes',
+                 '## Previous decisions', '## What I am watching', '## What I need from you']) {
   yes(PROMPT.includes(h), `el contrato del briefing incluye "${h}"`);
 }
 
@@ -362,7 +445,7 @@ for (const h of ['## Qué pasó', '## Qué cambio', '## Por qué', '## Decisione
 console.log('');
 console.log('11b. Prompt: rendimiento primero, el recorrido y la estabilidad con motivo');
 for (const m of ['Primero el rendimiento', 'nunca dosifica', 'facts.trajectory',
-                 'No cambies por variedad', 'Qué necesito de ti']) {
+                 'No cambies por variedad', 'What I need from you']) {
   yes(PROMPT.includes(m), `contiene el marcador "${m}"`);
 }
 // Los campos de trayectoria se citan por su nombre exacto: el prompt y el facts pack (B.2)
@@ -389,7 +472,7 @@ for (const p of ['base', 'build', 'intensify', 'deload', 'maintenance']) {
 yes(/adherencia ≥75%.{0,60}verde 2 semanas/s.test(PROMPT), 'intensify sólo con adherencia ≥75% y verde 2 semanas');
 yes(/whyKept/.test(PROMPT) && /whyChanged/.test(PROMPT) && /lastWeekSummary/.test(PROMPT) && /briefing\.focus/.test(PROMPT),
   'el CONTRATO nombra focus, lastWeekSummary, whyChanged y whyKept');
-yes(/## Por qué se mantiene/.test(PROMPT), 'nextWeek lleva la sección "Por qué se mantiene"');
+yes(/## Why it holds/.test(PROMPT), 'nextWeek lleva la sección "Why it holds"');
 
 // Los negativos: READ-007 aplicado al día es exactamente lo que Julian rechazó el 2026-09-07.
 // Si estas frases vuelven, el coach vuelve a razonar en días y la app vuelve a ajustar sesiones.
@@ -422,9 +505,9 @@ try {
   yes(by['upper-a']?.status === 'kept', "A: la fila que dio el coach se respeta ('kept')");
   yes(by['lower-a']?.status === 'changed', "B: falta la fila pero está en sessions → se rellena como 'changed'");
   yes(by['upper-b']?.status === 'kept', "C: falta la fila y no cambia → 'kept'");
-  yes(by['upper-b']?.line === '(sin motivo — el coach no lo dio)', 'C: con la línea de relleno visible');
+  yes(by['upper-b']?.line === '(no reason — the coach did not give one)', 'C: con la línea de relleno visible');
   yes(notes.length === 2, `2 notas, una por sesión rellenada (${notes.length})`);
-  yes(notes.every((n) => /sin motivo — el coach no lo dio/.test(n)), 'y las dos dicen que el coach no dio motivo');
+  yes(notes.every((n) => /no reason — the coach did not give one/.test(n)), 'y las dos dicen que el coach no dio motivo');
 
   // Consistencia en los dos sentidos, sobre filas que el coach SÍ dio.
   const notes2 = [];
@@ -450,7 +533,7 @@ try {
   const rows3 = reconcile(many, [], new Set(), notes3);
   yes(rows3.length === 12, `weekSummary recortado a 12 filas (${rows3.length})`);
   yes(rows3.every((r) => r.line.length <= 160), 'y cada línea a 160 caracteres');
-  yes(notes3.some((n) => /15 filas/.test(n)), 'con la nota del recorte');
+  yes(notes3.some((n) => /15 rows/.test(n)), 'con la nota del recorte');
 
   // Un status inventado no rompe la fila: se degrada a 'kept' y se anota.
   const notes4 = [];
@@ -498,6 +581,26 @@ if (!existsSync(RULES_PATH)) {
         'y los grados de evidencia son del enum del repo');
       const sha = Array.isArray(parsedRules) ? null : (parsedRules.sourceSha256 || parsedRules.rulesVersion);
       yes(!!sha, 'trae sourceSha256 para que RULES_VERSION no sea "placeholder"');
+      // R-7: los `caveats` viajan desde el 2026-09-08. El grado dice cómo de firme es una regla;
+      // el caveat dice EN QUÉ SE EQUIVOCA, y sin él el modelo aplicaba ATH-001 (40-80 contactos)
+      // sin saber que su propio caveat niega la optimalidad de la dosis baja.
+      const conCaveats = list.filter((r) => Array.isArray(r.caveats) && r.caveats.length);
+      yes(conCaveats.length >= 50, `${conCaveats.length} reglas llegan con \`caveats\` al prompt`);
+      yes(conCaveats.every((r) => r.caveats.every((c) => String(c).length <= 160)),
+        'cada caveat recortado a 160 caracteres');
+      yes(/OJO:/.test(PROMPT_CODE) && /caveats/.test(PROMPT_CODE),
+        'y renderRules() los pinta con el prefijo `OJO:` (lo que la regla NO dice)');
+      yes(/caveat de la propia regla/.test(PROMPT_TEXT),
+        'con la instrucción de no citar una regla cuyo caveat contradice el uso');
+      // Las dos reglas del corpus que motivaron el cambio.
+      for (const id of ['ATH-001', 'REC-005']) {
+        const r = list.find((x) => x.id === id);
+        yes(!!(r && r.caveats && r.caveats.length), `${id} llega con su caveat (motivó la degradación a blando)`);
+      }
+      yes(list.length >= 72, `el corpus trae las 72 reglas (STR-009 y END-009 nuevas) — ${list.length}`);
+      for (const id of ['STR-009', 'END-009']) {
+        yes(list.some((r) => r.id === id), `${id} está en el corpus del prompt`);
+      }
     }
   }
 }

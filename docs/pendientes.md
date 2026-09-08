@@ -6,7 +6,7 @@
 > El *por qué* de cada cosa vive en [`../assessments/2026-08-16_system-audit.md`](../assessments/2026-08-16_system-audit.md).
 > Aquí está el *qué sigue*.
 >
-> Última actualización: **2026-09-08** (Coach v2.1: carril B hasta B-4 e integraciones de servidor hasta A-5)
+> Última actualización: **2026-09-08** (auditoría de la app: incremento 1 · v11.66 y incremento 3 · fn v4 hechos — P0, rendimiento, guardarraíles del coach en el servidor, corpus y advisors)
 
 ## Regla de trabajo
 
@@ -131,6 +131,111 @@ comprobaciones que ningún test cubre porque viven en la pantalla más usada:
 10. **Por la mañana temprano**, antes de que intervals.icu tenga el día: la tarjeta dice "Sin dato de
     hoy" o "WHOOP 07:42" — **nunca** pinta el score de ayer como si fuera de hoy. Al reabrir a
     mediodía, la tarjeta ha cambiado sola.
+
+---
+
+## Auditoría de la app (2026-09-08) — remediación v11.66 → v11.70
+
+Auditoría completa (visual · funcionalidad · motores · lógica de entrenamiento · research) en
+[`audits/2026-09-08-app-audit.md`](audits/2026-09-08-app-audit.md), con `file:line` en cada
+hallazgo. Sustituye al plan Coach v2.1 (implementado). Julian aprobó el alcance completo P0 → P3
+el 2026-09-08, en incrementos separados con tests.
+
+### Incremento 1 · v11.66 · P0 + rendimiento
+
+| ID | Qué | Estado |
+|---|---|---|
+| B-1 | **Un día ya entrenado no abría nada.** `viewCompletedWorkout()` hacía `getElementById` sobre el textarea de notas, retirado hacía versiones; lanzaba antes de activar la vista. Las tres referencias fuera; las notas del entreno se pintan de sólo lectura y escapadas bajo la cabecera (`#wo-completed-notes`) | **hecho 2026-09-08** (v11.66) |
+| B-2 | **Botón "volver" muerto** por el mismo `null` en `bindEvents`. Arreglado con B-1, y ahora vuelve a la pestaña de la que se vino (Home o Gym), no siempre a Home | **hecho 2026-09-08** (v11.66) |
+| B-3 | **La tira de la semana escribía en un contenedor que no existe** (la sustituyó `renderWeekCalendar`): once llamadores, once promesas rechazadas por cada guardado de entreno. Función y llamadas borradas; el banner de la semana (que sí existe) pasa a pedirse desde `switchTab('gym')`, `init()` y `afterWorkoutSaved()` | **hecho 2026-09-08** (v11.66) |
+| B-4 | **Cabecera invisible en cinco vistas secundarias** (Coach, Ideal, Analítica, Movilidad, Ajustes): ninguna ponía `body.dataset.tab` y `body[data-tab="home"] header{display:none}` seguía activo. Un helper `enterSecondaryView(view, headerKey)` hace `showView` + `updateHeader` + `dataset.tab`, usado en las cinco (más los dos botones de volver) y expuesto en `window` para `coach.js`. `updateHeader` gana rama para `ideal-preview`, `analytics` y `mobility` | **hecho 2026-09-08** (v11.66) |
+| B-5 | **`init()` y `renderHomeView()` sin `catch`:** cualquier throw dejaba la app a medias en silencio. `DOMContentLoaded` con `.catch` + toast; `renderHomeView` con `Promise.allSettled` (un bloque que falla deja su hueco, no la pantalla) y un warn por bloque; `switchTab` atrapa Home y Stats | **hecho 2026-09-08** (v11.66) |
+| B-6 | **`innerHTML` sin escapar** en notas del entreno, notas del plan, `data-swap-name` y —lo más serio— nombres y notas que vienen del modelo que lee las fotos de comida. Los ocho puntos con `escapeHtml`, y un test que grep-ea `${…notes}`/`${it.name}` sin escape en las líneas que construyen markup | **hecho 2026-09-08** (v11.66) |
+| E-12 | **Código muerto:** rampa de re-entrada W26-W28, `renderWeeklyReport`, `renderRecentActivity`, `logRun`, `logSession`, los dos juegos de anillos de actividad, el banner de racha, la tarjeta de movilidad de hoy y dos iconos — 725 líneas que en varios casos leían tres tablas de IndexedDB para no pintar nada. **`renderStepsCard` se rescata:** tiene contenedor real en Stats › Today (`#steps-card`) y estado vacío, así que los pasos de intervals.icu dejan de perderse | **hecho 2026-09-08** (v11.66) |
+| V-6 | **Service worker:** entran la hoja de Google Fonts, `favicon.svg`, `privacy.html` y `strava-callback.html`; salen del precache `app-icon.png` (1,9 MB) e `intro.mp4`; el `addAll` atómico pasa a dos tandas (crítica / opcional con `allSettled`); cache-first con revalidación en segundo plano para el shell y network-first sólo para la navegación | **hecho 2026-09-08** (v11.66) |
+| V-7 | **Rendimiento:** caché de `weekSchedule` en `state` (eran 15 `dbGet` del mismo registro por pintado de Home), memo de `dbGetAll` por pase de render (eran 12 lecturas de los mismos cuatro stores), `renderStats` en tres tandas en vez de veinte `await` en serie, y un `afterWorkoutSaved()` en lugar del mismo trío de repintados copiado en cuatro sitios | **hecho 2026-09-08** (v11.66) |
+
+Test nuevo: `tests/verify-home-render.mjs` — 91 comprobaciones. Impide la recaída de los tres
+bugs P0 con la misma forma (un renderer escribiendo en un contenedor que no existe), verifica el
+contrato del memo **ejecutándolo** sobre un IndexedDB de juguete, y afirma el shell del service
+worker. Actualizados por símbolos borrados o por la nueva forma del código:
+`verify-coach-wiring`, `verify-plan-v2-compat`, `verify-waist-persistence`,
+`verify-integrations-wiring`.
+
+Comprobación en el iPhone que queda para Julian (§7 del informe): tocar un día entrenado en el
+calendario abre el entreno y "volver" funciona; abrir Coach/Analítica/Ideal/Movilidad muestra la
+cabecera; guardar un entreno no deja errores en consola.
+
+### Incremento 2 · v11.67 · Motores — **hecho 2026-09-08**
+
+| ID | Qué | Estado |
+|---|---|---|
+| **E-1** | **La regla de kg no tenía tope porcentual.** El escalón salía del material, no de la carga: 4 → 6 kg en una mancuerna es **+50 %** y +2,5 en una máquina de 20 kg es +12,5 % — saltos que el validador del coach rechaza como `LOAD-JUMP` cuando los propone el modelo y que la app prescribía sin mirar. `LOAD_JUMP_MAX_PCT = 0.10` en `coach-engine.js`, medido **después** del redondeo al disco o al par (el salto que de verdad va a la barra). Y **no bloquea**: con material discreto no siempre se puede subir dentro del 10 %, así que lo que se exige es más evidencia — cerrar el tope del rango **dos** sesiones seguidas. STR-009 | **hecho** |
+| **E-2** | **El RPE ausente contaba como RPE bajo.** La condición era `avgRpe == null` **o** `avgRpe <= rpeTop`: "no lo anoté" valía lo mismo que "me sobró", así que una sesión llevada al fallo sin RPE apuntado sumaba +2,5 kg a la siguiente. Sin el dato hace falta la otra evidencia que sí existe: `allHitMax` en dos sesiones utilizables consecutivas. Si no: mismo kg y *"sin RPE: subo sólo tras dos sesiones al tope. Hoy: mismo kg, y anota el RPE"* | **hecho** |
+| **E-3** | **Dos registros del mismo día entraban como dos sesiones.** El historial es "todos los entrenos con este ejercicio", y un día puede traer dos filas (la sesión del plan y una libre, o un registro reabierto y vuelto a guardar): `usable[0]` y `usable[1]` eran el mismo entreno, así que la regla concluía *"dos sesiones iguales: hoy +1 rep"* el día del primer levantamiento y `daysSince` salía 0 sobre un intervalo inexistente. `_coachDedupeHistory(hist, type)` deja **una fila por fecha**, la de más series hechas. Va en el motor y no en el cableado, así que cubre los dos llamadores (`computeSessionTargets` y `attachSessionReadout`) y se puede probar sin navegador | **hecho** |
+| **E-4** | **Los minutos de cardio del coach no caducaban.** `plan-v2-schema.md` dice que el objetivo del coach manda "y la ventana de vigencia está abierta", y eso se cumplía para los kg y no para los minutos: un plan de hace tres semanas seguía prescribiendo 50′ de zona 2 mientras sus kg ya habían cedido el paso a la regla — el mismo plan con dos vidas distintas. `coachTargetIsCurrent(planWeekKey, todayStr)` sale de dentro de `suggestSetTarget` a función exportada, y `_coachCardioMin` la usa (con el mismo respaldo de 14 días por `createdAt`) | **hecho** |
+| **E-5** | **Plan del coach en semana de descarga: exención para todo.** `deload` era `false` para el plan entero en cuanto `author === 'coach-llm'`, con el argumento de que el coach ya trae el volumen de la descarga. Cierto **de lo que él escribió**: un accesorio sin `target` recibía progresión normal en semana de deload, contra G-H3 y LOAD-004. Ahora `deloadFor(exId)` decide por ejercicio, y de ahí cuelgan los objetivos (`computeSessionTargets` acepta `deloadFor`), la estimación de tiempo (`computeBlocks` acepta un predicado) y el subtítulo de la cabecera | **hecho** |
+| **E-6** | **La rampa de cardio iba por el calendario.** `progressCardioMin` subía `base × 1,1^(index−1)`: en la semana 4 del bloque prescribía un +33 % **aunque no se hubiese corrido en tres semanas**, porque la única puerta era `lastCardioDaysAgo` y era GLOBAL — una bici de anteayer bastaba para pasarla. Ahora la referencia es la **mediana de los minutos de las dos últimas semanas ISO con dato en el mismo hueco** (`opts.history`, `[{weekKey, min}]`); sin dato, o con el hueco vacío 14 días, devuelve la base; el techo sigue siendo ×1,35 **sobre la base del slot**. El cableado lo pone `_cardioSlotHistory(jsDay, ds, kind)`, que separa el finisher post-fuerza de la sesión de cardio del mismo día de la semana — mezclar 20′ y 50′ daría una mediana que no describe ninguno de los dos. El camino sin `history` se conserva para los llamadores que no lo pasan | **hecho** |
+| **E-7** | **Residuo de dosificación por recuperación.** `readiness.deloadHint` congelaba la rampa de km y cerraba la puerta de la calidad en `suggestRunningWeek`: una dosis derivada de WHOOP y del RPE, aplicada sin que nadie la aprobara — justo lo que Julian retiró el 7-sep. Ya **no cambia ningún número**: ni `weeklyKmTarget`, ni `weeklyMinTarget`, ni la fase, ni `qualityUnlocked`, ni el reparto por sesión. Sigue en la firma y aparece, como mucho, al final de `reason` ("dato para la revisión semanal, no un recorte automático"). El test de la sección 4 de `verify-running-week` es ahora **negativo**: compara las dos salidas km a km | **hecho** |
+| **E-8** | **El `next` del readout prometía una subida imposible.** Se calculaba con `deload: false` "para no adivinar el calendario" — pero el bloque está anclado a fecha y se sabe con exactitud: la tarjeta del viernes decía "la próxima: 95 kg" y el lunes de descarga la pantalla prescribía 85. Ahora usa `blockWeek(fecha + 7 d).isDeload`, el mismo cálculo que hará la tarjeta de ese día | **hecho** |
+| **E-9** | **Una fuente por concepto.** `LB_TO_KG = 0.45359237` (había un `0.453592` truncado en `app.js` y dos copias en el motor: el mismo peso salía distinto según qué fichero lo convirtiera) · `RW_Z2_TOLERANCE_BPM`, ahora usada también por `performanceLine` (una carrera a 144 bpm sobre un techo de 143 se llamaba "carrera" en Home y "Z2 cumplida" en el pack) · `LOAD_JUMP_MAX_PCT` · `ffmKg({bodyweightRows, settings, todayStr})`, que resuelve **una** FFM con su procedencia y la usan `nutrition.js` y el facts pack (había tres: la declarada de 72,8, la de Withings y la derivada, y la EA salía 26,4 o 28,9 según cuál) · el banner de Gym pasa de bloques de **9** semanas a `blockWeek()`/`blockLabel()` (5, ancladas a fecha), así que la barra y la tarjeta de la sesión dejan de contradecirse · la barra del presupuesto de días duros usa `VP_MAX_BUDGET` en vez de dividir por 8 lo que se calcula sobre 6 · `_weekNumToDate` devuelve el **lunes ISO correcto** con la aritmética UTC de `anchorDateFromWeek` (sumaba días en hora local) y `null` en vez de "hoy" cuando no hay `startDate` — devolver hoy hacía que la semana 12 heredara el deload de la semana en curso | **hecho** |
+| **E-10** | **Once agregaciones leían `runs`/`sessions` crudos.** La misma actividad de COROS llega por Strava **y** por intervals.icu (v11.36), así que la racha contaba dos días donde había uno, `renderRunTotals` inflaba el total del año y "¿cuántos km llevo esta semana?" tenía dos respuestas según la pantalla. Convertidas a `getRunsDeduped()`/`getSessionsDeduped()`: racha diaria de bienvenida, rachas de Stats, comparación de semanas, calendario de racha, resumen semanal, calendario de Home, tarjeta de hoy, totales de carrera, historial, swimlane, banner de Gym, y en `nutrition.js` el `nutIsTrainingDay` y el `nutEeeForDate` (donde se **suman** kilocalorías: contar doble hunde la EA del día). Las crudas que quedan están declaradas una por una, con su motivo, en el test nuevo | **hecho** |
+| **E-11** | **Nutrición: pintar escribía, y la EA intradía se pintaba como estado.** `renderNutricionV2()` llamaba a `recomputeNutritionDay()` en cada pintado, así que abrir la pestaña escribía en IndexedDB y encolaba una sincronización con un `updatedAt` nuevo — el último dispositivo que MIRASE la pantalla ganaba el merge sin haber registrado nada. Se separa en tres: `computeNutritionDay` (calcula), `recomputeNutritionDay` (único escritor, sólo desde `saveMeal`/`deleteMeal`/`nutCloseDay`) y `nutDayForRender` (pinta sin escribir). Y la fila lleva `closed`: la EA es una magnitud diaria (REC-008) y a las 11:00 con un desayuno registrado sale siempre "crítica", así que hoy se muestra el número sin semáforo y con la línea *"in progress — a daily figure (REC-008); judged when the day closes"*. `nutCloseDay(fecha)` sella el día de ayer una vez, es idempotente y no inventa filas | **hecho** |
+| **E-15** | **Base obsoleta al aplicar.** `applyCoachProposal` mergea el diff contra el `activePlan` **del momento de aplicar**, no contra la versión que el coach tenía delante: entre la propuesta del domingo y el toque del lunes cabe un `setIdealVariant` (4 → 5 días) o un rollback, y el "sube la banca a 95" se estampaba sobre otra base sin aviso. Se compara `activePlan.version` con `review.facts.plan.version` y, si no coinciden, un `confirm()` amarillo: *"The plan changed since this review (v14 → v16). Apply anyway?"*. La versión nueva registra `baseVersion` y `appliedOnVersion` | **hecho** |
+| **E-16** | **Deshacer perdía trabajo del usuario.** Aplicar limpia los swaps de ejercicio que el plan nuevo absorbió (`_coachReconcileOverrides`) y los cambios de día hechos a mano (`clearFutureScheduleOverrides`); el rollback restauraba `sessions` y `weekTemplate` y **no** esos overrides, así que Deshacer devolvía el plan viejo sin los cambios manuales que tenía encima. `applyCoachProposal` guarda `preApply: {exerciseOverrides, weekSchedule}` (copia profunda, **antes** de limpiar) en la versión nueva, y `rollbackPlanVersion` los restaura desde la versión que deshace, contándolo en la decisión | **hecho** |
+| **E-18** | **El piloto de kcal no tenía reloj** (lado app). `settings.kcalFirstAdjustDate` / `kcalLastAdjustDate` no existían, así que `nextEligibleAdjustDate` era `null` **siempre** y el gate de 14 días de `KCAL-STEP` no se podía comprobar. Aplicar una propuesta con `nutrition.kcalTarget` sella las dos fechas por la ruta que sincroniza (`userSettings`) — y **sólo si el número cambia** respecto al último sellado (`kcalLastAdjustValue`): si el coach repite el mismo objetivo cada domingo y esto reescribiera la fecha, el reloj se reiniciaría cada semana y el gate no dispararía nunca. `_coachValidateCtx` pasa además `kcalTarget`, `kcalLastAdjustDate` y `daysSinceKcalAdjust` al validador | **hecho** |
+| **R-2** | Cita muerta: el comentario de `progressCardioMin` decía que END-003 es `expert`; la ficha dice `moderate`, confianza media (Bertelsen 2017 respalda el **mecanismo** carga-vs-capacidad, no el 10 %) | **hecho** |
+
+Tests: **`verify-cardio-progress.mjs`** y **`verify-dedupe-reads.mjs`** nuevos (el segundo lleva la
+lista de lecturas crudas permitidas con su categoría: si aparece una nueva, falla). Ampliados:
+`verify-set-target` (§10 el tope del 10 %, §11 el mismo día, §12 la vigencia — y las tres
+aserciones de progresión de mancuerna pasan a exigir **dos** sesiones al tope, que es la regla
+nueva), `verify-running-week` (§4 negativo), `verify-block-week` (§8 el banner, `_weekNumToDate`,
+el presupuesto y `LB_TO_KG`), `verify-nutrition-v2` (§13 recompute y EA, §14 la precedencia de la
+FFM ejecutada sobre el motor), `verify-coach-wiring` (§18 aplicar y deshacer),
+`verify-plan-v2-compat` (`preApply` sobrevive a `createNewPlanVersion`), `verify-workout-unit` y
+`verify-sync-writes` (el sandbox y la ventana de extracción, por la forma nueva del código).
+
+Lo que queda de este incremento y **no** se hizo aquí: `nutrition.js:47-48` ya estaba a 2.700 /
+2.400 (R-1, lo dejó el incremento 3), y `E-12`/`E-13`/`E-14`/`E-17` son de los otros dos carriles.
+
+### Incremento 3 · fn v4 · Guardarraíles, research y servidor — **hecho 2026-09-08**
+
+| ID | Qué | Estado |
+|---|---|---|
+| **E-13** | **La edge function no ejecutaba el validador.** Los docs decían desde el diseño que un `hard` le cuesta al coach una regeneración; no era verdad — los avisos se calculaban en el teléfono AL APLICAR, con la propuesta ya escrita y la llamada ya pagada. Ahora `scripts/build-fn-assets.mjs` copia `app/coach-facts.js` a `coach-weekly-review/coach-facts.generated.js` (con sha, como `rules-compact`), y tras sanear la función hace `validatePlanVersion(mergeProposal(...))` con el **mismo `ctx`** que usa la PWA. Si hay algún `hard` → **UNA** regeneración ("corrige sólo eso, no cambies nada más"), y la segunda propuesta sólo sustituye a la primera si tiene MENOS `hard`. La fila guarda `guardrails` (el array que la app ya lee) + `guardrailsMeta {hard, warn, regenerated, attempts, structuralChanges}` | **hecho** (fn v10) |
+| **E-14** | **Lo que ningún guardarraíl detenía**, cerrado con 6 ids nuevos: `SESSION-COUNT` pasa a **duro** (>variante+1 o >5, y ya no se salta sin variante — un sexto día de gym no lo paraba nadie) · `HARD-CARDIO`/`RUN-BEFORE-LEGS` cuentan como dura un **largo ≥10 km** y los días de `running.hardSessions[]` · `ORDER-SAME-DAY` (levantar primero si comparten día, INT-003) · `FREQ-FLOOR` (patrón mayor <2 exposiciones/semana en variantes ≥4, STR-002 `strong`) · `CHURN` sobre el **diff real**, no sobre el `changes[]` autodeclarado · `PROTEIN-FLOOR` avisa cuando una semana de déficit toca la ingesta sin decir nada de la proteína | **hecho** |
+| **E-17** | `RECOVERY-ONLY`: una decisión que baja series/kg/km citando **sólo** reglas `READ-*` y sin un dato de rendimiento al lado es dosificación por wearable con otro nombre — lo que Julian retiró el 7-sep | **hecho** |
+| **E-18** | `KCAL-STEP` **duro**: un cambio de `nutrition.kcalTarget` no pasa de **150 kcal** ni llega antes de **14 días** del anterior (se lee de `progress.weight.validWindow`). Sin tope, "el ritmo es un dial gobernado por el rendimiento" era prosa: a las dos semanas no se sabe si la pendiente cambió por el ajuste o por el ruido | **hecho** (lado validador) |
+| **R-1** | **Suelo de kcal a 2.700 / 2.400** (decisión de Julian), en `prompt.ts` y en `KCAL-FLOOR`. Con 2.500 la disponibilidad energética cae a ~27 kcal/kg FFM y REC-008 marca 30: el suelo viejo contradecía la regla que lo justificaba | **hecho** (falta `nutrition.js:47-48`, del agente de motores) |
+| **R-3** | **LOAD-004** con las magnitudes de la descarga dentro (series ×0,6, km ×0,7, kg ×0,9, RPE 5-6) y degradada a `expert`: los factores que el código aplicaba no tenían fuente ninguna | **hecho** |
+| **R-4** | **STR-009** escrita: la doble progresión (ventanas de reps, +reps antes que +kg, pasos 2,5 / 1,25 / par de mancuernas, tope del 10 % en cualquier salto, y "sin RPE no es RPE bajo": dos sesiones al tope antes de subir). Grado `expert`, no `moderate` — Plotkin 2022 **no** está en `corpus-map.md` | **hecho** |
+| **R-5** | **END-009** nueva (`strong`, Jakicic 2024): ≥150 min/semana de MVPA y 200-300 para pérdida de grasa, con `MVPA-FLOOR` en el validador. Da consumidor a LONG-001, una de las siete `strong` que sólo llegaban a la documentación | **hecho** |
+| **R-6** | **REC-001**: el rango pasa de 1,8-2,7 a **1,6-2,2 g/kg** ("ACSM 1,2-2,0; extrapolado arriba en déficit por Helms/ISSN"). La mitad alta del rango viejo no tenía fuente | **hecho** |
+| **R-7** | **Los `caveats` viajan al prompt** (recortados a 160 chars, 2 por regla): el grado dice cómo de firme es una regla, el caveat dice **en qué se equivoca**. Y los dos guardarraíles que descansaban sobre evidencia débil bajan a blandos: deload + diet break (REC-005 `weak_extrapolated`, cuyo texto dice que **no** preserva más masa magra) → `G-S15`, y el tope de 80 contactos de plyo (el caveat de ATH-001 niega la optimalidad de la dosis baja) → `G-S16` con su id propio `PLYO-CONTACTS`. La **colocación** del plyo sigue dura: INT-004 es `strong` | **hecho** |
+| **R-8** | **`consumer` en las 72 fichas** (`engine`/`validator`/`guardrail`/`prompt`/`doc`/`none`), con `consumerNote` obligatoria cuando una regla `strong` no tiene más consumidor que un documento. Lo comprueba `tests/verify-rule-coverage.mjs`, y lo comprueba **de verdad**: contrasta cada `validator` contra los `ruleIds` del validador, cada `guardrail` contra el bloque de guardarraíles del prompt y cada `engine` contra el código de los motores. Distribución: 39 validator · 17 engine · 1 guardrail · 1 prompt · 14 doc · 0 none | **hecho** |
+| **R-10** | **CI con job `test`.** `deploy.yml` sólo publicaba `app/`: los 30+ ficheros de tests dependían de que alguien se acordara. Ahora un job `test` (Node 24) comprueba los artefactos generados (`--check`) y corre la suite entera, y el `deploy` lleva `needs: test` | **hecho** |
+| **I-1** | **Migración `20260909_advisors.sql`.** `rls_auto_enable()` fuera del alcance de `anon`/`authenticated`; las **25 políticas RLS** a `(select auth.uid())` (de re-evaluar por fila a una vez por consulta, misma semántica); índice en `oauth_states(user_id)`; fuera el índice `integration_events_received_idx` que nunca se usó. Advisors después: **cero** `auth_rls_initplan`, cero `unindexed_foreign_keys`, cero `anon_security_definer_function_executable` | **hecho** |
+| **D** | **La prosa del coach en inglés** (decisión de producto del 8-sep): `prompt.ts` pide toda la prosa en inglés manteniendo Rule IDs, ids y números, con las cabeceras markdown literales en inglés; las notas de saneado de `index.ts` traducidas y comprobadas por test | **hecho** (el resto de la UI, en v11.68) |
+
+Ids del validador: **33 → 39**. Tests: `verify-plan-validator` (39 ids, positivo y negativo por
+regla nueva), `verify-fn-assets.mjs` **nuevo** (importa el módulo generado de verdad y ejecuta las
+tres funciones), `verify-rule-coverage.mjs` **nuevo**, `verify-rules-compact` (caveats + tamaño),
+`verify-coach-fn-wiring` (renumeración, suelo de kcal, inglés). Suite completa en verde.
+
+### Lo que fn v4 dejó a la vista, y es para Julian
+
+**`ANTHROPIC_API_KEY` no está en los secretos del proyecto.** Un POST a la función devuelve
+`{"error":"Función sin configurar: falta ANTHROPIC_API_KEY"}`: el coach semanal **no puede correr**,
+y `parse-meal-photo` tampoco. Se arregla en Dashboard › Functions › Secrets (o
+`supabase secrets set ANTHROPIC_API_KEY=…`). Es lo primero que hay que hacer antes de cerrar la
+semana el domingo 13.
+
+### Incrementos 4, 5 y 7
+
+Pendientes, en el orden del informe: **v11.68** todo en inglés (V-1), **v11.69** visual y UX
+(V-2…V-5, V-8, V-9), **R-11** (ledger de evidencia en la vista Coach) y **A-7** (intervals.icu y
+Strava al servidor).
 
 ---
 

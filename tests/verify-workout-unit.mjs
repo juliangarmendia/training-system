@@ -31,7 +31,19 @@ const TRANSCRIPT_SRC = slice('function buildWhoopTranscript(w, ctx = {}) {', '//
 
 const ctx = { console };
 vm.createContext(ctx);
+// `LB_TO_KG` vive en coach-engine.js, que index.html carga ANTES de app.js y el service worker
+// precachea junto a él (v11.67, E-9: había dos constantes para el mismo factor, 0.453592 aquí y
+// 0.45359237 en el motor, así que el mismo peso salía distinto según qué fichero lo convirtiera).
+// El sandbox reproduce ese contrato de carga; `verify-coach-wiring.mjs` es quien lo vigila.
+const ENGINE = readFileSync('app/coach-engine.js', 'utf8');
+const engineSandbox = { module: { exports: {} }, console };
+engineSandbox.exports = engineSandbox.module.exports;
+vm.createContext(engineSandbox);
+new vm.Script(ENGINE).runInContext(engineSandbox);
+const LB_TO_KG = engineSandbox.module.exports.LB_TO_KG;
+
 vm.runInContext(`
+  var LB_TO_KG = ${LB_TO_KG};
   var state = { settings: { unit: 'kg' } };
   var activePlan = { sessions: {} };
   function getExerciseName(id) { return id; }

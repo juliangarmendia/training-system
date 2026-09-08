@@ -502,6 +502,13 @@ lo pinta en rojo y Julian puede aplicarlo igual. Los `warn` son chips ámbar. Pu
 chequeo sin su trozo de `ctx` se **salta**; nunca lanza (si algo falla, emite `VALIDATOR-ERROR` como
 aviso `warn` y devuelve lo que pudo comprobar).
 
+**Y desde el 2026-09-08 (fn v4) esto corre en el SERVIDOR, no sólo en el teléfono.** Hasta ese día
+el "UNA regeneración" del párrafo de arriba era una promesa del diseño que nadie ejecutaba: los
+avisos se calculaban en `applyCoachProposal`, con la propuesta ya escrita y la llamada ya pagada.
+`scripts/build-fn-assets.mjs` copia este fichero a `coach-weekly-review/coach-facts.generated.js`
+(con su sha, como `rules-compact`) y la función lo llama con el **mismo `ctx`** — mismo rojo en el
+servidor que en la pantalla. Ver [`plan-v2-schema.md`](plan-v2-schema.md#el-bucle-de-guardarra%C3%ADles).
+
 ```js
 ctx = {
   basedOn,           // plan anterior (diff de volumen y de anclas)
@@ -513,8 +520,18 @@ ctx = {
   block,             // { index, weeksTotal, isDeload }
   isDeload,          // opcional; si no, se deduce de block/plan.phase
   bodyweightKg, goals, zones, decisions, briefing, todayStr,
+  // fn v4 (2026-09-08): opcionales, para KCAL-STEP. Si no llegan se leen de
+  // `facts.progress.weight.validWindow` (`lastAdjustDate`, `daysSinceLastAdjust`) y de
+  // `facts.nutrition.kcal.targetMean7`; si tampoco están, el chequeo se salta.
+  kcalTarget, kcalLastAdjustDate, daysSinceKcalAdjust,
 }
 ```
+
+En el servidor el `ctx` se construye del pack: `variant` ← `facts.plan.idealVariant`, `libraryIds`
+← el vocabulario `allowed` + los ids del plan activo, `lowerSessionIds` ← `body.lowerSessionIds` o
+deducido del plan por músculo/patrón, y `exerciseLibrary` **no viaja** (el pack no lleva
+`movementPattern`), así que el validador cae a sus tablas por id (`VP_PATTERN_IDS`,
+`FACTS_PRESS_IDS`), que cubren la librería real.
 
 ### Tabla de ids
 
@@ -524,21 +541,29 @@ ctx = {
 | `LOAD-JUMP` | warn | caída > −15 % fuera de deload | STR-001, LOAD-001 | — |
 | `NO-SOURCE-KG` | **hard** | kg sin `evidence`/`source`/`decisionId` ni marca "ajustar por RPE" | GEN-002 | G-H2 |
 | `DELOAD-VOLUME` | **hard** | descarga con series > 0,6× la semana de carga · con plyo · con dura · o `phase ≠ 'deload'` | LOAD-004, ATH-001, END-004 | G-H3 |
-| `HARD-CARDIO` | **hard** | > 1 sesión dura de cardio/híbrido | END-004, BUD-001 | G-H4 |
-| `RUN-BEFORE-LEGS` | **hard** | dura/híbrido en `d` y pierna en `d+1` (**domingo → lunes** incluido) | INT-001, HYB-002 | G-H5 |
+| `HARD-CARDIO` | **hard** | > 1 sesión dura de cardio/híbrido. **Dura** = subtipo `threshold`/`intervals`, etiqueta de híbrido/trineo/benchmark, **distancia ≥10 km** (aunque el subtipo diga `long_easy`) o un día de `running.hardSessions[]` | END-004, BUD-001 | G-H4 |
+| `RUN-BEFORE-LEGS` | **hard** | dura/híbrido en `d` y pierna en `d+1` (**domingo → lunes** incluido), con la misma definición ampliada de "dura" | INT-001, HYB-002 | G-H5 |
 | `ANCHOR-SWAP` | **hard** | ancla sustituida fuera de {trap bar ↔ sumo/conv, barbell row ↔ chest-supported} | STR-010, LOAD-003 | G-H6 |
 | `VOL-CAP` | **hard** | > 14 series/músculo en déficit; o total > +10 % sin [adh ≥75 %, verde, nutr ≥10/14] | STR-003, STR-001 | G-H7 |
 | `KM-JUMP` | **hard** | km/sem > máx 4 sem × 1,2; o > 8 km tras ≥14 días sin correr ("reentrada") | END-003, LOAD-001 | G-H8 |
 | `KM-JUMP` | warn | km/sem > `max(prev × 1,10, prev + 1)` — el 10 % es heurística no validada (Buist 2008) | END-003, LOAD-001 | G-S1 |
 | `PROTEIN-FLOOR` | **hard** | proteína < 185 g (o `goals.constraints.proteinG`), en cabecera **o** en una decisión | REC-001, REC-008 | G-H9 |
-| `KCAL-FLOOR` | **hard** | día de entreno < 2.500 kcal · descanso < 2.300 | REC-001, REC-008 | G-H9 |
-| `DELOAD-DIETBREAK` | **hard** | descarga sin diet break, o diet break en semana de carga | REC-005, LOAD-004 | G-H10 |
-| `PLYO-PLACEMENT` | **hard** | plyo fuera de `lowerA` · no primero · > 80 contactos · el día después de una dura | ATH-001, INT-004, ATH-004 | G-H11 |
-| `CORE-PATTERNS` | **hard** | semana sin anti-rotación **o** sin anti-extensión | ATH-003 | G-H12 |
-| `MIN-STRENGTH` | **hard** | < 2 sesiones de fuerza | LONG-002, STR-001 | G-H13 |
-| `DECISION-EVIDENCE` | **hard** | decisión con `ruleIds` vacío o sin `evidence.numbers` | GEN-002 | G-H14 |
+| `PROTEIN-FLOOR` | warn | semana de déficit que toca la ingesta y **no menciona** la proteína (v11.67 · E-14f) | REC-001, REC-008 | G-H9 |
+| `KCAL-FLOOR` | **hard** | día de entreno < **2.700** kcal · descanso < **2.400** (subidos de 2.500/2.300 el 2026-09-08: con 2.500 la EA cae a ~27 kcal/kg FFM y REC-008 marca 30) | REC-001, REC-008 | G-H9 |
+| `KCAL-STEP` | **hard** | `nutrition.kcalTarget` cambia > **150 kcal**, o llega antes de **14 días** desde `validWindow.lastAdjustDate` (fn v4 · E-18) | REC-002, REC-008 | G-H14 |
+| `PLYO-PLACEMENT` | **hard** | plyo fuera de `lowerA` · no primero · el día después de una dura. **Sólo la colocación**: INT-004 es `strong` | ATH-001, INT-004 | G-H10 |
+| `PLYO-CONTACTS` | warn | > 80 contactos de plyo. **Blando desde el 2026-09-08** (R-7): el caveat de ATH-001 dice que "la dosis baja es óptima" NO está soportado — el número es prudencia lumbar, no evidencia | ATH-001, ATH-004 | G-S16 |
+| `DELOAD-DIETBREAK` | warn | descarga sin diet break, o diet break en semana de carga. **Blando desde el 2026-09-08** (R-7): descansaba entero sobre REC-005 `weak_extrapolated`, cuyo texto dice que el diet break **no** preserva más masa magra | REC-005, LOAD-004 | G-S15 |
+| `CORE-PATTERNS` | **hard** | semana sin anti-rotación **o** sin anti-extensión | ATH-003 | G-H11 |
+| `MIN-STRENGTH` | **hard** | < 2 sesiones de fuerza | LONG-002, STR-001 | G-H12 |
+| `DECISION-EVIDENCE` | **hard** | decisión con `ruleIds` vacío o sin `evidence.numbers` | GEN-002 | G-H15 |
 | `EX-UNKNOWN` | **hard** | id de ejercicio ∉ `libraryIds` | SEL-001, SEL-003 | — (A.6) |
-| `SESSION-COUNT` | warn | días de gimnasio > los de fuerza de la variante elegida | BUD-001 | — (A.6) |
+| `SESSION-COUNT` | **hard** | días de fuerza > `variant + 1`, o > **5** en cualquier caso. Sin `ctx.variant` se usa 5 — antes el chequeo se SALTABA sin variante y un sexto día de gym no lo paraba nadie (fn v4 · E-14a) | BUD-001, LONG-002 | G-H13 |
+| `SESSION-COUNT` | warn | por debajo del techo duro: días de gimnasio > los de fuerza de la variante elegida | BUD-001 | — (A.6) |
+| `FREQ-FLOOR` | warn | una familia de patrón mayor (rodilla, bisagra, empuje, tirón) con < 2 exposiciones/semana, sólo en variantes ≥ 4. Cuenta por **familia**: la extensión de cuádriceps del jueves es la segunda exposición de rodilla de la sentadilla del lunes (fn v4 · E-14d) | STR-002, STR-001 | G-S18 |
+| `ORDER-SAME-DAY` | warn | día con fuerza y cardio en el que el cardio va **antes** de levantar, y sólo con señal positiva de orden (`cardio.order: 'before'`, `cardioFirst`, o la nota diciéndolo): un finisher de Z2 va después por definición (fn v4 · E-14c) | INT-003, INT-001 | G-S17 |
+| `RECOVERY-ONLY` | warn | decisión que baja series/kg/km citando **sólo** reglas `READ-*` y sin un dato de rendimiento al lado (top set, RPE, `readout`, cumplimiento de Z2) (fn v4 · E-17) | READ-005, READ-002 | G-S19 |
+| `MVPA-FLOOR` | warn | la semana suma < **150 min** de cardio (END-009, consenso ACSM 2024: 150 el suelo, 200-300 la banda de pérdida de grasa). Cuenta minutos de cardio solamente: la fuerza también es MVPA, así que el chequeo se queda corto a propósito | END-009, LONG-001, REC-009 | G-S20 |
 | `EA-GATE` | warn | ≥4 días con EA < 30 y el plan sube series o km | REC-008, REC-001 | — (A.6) |
 | `MOBILITY-FLOOR` | warn | < 2 slots de movilidad (días `recovery` + sesiones con `mobilityMin`) | ATH-006 | G-S2 |
 | `PRESS-EXPOSURES` | warn | > 2 exposiciones de empuje/semana ("en W35 fueron 5 en 10 días y la banca cayó") | STR-002, INT-001 | G-S3 |
@@ -547,19 +572,30 @@ ctx = {
 | `TARGET-N1` | warn | objetivo con n=1, o con el último dato de hace > 21 días (reentrada) | STR-001, GEN-002, LOAD-004 | G-S6 |
 | `READINESS-N` | warn | lectura de recuperación con < 5 días de wellness | READ-004, READ-001 | G-S7 |
 | `WEIGHT-WINDOW` | warn | se toca la ingesta con `validWindow.ok === false` | REC-002, REC-008 | G-S8 |
-| `HARD-BUDGET` | warn | Σ budgetWeight de la semana > 6 (informativo) | BUD-001 | G-S9 |
+| `HARD-BUDGET` | warn | Σ budgetWeight de la semana > 6 (informativo) | BUD-001, BUD-002 | G-S9 |
 | `SUMMER-PACE` | warn | se lee progreso aeróbico por **ritmo** entre junio y septiembre | ENV-001, END-002 | G-S10 |
 | `Z2-CEILING` | warn | el techo de Z2 del plan ≠ el de `icuZones` | END-001, END-002 | G-S11 |
-| `CHURN` | warn | > 3 prioridades, o > 3 cambios estructurales en una semana | GEN-001, STR-010 | G-S12 |
-| `ROTATION` | warn | swap de ejercicio fuera de la semana 1 del bloque | STR-010, SEL-002 | G-S12 |
+| `CHURN` | warn | > 3 prioridades, o > 3 cambios estructurales en una semana. Los cambios salen del **diff real** (`diffPlanVersions(ctx.basedOn, plan)`), no del `changes[]` autodeclarado — sin `basedOn`, `changes[]` es el respaldo y el texto lo dice (fn v4 · E-14e) | GEN-001, STR-010 | G-S12 |
+| `ROTATION` | warn | swap de ejercicio fuera de la semana 1 del bloque, contado sobre el mismo diff | STR-010, SEL-002 | G-S12 |
 | `CTL-FOR-STRENGTH` | warn | decisión de fuerza/descarga apoyada en ctl/atl/rampRate (F-3 / F-2) | GEN-002, READ-003 | G-S13 |
 | `WEEK-SUMMARY` | warn | sesión del plan sin fila en `coachBrief.weekSummary` — sólo cuando hay `coachBrief` (v11.65, contrato v2: también lo que se mantiene lleva su motivo) | GEN-001 | G-S14 |
 | `VALIDATOR-ERROR` | warn | el propio validador falló: los avisos pueden estar incompletos | — | — |
+
+**39 ids** (33 hasta v11.65; los 6 de fn v4 son `SESSION-COUNT` duro —el id existía, el nivel no—,
+`ORDER-SAME-DAY`, `FREQ-FLOOR`, `RECOVERY-ONLY`, `KCAL-STEP`, `MVPA-FLOOR` y `PLYO-CONTACTS`). Todos
+con etiqueta en `COACH_GUARD_ES` (`app/coach.js`) y todos con Rule IDs del corpus:
+`tests/verify-plan-validator.mjs` cuenta los ids leyendo el fuente y comprueba que ninguno cita una
+regla que no existe.
 
 **Nota sobre el plan ideal real**: la semana completa (4 fuerza + 2 cardio + recuperación) suma un
 presupuesto de **7,5 sobre un tope de 6**, así que `HARD-BUDGET` dispara sobre el plan vivo. Es
 correcto y es informativo — la propia app retiró el flag de presupuesto en v11.41 por decisión del
 usuario. `tests/verify-plan-validator.mjs` usa ese hecho como línea base.
+
+Umbrales de fn v4, también exportados: `VP_MAX_STRENGTH_DAYS` (5), `VP_VARIANT_SLACK` (1),
+`VP_LONG_RUN_HARD_KM` (10), `VP_MIN_MVPA_MIN` (150), `VP_MVPA_FAT_LOSS_MIN` (200),
+`VP_KCAL_STEP_MAX` (150), `VP_KCAL_ADJUST_DAYS` (14), `VP_MIN_PATTERN_EXPOSURES` (2),
+`VP_FREQ_FLOOR_MIN_VARIANT` (4), `VP_PATTERN_FAMILIES`, `VP_PATTERN_IDS`.
 
 Umbrales exportados para los tests (no reescribirlos en el llamador): `VP_FLOORS`,
 `VP_MAX_SETS_PER_MUSCLE`, `VP_MAX_HARD_CARDIO`, `VP_MAX_BUDGET`, `VP_MAX_PRESS_EXPOSURES`,
@@ -653,7 +689,9 @@ node scripts/build-rules-compact.mjs --check    # exit 1 si está desincronizado
 |---|---|
 | `tests/verify-coach-facts.mjs` | aritmética del LLM sobre filas crudas · lb/kg mezclados · carreras duplicadas COROS/Strava · peso forward-filled en la pendiente · `form ≠ ctl − atl` · EA de días abiertos · `dataGaps` ausente con <14 días de nutrición · frontera domingo/lunes · `stableStringify` inestable · `undefined`/`NaN` en el JSON · topes · **(esquema 2)** un coach que empieza de cero cada domingo: `trajectory` con `firstWorkoutDate`/`weeksSince`, bloques `pre-bloque`/`B1`, `deltaKg` sólo de pesadas medidas, anclas `first/best/latest` con lb→kg y un ancla a 0 exposiciones + su `dataGap`, `weeklyKm[12]`, umbral de `skippedPatterns` (2 no, 3 sí), `dueForReview`, `priorReviews` 3+3, `deloadHint`, pack <50 KB y `trajectory` <12.000 chars |
 | `tests/verify-plan-validator.mjs` | un guardarraíl que nunca dispara o que bloquea (positivo y negativo por id, `hard` vs `warn`, números en el texto, `RUN-BEFORE-LEGS` domingo→lunes, suelo de +1 km y tope de reentrada, `diffPlanVersions` idéntico → `structural: 0`, `mergeProposal` byte a byte + warmup, `ctx` vacío sin lanzar) |
-| `tests/verify-rules-compact.mjs` | corpus del prompt desincronizado de `evidence-to-rules.md` |
+| `tests/verify-rules-compact.mjs` | corpus del prompt desincronizado de `evidence-to-rules.md`; y desde fn v4, un compacto **sin `caveats`** (el grado dice cómo de firme es una regla, el caveat dice EN QUÉ SE EQUIVOCA) o por encima de 38 KB |
+| `tests/verify-fn-assets.mjs` | **dos validadores que divergen** (el del teléfono y la copia del servidor) · un módulo generado que no arranca en Deno y tumba la función entera en el primer request · el bucle de regeneración sin tope, que convertiría un `hard` imposible en 3 × $0,60 por semana |
+| `tests/verify-rule-coverage.mjs` | **evidencia decorativa**: una regla del corpus que nadie aplica, y una regla `strong` sin consumidor y sin explicación. Contrasta cada `consumer` declarado contra el sitio que dice consumirla |
 
 Los tres cargan `app/coach-engine.js` y luego `app/coach-facts.js` **en el mismo contexto `vm`**,
 que es el mismo orden que `index.html`.

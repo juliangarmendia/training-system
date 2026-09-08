@@ -95,7 +95,7 @@ fase binaria vieja (`build`|`deload`) se mapea a `base`|`deload`, y `whyKept` qu
 nunca justificó lo que mantenía e inventar un motivo aquí sería justo lo que el contrato v2 viene
 a impedir.
 
-**Aviso blando `WEEK-SUMMARY`** (`validatePlanVersion`, el id nº 33): una sesión del plan sin
+**Aviso blando `WEEK-SUMMARY`** (`validatePlanVersion`, el id nº 33 de 39; `G-S14`): una sesión del plan sin
 fila en `weekSummary`, y sólo cuando hay `coachBrief` — un plan de la semilla o del usuario no
 lleva resumen. La decisión `plan-apply` gana `{focus, phase, kept, changed}` en su `evidence`.
 
@@ -259,9 +259,12 @@ en local**: la nube conserva el historial completo.
 
 ```
 maybeRunWeeklyCoach()  →  buildCoachFacts()  →  POST edge fn (202)  →  coach_reviews {status:'running'}
-                                                                              │ polling 5 s / 5 min
-                                                                              ▼
-                                                            {status:'proposed', output, guardrails}
+                                                          │                   │ polling 5 s / 5 min
+                              sanitizeOutput()  →  mergeProposal + validatePlanVersion
+                                                          │                   │
+                                        ¿algún `hard`? → UNA regeneración → validar otra vez
+                                                          │                   ▼
+                                              {status:'proposed', output, guardrails, guardrailsMeta}
                                                                               │
   Coach view: briefing · diff · avisos · [Aplicar] [Ajustar] [Rechazar] [Regenerar con nota]
                                                                               │ Aplicar
@@ -283,8 +286,43 @@ limpian **sólo** si cambió el `weekTemplate`.
 **Guardarraíles: avisan, nunca bloquean.** `validatePlanVersion` devuelve `[{id, level:'hard'|'warn',
 text, ruleIds}]`. Los `hard` restringen **al coach** (la edge function le pide **una** regeneración con
 el aviso; si insiste, la app lo pinta en rojo); los `warn` son chips ámbar. **Ningún botón se
-deshabilita nunca**: Julian puede aplicar una propuesta con avisos rojos. Tabla completa de los 33 ids
-(32 + `WEEK-SUMMARY` desde v11.65) en [`coach-facts-schema.md`](coach-facts-schema.md).
+deshabilita nunca**: Julian puede aplicar una propuesta con avisos rojos. Tabla completa de los **39
+ids** (32 · +`WEEK-SUMMARY` en v11.65 · +6 en fn v4) en
+[`coach-facts-schema.md`](coach-facts-schema.md).
+
+## El bucle de guardarraíles
+
+**Hasta el 2026-09-08 este apartado describía algo que no pasaba** (auditoría E-13). La función sólo
+saneaba —topes, ids del vocabulario, redondeo del kg— y los guardarraíles se calculaban en el
+teléfono AL APLICAR: con la propuesta ya escrita, la llamada ya pagada y sin ninguna oportunidad de
+corregirla. Una propuesta con un sexto día de gimnasio o un salto de 300 kcal llegaba entera a la
+pantalla, en rojo, y la única salida era rechazarla y volver a pagar la revisión a mano.
+
+Cómo funciona ahora:
+
+1. **`scripts/build-fn-assets.mjs`** copia `app/coach-facts.js` a
+   `coach-weekly-review/coach-facts.generated.js` con el prólogo que Deno necesita para importar un
+   script clásico, y escribe `coach-facts.generated.sha`. Una sola implementación del validador: dos
+   (una en el teléfono, otra en TypeScript en el servidor) divergirían y nadie sabría cuál manda.
+   `tests/verify-fn-assets.mjs` falla si la copia se queda atrás.
+2. **Se valida el plan MERGEADO, no la propuesta.** La propuesta es un diff (sólo las sesiones que
+   cambian) y la mitad de los chequeos —series por músculo, exposiciones de patrón, minutos de
+   cardio, días de fuerza— sólo tienen sentido sobre la semana completa. Es la misma llamada que
+   hace `applyCoachProposal`, con el mismo `ctx`, para que el rojo del servidor sea el de la app.
+3. **Si hay algún `hard` → UNA regeneración.** Mismo system prompt (el prefijo cacheable no cambia,
+   así que la caché de 5 min sí acierta), el mensaje de usuario original en la conversación y un
+   turno nuevo: *"Tu propuesta anterior incumple estas reglas duras: … Corrige sólo eso; no cambies
+   nada más"*. **UNO**, y el número es la decisión: un `hard` que el modelo no puede cumplir con
+   este pack existe, y con el bucle abierto esa semana costaría 3 × $0,60 y 3 × 90 s para acabar
+   donde acaba con una sola regeneración — los `hard` en rojo y Julian decidiendo.
+4. **La segunda propuesta sólo sustituye a la primera si tiene MENOS `hard`.** Regenerar no puede
+   empeorar lo que se entrega; si no mejora, se conserva la primera y se dice en `sanitized[]`.
+5. **Coste: sólo cuando falla.** Una semana limpia sigue costando una llamada.
+
+La fila guarda `guardrails` (el **array** que la app ya lee: `coach.js` hace
+`Array.isArray(review.guardrails)` y los chips filtran por `g.level`) y `guardrailsMeta`
+`{hard, warn, regenerated, attempts, ids, hardIds, structuralChanges}` — el resumen que permite
+responder "¿regeneró esta semana?" sin recorrer el array.
 
 **Política `settings.coachAutoApply`:** `'ask'` (**default**, decisión de Julian) ·
 `'auto-if-clean'` (0 avisos y ninguna decisión de tipo `structure`) · `'auto'`. `'auto'` **no se
@@ -307,13 +345,19 @@ carrera):
 | 3 | **último** | el histórico: el último top set, la duración base de `IDEAL_BLOCK_V1` |
 
 **Ventana de vigencia:** `activePlan.weekKey` ∈ {semana ISO **actual**, **anterior**}. Sin `weekKey`,
-el fallback es `createdAt` ≤ 14 días. Un objetivo del coach vencido no se descarta en silencio: la
+el fallback es `createdAt` ≤ 14 días. Una sola función la implementa —`coachTargetIsCurrent()` en
+`coach-engine.js`— y la usan tanto los kg (`suggestSetTarget`) como los minutos de cardio
+(`_coachCardioMin`): hasta v11.66 los minutos no caducaban nunca, así que un plan de hace tres
+semanas seguía prescribiendo 50′ mientras sus kg ya habían cedido el paso a la regla (E-4). Un objetivo del coach vencido no se descarta en silencio: la
 tarjeta dice *"Objetivo del coach de hace N días — aplico la regla"*. Y en semana de descarga el
 objetivo del coach legacy **nunca** se honra (el cron viejo no sabía en qué semana del bloque estaba).
 
-**Doble recorte de deload, evitado:** `startWorkout` usa
-`deload = author === 'coach-llm' ? false : isDeloadWeek(wk)`. El plan del coach ya trae el volumen de
-descarga dentro; aplicarle además el recorte del 50 % lo dejaría a la cuarta parte.
+**Doble recorte de deload, evitado — y POR EJERCICIO** (v11.67, E-5): `startWorkout` usa
+`deloadFor(exId) = weekIsDeload && !(author === 'coach-llm' && ese ejercicio trae target)`. El plan
+del coach trae el volumen de descarga dentro **de lo que él escribió**; aplicarle además el recorte
+del 50 % lo dejaría a la cuarta parte. Pero la exención era para TODO el plan, así que un accesorio
+que el coach no tocó recibía progresión normal en semana de descarga, contra G-H3 y LOAD-004. Ahora
+se libran sólo los ejercicios con `target`; el resto recibe su −10 % y su RPE 5-6.
 
 ## Migración y retiro (§A.8)
 
@@ -328,6 +372,34 @@ descarga dentro; aplicarle además el recorte del 50 % lo dejaría a la cuarta p
 ## Qué NO hacer
 
 Propuestas en `plans` · bajar `DB_VERSION` · borrar una versión de plan · calcular los facts en Deno
-(duplicaría el dedupe y las unidades sin tests) · mandar stores crudos al modelo · aceptar ids de
-ejercicio libres en el esquema de salida · dos escritores en `plans` (la app diaria escribe
-`workouts`, no `plans`) · dar por hecho que `status` existe en las filas legacy.
+(duplicaría el dedupe y las unidades sin tests) · **reescribir el validador en TypeScript para el
+servidor** (dos validadores divergen: el del teléfono diría `hard` donde el del servidor dice `warn`
+y nadie sabría cuál manda — de ahí la copia generada con sha) · **editar
+`coach-facts.generated.js` a mano** · abrir el bucle de regeneración a más de una vuelta · mandar
+stores crudos al modelo · aceptar ids de ejercicio libres en el esquema de salida · dos escritores en
+`plans` (la app diaria escribe `workouts`, no `plans`) · dar por hecho que `status` existe en las
+filas legacy.
+
+## Idioma de la salida del coach (2026-09-08)
+
+**Las instrucciones del prompt siguen en castellano; la prosa que el coach DEVUELVE va en inglés.**
+Son dos cosas distintas y la confusión entre ellas es la costura que este cambio cierra: el prompt lo
+lee y lo mantiene Julian (traducirlo no aporta nada), pero lo que el modelo escribe se pinta en una
+app que es entera en inglés desde v11.68. Una Home con tiles en inglés y la tarjeta del coach en
+castellano sería la costura actual al revés, y la más visible de todas porque `briefing.focus` es el
+titular de la pantalla.
+
+En inglés: `focus`, `lastWeek`, `lastWeekSummary[]`, `whyChanged`, `whyKept`, `nextWeek`,
+`priorities[]`, `weekSummary[].line`, `sessions[].focus`, `decisions[].what`, `decisions[].why`,
+`changes[].why`, todas las `note` y `requestedData[]`.
+
+Sin traducir: los **Rule IDs**, los ids de sesión y de ejercicio, los nombres de campo del pack, las
+unidades y los números (punto decimal, no coma).
+
+**Literales que el modelo copia**, y que el servidor comprueba una por una — si el prompt y el
+saneado dejan de decir lo mismo, las siete secciones del briefing saldrían "ausentes" en cada
+revisión: `## What happened`, `## Previous decisions`, `## What I am changing`, `## Why it changes`,
+`## Why it holds`, `## What I am watching`, `## What I need from you`, `everything else holds`,
+`adjust by RPE, no data`, `this is practice, not strong evidence`. Los rellenos del servidor van en
+el mismo idioma: `(no reason — the coach did not give one)`, `(no priority — the coach did not give
+one)`.

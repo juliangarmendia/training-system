@@ -641,12 +641,20 @@ function itemFromFood(food, grams, extra) {
 
 // ==================== CONTEXTO DEL DÍA ====================
 
-// Masa libre de grasa desde la última medición con %grasa. Sin medición, el valor de
-// docs/profile.md. Importa que sea FFM y no peso corporal: dividir la EA por 87,1 en vez
+// Masa libre de grasa. Importa que sea FFM y no peso corporal: dividir la EA por 87,1 en vez
 // de 72,8 convierte un 26 (bajo el umbral REC-008) en un 21,7 que parece otro problema.
+//
+// LA PRECEDENCIA VIVE EN EL MOTOR (`ffmKg()` en coach-engine.js, E-9): Withings con lectura
+// de menos de 14 días → derivada de la última fila con %grasa → declarada. Aquí había una
+// TERCERA aritmética (sólo la derivada, ignorando la báscula), así que la tarjeta de nutrición
+// y el pack del coach podían dividir la misma EA por números distintos.
 async function nutFfmKg() {
   try {
     const rows = (await dbGetAll('bodyweight')) || [];
+    if (typeof ffmKg === 'function') {
+      const s = (typeof state !== 'undefined' && state.settings) || {};
+      return ffmKg({ bodyweightRows: rows, settings: s, todayStr: today() }).kg;
+    }
     const withBf = rows.filter(r => r.weight > 0 && r.bfPct > 0)
                        .sort((a, b) => a.date.localeCompare(b.date));
     if (withBf.length) {
@@ -657,6 +665,19 @@ async function nutFfmKg() {
   return NUT_FFM_KG_FALLBACK;
 }
 
+// La misma FFM con su procedencia, para poder decir en pantalla si el número es medido o
+// declarado. `recomputeNutritionDay` lo sella en la fila del día (`ffmSource`).
+async function nutFfmDetail() {
+  try {
+    const rows = (await dbGetAll('bodyweight')) || [];
+    if (typeof ffmKg === 'function') {
+      const s = (typeof state !== 'undefined' && state.settings) || {};
+      return ffmKg({ bodyweightRows: rows, settings: s, todayStr: today() });
+    }
+  } catch (e) { /* ignorar */ }
+  return { kg: await nutFfmKg(), source: 'declared', date: null, ageDays: null, note: '' };
+}
+
 // ¿Es día de entreno? Se resuelve por el PLAN y no solo por lo ya registrado, porque el
 // objetivo de calorías hay que conocerlo en el desayuno, no al acabar el día. Un entreno
 // registrado que el plan no preveía sí manda: eso ya es un hecho, no una previsión.
@@ -664,8 +685,8 @@ async function nutIsTrainingDay(date) {
   try {
     const [w, r, s] = await Promise.all([
       dbGetAll('workouts').catch(() => []),
-      dbGetAll('runs').catch(() => []),
-      dbGetAll('sessions').catch(() => []),
+      (typeof getRunsDeduped === 'function' ? getRunsDeduped() : dbGetAll('runs')).catch(() => []),
+      (typeof getSessionsDeduped === 'function' ? getSessionsDeduped() : dbGetAll('sessions')).catch(() => []),
     ]);
     if ([...(w || []), ...(r || []), ...(s || [])].some(x => x && x.date === date)) return true;
   } catch (e) { /* ignorar */ }
@@ -696,7 +717,9 @@ async function nutEeeForDate(date, bodyweightKg) {
       });
       if (c) total += c.kcal;
     }
-    const runs = (await dbGetAll('runs').catch(() => [])) || [];
+    // Dedupeadas (E-10): la misma carrera de COROS llega por Strava y por intervals.icu, y
+    // aquí se SUMAN kilocalorías — contarla dos veces infla el EEE y hunde la EA del día.
+    const runs = (await (typeof getRunsDeduped === 'function' ? getRunsDeduped() : dbGetAll('runs')).catch(() => [])) || [];
     for (const r of runs.filter(x => x.date === date)) {
       const c = estimateCalories({
         type: 'run',
@@ -738,11 +761,12 @@ async function nutDayTargets(date) {
 //
 // MERGE, nunca sobreescritura: `energy` la escribe el usuario a mano y el motor de fatiga
 // la consume (app.js:4619). Un put que la pise convierte la fatiga en un número inventado.
-async function recomputeNutritionDay(date) {
+async function computeNutritionDay(date) {
   const meals = await nutMealsForDate(date);
   const agg = aggregateMeals(meals);
   const targets = await nutDayTargets(date);
-  const ffm = await nutFfmKg();
+  const ffmInfo = await nutFfmDetail();
+  const ffm = ffmInfo.kg;
   const eee = await nutEeeForDate(date);
   const ea = energyAvailability(agg.calories, eee, ffm);
   const steps = await nutStepsForDate(date);
@@ -774,15 +798,74 @@ async function recomputeNutritionDay(date) {
     trainingDay: targets.training,
     eee,
     ffm,
+    ffmSource: ffmInfo.source,
     steps,
     burn: maint.total,
     burnSource: 'modelo',
     burnBreakdown: maint,
     ea: ea == null ? null : Math.round(ea * 10) / 10,
+    // LA EA ES UNA MAGNITUD DIARIA (REC-008), así que sólo significa algo cuando el día se
+    // acabó: a las 11:00 con un desayuno registrado la EA intradía sale siempre "crítica" y
+    // no describe nada (F-12 / E-11). `closed` es lo que la pantalla mira antes de pintarla.
+    closed: String(date) < today(),
     loggedV2: agg.mealCount > 0,
     updatedAt: Date.now(),
   };
+  return row;
+}
+
+/**
+ * EL ÚNICO ESCRITOR de `nutrition`: calcula y guarda.
+ *
+ * SÓLO SE LLAMA DESDE RUTAS DE ESCRITURA (E-11, auditoría 2026-09-08): `saveMeal` (registro a
+ * mano y confirmación de la foto), `deleteMeal` y `nutCloseDay`. Antes se llamaba también en
+ * cada pintado de la vista de nutrición (F-11), o sea que abrir una pestaña ESCRIBÍA en IDB y
+ * encolaba una sincronización — con un `updatedAt` nuevo cada vez, así que el último
+ * dispositivo que mirase la pantalla ganaba el merge sin haber registrado nada.
+ */
+async function recomputeNutritionDay(date) {
+  const row = await computeNutritionDay(date);
   await smartPut('nutrition', row);
+  return row;
+}
+
+/**
+ * CIERRE DEL DÍA: la última vez que se recalcula una fecha.
+ *
+ * Un día se cierra cuando pasa, no cuando el usuario hace algo, así que hace falta un momento
+ * en que el sistema lo sella: el entreno registrado por la tarde después de la última comida
+ * cambia el EEE y con él la EA, y sin este paso la fila se quedaría con el gasto de antes.
+ * Idempotente: si la fila ya está cerrada no vuelve a escribir (es lo que impide que esto se
+ * convierta en el recompute-por-render que E-11 viene a quitar).
+ */
+async function nutCloseDay(date) {
+  if (!date || String(date) >= today()) return null;      // hoy todavía no se puede cerrar
+  let existing = null;
+  try { existing = await dbGet('nutrition', date); } catch (e) {}
+  if (existing && existing.closed === true) return existing;
+  if (!existing) return null;                              // un día sin fila no se inventa
+  return recomputeNutritionDay(date);
+}
+
+/**
+ * La fila del día PARA PINTAR, sin escribir nada (E-11).
+ *
+ * Lee lo guardado y, si falta o se ha quedado atrás respecto a las comidas del día (una foto
+ * importada en otro dispositivo, una fila vieja de antes del agregado), calcula en memoria. El
+ * cálculo cuesta cuatro lecturas de IDB; la escritura costaba además una fila de sincronización
+ * por cada vez que se abría la pestaña.
+ */
+async function nutDayForRender(date) {
+  let existing = null;
+  try { existing = await dbGet('nutrition', date); } catch (e) {}
+  const meals = await nutMealsForDate(date);
+  const necesitaCalculo = !existing
+    || existing.kcalTarget == null
+    || (existing.mealCount || 0) !== meals.length;
+  if (!necesitaCalculo) return existing;
+  const row = await computeNutritionDay(date);
+  // `energy` la escribe el usuario a mano (`nutSaveEnergy`) y el compute la arrastra desde la
+  // fila existente; con fila nueva no hay nada que arrastrar.
   return row;
 }
 
@@ -918,9 +1001,12 @@ async function renderNutricionV2() {
   const label = document.getElementById('nutrition-date-label');
   if (label) label.textContent = 'Hoy — ' + formatDate(date);
 
-  // Recalcular al entrar: los objetivos dependen de si hoy hay sesión y el EEE de lo que
-  // se haya registrado desde la última visita.
-  const day = await recomputeNutritionDay(date);
+  // PINTAR NO ESCRIBE (E-11). Los objetivos dependen de si hoy hay sesión y el EEE de lo que
+  // se haya registrado desde la última visita, así que el número se CALCULA al entrar — pero en
+  // memoria. La fila la escriben las rutas de escritura (`saveMeal`, `deleteMeal`) y el cierre
+  // del día de ayer, que se sella una vez y no en cada pintado.
+  try { await nutCloseDay(nutShiftDate(date, -1)); } catch (e) { /* ayer puede no tener fila */ }
+  const day = await nutDayForRender(date);
   const days = (await dbGetAll('nutrition').catch(() => [])) || [];
   const adh = adherenceMode(days, date);
 
@@ -1003,9 +1089,16 @@ function renderNutToday(day) {
   const protClass = (day.protein || 0) >= day.proteinFloor ? 'nut-verde'
     : protPct >= NUT_BANDS.proteina.ambar ? 'nut-ambar' : 'nut-rojo';
 
+  // LA EA SÓLO SE JUZGA EN DÍAS CERRADOS (E-11 · F-12). Es una magnitud diaria (REC-008):
+  // intradía sale siempre "crítica" —a las 11:00 con un desayuno registrado el numerador es
+  // casi cero— y pintarla en rojo enseña a ignorar el único semáforo que sí importa. Hoy se
+  // muestra el número en curso, sin color y sin "te faltan N kcal".
+  const eaClosed = day.closed === true;
   const ea = day.ea;
-  const eaCls = { ok: 'nut-verde', bajo: 'nut-ambar', critico: 'nut-rojo', 'sin-datos': 'nut-neutral' }[eaStatus(ea)];
-  const eaFaltan = ea != null && ea < NUT_EA_FLOOR
+  const eaCls = eaClosed
+    ? { ok: 'nut-verde', bajo: 'nut-ambar', critico: 'nut-rojo', 'sin-datos': 'nut-neutral' }[eaStatus(ea)]
+    : 'nut-neutral';
+  const eaFaltan = (eaClosed && ea != null && ea < NUT_EA_FLOOR)
     ? Math.round((NUT_EA_FLOOR - ea) * (day.ffm || NUT_FFM_KG_FALLBACK)) : 0;
 
   const nova = day.nova12Pct;
@@ -1038,7 +1131,9 @@ function renderNutToday(day) {
         <span class="nut-metric-val ${eaCls}">${ea == null ? '—' : ea.toFixed(1)} kcal/kg FFM</span>
       </div>
       <div class="nut-metric-note">
-        suelo ${NUT_EA_FLOOR} (REC-008) · FFM ${day.ffm || NUT_FFM_KG_FALLBACK} kg
+        ${eaClosed
+          ? `suelo ${NUT_EA_FLOOR} (REC-008) · FFM ${day.ffm || NUT_FFM_KG_FALLBACK} kg`
+          : `in progress — a daily figure (REC-008); judged when the day closes · FFM ${day.ffm || NUT_FFM_KG_FALLBACK} kg`}
         ${eaFaltan > 0 ? ` · <strong>faltan ${nutFmt(eaFaltan)} kcal</strong>` : ''}
       </div>
     </div>
@@ -1077,7 +1172,7 @@ async function renderNutMeals(date) {
     // Los items con poca confianza se marcan: son los que conviene corregir a mano.
     const items = (m.items || []).map(it => {
       const dudoso = (it.confidence != null && it.confidence < 0.5);
-      return `<span class="nut-item-chip${dudoso ? ' nut-item-chip-dudoso' : ''}">${it.name} ${Math.round(it.grams)} g</span>`;
+      return `<span class="nut-item-chip${dudoso ? ' nut-item-chip-dudoso' : ''}">${escapeHtml(it.name)} ${Math.round(it.grams)} g</span>`;
     }).join('');
     return `
       <div class="history-item nut-meal-row">
@@ -1328,9 +1423,9 @@ function openNutConfirm(result) {
     const k = NUT_KIND_INFO[_nutPending.kind];
     const badge = k ? `<div class="nut-kind ${k.cls}"><strong>${k.label}</strong> — ${k.hint}</div>` : '';
     const tuNota = _nutPending.userNote
-      ? `<div class="nut-user-note"><span class="nut-ai-ico">✏️</span> ${_nutPending.userNote}</div>` : '';
+      ? `<div class="nut-user-note"><span class="nut-ai-ico">✏️</span> ${escapeHtml(_nutPending.userNote)}</div>` : '';
     notes.innerHTML = (badge || tuNota || _nutPending.notes)
-      ? `${badge}${tuNota}${_nutPending.notes ? `<div class="nut-ai-txt"><span class="nut-ai-ico">🤖</span> ${_nutPending.notes}</div>` : ''}`
+      ? `${badge}${tuNota}${_nutPending.notes ? `<div class="nut-ai-txt"><span class="nut-ai-ico">🤖</span> ${escapeHtml(_nutPending.notes)}</div>` : ''}`
       : '';
     notes.classList.toggle('hidden', !badge && !tuNota && !_nutPending.notes);
   }
@@ -1362,7 +1457,7 @@ function renderNutConfirmItems() {
         <div class="nut-item-row">
           <div class="nut-item-main">
             <div class="nut-item-name">
-              ${it.name}
+              ${escapeHtml(it.name)}
               ${nuevo ? '<span class="nut-tag nut-tag-nuevo">nuevo</span>' : ''}
               ${dudoso ? '<span class="nut-tag nut-tag-dudoso">poco fiable</span>' : ''}
             </div>
@@ -1890,7 +1985,7 @@ async function renderNutFoods() {
   const fila = (r) => `
     <tr>
       <td class="nut-food-name">
-        ${r.f.name}
+        ${escapeHtml(r.f.name)}
         ${r.f.verified === false ? '<span class="nut-tag nut-tag-nuevo">sin verificar</span>' : ''}
       </td>
       <td class="nut-food-score"><span class="nut-score-pill ${r.score >= 70 ? 'nut-verde' : r.score >= 40 ? 'nut-ambar' : 'nut-rojo'}">${r.score}</span></td>
@@ -1934,7 +2029,7 @@ async function renderNutFoods() {
           <thead><tr><th>Alimento</th><th>kcal/g</th><th>Score</th><th>NOVA</th></tr></thead>
           <tbody>${aEvitar.map(r => `
             <tr>
-              <td class="nut-food-name">${r.f.name}</td>
+              <td class="nut-food-name">${escapeHtml(r.f.name)}</td>
               <td><strong>${r.kcalPorG.toFixed(2)}</strong></td>
               <td><span class="nut-score-pill nut-rojo">${r.score}</span></td>
               <td>${r.f.nova}</td>

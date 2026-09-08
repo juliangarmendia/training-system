@@ -169,7 +169,7 @@ const PLAN = {
     },
     // ---- T5: full-body sessions for the 3/4-day ideal variants (5/6-day use Upper/Lower) ----
     // Reuse existing library exercise ids so ensureExerciseLibrarySeeded() picks them up.
-    // kg targets inherit the post-ramp baseline (REENTRY_WEEKS W28) since the ideal
+    // kg targets inherit the post-ramp baseline (the W28 re-entry loads) since the ideal
     // plan replaces the re-entry ramp directly. Lumbar caution preserved on squat/DL.
     fullA: {
       id: 'fullA', name: 'Full Body A', subtitle: 'Squat · Press · Pull', icon: '🏋️',
@@ -395,7 +395,10 @@ function durationToMinutes(durStr) {
 // the current display unit.
 function convertWeight(value, fromUnit, toUnit) {
   if (!value || !fromUnit || fromUnit === toUnit) return value;
-  if (fromUnit === 'lb' && toUnit === 'kg') return +(value * 0.453592).toFixed(2);
+  // LB_TO_KG vive en coach-engine.js, que se carga antes (E-9). Había dos constantes para
+  // el mismo factor (0.453592 aquí, 0.45359237 en el motor): el mismo peso salía distinto
+  // según qué fichero lo convirtiera.
+  if (fromUnit === 'lb' && toUnit === 'kg') return +(value * LB_TO_KG).toFixed(2);
   if (fromUnit === 'kg' && toUnit === 'lb') return +(value * 2.20462).toFixed(2);
   return value;
 }
@@ -1150,113 +1153,11 @@ async function createNewPlanVersion(modifications) {
   return newPlan;
 }
 
-// ==================== RE-ENTRY RAMP (W26-W28) ====================
-// After a ~6-week layoff (W19-W25, life/schedule, no injury, back symptom-free),
-// loads return to the W18 baseline over 3 weeks instead of restarting cold.
-// Muscle memory brings the numbers back fast; the real risk is severe DOMS + a
-// lumbar history (contractures W2, W16), so W26 cuts volume and caps RPE.
-// All targets are in KG (gym moved to Spain — David Lloyd Serrano).
-//
-// This runs on every load and auto-advances by date: it installs the right week's
-// plan version, and once the window closes (after 2026-07-12) restores the base
-// full-volume plan. The plan model has no per-set load field, so kg targets are
-// surfaced through each exercise's `notes`.
-//
-// load = kg for compounds (chinups: 0 = bodyweight only, N = +N kg added).
-// compoundSets/compoundRpe/accSets/accRpe = null → keep the base PLAN value.
-const REENTRY_WEEKS = [
-  { week: 26, label: 'Re-Entry W26', start: '2026-06-20', end: '2026-06-28',
-    compoundSets: 3, compoundRpe: '7', accSets: 2, accRpe: '6-7', oneRun: true,
-    loads: { 'bench-press': 80, 'barbell-row': 57.5, 'back-squat': 82.5, 'sumo-dl': 95, 'ohp': 45, 'chinups': 0 } },
-  { week: 27, label: 'Re-Entry W27', start: '2026-06-29', end: '2026-07-05',
-    compoundSets: 3, compoundRpe: '7-8', accSets: 3, accRpe: '7', oneRun: false,
-    loads: { 'bench-press': 87.5, 'barbell-row': 62.5, 'back-squat': 90, 'sumo-dl': 102.5, 'ohp': 47.5, 'chinups': 0 } },
-  { week: 28, label: 'Re-Entry W28', start: '2026-07-06', end: '2026-07-12',
-    compoundSets: null, compoundRpe: null, accSets: null, accRpe: null, oneRun: false,
-    loads: { 'bench-press': 92.5, 'barbell-row': 67.5, 'back-squat': 97.5, 'sumo-dl': 110, 'ohp': 52.5, 'chinups': 10 } },
-];
-
-// Week template with a single Z2 run (W26 caps running volume).
-const REENTRY_ONE_RUN_TEMPLATE = {
-  1: { type: 'gym', session: 'upperA' },
-  2: { type: 'gym', session: 'lowerA' },
-  3: { type: 'run', label: 'Zone 2 Run (easy, 3 km)' },
-  4: { type: 'gym', session: 'upperB' },
-  5: { type: 'gym', session: 'lowerB' },
-  6: { type: 'rest', label: 'Rest' },
-  0: { type: 'rest', label: 'Rest' },
-};
-
-function buildReentrySessions(cfg) {
-  const tag = cfg.label.replace('Re-Entry ', '');
-  const sessions = JSON.parse(JSON.stringify(PLAN.sessions));
-  for (const s of Object.values(sessions)) {
-    for (const ex of s.exercises) {
-      const isCore = ex.rpe === '-';
-      if (ex.id in cfg.loads) {
-        // Main compound: set volume/intensity caps + explicit kg target
-        if (cfg.compoundSets) ex.sets = cfg.compoundSets;
-        if (cfg.compoundRpe) ex.rpe = cfg.compoundRpe;
-        const kg = cfg.loads[ex.id];
-        const loadTxt = ex.id === 'chinups'
-          ? (kg > 0 ? `BW +${kg} kg` : 'solo BW (sin lastre)')
-          : `~${kg} kg`;
-        let note = `Reentrada ${tag} · objetivo ${loadTxt}. ${ex.notes || ''}`.trim();
-        if (ex.id === 'sumo-dl') note += ' Primer set decide: si sale ≥RPE 8, no subir. Historial lumbar.';
-        if (ex.id === 'back-squat') note += ' Rampa lumbar conservadora.';
-        ex.notes = note;
-      } else {
-        // Accessory: trim volume, light-moderate
-        if (cfg.accSets) ex.sets = Math.min(ex.sets, cfg.accSets);
-        if (cfg.accRpe && !isCore) ex.rpe = cfg.accRpe;
-        const setsTxt = cfg.accSets ? `${cfg.accSets} series · ` : '';
-        ex.notes = `Reentrada ${tag} · ${setsTxt}empezar liviano (~85%). ${ex.notes || ''}`.trim();
-      }
-    }
-  }
-  return sessions;
-}
-
-// RETIRED in T5 (v11.28): no longer called from init(). The ideal plan (applyIdealPlan)
-// is now the live default and replaced the re-entry ramp directly (user decision 2026-06-30).
-// Kept for reference/rollback; the W28 kg targets were folded into the full/maintenance sessions.
-// Install / advance / retire the re-entry plan based on today's date. Idempotent:
-// it only writes a new plan version when the active plan's label needs to change,
-// and it never clobbers a manually-created custom plan.
-async function applyReentryPlan() {
-  const today = dateStr(new Date());
-  const lbl = (activePlan && activePlan.label) || '';
-  const managed = lbl === 'Upper/Lower 4-Day Split' || lbl === 'Fallback' || /^Re-Entry/.test(lbl);
-  if (!managed) return; // respect a custom plan the user set themselves
-
-  const cfg = REENTRY_WEEKS.find(w => today >= w.start && today <= w.end);
-  if (cfg) {
-    if (lbl === cfg.label) return; // already current
-    await createNewPlanVersion({
-      label: cfg.label,
-      weekNumber: cfg.week,
-      sessions: buildReentrySessions(cfg),
-      weekTemplate: JSON.parse(JSON.stringify(cfg.oneRun ? REENTRY_ONE_RUN_TEMPLATE : WEEK_TEMPLATE)),
-    });
-    if (state.settings.unit !== 'kg') {
-      state.settings.unit = 'kg';
-      await smartPut('settings', { key: 'userSettings', data: state.settings });
-    }
-    console.log(`[Re-entry] Applied ${cfg.label} (kg)`);
-    return;
-  }
-
-  // Window closed (after 2026-07-12): restore the base full-volume plan once.
-  if (today > REENTRY_WEEKS[REENTRY_WEEKS.length - 1].end && /^Re-Entry/.test(lbl)) {
-    await createNewPlanVersion({
-      label: 'Upper/Lower 4-Day Split',
-      weekNumber: 29,
-      sessions: JSON.parse(JSON.stringify(PLAN.sessions)),
-      weekTemplate: JSON.parse(JSON.stringify(WEEK_TEMPLATE)),
-    });
-    console.log('[Re-entry] Window over → restored base plan');
-  }
-}
+// RETIRADO en v11.66 (auditoría 2026-09-08, E-12): la rampa de re-entrada W26-W28 (junio-julio
+// 2026) — su tabla de cargas, la plantilla de semana con una sola tirada y el instalador de plan
+// por fecha. Sin llamadores desde T5 (v11.28), cuando el plan ideal pasó a ser el default vivo y
+// sustituyó a la rampa directamente. Sus cargas de la última semana son la base de las sesiones
+// full/maintenance, así que el número sobrevive aunque el código no.
 
 // ==================== DATABASE ====================
 const DB_NAME = 'TrainingApp';
@@ -1319,7 +1220,59 @@ function openDB() {
   });
 }
 
+// V-7d (auditoría 2026-09-08): el mismo trío de repintados estaba copiado en cuatro sitios
+// (guardar una edición, borrar, deshacer el borrado y restaurar de la papelera) y en dos de
+// ellos con una llamada más o una menos que en los otros. Un solo sitio.
+async function afterWorkoutSaved() {
+  invalidateRenderPass();
+  try { await renderRecentWorkouts(); } catch (e) { console.warn('[repaint] recent workouts:', e); }
+  try { await renderWeekBanner(); } catch (e) { console.warn('[repaint] week banner:', e); }
+  if (state.currentView === 'stats') {
+    try { await renderStats(); } catch (e) { console.warn('[repaint] stats:', e); }
+  }
+}
+
+// ==================== RENDER PASS MEMO (V-7, auditoría 2026-09-08) ====================
+//
+// El problema medido: un pintado de Home hacía ~30 transacciones IDB, doce de ellas
+// `dbGetAll` de los MISMOS cuatro stores (`workouts`, `runs`, `nutrition`, `sessions`),
+// porque cada bloque de Home lee por su cuenta. Stats hacía lo mismo veinte veces.
+//
+// Semántica del memo, que es lo único que hay que tener en la cabeza:
+//   • Sólo existe DENTRO de un pase: `beginRenderPass()` … `endRenderPass()`. Fuera de un
+//     pase `dbGetAll` es exactamente lo que era antes — misma firma, misma transacción.
+//   • Dentro de un pase, la PRIMERA llamada por store abre la transacción y las demás
+//     esperan esa misma promesa. Un pase = una lectura por store.
+//   • Cada llamada recibe una COPIA superficial del array (`.slice()`), porque media app
+//     hace `(await dbGetAll('workouts')).sort(...)` — ordenar en el sitio el array
+//     compartido cambiaría el orden por debajo de los demás bloques del pase. Los objetos
+//     de dentro SÍ se comparten: un renderer no debe mutarlos (ninguno lo hace).
+//   • Los pases anidan (`afterWorkoutSaved` → `renderStats`): un contador de profundidad
+//     mantiene el memo vivo hasta que cierra el pase más externo.
+//   • CUALQUIER escritura (`dbPut`/`dbDelete`, y por tanto `smartPut`/`smartDelete` y el
+//     pull de la nube) tira el memo: un pase nunca sirve datos anteriores a una escritura.
+let _renderPass = null;   // { depth, reads: Map<store, Promise<Array>> }
+
+function beginRenderPass() {
+  if (_renderPass) { _renderPass.depth++; return; }
+  _renderPass = { depth: 1, reads: new Map() };
+}
+
+function endRenderPass() {
+  if (!_renderPass) return;
+  _renderPass.depth--;
+  if (_renderPass.depth <= 0) _renderPass = null;
+}
+
+function invalidateRenderPass() {
+  if (_renderPass) _renderPass.reads.clear();
+}
+
 function dbPut(store, data) {
+  invalidateRenderPass();
+  // La caché del calendario personalizado vive en `state` (V-7a): cualquier escritura de
+  // `settings/weekSchedule` — la propia app, o una fila que baja de la nube — la tira.
+  if (store === 'settings' && data && data.key === 'weekSchedule') state._weekSchedule = null;
   return new Promise((resolve, reject) => {
     const tx = db.transaction(store, 'readwrite');
     tx.objectStore(store).put(data);
@@ -1338,6 +1291,16 @@ function dbGet(store, key) {
 }
 
 function dbGetAll(store) {
+  if (_renderPass) {
+    let p = _renderPass.reads.get(store);
+    if (!p) { p = _dbGetAllRaw(store); _renderPass.reads.set(store, p); }
+    // Copia por llamador: el memo ahorra la transacción, no el array.
+    return p.then(arr => (arr || []).slice());
+  }
+  return _dbGetAllRaw(store);
+}
+
+function _dbGetAllRaw(store) {
   return new Promise((resolve, reject) => {
     const tx = db.transaction(store, 'readonly');
     const req = tx.objectStore(store).getAll();
@@ -1347,6 +1310,8 @@ function dbGetAll(store) {
 }
 
 function dbDelete(store, key) {
+  invalidateRenderPass();
+  if (store === 'settings' && key === 'weekSchedule') state._weekSchedule = null;
   return new Promise((resolve, reject) => {
     const tx = db.transaction(store, 'readwrite');
     tx.objectStore(store).delete(key);
@@ -1374,6 +1339,8 @@ const state = {
   // settings.activeWorkout.adHoc. Nunca se escribe en el store `plans`.
   adHocSession: null,
   viewingCompleted: false,
+  // B-2: la pestaña desde la que se abrió un entreno guardado, para que "volver" vuelva ahí.
+  viewingCompletedFrom: null,
   workoutStartTime: null,
   workoutTimerInterval: null,
   restTimerInterval: null,
@@ -1391,6 +1358,8 @@ const state = {
   // (v11.62). `clearActiveWorkout` lo limpia.
   activeReadiness: null,
   selectedStrengthLift: 'bench-press',
+  // V-7a: caché del calendario personalizado (`settings/weekSchedule`). La invalida `dbPut`.
+  _weekSchedule: null,
 };
 
 // ==================== ONE-SHOT MIGRATION: tz date fix ====================
@@ -1616,18 +1585,25 @@ function blockWeek(date = new Date()) {
 // lunes ISO; para la semana en curso se usa hoy directamente, que es lo que piden los ~8
 // llamadores de `isDeloadWeek` (todos pasan `getWeekNumber()`).
 function _weekNumToDate(weekNum) {
-  const wk = Number(weekNum);
+  const wk = Math.floor(Number(weekNum));
   if (!isFinite(wk) || wk === getWeekNumber()) return new Date();
   const start = state.settings && state.settings.startDate;
-  if (!start) return new Date();
-  const d = new Date(start + 'T00:00:00');
-  d.setDate(d.getDate() + (Math.max(1, wk) - 1) * 7);
-  return d;
+  // MISMA ARITMÉTICA QUE LA MIGRACIÓN DEL ANCLA (E-9): `anchorDateFromWeek` cuenta los 7 días
+  // en UTC y normaliza al lunes ISO, igual que `blockWeekFromDates`. La versión anterior sumaba
+  // días con `setDate` en hora local (deriva en los cambios de horario) y, sin `startDate`,
+  // devolvía HOY para cualquier semana: la semana 12 heredaba el deload de la semana en curso.
+  const monday = (start && typeof anchorDateFromWeek === 'function')
+    ? anchorDateFromWeek(start, Math.max(1, wk))
+    : null;
+  return monday ? new Date(monday + 'T12:00:00') : null;
 }
 
 // Firma intacta (número de semana de app) por sus llamadores; la aritmética es una sola.
+// null = no se puede saber (no hay `startDate` y la semana no es la de hoy) → no es deload:
+// inventar un deload es recortar una semana entera de entreno por una fecha que falta.
 function isDeloadWeek(weekNum) {
-  return blockWeek(_weekNumToDate(weekNum)).isDeload;
+  const d = _weekNumToDate(weekNum);
+  return d ? blockWeek(d).isDeload : false;
 }
 
 // Pone el ancla una sola vez.
@@ -1804,7 +1780,12 @@ function estimateExerciseSec(ex, deload) {
   return sets * setSec + Math.max(0, sets - 1) * rest;
 }
 
+// `deload` puede ser un booleano (toda la sesión) o un PREDICADO `(exId) => boolean` (E-5):
+// en una semana de descarga sobre un plan del coach, sólo los ejercicios sin objetivo del
+// coach recortan series, y la estimación de tiempo tiene que reflejarlo o el "~52 min" de la
+// pantalla describe una sesión que no es la que se va a hacer.
 function computeBlocks(session, deload) {
+  const dl = (ex) => (typeof deload === 'function' ? !!deload(ex && ex.id) : !!deload);
   const blocks = [];
   // Warmup block: rough estimate based on warmup item count
   const warmupCount = (session.warmup && session.warmup.length) || 0;
@@ -1836,7 +1817,7 @@ function computeBlocks(session, deload) {
         label: ex.name,
         type: 'single',
         exerciseIds: [ex.id],
-        estimatedSec: estimateExerciseSec(ex, deload),
+        estimatedSec: estimateExerciseSec(ex, dl(ex)),
       });
     }
   });
@@ -1845,7 +1826,7 @@ function computeBlocks(session, deload) {
   blocks.forEach(b => {
     if (b.type === 'superset') {
       const exs = session.exercises.filter(e => b.exerciseIds.includes(e.id));
-      const total = exs.reduce((s, e) => s + estimateExerciseSec(e, deload), 0);
+      const total = exs.reduce((s, e) => s + estimateExerciseSec(e, dl(e)), 0);
       b.estimatedSec = total;
       delete b._ref;
     }
@@ -2106,7 +2087,7 @@ async function showWelcomeScreen() {
   // Streak line — only if streak >= 2
   try {
     const workouts = await dbGetAll('workouts');
-    const runs = await dbGetAll('runs');
+    const runs = await getRunsDeduped();
     const trainingDates = new Set();
     workouts.forEach(w => trainingDates.add(w.date));
     runs.forEach(r => trainingDates.add(r.date));
@@ -2162,21 +2143,42 @@ function switchTab(tab) {
 
   if (tab === 'home') {
     showView('home');
-    renderHomeView();
+    // B-5: `renderHomeView` es async — sin `catch` un fallo dentro era un rechazo no atendido
+    // y Home se quedaba con el pintado anterior sin decir nada.
+    renderHomeView().catch(e => console.warn('[Home] render:', e));
   } else if (tab === 'gym') {
     // Use activeSession (not currentView) — currentView gets overwritten by other tabs
     const inWorkout = !!state.activeSession;
     showView(inWorkout ? 'workout' : 'gym');
-    if (!inWorkout) renderRecentWorkouts();
+    if (!inWorkout) {
+      renderRecentWorkouts();
+      // B-3: el banner de la semana lo pedía la tira retirada.
+      renderWeekBanner().catch(e => console.warn('[Gym] week banner:', e));
+    }
   } else if (tab === 'cardio') { showView('cardio'); renderRunPlanBanner(); renderCardioLibrary(); renderSessionHistory(); renderRunTotals(); renderRunHistory(); }
   else if (tab === 'nutrition') { showView('nutrition'); renderNutrition(); }
-  else if (tab === 'stats') { showView('stats'); renderStats(); }
+  else if (tab === 'stats') { showView('stats'); renderStats().catch(e => console.warn('[Stats] render:', e)); }
   // BUG-UI-2 fix (v11.12): 'settings' had no branch, so the Home gear/bell/avatar
   // (which call switchTab('settings')) only un-hid the global header ("old bar")
   // without ever activating view-settings. Mirror the #btn-settings handler.
   else if (tab === 'settings') { showView('settings'); renderTrashList(); }
 
   updateHeader(tab);
+}
+
+// B-4 (auditoría 2026-09-08): cinco vistas secundarias (Coach, Ideal, Analítica, Movilidad,
+// Ajustes) hacían `showView` y punto. Como `body[data-tab="home"] header { display: none }`
+// sigue activo, abrirlas desde Home dejaba la pantalla SIN cabecera: sin título y sin saber
+// dónde estabas. Un solo helper hace las tres cosas que hay que hacer siempre.
+//   `viewName`  → la sección `#view-<viewName>` que se activa
+//   `headerKey` → la clave que entiende `updateHeader` (por defecto, la misma)
+function enterSecondaryView(viewName, headerKey) {
+  const key = headerKey || viewName;
+  showView(viewName);
+  updateHeader(key);
+  document.body.dataset.tab = key;
+  // Ninguna de estas vistas es una pestaña: la barra inferior no debe marcar nada activo.
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === key));
 }
 
 function showView(view) {
@@ -2231,20 +2233,38 @@ function updateHeader(tab) {
     sub.textContent = (blk && blk.index)
       ? `Semana ${blk.index}/${DELOAD_BLOCK_WEEKS} · ${blk.label}`
       : `Week ${wk}${dayChip}`;
+  } else if (tab === 'ideal-preview') {
+    // B-4: las tres vistas secundarias que no tenían rama aquí. Con `enterSecondaryView` la
+    // cabecera SE VE, así que necesita título propio o queda el de la vista anterior.
+    title.textContent = 'Ideal plan';
+    sub.textContent = `Week ${wk}${dayChip}`;
+  } else if (tab === 'analytics') {
+    title.textContent = 'Bloodwork';
+    sub.textContent = 'Score and age, side by side';
+  } else if (tab === 'mobility') {
+    title.textContent = 'Mobility';
+    sub.textContent = 'Routines and streak';
   }
 }
 
 // ==================== GYM MODULE ====================
 async function renderWeekBanner() {
   const wk = getWeekNumber();
-  const deload = isDeloadWeek(wk);
-  // Program runs in 9-week blocks (cut phase + deload). Past week 9 we cycle:
-  // block 1 = weeks 1–9, block 2 = weeks 10–18, etc. Progress bar shows
-  // position within the current block, not absolute week count.
-  const blockLen = 9;
-  const blockWeek = ((wk - 1) % blockLen) + 1;
-  const blockNum = Math.floor((wk - 1) / blockLen) + 1;
-  const pct = Math.min((blockWeek / blockLen) * 100, 100);
+  // EL BLOQUE ES DE 5 SEMANAS Y SALE DE UN SOLO SITIO (E-9, auditoría 2026-09-08).
+  //
+  // Este banner contaba bloques de NUEVE semanas desde `startDate` mientras el motor cuenta
+  // CINCO (4 build + 1 deload, LOAD-004) ancladas a `settings.deloadAnchorDate`. Resultado: la
+  // barra decía "semana 3 de 9" en la misma pantalla en que la tarjeta de la sesión decía
+  // "semana 3/5 · deload la semana del 5-oct", y el `Deload` del banner venía de una tercera
+  // cuenta. Ahora las tres cosas salen de `blockWeek()`.
+  const blk = (typeof blockWeek === 'function') ? blockWeek() : null;
+  const deload = !!(blk && blk.isDeload);
+  const blockLen = DELOAD_BLOCK_WEEKS;
+  const blockIdx = (blk && blk.index) || null;
+  const blockTag = (typeof blockLabel === 'function' && state.settings)
+    ? blockLabel(today(), state.settings.deloadAnchorDate, DELOAD_BLOCK_WEEKS)
+    : null;
+  const pct = blockIdx ? Math.min((blockIdx / blockLen) * 100, 100) : 0;
   // Day count since program start — disambiguates training week from ISO week.
   const startDateStr = state.settings.startDate;
   const startDate = startDateStr ? new Date(startDateStr + 'T00:00:00') : null;
@@ -2279,11 +2299,14 @@ async function renderWeekBanner() {
   }
 
   const dayChip = dayNum ? ` · Day ${dayNum}` : '';
-  const blockLabel = blockNum > 1 ? ` · Block ${blockNum}` : '';
+  // "· B2 · week 3/5": el mismo bloque y la misma semana que dice la tarjeta de la sesión y que
+  // ve el coach en el pack (`facts.trajectory.program.blocks` usa esta misma numeración).
+  const blockChip = blockTag ? ` · ${blockTag}` : '';
+  const weekChip = blockIdx ? ` · week ${blockIdx}/${blockLen}` : '';
   document.getElementById('week-banner').innerHTML = `
     <div class="wb-top">
       <span class="wb-title">Week ${wk}${dayChip}</span>
-      <span class="wb-phase ${deload ? 'wb-deload' : ''}">${deload ? 'Deload' : 'Cut'}${blockLabel}</span>
+      <span class="wb-phase ${deload ? 'wb-deload' : ''}">${deload ? 'Deload' : 'Cut'}${blockChip}${weekChip}</span>
     </div>
     <div class="wb-bar"><div class="wb-bar-fill" style="width:${pct}%"></div></div>
     <div class="wb-stats">
@@ -2296,13 +2319,23 @@ async function renderWeekBanner() {
 }
 
 // Get custom week schedule (overrides per date)
+//
+// V-7a (auditoría 2026-09-08): `getPlannedSessionForDate` llama aquí una vez POR DÍA, así que
+// pintar el calendario de Home costaba quince `dbGet` del mismo registro. La caché vive en
+// `state._weekSchedule` y la tira `dbPut` en cuanto alguien escribe `settings/weekSchedule`
+// (incluida una fila que baje de la nube). Se devuelve el MISMO objeto a propósito: hay
+// llamadores que lo mutan y luego llaman a `saveWeekSchedule` con él.
 async function getWeekSchedule() {
+  if (state._weekSchedule) return state._weekSchedule;
   const saved = await dbGet('settings', 'weekSchedule');
-  return (saved && saved.data) || {};
+  state._weekSchedule = (saved && saved.data) || {};
+  return state._weekSchedule;
 }
 
 async function saveWeekSchedule(schedule) {
   await smartPut('settings', { key: 'weekSchedule', data: schedule });
+  // Después de la escritura: `dbPut` acaba de invalidar la caché y este es el valor bueno.
+  state._weekSchedule = schedule;
 }
 
 // Get the planned gym session for a specific date
@@ -2313,168 +2346,12 @@ function getPlannedSession(jsDay, customSchedule, ds) {
   return plan.type === 'gym' ? plan.session : null;
 }
 
-async function renderWeekStrip() {
-  renderWeekBanner().catch(e => console.warn('renderWeekBanner failed', e));
-  const container = document.getElementById('week-strip');
-  const weekDates = getWeekDates();
-  const todayStr = today();
-  const workouts = await dbGetAll('workouts');
-  const runs = await dbGetAll('runs');
-  const wk = getWeekNumber();
-  const deload = isDeloadWeek(wk);
-  const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  const customSchedule = await getWeekSchedule();
-
-  // Mobility counts per date (for I/II indicator on the 3rd row)
-  const mobCounts = await getMobilityCountsByDate();
-
-  // Build three-row layout (Strength / Running / Mobility)
-  container.innerHTML = `
-    <div class="ws-label">Strength</div>
-    <div class="ws-row" id="ws-gym-row"></div>
-    <div class="ws-label">Running</div>
-    <div class="ws-row" id="ws-run-row"></div>
-    <div class="ws-label">Mobility</div>
-    <div class="ws-row" id="ws-mob-row"></div>
-  `;
-
-  const gymRow = document.getElementById('ws-gym-row');
-  const runRow = document.getElementById('ws-run-row');
-  const mobRow = document.getElementById('ws-mob-row');
-
-  weekDates.forEach((date, i) => {
-    const ds = dateStr(date);
-    const jsDay = date.getDay();
-    const isToday = ds === todayStr;
-    const dayWorkout = workouts.find(w => w.date === ds);
-    const dayRun = runs.find(r => r.date === ds);
-    const isPast = ds < todayStr;
-    // Don't show "planned" on past days that the user didn't train — those
-    // should read as empty/rest, not as "you were supposed to do X".
-    const plannedSession = isPast ? null : getPlannedSession(jsDay, customSchedule, ds);
-
-    // --- GYM CELL ---
-    const gymCell = document.createElement('div');
-    gymCell.className = `ws-cell${isToday ? ' today' : ''}`;
-
-    let gymLabel = '', gymDone = false;
-    if (dayWorkout) {
-      const s = activePlan.sessions[dayWorkout.session];
-      gymLabel = s ? s.name.replace(/Upper |Lower /, '').charAt(0) + s.name.slice(-1) : '✓';
-      gymDone = true;
-      gymCell.classList.add('done');
-    } else if (plannedSession) {
-      const s = activePlan.sessions[plannedSession];
-      gymLabel = s ? s.name.replace('Upper ', 'U').replace('Lower ', 'L') : '?';
-    } else {
-      gymLabel = isPast ? 'rest' : '—';
-      gymCell.classList.add('empty');
-    }
-
-    // Determine icon for the cell
-    let cellIcon = '';
-    if (gymDone && dayWorkout && activePlan.sessions[dayWorkout.session]) {
-      cellIcon = activePlan.sessions[dayWorkout.session].icon;
-    } else if (!gymDone && plannedSession && activePlan.sessions[plannedSession]) {
-      cellIcon = activePlan.sessions[plannedSession].icon;
-    }
-
-    gymCell.innerHTML = `
-      <div class="ws-day">${dayNames[i]}</div>
-      ${cellIcon ? `<div class="ws-icon">${cellIcon}</div>` : ''}
-      <div class="ws-session${gymDone ? ' ws-done' : ''}">${gymDone ? '✓' : gymLabel}</div>
-      <div class="ws-sub">${gymDone && dayWorkout ? (activePlan.sessions[dayWorkout.session]?.name.replace('Upper ', 'U').replace('Lower ', 'L') || '') : ''}</div>
-    `;
-
-    // Click handler
-    if (gymDone && dayWorkout) {
-      gymCell.addEventListener('click', () => viewCompletedWorkout(dayWorkout));
-    } else if (plannedSession) {
-      gymCell.addEventListener('click', () => showSessionPicker(plannedSession));
-    } else {
-      gymCell.addEventListener('click', () => showSessionPicker(Object.keys(activePlan.sessions)[0], ds));
-    }
-
-    // Long-press to change/clear assignment
-    let pressTimer;
-    gymCell.addEventListener('touchstart', (e) => {
-      pressTimer = setTimeout(() => {
-        e.preventDefault();
-        changeGymDay(ds, jsDay, customSchedule);
-      }, 600);
-    }, { passive: false });
-    gymCell.addEventListener('touchend', () => clearTimeout(pressTimer));
-    gymCell.addEventListener('touchmove', () => clearTimeout(pressTimer));
-
-    gymRow.appendChild(gymCell);
-
-    // --- RUN CELL ---
-    const runCell = document.createElement('div');
-    runCell.className = `ws-cell ws-run-cell${isToday ? ' today' : ''}`;
-
-    const runKey = 'run_' + ds;
-    const customRun = customSchedule[runKey];
-    const defaultRun = activeWeekTemplate[jsDay].type === 'run';
-    const planRun = customRun !== undefined ? customRun === true : defaultRun;
-
-    if (dayRun) {
-      runCell.classList.add('done');
-      // Done: filled blue pill with km label (tabular-nums, more visual than a generic dot)
-      const kmLabel = (parseFloat(dayRun.distance) || 0).toFixed(1);
-      runCell.innerHTML = `<div class="ws-day">${dayNames[i]}</div><div class="ws-run-pill done">${kmLabel}</div>`;
-      runCell.addEventListener('click', () => { switchTab('cardio'); });
-    } else if (planRun) {
-      // Planned but not done: outlined blue ring
-      runCell.innerHTML = `<div class="ws-day">${dayNames[i]}</div><div class="ws-run-pill planned"></div>`;
-      runCell.addEventListener('click', () => { switchTab('cardio'); });
-    } else {
-      // No plan, no run: very subtle empty marker
-      runCell.innerHTML = `<div class="ws-day">${dayNames[i]}</div><div class="ws-run-pill empty"></div>`;
-      runCell.addEventListener('click', () => { switchTab('cardio'); });
-    }
-
-    // Long-press to toggle run day
-    let runPressTimer;
-    runCell.addEventListener('touchstart', (e) => {
-      runPressTimer = setTimeout(async () => {
-        e.preventDefault();
-        const dayLabel = new Date(ds + 'T12:00:00').toLocaleDateString('en', { weekday: 'long', month: 'short', day: 'numeric' });
-        const choice = await showActionSheet(dayLabel + ' — Running', [
-          { value: 'run', label: 'Zone 2 Run', icon: '🏃', selected: planRun },
-          { value: 'rest', label: 'No run', icon: '😴', selected: !planRun },
-        ]);
-        if (choice === null) return;
-        customSchedule[runKey] = choice === 'run';
-        await saveWeekSchedule(customSchedule);
-        renderWeekStrip();
-        toast(choice === 'run' ? 'Run day set' : 'Run day cleared');
-      }, 600);
-    }, { passive: false });
-    runCell.addEventListener('touchend', () => clearTimeout(runPressTimer));
-    runCell.addEventListener('touchmove', () => clearTimeout(runPressTimer));
-
-    runRow.appendChild(runCell);
-
-    // --- MOBILITY CELL ---
-    const mobCell = document.createElement('div');
-    mobCell.className = `ws-cell ws-mob-cell${isToday ? ' today' : ''}`;
-    const mobCount = mobCounts[ds] || 0;
-    let mobIndicatorHTML = '';
-    if (mobCount === 0) {
-      mobIndicatorHTML = '<div class="ws-mob-dots"><span class="ws-mob-dot empty"></span></div>';
-    } else if (mobCount === 1) {
-      mobIndicatorHTML = '<div class="ws-mob-dots"><span class="ws-mob-dot filled"></span></div>';
-    } else if (mobCount === 2) {
-      mobIndicatorHTML = '<div class="ws-mob-dots"><span class="ws-mob-dot filled"></span><span class="ws-mob-dot filled"></span></div>';
-    } else {
-      mobIndicatorHTML = `<div class="ws-mob-dots"><span class="ws-mob-count">${mobCount}</span></div>`;
-    }
-    if (mobCount > 0) mobCell.classList.add('done');
-    mobCell.innerHTML = `<div class="ws-day">${dayNames[i]}</div>${mobIndicatorHTML}`;
-    mobCell.addEventListener('click', () => { switchTab('gym'); openMobilityView(); });
-    mobRow.appendChild(mobCell);
-  });
-}
+// RETIRADO en v11.66 (auditoría 2026-09-08, B-3): la tira de la semana. Escribía en un
+// contenedor que dejó de existir cuando `renderWeekCalendar()` la sustituyó, y sus ONCE
+// llamadores lanzaban una promesa rechazada cada uno — once por cada guardado de entreno.
+// Con ella se va el selector de sesión por pulsación larga, cuyo único llamador era la tira.
+// El banner de la semana (`renderWeekBanner`) NO era parte de ella: se llamaba desde aquí y
+// ahora lo llaman `switchTab('gym')`, `init()` y `afterWorkoutSaved()`.
 
 // Generic action sheet — returns a Promise that resolves with the chosen value or null
 function showActionSheet(title, options) {
@@ -2510,28 +2387,6 @@ function showActionSheet(title, options) {
       btn.addEventListener('click', () => close(btn.dataset.value));
     });
   });
-}
-
-async function changeGymDay(ds, jsDay, customSchedule) {
-  const sessions = Object.entries(activePlan.sessions);
-  const current = customSchedule[ds] !== undefined ? customSchedule[ds] : (activeWeekTemplate[jsDay].type === 'gym' ? activeWeekTemplate[jsDay].session : null);
-  const dayLabel = new Date(ds + 'T12:00:00').toLocaleDateString('en', { weekday: 'long', month: 'short', day: 'numeric' });
-
-  const options = [
-    { value: 'empty', label: 'Rest day', icon: '😴', selected: current === null },
-    ...sessions.map(([id, s]) => ({ value: id, label: s.name + ' — ' + s.subtitle, icon: s.icon, selected: current === id }))
-  ];
-
-  const choice = await showActionSheet(dayLabel, options);
-  if (choice === null) return; // cancelled
-
-  const newVal = choice === 'empty' ? null : choice;
-  if (newVal === current) return; // no change
-
-  customSchedule[ds] = newVal;
-  await saveWeekSchedule(customSchedule);
-  renderWeekStrip();
-  toast(newVal ? `Set to ${activePlan.sessions[newVal].name}` : 'Set to rest day');
 }
 
 function showSkeleton(container, count = 3) {
@@ -2688,7 +2543,7 @@ async function openEditWorkout(id) {
       ? `<div class="exercise-target">${planEx.sets} × ${planEx.reps} @ RPE ${planEx.rpe} · Rest ${Math.floor((planEx.defaultRest || 120) / 60)}:${((planEx.defaultRest || 120) % 60).toString().padStart(2, '0')}</div>`
       : '';
     const notesHTML = planEx && planEx.notes
-      ? `<div class="exercise-notes" style="margin-top:6px">${planEx.notes}</div>`
+      ? `<div class="exercise-notes" style="margin-top:6px">${escapeHtml(planEx.notes)}</div>`
       : '';
 
     // Previous workout ghost data
@@ -2872,7 +2727,7 @@ async function saveEditWorkout() {
   const inputUnit = w.inputUnit || appUnit;
   const convert = (v) => {
     if (inputUnit === appUnit) return v;
-    if (inputUnit === 'lb' && appUnit === 'kg') return +(v * 0.453592).toFixed(2);
+    if (inputUnit === 'lb' && appUnit === 'kg') return +(v * LB_TO_KG).toFixed(2);
     if (inputUnit === 'kg' && appUnit === 'lb') return +(v * 2.20462).toFixed(2);
     return v;
   };
@@ -2902,10 +2757,7 @@ async function saveEditWorkout() {
   await smartPut('workouts', w);
   closeEditWorkout();
   toast('Workout updated');
-  renderRecentWorkouts();
-  if (state.currentView === 'stats') renderStats();
-  renderWeekStrip();
-  renderStreakBanner();
+  await afterWorkoutSaved();
 }
 
 async function deleteEditWorkout() {
@@ -2918,16 +2770,12 @@ async function deleteEditWorkout() {
   if (!w) return;
   await moveToTrash('workouts', w);
   await smartDelete('workouts', wId);
-  renderRecentWorkouts();
-  renderWeekStrip();
-  renderStreakBanner();
+  await afterWorkoutSaved();
   toast('Moved to Trash (2 days)', {
     label: 'Undo',
     callback: async () => {
       await restoreFromTrash(w.id);
-      renderRecentWorkouts();
-      renderWeekStrip();
-      renderStreakBanner();
+      await afterWorkoutSaved();
       toast('Workout restored');
     }
   });
@@ -2999,9 +2847,7 @@ async function renderTrashList() {
     btn.addEventListener('click', async () => {
       await restoreFromTrash(btn.dataset.restore);
       renderTrashList();
-      renderRecentWorkouts();
-      renderWeekStrip();
-      renderStreakBanner();
+      await afterWorkoutSaved();
       toast('Restored');
     });
   });
@@ -3052,64 +2898,6 @@ async function logPastWorkout() {
   openEditWorkout(workout.id);
 }
 
-// ==================== STREAK COUNTER ====================
-// ==================== ACTIVITY RINGS (Apple Watch style) ====================
-async function renderActivityRings() {
-  const container = document.getElementById('activity-rings');
-  if (!container) return;
-
-  const workouts = await dbGetAll('workouts');
-  const runs = await dbGetAll('runs');
-  const nutrition = await dbGetAll('nutrition');
-  const todayStr = today();
-  const weekDates = getWeekDates().map(d => dateStr(d));
-
-  // Ring 1: Training sessions this week (target: planned gym days)
-  const planned = Object.values(activeWeekTemplate).filter(d => d.type === 'gym').length;
-  const sessionsThisWeek = workouts.filter(w => weekDates.includes(w.date)).length;
-  const sessionPct = Math.min(sessionsThisWeek / planned, 1);
-
-  // Ring 2: Protein — days this week where goal was met
-  const proteinTarget = state.settings.proteinTarget || 170;
-  const daysWithData = weekDates.filter(d => d <= todayStr);
-  const proteinDaysMet = daysWithData.filter(d => {
-    const dayNut = nutrition.filter(n => n.date === d);
-    const total = dayNut.reduce((s, n) => s + (n.protein || 0), 0);
-    return total >= proteinTarget;
-  }).length;
-  const proteinPct = daysWithData.length > 0 ? Math.min(proteinDaysMet / daysWithData.length, 1) : 0;
-
-  // Ring 3: Running this week (target: planned run days)
-  const plannedRuns = Object.values(activeWeekTemplate).filter(d => d.type === 'run').length;
-  const runsThisWeek = runs.filter(r => weekDates.includes(r.date)).length;
-  const runPct = plannedRuns > 0 ? Math.min(runsThisWeek / plannedRuns, 1) : 0;
-
-  function ringArc(cx, cy, r, pct, color, width) {
-    const circ = 2 * Math.PI * r;
-    const offset = circ - circ * pct;
-    return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${color}" stroke-width="${width}" stroke-linecap="round" stroke-dasharray="${circ.toFixed(1)}" stroke-dashoffset="${offset.toFixed(1)}" style="transition:stroke-dashoffset 0.8s ease-out"/>`;
-  }
-
-  const cx = 60, cy = 60;
-  container.innerHTML = `
-    <div class="activity-rings-card">
-      <svg width="120" height="120" viewBox="0 0 120 120" style="transform:rotate(-90deg)">
-        <circle cx="${cx}" cy="${cy}" r="48" fill="none" stroke="rgba(251,161,0,0.15)" stroke-width="9"/>
-        ${ringArc(cx, cy, 48, sessionPct, 'var(--orange)', 9)}
-        <circle cx="${cx}" cy="${cy}" r="36" fill="none" stroke="rgba(104,227,113,0.15)" stroke-width="9"/>
-        ${ringArc(cx, cy, 36, proteinPct, 'var(--accent)', 9)}
-        <circle cx="${cx}" cy="${cy}" r="24" fill="none" stroke="rgba(0,163,255,0.15)" stroke-width="9"/>
-        ${ringArc(cx, cy, 24, runPct, 'var(--blue)', 9)}
-      </svg>
-      <div class="activity-rings-legend">
-        <div class="arl-row"><span class="arl-dot" style="background:var(--orange)"></span><span class="arl-label">Training</span><span class="arl-val">${sessionsThisWeek}/${planned}</span></div>
-        <div class="arl-row"><span class="arl-dot" style="background:var(--accent)"></span><span class="arl-label">Protein</span><span class="arl-val">${proteinDaysMet}/${daysWithData.length} days</span></div>
-        <div class="arl-row"><span class="arl-dot" style="background:var(--blue)"></span><span class="arl-label">Running</span><span class="arl-val">${runsThisWeek}/${plannedRuns}</span></div>
-      </div>
-    </div>
-  `;
-}
-
 // ISO week key for a Date — Mon-Sun buckets matching renderStreaks() logic.
 function _isoWeekKeyFor(d) {
   const dt = new Date(d.getFullYear(), d.getMonth(), d.getDate());
@@ -3117,60 +2905,6 @@ function _isoWeekKeyFor(d) {
   const yearStart = new Date(dt.getFullYear(), 0, 1);
   const wn = Math.ceil((((dt - yearStart) / 86400000) + 1) / 7);
   return `${dt.getFullYear()}-W${String(wn).padStart(2, '0')}`;
-}
-
-async function renderStreakBanner() {
-  const container = document.getElementById('streak-banner');
-  if (!container) return;
-  const workouts = await dbGetAll('workouts');
-
-  if (!workouts || workouts.length === 0) { container.innerHTML = ''; return; }
-
-  // Bucket workouts by ISO week → Set of distinct training dates
-  const weekDays = {};
-  workouts.forEach(w => {
-    if (!w.date) return;
-    const key = _isoWeekKeyFor(new Date(w.date + 'T12:00:00'));
-    if (!weekDays[key]) weekDays[key] = new Set();
-    weekDays[key].add(w.date);
-  });
-
-  const currentKey = _isoWeekKeyFor(new Date());
-  // Sessions this week = distinct training days in current ISO week
-  const thisWeekDays = (weekDays[currentKey] && weekDays[currentKey].size) || 0;
-
-  // Weeks streak: consecutive completed weeks with ≥4 training days, walking
-  // backwards from the most recent completed week. Current week is in-progress
-  // and doesn't count toward the streak (matches Stats card logic).
-  let weeks = 0;
-  const sortedKeys = Object.keys(weekDays).sort().reverse();
-  let started = false;
-  for (const key of sortedKeys) {
-    if (key === currentKey) continue;
-    const days = weekDays[key].size;
-    if (days >= 4) {
-      weeks++;
-      started = true;
-    } else if (started) {
-      break;
-    } else {
-      break;
-    }
-  }
-
-  if (weeks === 0 && thisWeekDays === 0) { container.innerHTML = ''; return; }
-
-  const fireLevel = weeks >= 4 ? '🔥🔥🔥' : weeks >= 2 ? '🔥🔥' : weeks >= 1 ? '🔥' : '💪';
-
-  container.innerHTML = `
-    <div class="streak-fire">
-      <div class="streak-fire-icon">${fireLevel}</div>
-      <div class="streak-fire-info">
-        <div class="streak-fire-count">${weeks} week${weeks !== 1 ? 's' : ''} streak</div>
-        <div class="streak-fire-label">${thisWeekDays} session${thisWeekDays !== 1 ? 's' : ''} this week</div>
-      </div>
-    </div>
-  `;
 }
 
 // ==================== SESSION PROGRESS ====================
@@ -3225,6 +2959,9 @@ async function showSessionPicker(defaultSession, dateOverride) {
 // ==================== VIEW COMPLETED WORKOUT (read-only) ====================
 function viewCompletedWorkout(workout) {
   state.viewingCompleted = true;
+  // B-2: el entreno completado se abre desde el calendario de Home Y desde la lista de Gym.
+  // Volver siempre a Home dejaba al usuario lejos de donde estaba.
+  state.viewingCompletedFrom = state.currentTab || 'home';
   const session = activePlan.sessions[workout.session];
   const sessionName = session ? session.name : (workout.sessionName || workout.session);
 
@@ -3288,19 +3025,29 @@ function viewCompletedWorkout(workout) {
 
   // Hide finish button, show back only
   document.getElementById('btn-finish-workout').style.display = 'none';
-  document.getElementById('workout-notes').style.display = 'none';
-
-  // Show warmup section collapsed with workout notes if any
-  const warmupBody = document.getElementById('warmup-body');
-  if (workout.notes) {
-    warmupBody.innerHTML = `<div style="padding:8px 0;color:var(--text2);font-size:13px">${workout.notes}</div>`;
-  } else {
-    warmupBody.innerHTML = '';
+  // B-1 (auditoría 2026-09-08): aquí había un `getElementById(...).style` sobre el textarea
+  // de notas del entreno, que dejó de existir hace versiones (0 apariciones en index.html).
+  // Lanzaba ANTES de activar la vista, así que tocar un día ya entrenado en el calendario no
+  // abría nada. Las notas se pintan ahora de sólo lectura y escapadas (B-6).
+  const notesEl = document.getElementById('wo-completed-notes');
+  if (notesEl) {
+    const txt = (workout.notes || '').trim();
+    notesEl.innerHTML = txt ? `<p class="wo-notes-ro">${escapeHtml(txt)}</p>` : '';
+    notesEl.hidden = !txt;
   }
+
+  // El calentamiento de un entreno guardado no se recuerda; la sección se deja vacía y
+  // colapsada en vez de reutilizarla como cajón de las notas.
+  const warmupBody = document.getElementById('warmup-body');
+  if (warmupBody) warmupBody.innerHTML = '';
   document.getElementById('warmup-section').classList.remove('expanded');
 
-  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-  document.getElementById('view-workout').classList.add('active');
+  // `showView` es lo que faltaba: activa la sección y, de paso, deja el estado coherente
+  // (`state.currentView`), que es lo que lee `switchTab` al volver. El FAB de la calculadora
+  // de discos se oculta a mano: aquí no se levanta nada, se mira.
+  showView('workout');
+  const fab = document.getElementById('plate-fab');
+  if (fab) fab.classList.add('hidden');
 }
 
 // ==================== WORKOUT ====================
@@ -3457,7 +3204,7 @@ async function startFreeWorkout() {
 }
 
 // Añade un ejercicio a la sesión libre en caliente. Reutiliza `showActionSheet`, que ya es un
-// bottom-sheet genérico basado en promesas (lo usan `changeGymDay` y `logPastWorkout`).
+// bottom-sheet genérico basado en promesas (lo usan `showSessionPicker` y `logPastWorkout`).
 async function addAdHocExercise() {
   if (!state.adHocSession) return;
   const catalog = libraryOptionsByMuscle();
@@ -3582,6 +3329,12 @@ async function startWorkout(sessionId, opts = {}) {
   try { state.activeReadiness = _coachReadinessStamp(await computeReadiness()); } catch (e) { state.activeReadiness = null; }
 
   state.activeSession = sessionId;
+  // B-1: la sesión en vivo no enseña las notas del entreno guardado que se estuviera mirando
+  // (salir por la barra inferior no pasa por el botón de volver, que es quien las limpia).
+  state.viewingCompleted = false;
+  state.viewingCompletedFrom = null;
+  { const ro = document.getElementById('wo-completed-notes'); if (ro) { ro.innerHTML = ''; ro.hidden = true; } }
+  { const fin = document.getElementById('btn-finish-workout'); if (fin) fin.style.display = ''; }
   // Preserve workoutStartTime if user is just toggling Quick mode on the same
   // session — otherwise reset to now. We treat "no startTime yet" as fresh start.
   if (!state.workoutStartTime) state.workoutStartTime = Date.now();
@@ -3606,13 +3359,23 @@ async function startWorkout(sessionId, opts = {}) {
   // En deload, `buildExerciseCard` recorta series y fuerza RPE 5-6. Aplicarlo a una sesión libre
   // partiría a la mitad las series que acabás de elegir a mano. No se aplica.
   //
-  // Y TAMPOCO SOBRE UN PLAN DEL COACH (v11.61): el plan del coach YA TRAE el volumen de la
-  // semana de descarga — el modelo escribe las series y el RPE con LOAD-004 en la mano. Aplicar
-  // encima el recorte de la tarjeta sería el doble recorte (4 series → 2 → 1) y un RPE 5-6 sobre
-  // una carga que ya se bajó. `activePlan.author` es lo que lo distingue.
-  const deload = baseSession.adHoc ? false
-    : (activePlan && activePlan.author === 'coach-llm') ? false
-      : isDeloadWeek(wk);
+  // Y TAMPOCO SOBRE LOS EJERCICIOS QUE EL COACH YA DOSIFICÓ (v11.61): para ésos el plan del
+  // coach trae el volumen de la semana de descarga — el modelo escribe las series y el RPE con
+  // LOAD-004 en la mano. Aplicar encima el recorte de la tarjeta sería el doble recorte
+  // (4 series → 2 → 1) y un RPE 5-6 sobre una carga que ya se bajó.
+  //
+  // LA DESCARGA ES POR EJERCICIO CUANDO EL PLAN ES DEL COACH (E-5, auditoría 2026-09-08).
+  //
+  // El fallo que cierra: `deload` era `false` para TODO el plan en cuanto el autor era
+  // `coach-llm`, con el argumento de que el coach ya trae el volumen de la semana de descarga.
+  // Cierto para los ejercicios que traen `target` — y falso para los demás: un accesorio que el
+  // coach no tocó recibía progresión normal en semana de deload, contra G-H3 y LOAD-004.
+  // Ahora se libran los que llevan objetivo del coach; el resto recibe su −10 % y su RPE 5-6.
+  const weekIsDeload = baseSession.adHoc ? false : isDeloadWeek(wk);
+  const coachAuthored = !!(activePlan && activePlan.author === 'coach-llm');
+  const deloadFor = (exId) => weekIsDeload && !(coachAuthored && _coachHasTargetFor(sessionId, exId));
+  const anyDeload = weekIsDeload
+    && (session.exercises || []).some(e => e && deloadFor(e.id));
 
   const allWorkoutsDesc = (await dbGetAll('workouts')).sort((a, b) => b.date.localeCompare(a.date));
   // `workouts` alimenta el 1RM estimado de cada tarjeta. Para las sesiones del plan se mantiene
@@ -3655,7 +3418,7 @@ async function startWorkout(sessionId, opts = {}) {
     const dados = (opts && opts.targets) || null;
     const faltan = dados ? session.exercises.filter(e => !(e.id in dados)) : session.exercises;
     const nuevos = faltan.length
-      ? await computeSessionTargets(sessionId, faltan, { deload, allWorkoutsDesc })
+      ? await computeSessionTargets(sessionId, faltan, { deloadFor, allWorkoutsDesc })
       : {};
     state.activeTargets = Object.assign({}, dados || {}, nuevos);
   }
@@ -3748,7 +3511,7 @@ async function startWorkout(sessionId, opts = {}) {
   // Warmup itself is rendered separately above (#warmup-section), so we only
   // inject block headers for the exercise blocks here. The warmup chip lives
   // on the warmup-section header (see below).
-  state.activeBlocks = computeBlocks(session, deload);
+  state.activeBlocks = computeBlocks(session, deloadFor);
 
   const blockHeaderHTML = (block) => `
     <div class="block-header" data-block-id="${block.id}">
@@ -3771,7 +3534,7 @@ async function startWorkout(sessionId, opts = {}) {
       inner.className = 'superset-group';
       inner.innerHTML = `<div class="superset-label">Superset ${group.label}</div>`;
       group.exercises.forEach(({ ex, idx }) => {
-        inner.appendChild(buildExerciseCard(ex, idx, previous, restSettings, exerciseNotes, deload, session, workouts, (state.activeTargets || {})[ex.id] || null));
+        inner.appendChild(buildExerciseCard(ex, idx, previous, restSettings, exerciseNotes, deloadFor(ex.id), session, workouts, (state.activeTargets || {})[ex.id] || null));
       });
       wrapper.appendChild(inner);
       container.appendChild(wrapper);
@@ -3781,7 +3544,7 @@ async function startWorkout(sessionId, opts = {}) {
       wrapper.className = 'block-wrapper';
       wrapper.dataset.blockId = block ? block.id : '';
       if (block) wrapper.insertAdjacentHTML('beforeend', blockHeaderHTML(block));
-      wrapper.appendChild(buildExerciseCard(group.ex, group.idx, previous, restSettings, exerciseNotes, deload, session, workouts, (state.activeTargets || {})[group.ex.id] || null));
+      wrapper.appendChild(buildExerciseCard(group.ex, group.idx, previous, restSettings, exerciseNotes, deloadFor(group.ex.id), session, workouts, (state.activeTargets || {})[group.ex.id] || null));
       container.appendChild(wrapper);
     }
   });
@@ -3950,7 +3713,7 @@ async function startWorkout(sessionId, opts = {}) {
   showView('workout');
   { const b = document.getElementById('btn-add-exercise'); if (b) b.classList.toggle('hidden', !session.adHoc); }
   document.getElementById('header-title').textContent = session.name;
-  document.getElementById('header-subtitle').textContent = session.subtitle + (deload ? ' (Deload)' : '');
+  document.getElementById('header-subtitle').textContent = session.subtitle + (anyDeload ? ' (Deload)' : '');
   // Start the warmup block timer immediately (workoutStartTime is reference)
   if (!state.blockTimings.length && !state.activeBlockId) {
     state.activeBlockId = 'warmup';
@@ -4004,6 +3767,24 @@ async function _legacyCoachTargets(sessionId) {
 }
 
 /**
+ * ¿Trae el coach un objetivo escrito para ESTE ejercicio de esta sesión? (E-5)
+ *
+ * Es la pregunta que decide si el ejercicio se libra del recorte de descarga: el coach escribe
+ * el volumen y el kg de la semana de deload con LOAD-004 en la mano, así que aplicarle encima
+ * el −10 % de la tarjeta sería el doble recorte. Pero eso vale SÓLO para los ejercicios que
+ * llevan su objetivo; el resto del plan no lo ha mirado nadie y le toca la descarga normal.
+ *
+ * Se busca por `ex.id` (el movimiento que se va a hacer) y no por `_origId`: el objetivo que
+ * el coach escribió para las dominadas no es el objetivo del jalón que las sustituye.
+ */
+function _coachHasTargetFor(sessionId, exId) {
+  const s = (activePlan && activePlan.sessions && activePlan.sessions[sessionId]) || null;
+  if (!s || !Array.isArray(s.exercises) || !exId) return false;
+  const hit = s.exercises.find(e => e && e.id === exId);
+  return !!(hit && hit.target);
+}
+
+/**
  * El objetivo de hoy para cada ejercicio de una sesión: `{ [exerciseId]: target }`.
  *
  * HISTORIAL DESDE CUALQUIER SESIÓN, no sólo desde ésta. Lo exigen los dos casos reales: la
@@ -4016,7 +3797,9 @@ async function _legacyCoachTargets(sessionId) {
  *
  * @param {string} sessionId
  * @param {Array<object>} exercises  Ya resueltos con los swaps (`resolveSessionExercises`).
- * @param {{deload?:boolean, allWorkoutsDesc?:Array<object>}} [opts]
+ * @param {{deload?:boolean, deloadFor?:function, allWorkoutsDesc?:Array<object>}} [opts]
+ *        `deloadFor(exId)` (E-5) manda sobre `deload` cuando se pasa: en una semana de descarga
+ *        sobre un plan del coach, la descarga es por ejercicio.
  */
 async function computeSessionTargets(sessionId, exercises, opts = {}) {
   const out = {};
@@ -4087,13 +3870,14 @@ async function computeSessionTargets(sessionId, exercises, opts = {}) {
     // construcción también en la descarga (audit Change 4, todavía sin hacer). En una semana de
     // descarga su objetivo se descarta y manda la regla, que sí recorta el 10 %. El objetivo del
     // plan v2 sobrevive: lo escribe el coach de dentro de la app, que ya sabe en qué semana está.
-    if (opts.deload && coachTarget && !fromPlanV2) coachTarget = null;
+    const exDeload = typeof opts.deloadFor === 'function' ? !!opts.deloadFor(ex.id) : !!opts.deload;
+    if (exDeload && coachTarget && !fromPlanV2) coachTarget = null;
     out[ex.id] = suggestSetTarget(ex, history, {
       coachTarget,
       coachWeekKey,
       todayWeekKey,
       planCreatedAt,
-      deload: !!opts.deload,
+      deload: exDeload,
       today: ds,
       measureUnit: measureUnitFor(ex.id),
     });
@@ -4107,9 +3891,14 @@ async function computeSessionTargets(sessionId, exercises, opts = {}) {
  * facts pack del coach semanal (incremento 7).
  *
  * El `next` de cada ejercicio se calcula con la sesión de hoy YA metida en el historial, que es
- * exactamente lo que verá la tarjeta la próxima vez. Se calcula con `deload: false` a propósito:
- * el readout dice qué pide la regla, y si la próxima semana toca descarga la tarjeta de ese día
- * lo aplicará entonces — prometer aquí un −10 % que depende del calendario sería adivinar.
+ * exactamente lo que verá la tarjeta la próxima vez.
+ *
+ * Y CON EL DELOAD DE LA SEMANA QUE VIENE, NO CON `false` (E-8, auditoría 2026-09-08). Se
+ * calculaba siempre sin descarga "para no adivinar el calendario", pero el calendario del
+ * bloque está anclado a una fecha (`settings.deloadAnchorDate`) y se sabe con exactitud. El
+ * resultado era una promesa que el lunes no se cumplía: la tarjeta post-sesión del viernes
+ * decía "la próxima: 95 kg" y el lunes de descarga la pantalla prescribía 85. Prometer una
+ * subida que el propio sistema ya sabe que no va a ocurrir es peor que no prometer nada.
  */
 async function attachSessionReadout(workout, sessionDef) {
   if (typeof sessionReadout !== 'function' || typeof suggestSetTarget !== 'function') return;
@@ -4117,6 +3906,15 @@ async function attachSessionReadout(workout, sessionDef) {
   const all = (await dbGetAll('workouts')).sort((a, b) => String(b.date).localeCompare(String(a.date)));
   const ds = today();
   const todayWeekKey = typeof isoWeekKey === 'function' ? isoWeekKey(ds) : null;
+  // La próxima exposición de un ejercicio cae en la semana siguiente (2×/semana por músculo →
+  // 3-4 días), así que el deload que importa es el de +7 días. Con `blockWeek` anclado a fecha
+  // esto no es una estimación: es el mismo cálculo que hará la tarjeta de ese día.
+  const nextWeekDeload = (() => {
+    try {
+      const d = new Date(Date.parse(ds + 'T12:00:00') + 7 * 86400000);
+      return !!(typeof blockWeek === 'function' && blockWeek(d).isDeload);
+    } catch (e) { return false; }
+  })();
   const exDefs = {};
   const nextById = {};
   for (const we of (workout.exercises || [])) {
@@ -4154,7 +3952,7 @@ async function attachSessionReadout(workout, sessionDef) {
     }
     nextById[id] = suggestSetTarget(def, history, {
       coachTarget: null, coachWeekKey: null, todayWeekKey, planCreatedAt: null,
-      deload: false, today: ds, measureUnit: def.measureUnit,
+      deload: nextWeekDeload, today: ds, measureUnit: def.measureUnit,
     });
   }
   workout.readout = sessionReadout(workout, targets, exDefs, nextById);
@@ -4778,9 +4576,6 @@ async function finishWorkout() {
   state.currentView = 'home';
   state.activeBlockTimings = null;
   state.activeBlockId = null;
-  const notesEl = document.getElementById('workout-notes');
-  if (notesEl) notesEl.value = '';
-
   toast('Workout saved!');
   // Navigate to Home after finishing — rings light up, recent activity shows the workout
   switchTab('home');
@@ -5105,47 +4900,71 @@ function switchStatsGroup(group) {
   if (scroll) scroll.scrollTop = 0;
 }
 
+// V-7c (auditoría 2026-09-08): eran veinte `await` en serie, o sea veinte transacciones IDB
+// una detrás de otra por cada visita a Stats, con el primer fallo dejando la pantalla a medias.
+// Ahora van en tres tandas — hoy · semana · historial — con `allSettled`.
+//
+// Por qué el orden de terminación no importa: cada renderer escribe SU contenedor, y el orden
+// visual lo fija `index.html`, no el orden de las llamadas. Las tandas se mantienen para que
+// lo que se ve primero (Today) se pinte primero, no por dependencias entre ellas.
 async function renderStats() {
   // Ensure a stats group is active (default: today)
   const anyActive = document.querySelector('#view-stats .view-scroll > [data-group].active-group');
   if (!anyActive) switchStatsGroup('today');
-  await renderActivityRings();
-  await renderBodyWeightChart();
-  if (window.renderWhoopRecoveryCard) await renderWhoopRecoveryCard();
-  await renderStreaks();
-  // v11.59: el score 0-100 y su "Push hard today" salieron. Lo que se pinta ahora son las
-  // señales del readiness único, con su valor y su base (audit F-5). `typeof` porque vive en
-  // coach.js, que se carga por <script> aparte.
-  if (typeof renderReadinessSignals === 'function') await renderReadinessSignals();
-  // v11.62: la carga de la semana se muda de Home a Stats. Es un dato que se consulta, no algo
-  // que haya que ver antes de entrenar.
-  await renderHardDayBudget();
-  // v11.65: la línea de rendimiento y tendencias baja de Home a Stats › Today. En Home era un
-  // párrafo de texto en medio de un dashboard de tarjetas; aquí es una tarjeta más, detrás de
-  // las señales y de la carga de la semana. `typeof` porque vive en coach.js.
-  if (typeof renderRecoveryLine === 'function') await renderRecoveryLine();
-  // v11.60: peso, 10k cómodo y fuerza mantenida, con su tamaño de muestra. `typeof` porque
-  // vive en coach.js. Se mudará a la vista Coach en el incremento 9 (mismo id).
-  if (typeof renderGoalsCard === 'function') await renderGoalsCard();
-  try { await renderSyncWarning(); } catch (e) {}
-  await renderWeeklySummary();
-  await loadAndRenderWeeklyCoach();
-  await renderWeekComparison();
-  await renderStreakCalendar();
-  await renderMuscleVolume();
-  await renderSwimlaneTL();
-  await renderBodyCompEstimator();
-  await renderStepsHistoryChart();
-  await renderProteinChart();
-  renderMacroCalculator();
-  await renderStrengthChart();
-  await renderVolumeChart();
+  const tanda = async (nombre, tareas) => {
+    const res = await Promise.allSettled(tareas.map(([, fn]) => fn()));
+    res.forEach((r, i) => {
+      if (r.status === 'rejected') console.warn(`[Stats] ${nombre}/${tareas[i][0]}:`, r.reason);
+    });
+  };
+  beginRenderPass();
+  try {
+    await tanda('today', [
+      ['sync-warning', () => renderSyncWarning()],
+      ['streaks', () => renderStreaks()],
+      // v11.59: el score 0-100 y su "Push hard today" salieron. Lo que se pinta ahora son las
+      // señales del readiness único, con su valor y su base (audit F-5). `typeof` porque vive
+      // en coach.js, que se carga por <script> aparte.
+      ['readiness-signals', () => (typeof renderReadinessSignals === 'function' ? renderReadinessSignals() : null)],
+      // v11.62: la carga de la semana se muda de Home a Stats. Es un dato que se consulta, no
+      // algo que haya que ver antes de entrenar.
+      ['hard-day-budget', () => renderHardDayBudget()],
+      // v11.65: la línea de rendimiento y tendencias baja de Home a Stats › Today.
+      ['recovery-line', () => (typeof renderRecoveryLine === 'function' ? renderRecoveryLine() : null)],
+      // E-12 (v11.66): los pasos que llegan de intervals.icu tenían renderer y no tenían sitio
+      // donde pintarse. Ahora sí: `#steps-card`, justo debajo de la línea de recuperación.
+      ['steps-card', () => renderStepsCard()],
+      // v11.60: peso, 10k cómodo y fuerza mantenida, con su tamaño de muestra. `typeof` porque
+      // vive en coach.js. Se mudará a la vista Coach en el incremento 9 (mismo id).
+      ['goals-card', () => (typeof renderGoalsCard === 'function' ? renderGoalsCard() : null)],
+      ['whoop-recovery', () => (window.renderWhoopRecoveryCard ? renderWhoopRecoveryCard() : null)],
+    ]);
+    await tanda('week', [
+      ['weekly-summary', () => renderWeeklySummary()],
+      ['weekly-coach', () => loadAndRenderWeeklyCoach()],
+      ['week-comparison', () => renderWeekComparison()],
+      ['swimlane', () => renderSwimlaneTL()],
+    ]);
+    await tanda('history', [
+      ['bodyweight-chart', () => renderBodyWeightChart()],
+      ['streak-calendar', () => renderStreakCalendar()],
+      ['muscle-volume', () => renderMuscleVolume()],
+      ['bodycomp', () => renderBodyCompEstimator()],
+      ['steps-history', () => renderStepsHistoryChart()],
+      ['protein-chart', () => renderProteinChart()],
+      ['macro-calculator', () => { renderMacroCalculator(); return null; }],
+      ['strength-chart', () => renderStrengthChart()],
+      ['volume-chart', () => renderVolumeChart()],
+    ]);
+  } finally {
+    endRenderPass();
+  }
 }
 
 async function renderStreaks() {
   const container = document.getElementById('streak-row');
   const workouts = (await dbGetAll('workouts')).sort((a, b) => b.date.localeCompare(a.date));
-  const runs = (await dbGetAll('runs')).sort((a, b) => b.date.localeCompare(a.date));
+  const runs = (await getRunsDeduped()).sort((a, b) => b.date.localeCompare(a.date));
   const nutrition = (await dbGetAll('nutrition')).sort((a, b) => b.date.localeCompare(a.date));
 
   // Gym streak: consecutive completed weeks with ≥4 training days (Mon-Sun
@@ -6602,47 +6421,6 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 }
 
-async function renderWeeklyReport() {
-  const container = document.getElementById('weekly-report');
-  const workouts = await dbGetAll('workouts');
-  const runs = await dbGetAll('runs');
-  const nutrition = await dbGetAll('nutrition');
-
-  // This week
-  const weekDates = getWeekDates().map(d => dateStr(d));
-  const weekWorkouts = workouts.filter(w => weekDates.includes(w.date));
-  const weekRuns = runs.filter(r => weekDates.includes(r.date));
-  const weekNutrition = nutrition.filter(n => weekDates.includes(n.date));
-
-  // Total volume this week (DB exercises count both hands via volumeForExercise)
-  let totalVolume = 0;
-  weekWorkouts.forEach(w => {
-    w.exercises.forEach(ex => { totalVolume += volumeForExercise(ex, w.unit); });
-  });
-
-  // Avg protein
-  const avgProtein = weekNutrition.length > 0
-    ? Math.round(weekNutrition.reduce((sum, n) => sum + (n.protein || 0), 0) / weekNutrition.length)
-    : 0;
-
-  // Avg quality
-  const avgQuality = weekWorkouts.length > 0
-    ? (weekWorkouts.reduce((sum, w) => sum + (w.quality || 3), 0) / weekWorkouts.length).toFixed(1)
-    : '-';
-
-  // Total run km
-  const totalKm = weekRuns.reduce((sum, r) => sum + (r.distance || 0), 0).toFixed(1);
-
-  container.innerHTML = `
-    <div class="report-row"><span class="rr-label">Gym sessions</span><span class="rr-value">${weekWorkouts.length}</span></div>
-    <div class="report-row"><span class="rr-label">Runs</span><span class="rr-value">${weekRuns.length}</span></div>
-    <div class="report-row"><span class="rr-label">Total volume</span><span class="rr-value">${totalVolume.toLocaleString()} kg</span></div>
-    <div class="report-row"><span class="rr-label">Running distance</span><span class="rr-value">${totalKm} km</span></div>
-    <div class="report-row"><span class="rr-label">Avg protein</span><span class="rr-value">${avgProtein}g</span></div>
-    <div class="report-row"><span class="rr-label">Avg session quality</span><span class="rr-value">${avgQuality}/5</span></div>
-  `;
-}
-
 async function renderStrengthChart() {
   const tabsContainer = document.getElementById('strength-tabs');
   const chartContainer = document.getElementById('strength-chart');
@@ -6728,7 +6506,7 @@ async function renderWeekComparison() {
   if (!container) return;
 
   const workouts = await dbGetAll('workouts');
-  const runs = await dbGetAll('runs');
+  const runs = await getRunsDeduped();
   const nutrition = await dbGetAll('nutrition');
 
   // Current week dates
@@ -6800,7 +6578,7 @@ async function renderStreakCalendar() {
   if (!container) return;
 
   const workouts = await dbGetAll('workouts');
-  const runs = await dbGetAll('runs');
+  const runs = await getRunsDeduped();
 
   // Build set of active dates (last 12 weeks = 84 days)
   const activeDates = new Set();
@@ -7004,7 +6782,7 @@ async function renderWeeklySummary() {
   if (!container) return;
 
   const workouts = await dbGetAll('workouts');
-  const runs = await dbGetAll('runs');
+  const runs = await getRunsDeduped();
 
   // Filter by ISO-week date range (Mon-Sun) instead of the saved w.week
   // field. Retroactive logs and program-week vs ISO-week mismatches were
@@ -7431,91 +7209,6 @@ async function renderRunPlanBanner() {
   }
 }
 
-async function logRun() {
-  const distance = parseFloat(document.getElementById('run-distance').value);
-  const duration = parseInt(document.getElementById('run-duration').value);
-  const hr = parseInt(document.getElementById('run-hr').value) || null;
-  const feel = getStarValue('run-feel');
-  const notes = document.getElementById('run-notes').value.trim();
-
-  if (!distance || !duration) { toast('Enter distance and duration'); return; }
-
-  const avgPace = duration / distance;
-  const paceMin = Math.floor(avgPace);
-  const paceSec = Math.round((avgPace - paceMin) * 60);
-
-  const run = {
-    id: uid(),
-    date: today(),
-    week: getWeekNumber(),
-    distance, duration,
-    avgPace: `${paceMin}:${paceSec.toString().padStart(2, '0')}`,
-    avgHR: hr,
-    feel, notes,
-  };
-
-  await smartPut('runs', run);
-  state._lastCardioDate = null; state._runningWeek = null;   // v11.56: la progresión de cardio lee "días sin cardio"
-
-  document.getElementById('run-distance').value = '';
-  document.getElementById('run-duration').value = '';
-  document.getElementById('run-hr').value = '';
-  document.getElementById('run-notes').value = '';
-  setStarValue('run-feel', 3);
-
-  toast('Run logged!');
-  renderRunTotals();
-  renderRunHistory();
-  renderActivityRingsHome();
-}
-
-// T2 (v11.19): log a non-run cardio (bike/row/ski) or recovery walk into the
-// 'sessions' store using the T1 envelope. LOCAL-ONLY for now (dbPut, not smartPut)
-// — sync wiring for 'sessions' is a deferred sub-step. Does NOT touch the generator.
-async function logSession() {
-  const typeVal = document.getElementById('sess-type').value; // walk|bike|row|ski
-  const duration = parseInt(document.getElementById('sess-duration').value) || null;
-  const distance = parseFloat(document.getElementById('sess-distance').value) || null;
-  const feel = getStarValue('sess-feel');
-  const notes = document.getElementById('sess-notes').value.trim();
-  if (!duration) { toast('Enter duration'); return; }
-
-  const MAP = {
-    walk: { family: 'recovery', subtype: 'walk', modality: 'walk', title: 'Recovery walk' },
-    bike: { family: 'cardio', subtype: 'zone2', modality: 'bike', title: 'Bike' },
-    row:  { family: 'cardio', subtype: 'zone2', modality: 'row', title: 'Row' },
-    ski:  { family: 'cardio', subtype: 'zone2', modality: 'ski', title: 'SkiErg' },
-  };
-  const m = MAP[typeVal] || MAP.walk;
-  const meta = (typeof sessionSubtypeMeta === 'function' && sessionSubtypeMeta(m.family, m.subtype)) || {};
-  const rec = {
-    id: uid(),
-    date: today(),
-    ts: Date.now(),
-    family: m.family,
-    subtype: m.subtype,
-    sessionType: `${m.family}.${m.subtype}`,
-    modality: m.modality,
-    title: m.title,
-    durationMin: duration,
-    distance: distance,
-    perceivedEffort: feel,
-    evidenceTags: meta.evidenceTags || [],
-    budgetWeight: meta.budgetWeight != null ? meta.budgetWeight : 0,
-    notes,
-    source: 'manual',
-    week: getWeekNumber(),
-  };
-  await smartPut('sessions', rec); // T2b: syncs to Supabase (sessions table created)
-
-  document.getElementById('sess-duration').value = '';
-  document.getElementById('sess-distance').value = '';
-  document.getElementById('sess-notes').value = '';
-  setStarValue('sess-feel', 3);
-  toast(`${m.title} logged!`);
-  renderSessionHistory();
-}
-
 // T5.1: unified Cardio logger — any modality (run/treadmill/bike/row/ski/walk) + intensity.
 // Writes to the 'sessions' store (T1 envelope). Legacy 'runs' still render via toSession().
 async function logCardio() {
@@ -7596,7 +7289,7 @@ async function renderSessionHistory() {
 }
 
 // ==================== MOBILITY (v10.5) ====================
-// Counts of mobility sessions per local date — used for week-strip indicator and streak
+// Counts of mobility sessions per local date — used by the mobility streak and views
 async function getMobilityCountsByDate() {
   const sessions = await dbGetAll('mobility_sessions');
   const counts = {};
@@ -7622,36 +7315,8 @@ async function getMobilityStreak() {
 const ICON_MOBILITY = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3M12 18v3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M3 12h3M18 12h3M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/></svg>`;
 const ICON_PLAY = `<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="6 4 20 12 6 20 6 4"/></svg>`;
 
-async function renderMobilityTodayCard() {
-  const container = document.getElementById('mobility-today-card');
-  if (!container) return;
-  const routine = getRecommendedMobilityToday();
-  const counts = await getMobilityCountsByDate();
-  const doneToday = counts[today()] || 0;
-  const cv = mobilityColorVars(routine.color);
-
-  container.innerHTML = `
-    <div class="mobility-today-card" id="mob-today-tap">
-      <div class="mob-today-icon" style="background:${cv.tint};color:${cv.color}">${ICON_MOBILITY}</div>
-      <div class="mob-today-body">
-        <div class="mob-today-label">${doneToday > 0 ? `Done today · ${doneToday > 1 ? doneToday + 'x' : '1x'}` : "Today's Mobility"}</div>
-        <div class="mob-today-name">${routine.name}</div>
-        <div class="mob-today-meta">${routine.duration} min · ${routine.exercises.length} exercises</div>
-      </div>
-      <button class="mob-today-start" id="mob-today-start" style="background:${cv.color}" aria-label="Start mobility routine">${ICON_PLAY}</button>
-    </div>
-  `;
-  const startBtn = document.getElementById('mob-today-start');
-  if (startBtn) startBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    startMobilityRoutine(routine.id);
-  });
-  const cardTap = document.getElementById('mob-today-tap');
-  if (cardTap) cardTap.addEventListener('click', () => openMobilityView());
-}
-
 function openMobilityView() {
-  showView('mobility');
+  enterSecondaryView('mobility');
   renderMobilityView();
 }
 
@@ -7782,16 +7447,12 @@ async function renderMobilityHistory() {
       const removed = await dbGet('mobility_sessions', id);
       await smartDelete('mobility_sessions', id);
       renderMobilityView();
-      renderWeekStrip();
-      renderMobilityTodayCard();
       toast('Mobility session deleted', {
         label: 'Undo',
         callback: async () => {
           if (removed) {
             await smartPut('mobility_sessions', removed);
             renderMobilityView();
-            renderWeekStrip();
-            renderMobilityTodayCard();
           }
         }
       });
@@ -8128,10 +7789,8 @@ async function finishMobilityRoutine() {
   state.activeMobility = null;
   await clearActiveMobility();
   toast('Mobility done · streak +1');
-  // Return to mobility view + refresh dependent UIs
+  // Return to mobility view
   openMobilityView();
-  renderWeekStrip();
-  renderMobilityTodayCard();
 }
 
 async function cancelMobilityRoutine() {
@@ -8160,35 +7819,45 @@ async function askPainRating(prompt) {
   return parseInt(choice);
 }
 
-// ==================== ACTIVITY RINGS (Apple Health style, home) ====================
-// 3 concentric rings showing today's progress:
-//   • Outer (orange):   Workouts done today / planned today
-//   • Middle (blue):    Run km today / weekly run-target / 7
-//   • Inner (green):    Protein logged today / target
 // ==================== HOME VIEW ORCHESTRATOR (v10.7) ====================
 async function renderHomeView() {
   document.body.dataset.tab = 'home';
   renderHomeTopbar();
-  await Promise.all([
-    showResumeBanner(),
-    renderPlanSelector(),       // T5.1 day-count selector (3/4/5/Ideal)
-    renderWeekCalendar(),
+  // B-5 (auditoría 2026-09-08): era `Promise.all`. El primer bloque que lanzaba cancelaba la
+  // espera de los otros nueve y Home se quedaba a medio pintar EN SILENCIO — un fallo del
+  // coach dejaba sin calendario, sin plan de hoy y sin cola. Con `allSettled` el bloque que
+  // falla deja SU hueco vacío y se anota; los demás pintan.
+  // V-7b: todo el pintado va dentro de un pase de render, así que los `dbGetAll` repetidos de
+  // los bloques (eran doce de los mismos cuatro stores) se resuelven con una lectura cada uno.
+  const bloques = [
+    ['resume-banner', () => showResumeBanner()],
+    ['plan-selector', () => renderPlanSelector()],       // T5.1 day-count selector (3/4/5/Ideal)
+    ['week-calendar', () => renderWeekCalendar()],
     // Lectura del coach de la sesión de hoy (app/coach.js, v11.57). Con `typeof` porque el
     // módulo se carga por <script> aparte: si no cargó, Home se pinta igual.
-    (typeof renderCoachReadout === 'function' ? renderCoachReadout() : Promise.resolve()),
+    ['coach-readout', () => (typeof renderCoachReadout === 'function' ? renderCoachReadout() : null)],
     // Revisión semanal del coach (v11.61 · v11.65): qué pasó la semana pasada, en qué etapa
     // estoy, cuál es el foco y por qué cambia o por qué sigue igual. Desde v11.65 SIEMPRE
     // pinta: sin revisión ofrece "Cerrar semana ahora", que es de donde sale la primera.
-    (typeof renderCoachWeekCard === 'function' ? renderCoachWeekCard() : Promise.resolve()),
+    ['coach-week-card', () => (typeof renderCoachWeekCard === 'function' ? renderCoachWeekCard() : null)],
     // Cómo viene el objetivo (v11.65): peso, pendiente, hito, carrera y anclas en dos líneas.
-    (typeof renderCoachGoalLine === 'function' ? renderCoachGoalLine() : Promise.resolve()),
-    renderTodaysPlan(),
+    ['coach-goal-line', () => (typeof renderCoachGoalLine === 'function' ? renderCoachGoalLine() : null)],
+    ['todays-plan', () => renderTodaysPlan()],
     // v11.65: el WHOOP de hoy es el tile `Readiness` del trío de estadísticas; el párrafo de
     // rendimiento y tendencias que vivía aquí se mudó a Stats › Today. Un dashboard de tarjetas
     // no se explica con una línea de texto suelta en medio.
-    renderHomeStatTrio(),
-    renderHomeQueue(),
-  ]);
+    ['home-stat-trio', () => renderHomeStatTrio()],
+    ['home-queue', () => renderHomeQueue()],
+  ];
+  beginRenderPass();
+  try {
+    const res = await Promise.allSettled(bloques.map(([, fn]) => fn()));
+    res.forEach((r, i) => {
+      if (r.status === 'rejected') console.warn(`[Home] ${bloques[i][0]}:`, r.reason);
+    });
+  } finally {
+    endRenderPass();
+  }
 }
 
 // ==================== HOME TOP BAR (Lovable) ====================
@@ -8227,8 +7896,6 @@ function renderHomeTopbar() {
 
 // Lucide-style inline icons for the recovery vitals
 const ICON_ACTIVITY = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>`;
-const ICON_FLAME = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>`;
-const ICON_MOON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></svg>`;
 
 // ==================== T3: TRAINING ADVISORY LAYER (v11.21) ====================
 // Programming-intelligence layer, READ-ONLY. WHOOP = recovery source (not recomputed).
@@ -8287,22 +7954,82 @@ const ALT_LIBRARY = {
 //
 // Caché de 60 s en `state._lastCardioDate` porque `renderWeekCalendar` y `renderHomeQueue`
 // llaman a `getPlannedSessionForDate` 7 veces seguidas. Se invalida al registrar cardio
-// (`logRun`/`logCardio`/`logZ2Finisher`) y al importar (`intervalsIcuSync`): sin eso, el
+// (`logCardio`/`logZ2Finisher`) y al importar (`intervalsIcuSync`): sin eso, el
 // finisher que acabás de registrar tardaría un minuto en contar.
-async function _cardioDatesDesc() {
+// v11.67 (E-6): la caché guarda también los MINUTOS de cada registro, porque la rampa de
+// cardio pasó a salir de lo que se hizo de verdad en ese hueco y no del número de semana del
+// bloque. Es la misma lectura (dedupeada) y la misma caché de 60 s: leer las dos tablas otra
+// vez para conseguir los minutos convertiría cada pintado de Home en 14 transacciones más.
+async function _cardioRecsDesc() {
   const now = Date.now();
   const c = state._lastCardioDate;
-  if (c && (now - c.ts) < 60000) return c.dates;
+  if (c && c.recs && (now - c.ts) < 60000) return c.recs;
   const [runs, sessions] = await Promise.all([
     (typeof getRunsDeduped === 'function' ? getRunsDeduped() : dbGetAll('runs')).catch(() => []),
     (typeof getSessionsDeduped === 'function' ? getSessionsDeduped() : dbGetAll('sessions')).catch(() => []),
   ]);
-  const dates = [];
-  for (const r of (runs || [])) if (r && r.date) dates.push(r.date);
-  for (const s of (sessions || [])) if (s && s.date && s.family === 'cardio') dates.push(s.date);
-  dates.sort().reverse();
-  state._lastCardioDate = { dates, ts: now };
-  return dates;
+  const recs = [];
+  const min = (v) => { const n = parseFloat(v); return isFinite(n) && n > 0 ? n : null; };
+  for (const r of (runs || [])) {
+    if (!r || !r.date) continue;
+    recs.push({ date: r.date, min: min(r.durationMin != null ? r.durationMin : r.duration), finisher: false });
+  }
+  for (const s of (sessions || [])) {
+    if (!s || !s.date || s.family !== 'cardio') continue;
+    recs.push({
+      date: s.date,
+      min: min(s.durationMin != null ? s.durationMin : s.duration),
+      finisher: s.origin === 'z2_finisher',
+    });
+  }
+  recs.sort((a, b) => String(b.date).localeCompare(String(a.date)));
+  state._lastCardioDate = { dates: recs.map(r => r.date), recs, ts: now };
+  return recs;
+}
+
+async function _cardioDatesDesc() {
+  return (await _cardioRecsDesc()).map(r => r.date);
+}
+
+/**
+ * Lo hecho EN ESTE HUECO: los minutos de cardio de los registros que caen en el mismo día de
+ * la semana, con su semana ISO, más los días desde el último (E-6).
+ *
+ * EL FALLO QUE CIERRA. `progressCardioMin` rampaba por `block.index`: en la semana 4 del bloque
+ * prescribía base × 1,1³ aunque no se hubiese corrido en tres semanas — una bici de hace tres
+ * días bastaba para pasar la puerta global de los 14 días. La referencia y la puerta pasan a
+ * ser del hueco: si el miércoles no se hace cardio desde hace un mes, el miércoles vuelve a la
+ * base aunque el sábado se esté cumpliendo.
+ *
+ * SE SEPARA EL FINISHER DE LA SESIÓN DE CARDIO. Un finisher de 20′ y una sesión de 50′ pueden
+ * caer el mismo día de la semana; mezclarlos daría una mediana que no describe ninguno de los
+ * dos huecos.
+ *
+ * @param {number} jsDay  0=domingo … 6=sábado.
+ * @param {string} ds     'YYYY-MM-DD' del día que se está prescribiendo.
+ * @param {'session'|'finisher'} kind
+ * @param {number} [days] Ventana de lectura, en días. 28 = las cuatro últimas semanas.
+ * @returns {{history: Array<{weekKey:string, min:number}>, lastDaysAgo: number|null}}
+ */
+async function _cardioSlotHistory(jsDay, ds, kind, days = 28) {
+  let recs = [];
+  try { recs = await _cardioRecsDesc(); } catch (e) { return { history: [], lastDaysAgo: null }; }
+  const wantFinisher = kind === 'finisher';
+  const history = [];
+  let lastDaysAgo = null;
+  for (const r of recs) {
+    if (!r || !r.date || r.date > ds) continue;
+    if (!!r.finisher !== wantFinisher) continue;
+    const dow = new Date(r.date + 'T12:00:00Z').getUTCDay();
+    if (dow !== Number(jsDay)) continue;
+    const age = Math.round((Date.parse(ds + 'T12:00:00') - Date.parse(r.date + 'T12:00:00')) / 86400000);
+    if (age > days) continue;
+    if (lastDaysAgo == null || age < lastDaysAgo) lastDaysAgo = age;
+    if (r.min == null) continue;                   // un registro sin duración no rampa nada
+    const wk = (typeof isoWeekKey === 'function') ? isoWeekKey(r.date) : null;
+    if (wk) history.push({ weekKey: wk, min: r.min });
+  }
+  return { history, lastDaysAgo };
 }
 
 // Días desde el último cardio registrado EN O ANTES de `ds`. null = nunca (no se inventa).
@@ -8314,11 +8041,45 @@ async function lastCardioDaysAgo(ds) {
   return Math.round((Date.parse(ds + 'T12:00:00') - Date.parse(last + 'T12:00:00')) / 86400000);
 }
 
-// Minutos del coach para un día de la semana, si la versión activa del plan los trae (esquema
-// v2, incremento 9). Prioridad coach > regla > base (plan §Principios 3).
+/**
+ * ¿Siguen vigentes los objetivos del plan activo? La misma ventana que los kg del set
+ * (`plan-v2-schema.md` §"La regla de prioridad"): la semana ISO en que se escribió tiene que
+ * ser ésta o la anterior y, sin `weekKey`, vale un plan creado hace ≤ 14 días.
+ */
+function _coachPlanTargetsAreCurrent() {
+  if (!activePlan) return false;
+  if (typeof coachTargetIsCurrent !== 'function') return true;   // coach-engine.js no cargó
+  if (activePlan.weekKey) return coachTargetIsCurrent(activePlan.weekKey, today());
+  const created = activePlan.createdAt;
+  if (!created) return false;
+  const ttl = (typeof COACH_TARGET_TTL_DAYS === 'number') ? COACH_TARGET_TTL_DAYS : 14;
+  const age = Math.round((Date.now() - Date.parse(created)) / 86400000);
+  return isFinite(age) && age >= 0 && age <= ttl;
+}
+
+/**
+ * Minutos del coach para un día de la semana, si la versión activa del plan los trae (esquema
+ * v2, incremento 9). Prioridad coach > regla > base (plan §Principios 3).
+ *
+ * CON LA MISMA VENTANA DE VIGENCIA QUE LOS KG (E-4, auditoría 2026-09-08). Los objetivos de
+ * carga del coach caducan cuando su semana ISO deja de ser ésta o la anterior
+ * (`coachTargetIsCurrent` en coach-engine.js, usada por `suggestSetTarget`); los minutos de
+ * cardio del MISMO plan no caducaban nunca, así que un plan de hace tres semanas seguía
+ * prescribiendo 50′ mientras sus kg ya habían cedido el paso a la regla. Un plan con dos
+ * vidas distintas es un plan que se contradice consigo mismo.
+ *
+ * Sin `weekKey` (planes sembrados antes del esquema v2) no hay objetivo del coach que aplicar:
+ * esas plantillas no las escribió un coach, son la semilla del plan ideal.
+ */
 function _coachCardioMin(jsDay, field) {
-  const c = activePlan && activePlan.weekTemplate && activePlan.weekTemplate[jsDay] && activePlan.weekTemplate[jsDay].cardio;
-  const v = c ? c[field] : null;
+  if (!activePlan || !activePlan.weekTemplate) return null;
+  const d = activePlan.weekTemplate[jsDay];
+  const c = d && d.cardio;
+  if (!c) return null;
+  // Sólo caduca lo que escribió el COACH. `source: 'seed'` es la semilla del plan ideal
+  // (`plan-v2-schema.md`:53) y no es una prescripción con fecha: no tiene por qué vencer.
+  if (c.source !== 'seed' && !_coachPlanTargetsAreCurrent()) return null;
+  const v = c[field];
   return (v != null && isFinite(Number(v))) ? Number(v) : null;
 }
 
@@ -8536,16 +8297,27 @@ async function getPlannedSessionForDate(date) {
   // registro leen el mismo `block` que decidió los minutos.
   const blk = blockWeek(date);
   const variant = (typeof _idealVariant === 'function') ? _idealVariant() : null;
-  const prog = async (baseMin, coachMin) => {
+  // LA RAMPA SALE DE LO HECHO EN ESTE HUECO (E-6). `kind` separa el finisher post-fuerza de
+  // la sesión de cardio del día: mezclar 20′ de finisher con 50′ de bici en la misma mediana
+  // describiría un hueco que no existe. Y `lastCardioDaysAgo` pasa a ser del hueco: la puerta
+  // de los 14 días miraba TODO el cardio, así que una bici de anteayer dejaba que el miércoles
+  // siguiera rampando después de un mes sin correr.
+  const prog = async (baseMin, coachMin, kind = 'session') => {
     if (typeof progressCardioMin !== 'function') return { min: baseMin || null, source: 'base', note: null };
     if (!baseMin && coachMin == null) return { min: null, source: 'base', note: null };
-    return progressCardioMin(baseMin, blk, { variant, lastCardioDaysAgo: await lastCardioDaysAgo(ds), coachMin });
+    const h = await _cardioSlotHistory(jsDay, ds, kind);
+    return progressCardioMin(baseMin, blk, {
+      variant,
+      lastCardioDaysAgo: h.lastDaysAgo,
+      history: h.history,
+      coachMin,
+    });
   };
   if (sessionId) {
     const s = (activePlan && activePlan.sessions) ? activePlan.sessions[sessionId] : null;
     // Z2 finisher only applies when the day comes from the template (not a manual override).
     const z2Base = (slot.type === 'gym' && customSchedule[ds] === undefined) ? (slot.z2FinisherMin || null) : null;
-    const z2 = await prog(z2Base, z2Base ? _coachCardioMin(jsDay, 'z2FinisherMin') : null);
+    const z2 = await prog(z2Base, z2Base ? _coachCardioMin(jsDay, 'z2FinisherMin') : null, 'finisher');
     const exs = s ? resolveSessionExercises(sessionId, s.exercises) : [];
     return { type: 'gym', date: ds, sessionId, name: s ? s.name : sessionId, subtitle: s ? s.subtitle : '', exercises: exs || [], z2FinisherMin: z2.min, z2BaseMin: z2Base, z2Source: z2.source, z2Note: z2.note, block: blk };
   }
@@ -8563,7 +8335,7 @@ async function getPlannedSessionForDate(date) {
     }
     if (slot.type === 'recovery') {
       const rBase = slot.z2FinisherMin || null;
-      const r = await prog(rBase, rBase ? _coachCardioMin(jsDay, 'z2FinisherMin') : null);
+      const r = await prog(rBase, rBase ? _coachCardioMin(jsDay, 'z2FinisherMin') : null, 'finisher');
       return { type: 'recovery', date: ds, name: slot.label || 'Recuperación activa', subtitle: 'Movilidad + Z2 suave', z2FinisherMin: r.min, z2BaseMin: rBase, z2Source: r.source, z2Note: r.note, block: blk };
     }
   }
@@ -8776,7 +8548,10 @@ async function computeHardDayBudget() {
   (runs || []).forEach(r => add(r, 'runs'));
   (sessions || []).forEach(r => add(r, 'sessions'));
   const used = Math.round(items.reduce((sum, it) => sum + (it.weight || 0), 0) * 10) / 10;
-  const cap = 6;
+  // VP_MAX_BUDGET vive en coach-facts.js, donde el validador `BUD-001` juzga las propuestas
+  // del coach (E-9). Había un 6 aquí y un 8 en la barra de la tarjeta: el mismo esfuerzo
+  // llenaba el 100 % en un sitio y el 75 % en el otro.
+  const cap = (typeof VP_MAX_BUDGET === 'number') ? VP_MAX_BUDGET : 6;
   return { used, cap, hardSessions: items.filter(it => it.weight >= 2).length, items: items.sort((a, b) => b.weight - a.weight), overCap: used > cap };
 }
 
@@ -8846,9 +8621,11 @@ async function renderHardDayBudget() {
   if (!container) return;
   let b;
   try { b = await computeHardDayBudget(); } catch (e) { console.warn('[carga] falló', e); container.innerHTML = ''; return; }
-  // Referencia visual sobre 8 puntos, no sobre un tope de 6: es una escala para ver la tendencia,
-  // no una línea que no haya que cruzar.
-  const pct = Math.min(100, Math.round((b.used / 8) * 100));
+  // La barra usa EL MISMO tope que el cálculo (`b.cap` = `VP_MAX_BUDGET`, E-9). Sigue sin ser
+  // un límite —no hay barra roja ni avisos, y el número no entra en ninguna decisión—, pero la
+  // escala es una sola: con un divisor de 8 aquí y un tope de 6 allí, 6 puntos se pintaban al
+  // 75 % mientras el validador del coach los llamaba "el tope".
+  const pct = Math.min(100, Math.round((b.used / (b.cap || 6)) * 100));
   const top = (b.items || []).slice(0, 3).map(it => `${it.label} (${_t3WeightWord(it.weight)})`).join(' · ');
   container.innerHTML = `
     <section class="card t3-card">
@@ -9274,7 +9051,7 @@ async function renderIdealPreview() {
 }
 
 function openIdealPreview() {
-  showView('ideal-preview');
+  enterSecondaryView('ideal-preview');
   renderIdealPreview().catch(e => console.warn('[Ideal] preview:', e));
 }
 
@@ -9496,7 +9273,7 @@ function renderAnalytics() {
 }
 
 function openAnalytics() {
-  showView('analytics');
+  enterSecondaryView('analytics');
   renderAnalytics();
 }
 
@@ -9641,7 +9418,8 @@ async function renderWeekCalendar() {
   const weekDates = getWeekDates();
   const todayStr = today();
   const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  const [workouts, runs, mobs, sessions] = await Promise.all([dbGetAll('workouts'), dbGetAll('runs'), dbGetAll('mobility_sessions'), dbGetAll('sessions')]);
+  const [workouts, runs, mobs, sessions] = await Promise.all([
+    dbGetAll('workouts'), getRunsDeduped(), dbGetAll('mobility_sessions'), getSessionsDeduped()]);
   // Rich planned session per date (cardio/recovery-aware), so cardio days are not invisible.
   const plannedArr = await Promise.all(weekDates.map(d => getPlannedSessionForDate(d).catch(() => null)));
 
@@ -9811,7 +9589,7 @@ async function renderTodaysPlan() {
   const planned = await getPlannedSessionForDate(new Date());
 
   const [allWorkouts, runs, mobs, sessions] = await Promise.all([
-    dbGetAll('workouts'), dbGetAll('runs'), dbGetAll('mobility_sessions'), dbGetAll('sessions')]);
+    dbGetAll('workouts'), getRunsDeduped(), dbGetAll('mobility_sessions'), getSessionsDeduped()]);
   const doneWorkout = allWorkouts.find(w => w.date === ds);
   const doneCardio = runs.find(r => r.date === ds) || sessions.find(s => s.date === ds && s.family === 'cardio');
   const doneRecovery = mobs.find(m => m.date === ds) || sessions.find(s => s.date === ds && s.family === 'recovery');
@@ -10036,177 +9814,13 @@ async function renderTodaysPlan() {
   if (detail) detail.onclick = open;
 }
 
-// ==================== RECENT ACTIVITY (mixed feed) ====================
-async function renderRecentActivity() {
-  const container = document.getElementById('recent-activity');
-  if (!container) return;
-  const [workouts, runs, mobs, sessions] = await Promise.all([
-    dbGetAll('workouts'),
-    dbGetAll('runs'),
-    dbGetAll('mobility_sessions'),
-    dbGetAll('sessions').catch(() => []),
-  ]);
-
-  // Normalize all to a common shape: { date, ts, kind, title, subtitle, onTap, icon, tint, color }
-  const iconBarbell = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="2" y1="12" x2="22" y2="12"/><rect x="3" y="8.5" width="2" height="7" rx="0.6"/><rect x="6" y="6.5" width="2.5" height="11" rx="0.6"/><rect x="15.5" y="6.5" width="2.5" height="11" rx="0.6"/><rect x="19" y="8.5" width="2" height="7" rx="0.6"/></svg>`;
-  const iconRunner = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13" cy="4" r="2"/><path d="M5 21l3-9 2.5 2V21M15 11l-3-3-4 4 2 2"/></svg>`;
-  const iconMob = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3M12 18v3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M3 12h3M18 12h3M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/></svg>`;
-
-  const items = [];
-  workouts.forEach(w => {
-    const session = activePlan.sessions[w.session];
-    const totalSets = w.exercises.reduce((sum, ex) => sum + ex.sets.filter(s => s.done).length, 0);
-    items.push({
-      date: w.date,
-      ts: w.startTime ? new Date(`${w.date}T${w.startTime}:00`).getTime() : new Date(`${w.date}T12:00:00`).getTime(),
-      kind: 'workout',
-      title: session ? session.name : (w.sessionName || w.session),
-      subtitle: `${totalSets} sets · ${w.duration || ''}`,
-      icon: iconBarbell, tint: 'var(--tint-orange)', color: 'var(--orange)',
-      onTap: () => openEditWorkout(w.id),
-    });
-  });
-  runs.forEach(r => {
-    items.push({
-      date: r.date,
-      ts: new Date(`${r.date}T${(r.time || '08:00')}:00`).getTime(),
-      kind: 'run',
-      title: `${r.distance} km · ${r.avgPace}/km`,
-      subtitle: `${r.duration} min${r.avgHR ? ` · ${r.avgHR} bpm` : ''}`,
-      icon: iconRunner, tint: 'var(--tint-blue)', color: 'var(--blue)',
-      onTap: () => switchTab('cardio'),
-    });
-  });
-  mobs.forEach(m => {
-    items.push({
-      date: m.date,
-      ts: m.createdAt || new Date(`${m.date}T12:00:00`).getTime(),
-      kind: 'mobility',
-      title: m.routineName,
-      subtitle: `${m.durationMin} min${(m.painBefore != null && m.painAfter != null) ? ` · pain ${m.painBefore}→${m.painAfter}` : ''}`,
-      icon: iconMob, tint: 'var(--tint-teal)', color: 'var(--teal)',
-      onTap: () => { switchTab('gym'); openMobilityView(); },
-    });
-  });
-  // T2 (v11.19): non-run cardio + recovery sessions from the 'sessions' store,
-  // normalized through the T1 adapter so old/new records share one render path.
-  (sessions || []).forEach(s => {
-    const sess = (typeof toSession === 'function') ? toSession(s, 'sessions') : null;
-    if (!sess) return;
-    const isCardio = sess.family === 'cardio';
-    const dist = sess.distance != null ? ` · ${sess.distance} km` : '';
-    items.push({
-      date: sess.date,
-      ts: sess.ts || new Date(`${sess.date}T12:00:00`).getTime(),
-      kind: 'session',
-      title: (sess.title || 'Session') + dist,
-      subtitle: `${sess.durationMin ? sess.durationMin + ' min' : ''}`.trim() || '—',
-      icon: isCardio ? iconRunner : iconMob,
-      tint: isCardio ? 'var(--tint-blue)' : 'var(--tint-teal)',
-      color: isCardio ? 'var(--blue)' : 'var(--teal)',
-      onTap: () => switchTab('cardio'),
-    });
-  });
-
-  items.sort((a, b) => b.ts - a.ts);
-  const top = items.slice(0, 6);
-
-  if (top.length === 0) {
-    container.innerHTML = '<div class="empty-state" style="background:var(--surface);border-radius:var(--radius);padding:24px">No activity yet · log a workout, run or mobility session</div>';
-    return;
-  }
-
-  container.innerHTML = top.map((it, i) => `
-    <div class="history-item" data-ra-row="${i}">
-      <div class="hi-icon" style="background:${it.tint};color:${it.color}">${it.icon}</div>
-      <div class="hi-left">
-        <div class="hi-title">${it.title}</div>
-        <div class="hi-sub">${formatDate(it.date)} · ${it.subtitle}</div>
-      </div>
-      <span class="hi-chev" aria-hidden="true">›</span>
-    </div>
-  `).join('');
-  top.forEach((it, i) => {
-    const el = container.querySelector(`[data-ra-row="${i}"]`);
-    if (el) el.addEventListener('click', it.onTap);
-  });
-}
-
-async function renderActivityRingsHome() {
-  const container = document.getElementById('activity-rings-home');
-  if (!container) return;
-
-  const todayStr = today();
-  // Workouts today
-  const allWorkouts = await dbGetAll('workouts');
-  const workoutsToday = allWorkouts.filter(w => w.date === todayStr).length;
-  const plannedToday = 1; // baseline target: 1 workout/day max — could be tied to schedule later
-  // Runs today
-  const allRuns = await dbGetAll('runs');
-  const kmToday = allRuns.filter(r => r.date === todayStr).reduce((s, r) => s + (parseFloat(r.distance) || 0), 0);
-  // Daily run target = (weekly target) / 7 — assume ~5km on a run day, ~0.7km/day baseline
-  const runTargetDaily = 0.7;
-  // Protein today
-  const nut = await dbGet('nutrition', todayStr);
-  const proteinToday = (nut && nut.protein) || 0;
-  const proteinTarget = (state.settings && state.settings.proteinTarget) || 170;
-
-  // Compute fill ratios capped at 1 for the visual ring (allow >100% display)
-  const r1 = workoutsToday > 0 ? Math.min(workoutsToday / plannedToday, 1) : 0;
-  const r2 = Math.min(kmToday / Math.max(runTargetDaily, 0.01), 1);
-  const r3 = Math.min(proteinToday / Math.max(proteinTarget, 1), 1);
-
-  // Geometry: 3 concentric rings inside a 124×124 box
-  // Outer R=52, mid R=40, inner R=28; stroke 11
-  const circ = (r) => 2 * Math.PI * r;
-  const offset = (r, ratio) => circ(r) * (1 - ratio);
-
-  container.innerHTML = `
-    <div class="activity-rings-card" id="activity-rings-tap">
-      <div class="ar-rings-wrap">
-        <svg viewBox="0 0 124 124">
-          <circle cx="62" cy="62" r="52" class="ar-ring-bg ar-ring-1-bg"/>
-          <circle cx="62" cy="62" r="52" class="ar-ring-fill ar-ring-1-fill"
-            stroke-dasharray="${circ(52)}" stroke-dashoffset="${offset(52, r1)}"/>
-          <circle cx="62" cy="62" r="40" class="ar-ring-bg ar-ring-2-bg"/>
-          <circle cx="62" cy="62" r="40" class="ar-ring-fill ar-ring-2-fill"
-            stroke-dasharray="${circ(40)}" stroke-dashoffset="${offset(40, r2)}"/>
-          <circle cx="62" cy="62" r="28" class="ar-ring-bg ar-ring-3-bg"/>
-          <circle cx="62" cy="62" r="28" class="ar-ring-fill ar-ring-3-fill"
-            stroke-dasharray="${circ(28)}" stroke-dashoffset="${offset(28, r3)}"/>
-        </svg>
-      </div>
-      <div class="ar-legend">
-        <div class="ar-legend-row" data-ring-tab="gym">
-          <span class="ar-dot ar-dot-orange"></span>
-          <span class="ar-legend-label">Workouts</span>
-          <span class="ar-legend-val">${workoutsToday}/${plannedToday}</span>
-        </div>
-        <div class="ar-legend-row" data-ring-tab="cardio">
-          <span class="ar-dot ar-dot-blue"></span>
-          <span class="ar-legend-label">Cardio today</span>
-          <span class="ar-legend-val">${kmToday.toFixed(1)} km</span>
-        </div>
-        <div class="ar-legend-row" data-ring-tab="nutrition">
-          <span class="ar-dot ar-dot-green"></span>
-          <span class="ar-legend-label">Protein</span>
-          <span class="ar-legend-val">${Math.round(proteinToday)}/${proteinTarget}g</span>
-        </div>
-      </div>
-    </div>
-  `;
-
-  // Tap a legend row → switch to that tab
-  container.querySelectorAll('[data-ring-tab]').forEach(row => {
-    row.addEventListener('click', () => switchTab(row.dataset.ringTab));
-  });
-}
-
 async function renderRunTotals() {
   const container = document.getElementById('run-totals-card');
   if (!container) return;
   // Totals span legacy runs + unified cardio sessions that recorded a distance.
-  const [legacyRuns, sessions] = await Promise.all([dbGetAll('runs'), dbGetAll('sessions')]);
+  // Dedupeadas: la misma actividad de COROS llega por Strava y por intervals.icu, y aquí se
+  // SUMAN kilómetros — contarla dos veces infla el total del año, no sólo una tarjeta.
+  const [legacyRuns, sessions] = await Promise.all([getRunsDeduped(), getSessionsDeduped()]);
   const runs = legacyRuns.concat(sessions.filter(s => s.family === 'cardio' && parseFloat(s.distance) > 0));
 
   const now = new Date();
@@ -10273,7 +9887,7 @@ async function renderRunTotals() {
 
 async function renderRunHistory() {
   const container = document.getElementById('run-history');
-  const runs = (await dbGetAll('runs')).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 12);
+  const runs = (await getRunsDeduped()).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 12);
 
   if (!runs.length) {
     showEmptyState(container, '🏃', 'No runs yet', 'Log your runs in the Run tab to track distance and pace.');
@@ -10443,12 +10057,12 @@ function showSwapUI(card, ex, session) {
   const panel = document.createElement('div');
   panel.className = 'swap-panel';
   const revertBtn = isOverridden
-    ? `<button class="swap-option swap-revert" data-swap-id="${origId}" data-swap-name="${origName}">↩ Volver al original (${origName})</button>`
+    ? `<button class="swap-option swap-revert" data-swap-id="${escapeHtml(origId)}" data-swap-name="${escapeHtml(origName)}">↩ Volver al original (${escapeHtml(origName)})</button>`
     : '';
   panel.innerHTML = `
-    <div class="swap-title">Cambiar ${ex.name} por:</div>
+    <div class="swap-title">Cambiar ${escapeHtml(ex.name)} por:</div>
     ${revertBtn}
-    ${opts.map(a => `<button class="swap-option" data-swap-id="${a.id}" data-swap-name="${a.name}">${a.name}</button>`).join('')}
+    ${opts.map(a => `<button class="swap-option" data-swap-id="${escapeHtml(a.id)}" data-swap-name="${escapeHtml(a.name)}">${escapeHtml(a.name)}</button>`).join('')}
     <button class="swap-cancel">Cancelar</button>
   `;
 
@@ -10578,6 +10192,20 @@ async function renderStepsCard() {
   const target = (state.settings && state.settings.stepsTarget) || 8000;
   const today_ = await getStepsToday();
   const avg7 = await getStepsAvg7d();
+  // Estado vacío (v11.66): sin ninguna lectura, un anillo a 0 y un "0 / 8.000" leen como
+  // "no has andado nada hoy", que es distinto de "no hay dato". Se dice cuál de las dos es.
+  if (!today_ && !avg7) {
+    el.innerHTML = '<div class="steps-row"><div class="steps-info">'
+      + '<div class="steps-sub">No steps yet. They sync from Apple Health via intervals.icu, '
+      + 'or you can log today by hand.</div></div>'
+      + '<button class="steps-edit" id="steps-manual-btn" aria-label="Log steps manually">\u270E</button></div>';
+    const b0 = document.getElementById('steps-manual-btn');
+    if (b0) b0.addEventListener('click', () => {
+      const v = prompt('Steps today (manual):', '');
+      if (v !== null && v.trim() !== '') logStepsManual(v.trim());
+    });
+    return;
+  }
   const pct = Math.min(today_ / target, 1);
   const circumference = 220;
   const dashOffset = circumference - circumference * pct;
@@ -11428,7 +11056,7 @@ async function renderSwimlaneTL() {
   const weekDates = getWeekDates();
   const weekStrs = weekDates.map(d => dateStr(d));
   const workouts = await dbGetAll('workouts');
-  const runs = await dbGetAll('runs');
+  const runs = await getRunsDeduped();
   const customSchedule = await getWeekSchedule();
   const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   const todayStr = today();
@@ -11785,17 +11413,15 @@ function bindEvents() {
 
   // Settings button
   document.getElementById('btn-settings').addEventListener('click', () => {
-    showView('settings');
-    updateHeader('settings');
-    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+    enterSecondaryView('settings');
     renderTrashList();
   });
 
   // T4: Ideal Plan Preview open/back (read-only view)
   { const b = document.getElementById('btn-ideal-preview'); if (b) b.addEventListener('click', openIdealPreview); }
-  { const b = document.getElementById('ip-back'); if (b) b.addEventListener('click', () => { showView('settings'); updateHeader('settings'); }); }
+  { const b = document.getElementById('ip-back'); if (b) b.addEventListener('click', () => enterSecondaryView('settings')); }
   { const b = document.getElementById('btn-analytics'); if (b) b.addEventListener('click', openAnalytics); }
-  { const b = document.getElementById('an-back'); if (b) b.addEventListener('click', () => { showView('settings'); updateHeader('settings'); }); }
+  { const b = document.getElementById('an-back'); if (b) b.addEventListener('click', () => enterSecondaryView('settings')); }
 
   // Vista Coach (v11.61). El "volver" va a HOME y no a Ajustes: se entra sobre todo desde la
   // tarjeta de Home, y devolver a Ajustes al que llegó desde Home sería teletransportarlo.
@@ -11863,9 +11489,14 @@ function bindEvents() {
       // Viewing saved workout: just go back, no prompt needed
       state.viewingCompleted = false;
       document.getElementById('btn-finish-workout').style.display = '';
-      document.getElementById('workout-notes').style.display = '';
-      state.currentView = 'home';
-      switchTab('home');
+      // B-1: la tercera referencia al textarea de notas inexistente vivía aquí, y era la
+      // que mataba el botón de volver de un entreno completado.
+      const roNotes = document.getElementById('wo-completed-notes');
+      if (roNotes) { roNotes.innerHTML = ''; roNotes.hidden = true; }
+      // B-2: volver a la pestaña de la que se vino (Home o Gym), no siempre a Home.
+      const back = state.viewingCompletedFrom || 'home';
+      state.viewingCompletedFrom = null;
+      switchTab(back);
     } else if (state.activeSession) {
       if (confirm('Abandon workout? Progress will be lost.')) {
         if (state.workoutTimerInterval) clearInterval(state.workoutTimerInterval);
@@ -12076,9 +11707,7 @@ function bindEvents() {
     lines.push(`Cloud pull: ${beforeCount} → ${afterCount} workouts`);
     lines.push(`(net change: ${afterCount - beforeCount})`);
     showOut(lines.join('\n'));
-    renderRecentWorkouts();
-    renderWeekStrip();
-    renderStreakBanner();
+    await afterWorkoutSaved();
     toast(`Recovery: +${restoredQ.length} queue, ${afterCount - beforeCount} cloud`);
   });
   document.getElementById('btn-scan-cloud').addEventListener('click', async () => {
@@ -12344,7 +11973,7 @@ async function runMigrations() {
         // Convert lb weights to kg
         w.exercises.forEach(ex => {
           ex.sets.forEach(s => {
-            if (s.weight) s.weight = +(s.weight * 0.453592).toFixed(2);
+            if (s.weight) s.weight = +(s.weight * LB_TO_KG).toFixed(2);
           });
         });
         console.log(`[Migration] Converted workout ${w.id} from lb to kg`);
@@ -12573,13 +12202,16 @@ async function init() {
     })().catch(e => console.warn('[Coach] semanal:', e));
   }
 
-  renderWeekStrip();
   renderRecentWorkouts();
-  renderStreakBanner();
+  // B-3: el banner de la semana lo pintaba la tira retirada; ahora se pide aquí (primer
+  // pintado) y en `switchTab('gym')`.
+  renderWeekBanner().catch(e => console.warn('[Gym] week banner:', e));
 
   // Pull steps from cloud in the background; doesn't block UI.
   syncStepsFromCloud().then(() => {
-    if (state.currentTab === 'home') renderStepsCard();
+    // E-12 (v11.66): la tarjeta vive en Stats › Today, no en Home. El guard por pestaña la
+    // habría dejado sin repintar justo cuando llega el dato. Repintar en oculto es gratis.
+    renderStepsCard().catch(() => {});
   }).catch(() => {});
 
   // Resumen del coach en Stats, pintado desde IDB (v11.61: ya sin fetch a ningún manifiesto),
@@ -12661,7 +12293,16 @@ async function init() {
   });
 }
 
-document.addEventListener('DOMContentLoaded', init);
+// `coach.js` se carga como <script> aparte y necesita el helper de B-4.
+window.enterSecondaryView = enterSecondaryView;
+
+// B-5 (auditoría 2026-09-08): `init()` es async y no tenía `catch`. Cualquier throw (una
+// migración, un seed, un `getElementById` nulo) dejaba la app a medio arrancar EN SILENCIO:
+// ni error visible ni forma de saber que faltaba media pantalla.
+document.addEventListener('DOMContentLoaded', () => init().catch(e => {
+  console.warn('[init]', e);
+  toast('Startup failed — pull down to retry');
+}));
 
 // Save workout state when app goes to background (iOS kills PWAs aggressively)
 document.addEventListener('visibilitychange', () => {

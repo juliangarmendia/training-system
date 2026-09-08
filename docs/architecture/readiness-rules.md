@@ -78,7 +78,18 @@ Cómo el Readiness Engine convierte datos de wearables en un estado
 | **Recortar volumen en YELLOW / tapar el RPE** | ❌ retirado v11.62 | lo decide él |
 | **Cambiar la modalidad del día por fatiga** | ❌ retirado v11.62 | lo decide él |
 | **Proponer adelantar el deload con un botón** | ❌ retirado v11.62 | lo propone el coach semanal |
+| **Congelar la rampa de km o cerrar la sesión de calidad** | ❌ retirado **v11.67** (E-7) | lo decide la revisión semanal |
 | Cambiar el plan de la semana | ✅ con aprobación | coach semanal (`coach_reviews`) |
+
+> **v11.67 (auditoría 2026-09-08, E-7):** quedaba un residuo. `suggestRunningWeek` leía
+> `readiness.deloadHint` y con él congelaba `weeklyKmTarget` y cerraba `gates.qualityUnlocked` —
+> una dosis derivada de WHOOP y del RPE, aplicada sin que nadie la aprobara, o sea exactamente lo
+> que se retiró en v11.62 pero en la escala de la semana. Ya no cambia **ningún** número: ni los
+> km, ni los minutos, ni la fase, ni el reparto por sesión. `deloadHint` sigue en la firma para
+> poder NOMBRAR la señal en la razón ("dato para la revisión semanal, no un recorte automático") y
+> sigue viajando en el facts pack, que es donde sirve: **la recuperación informa; la decisión
+> semanal es del coach y del usuario**. Lo fija un test negativo (`verify-running-week`, §4), que
+> compara las dos salidas kilómetro a kilómetro.
 
 ## Implementación (v11.59, podada en v11.62)
 

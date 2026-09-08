@@ -577,7 +577,9 @@ yes(!/whoop-callback/.test(SW), 'y no queda en sw.js');
 yes(!/whoop-callback/.test(INDEX), 'ni en index.html');
 
 console.log('21. sw.js e index.html: integrations.js cargado y cacheado');
-const shell = /const APP_SHELL = \[([\s\S]*?)\];/.exec(SW)?.[1] || '';
+// v11.66 (V-6): `APP_SHELL` pasó de array plano a `{ critical, optional }` — la tanda
+// crítica aborta el install si falla, la opcional no. La extracción acepta las dos formas.
+const shell = /const APP_SHELL = [[{]([\s\S]*?)\n[\]}];/.exec(SW)?.[1] || '';
 yes(/'\.\/integrations\.js'/.test(shell), "APP_SHELL incluye './integrations.js'");
 yes(/'\.\/whoop\.js'/.test(shell), "y sigue incluyendo './whoop.js'");
 const iSync = INDEX.indexOf('src="supabase-sync.js"');

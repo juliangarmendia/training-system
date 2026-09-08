@@ -198,6 +198,70 @@ eq(E.blockWeekFromDates('2026-08-10', E.anchorDateFromWeek('2026-04-06', 19), 5)
 eq(E.blockWeekFromDates('2026-09-07', E.anchorDateFromWeek('2026-04-06', 19), 5).index, 5,
   'y el 7-sep-2026 (4 semanas después) es deload — el mismo que daba la aritmética vieja');
 
+// ── 8. UNA SOLA ARITMÉTICA DE BLOQUE EN LA APP (E-9, auditoría 2026-09-08) ──────────
+//
+// EL FALLO QUE ESTE BLOQUE IMPIDE. El banner de Gym contaba bloques de NUEVE semanas desde
+// `settings.startDate` (`const blockLen = 9`) mientras este motor cuenta CINCO ancladas a
+// `settings.deloadAnchorDate`. En la misma pantalla, la barra decía "semana 3 de 9" y la
+// tarjeta de la sesión decía "semana 3/5 · deload la semana del 5-oct" — y el chip `Deload`
+// del banner venía de una tercera cuenta. Dos aritméticas para el mismo concepto no son un
+// detalle de estilo: son dos respuestas a "¿cuándo descargo?".
+//
+// Y `_weekNumToDate`, que traduce el número de semana de app a una fecha para poder
+// preguntarle al motor, devolvía HOY cuando no había `startDate`: la semana 12 heredaba el
+// deload de la semana en curso, en silencio.
+console.log('');
+console.log('8. app.js cuenta bloques con blockWeek(), no con una segunda aritmética');
+const APP = readFileSync('app/app.js', 'utf8');
+const fnSrc = (anchor, len = 3000) => {
+  const i = APP.indexOf(anchor);
+  return i < 0 ? '' : APP.slice(i, i + len);
+};
+
+const BANNER = fnSrc('async function renderWeekBanner(');
+yes(!!BANNER, 'renderWeekBanner() existe');
+yes(!/const blockLen = 9/.test(BANNER), 'ya no hay bloques de 9 semanas en el banner');
+yes(!/\(\(wk - 1\) % blockLen\)/.test(BANNER), 'ni la aritmética de módulo sobre el número de semana');
+yes(/const blk = \(typeof blockWeek === 'function'\) \? blockWeek\(\) : null;/.test(BANNER),
+  'el banner pregunta a blockWeek()');
+yes(/const blockLen = DELOAD_BLOCK_WEEKS;/.test(BANNER),
+  'y la longitud del bloque es la constante única (DELOAD_BLOCK_WEEKS = 5)');
+yes(/const deload = !!\(blk && blk\.isDeload\);/.test(BANNER),
+  'el chip Deload sale del mismo objeto, no de un tercer cálculo');
+yes(/blockLabel\(today\(\), state\.settings\.deloadAnchorDate, DELOAD_BLOCK_WEEKS\)/.test(BANNER),
+  'la etiqueta del bloque usa blockLabel() — la MISMA numeración que ve el coach en el pack');
+yes(/const DELOAD_BLOCK_WEEKS = 5;/.test(APP), 'DELOAD_BLOCK_WEEKS sigue siendo 5 (4 build + 1 deload)');
+
+const W2D = fnSrc('function _weekNumToDate(', 900);
+yes(!!W2D, '_weekNumToDate() existe');
+yes(/anchorDateFromWeek\(start, Math\.max\(1, wk\)\)/.test(W2D),
+  'traduce la semana de app con anchorDateFromWeek() (la misma aritmética UTC que el motor)');
+yes(!/d\.setDate\(d\.getDate\(\)/.test(W2D),
+  'y ya no suma días en hora local (derivaba en los cambios de horario)');
+yes(/return monday \? new Date\(monday \+ 'T12:00:00'\) : null;/.test(W2D),
+  'sin ancla devuelve null y no "hoy": la semana 12 no puede heredar el deload de esta semana');
+const ISD = fnSrc('function isDeloadWeek(', 400);
+yes(/return d \? blockWeek\(d\)\.isDeload : false;/.test(ISD),
+  'isDeloadWeek() traduce ese null a false (no se inventa un deload por una fecha que falta)');
+
+// El presupuesto de días duros: un solo tope, el del validador del coach.
+const BUD = fnSrc('async function computeHardDayBudget(', 2000);
+yes(/const cap = \(typeof VP_MAX_BUDGET === 'number'\) \? VP_MAX_BUDGET : 6;/.test(BUD),
+  'el tope del presupuesto es VP_MAX_BUDGET (coach-facts.js), no un 6 escrito otra vez');
+const BAR = fnSrc('async function renderHardDayBudget(', 1800);
+yes(/b\.used \/ \(b\.cap \|\| 6\)/.test(BAR),
+  'y la barra se pinta sobre ESE tope, no sobre un 8 distinto');
+yes(!/b\.used \/ 8/.test(BAR), 'ya no queda el divisor de 8');
+
+// lb → kg: una constante para toda la app.
+yes(/const LB_TO_KG = 0\.45359237;/.test(readFileSync('app/coach-engine.js', 'utf8')),
+  'LB_TO_KG se define una vez, en el motor');
+// El literal truncado sólo puede quedar en un COMENTARIO (el que explica por qué se fue).
+const APP_SIN_COMENTARIOS = APP.split('\n').filter(l => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
+yes(!/0\.453592\b(?!37)/.test(APP_SIN_COMENTARIOS),
+  'y app.js ya no lleva su propia versión truncada (0.453592) en código');
+yes((APP.match(/LB_TO_KG/g) || []).length >= 3, 'las tres conversiones de app.js la usan');
+
 console.log('');
 console.log(failed === 0
   ? '✅ Semana del bloque y progresión de cardio: 4 build + 1 deload, con techo y sin inventar datos.'

@@ -1,4 +1,22 @@
 // ============================================================
+// coach-facts.generated.js — el validador de planes, para Deno
+// ============================================================
+//
+// GENERADO por scripts/build-fn-assets.mjs — no editar. La fuente de verdad es
+// app/coach-facts.js; esto es una copia con el prólogo que Deno necesita para importar un
+// script clásico. Para regenerarlo:
+//
+//   node scripts/build-fn-assets.mjs
+//
+// sourceSha256: 05c731b665e359b5f423efaf6f47fcf12c3d6a9e932704af1a672832047d1b5b
+// source: app/coach-facts.js
+//
+// tests/verify-fn-assets.mjs FALLA si app/coach-facts.js cambia y nadie regeneró esto: dos
+// validadores divergentes (uno en el teléfono, otro en el servidor) serían peor que ninguno.
+
+const module = { exports: {} };
+
+// ============================================================
 // Coach v2 — facts pack, validador y diff de planes (app/coach-facts.js)
 // ============================================================
 //
@@ -3496,3 +3514,20 @@ if (typeof module !== 'undefined' && module.exports) {
     _vpSlotIsHardCardio,
   };
 }
+
+
+// Los tres nombres se exportan como DECLARACIONES, no desestructurando `module.exports`:
+// `export const { validatePlanVersion } = …` choca con la `function validatePlanVersion` de
+// arriba ("Identifier already declared") y el módulo no compila. La comprobación de que el
+// guardia `module.exports` de app/coach-facts.js sigue exportándolos se hace aparte, y LANZA en
+// el import: si alguien quita uno de la lista de exports del fuente, la función falla al
+// arrancar en vez de saltarse el validador en silencio.
+for (const __name of ["validatePlanVersion","mergeProposal","diffPlanVersions"]) {
+  if (typeof module.exports[__name] !== "function") {
+    throw new Error(
+      `coach-facts.generated.js: app/coach-facts.js ya no exporta \`${__name}\` por module.exports`,
+    );
+  }
+}
+
+export { validatePlanVersion, mergeProposal, diffPlanVersions };

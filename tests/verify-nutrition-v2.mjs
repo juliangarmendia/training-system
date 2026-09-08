@@ -398,6 +398,123 @@ const proyeccion = N.photoCostUsd({ input: 3900, output: 600 }) * 4 * 30;
 yes(proyeccion > 3.5 && proyeccion < 5,
    `4 fotos/dia proyecta $${proyeccion.toFixed(2)}/mes, coherente con la estimacion de ~$4,2`);
 
+// ── E-11 · PINTAR NO ESCRIBE, Y LA EA SÓLO SE JUZGA EN DÍAS CERRADOS ────────────
+//
+// LOS DOS FALLOS QUE ESTE BLOQUE IMPIDE (auditoría 2026-09-08, E-11; antes F-11 y F-12):
+//
+//   1. `renderNutricionV2()` llamaba a `recomputeNutritionDay()` en CADA pintado. Abrir una
+//      pestaña escribía en IndexedDB y encolaba una sincronización, con `updatedAt` nuevo cada
+//      vez — así que el último dispositivo que MIRASE la pantalla ganaba el merge sin haber
+//      registrado nada. Un render no puede ser un escritor.
+//   2. La disponibilidad energética se pintaba con su semáforo también intradía. La EA es una
+//      magnitud DIARIA (REC-008): a las 11:00, con un desayuno registrado, el numerador es casi
+//      cero y sale siempre "crítica". Un rojo que aparece todos los días a media mañana enseña
+//      a ignorar el único semáforo que sí importa.
+console.log('\n13. E-11 · recompute sólo en escritura, EA sólo en días cerrados');
+
+/**
+ * El cuerpo de UNA función, cortado en su cierre a nivel de fichero (`\n}`), no por un número
+ * de caracteres. Una ventana fija se derrama en la función siguiente, y entonces "esta función
+ * no escribe" se vuelve mentira en cuanto la de abajo escribe.
+ */
+const fnSrcN = (anchor) => {
+  const i = SRC.indexOf(anchor);
+  if (i < 0) return '';
+  const j = SRC.indexOf('\n}', i);
+  return j < 0 ? SRC.slice(i) : SRC.slice(i, j + 2);
+};
+
+// 13.a El render no escribe.
+const RENDER = fnSrcN('async function renderNutricionV2(');
+yes(!!RENDER, 'renderNutricionV2() existe');
+yes(!/await recomputeNutritionDay\(date\)/.test(RENDER),
+  'renderNutricionV2() ya NO llama a recomputeNutritionDay(date)');
+yes(/await nutDayForRender\(date\)/.test(RENDER), 'lee con nutDayForRender() (calcula en memoria)');
+const FOR_RENDER = fnSrcN('async function nutDayForRender(');
+yes(!!FOR_RENDER, 'nutDayForRender() existe');
+yes(!/smartPut/.test(FOR_RENDER), '…y no escribe nada: ni smartPut ni dbPut');
+yes(/computeNutritionDay\(date\)/.test(FOR_RENDER), '…calcula con computeNutritionDay()');
+const COMPUTE = fnSrcN('async function computeNutritionDay(');
+yes(!!COMPUTE, 'computeNutritionDay() existe (el cálculo, separado de la escritura)');
+yes(!/smartPut\('nutrition'/.test(COMPUTE), '…y tampoco escribe');
+const RECOMP = fnSrcN('async function recomputeNutritionDay(');
+yes(/await smartPut\('nutrition', row\)/.test(RECOMP),
+  'recomputeNutritionDay() es el ÚNICO escritor: calcula y guarda');
+
+// 13.b Las rutas de escritura sí recalculan.
+for (const [anchor, nombre] of [
+  ['async function saveMeal(', 'saveMeal() (registro a mano y confirmación de la foto)'],
+  ['async function deleteMeal(', 'deleteMeal()'],
+  ['async function nutCloseDay(', 'nutCloseDay() (el cierre del día)'],
+]) {
+  yes(/recomputeNutritionDay\(/.test(fnSrcN(anchor, 900)), `${nombre} recalcula`);
+}
+// El cierre es idempotente: si no lo fuera, sería el recompute-por-render otra vez.
+const CLOSE = fnSrcN('async function nutCloseDay(');
+yes(/String\(date\) >= today\(\)/.test(CLOSE), 'nutCloseDay() no cierra el día en curso');
+yes(/existing\.closed === true/.test(CLOSE), '…y no reescribe una fila ya cerrada (idempotente)');
+yes(/if \(!existing\) return null;/.test(CLOSE), '…ni inventa una fila para un día sin registro');
+// La confirmación de la foto entra por saveMeal, así que hereda el recompute.
+const FOTO = fnSrcN('async function nutSaveConfirmed(');
+yes(/await saveMeal\(/.test(FOTO), 'la importación por foto escribe con saveMeal() (y recalcula ahí)');
+yes(!/recomputeNutritionDay/.test(FOTO), '…sin una segunda llamada suelta');
+
+// 13.c La EA sólo lleva color y "te faltan N kcal" cuando el día está cerrado.
+yes(/closed: String\(date\) < today\(\)/.test(COMPUTE), 'la fila del día lleva su bandera `closed`');
+const TODAY_CARD = fnSrcN('function renderNutToday(');
+yes(/const eaClosed = day\.closed === true;/.test(TODAY_CARD), 'la tarjeta de Hoy mira `closed`');
+yes(/eaCls = eaClosed/.test(TODAY_CARD), '…y sin cerrar no pinta semáforo (nut-neutral)');
+yes(/eaFaltan = \(eaClosed && ea != null/.test(TODAY_CARD),
+  '…ni el "faltan N kcal", que sobre un día a medias es un número inventado');
+yes(/in progress/.test(TODAY_CARD), 'y la línea de hoy dice "in progress" (en inglés, V-1)');
+yes(/judged when the day closes/.test(TODAY_CARD), '…explicando cuándo se juzga');
+
+// ── E-9 · LA FFM, DE UNA SOLA FUENTE ────────────────────────────────────────────
+//
+// Había TRES respuestas a la misma pregunta: los 72,8 kg declarados, la lectura de Withings y
+// la derivada `peso × (1 − %grasa)` que calculaba este fichero por su cuenta. Con la EA
+// dividiendo por una u otra, el mismo día salía 26,4 (bajo el suelo REC-008) o 28,9, que
+// parece otro problema. La precedencia vive ahora en `ffmKg()` (coach-engine.js).
+console.log('\n14. E-9 · la FFM sale del motor, con su procedencia');
+const FFM = fnSrcN('async function nutFfmKg(');
+yes(/typeof ffmKg === 'function'/.test(FFM), 'nutFfmKg() delega en ffmKg() del motor');
+yes(/bodyweightRows: rows/.test(FFM), '…pasándole las filas de `bodyweight`');
+yes(/NUT_FFM_KG_FALLBACK/.test(FFM),
+  '…y conserva el respaldo declarado si el motor no cargó (nunca devuelve null)');
+yes(/async function nutFfmDetail\(/.test(SRC), 'nutFfmDetail() expone también el `source`');
+yes(/ffmSource: ffmInfo\.source/.test(COMPUTE),
+  'la fila del día sella de dónde salió la FFM (medida o declarada)');
+
+// La precedencia en sí se prueba sobre el motor, que es donde vive.
+{
+  const ENGINE_SRC = readFileSync('app/coach-engine.js', 'utf8');
+  const box = { module: { exports: {} }, console };
+  box.exports = box.module.exports;
+  vm.createContext(box);
+  new vm.Script(ENGINE_SRC).runInContext(box);
+  const ffmKg = box.module.exports.ffmKg;
+  yes(typeof ffmKg === 'function', 'coach-engine.js exporta ffmKg()');
+  const HOY = '2026-09-08';
+  const withings = { date: '2026-09-06', weight: 85.6, source: 'withings', ffmKg: 66.2, bfPct: 22.6 };
+  const tanita = { date: '2026-09-01', weight: 86.0, bfPct: 24.0 };
+  let r = ffmKg({ bodyweightRows: [tanita, withings], todayStr: HOY });
+  eq(r.kg, 66.2, 'Withings de hace 2 días manda: 66,2 kg');
+  eq(r.source, 'withings', '…y lo dice');
+  eq(r.ageDays, 2, '…con la edad del dato');
+  const viejo = { date: '2026-08-01', weight: 87.4, source: 'withings', ffmKg: 66.3 };
+  r = ffmKg({ bodyweightRows: [viejo, tanita], todayStr: HOY });
+  eq(r.source, 'derived', 'una Withings de hace 38 días cede a la derivada');
+  eq(r.kg, 65.4, '…86,0 × (1 − 0,24) = 65,4 kg');
+  r = ffmKg({ bodyweightRows: [{ date: '2026-09-01', weight: 86.0 }], todayStr: HOY });
+  eq(r.source, 'declared', 'una pesada sin %grasa no permite derivar: FFM declarada');
+  eq(r.kg, 72.8, '…los 72,8 kg de docs/profile.md');
+  r = ffmKg({ bodyweightRows: [], settings: { goals: { preserve: { ffmKg: 70.5 } } }, todayStr: HOY });
+  eq(r.kg, 70.5, 'y la declarada sale de settings.goals cuando el usuario la ajustó');
+  r = ffmKg({ bodyweightRows: [{ date: '2026-09-20', weight: 84, bfPct: 21, source: 'withings', ffmKg: 66.4 }], todayStr: HOY });
+  eq(r.source, 'declared', 'una fila del FUTURO no se usa (no se prescribe sobre lo que no pasó)');
+  yes(ffmKg({}).kg > 0, 'sin entrada no revienta y devuelve un número usable');
+}
+
 // ── Resultado ───────────────────────────────────────────────────────────────────
 console.log(failed === 0
   ? '\n✅ Nutrición v2: todas las métricas derivadas son reproducibles.'

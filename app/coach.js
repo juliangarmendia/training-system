@@ -568,7 +568,7 @@ async function renderCoachGoalLine() {
 // LA VERSIÓN DE LA APP viaja al servidor (`clientVersion`) y al pack (`meta.appVersion`), que
 // es lo que permite luego saber qué código produjo una revisión rara.
 // `verify-coach-wiring.mjs` comprueba que coincide con la de index.html y con `CACHE_NAME`.
-const COACH_APP_VERSION = 'v11.65';
+const COACH_APP_VERSION = 'v11.66';
 
 const COACH_MAX_SESSION_IDS = 12;   // el tope que valida la edge function
 const COACH_MAX_EXERCISE_IDS = 150; // idem
@@ -621,6 +621,13 @@ const COACH_GUARD_ES = {
   // v11.65 (contrato v2): una sesión del plan sin fila en `weekSummary`. Blando: el coach
   // debe justificar también lo que mantiene, pero un hueco no impide aplicar.
   'WEEK-SUMMARY': 'sesión sin resumen',
+  // fn v4 (auditoría 2026-09-08): los 6 ids que cierran E-14, E-17, E-18 y R-5. Van del 34 al 39.
+  'ORDER-SAME-DAY': 'cardio antes de levantar',   // G-S17, INT-003
+  'FREQ-FLOOR': 'patrón 1×/semana',               // G-S18, STR-002
+  'RECOVERY-ONLY': 'sólo recuperación',           // G-S19, READ-005
+  'KCAL-STEP': 'paso de kcal',                    // G-H14, REC-002
+  'MVPA-FLOOR': 'minutos de cardio',              // G-S20, END-009
+  'PLYO-CONTACTS': 'contactos de plyo',           // G-S16, ATH-001
 };
 const COACH_DOW_ES = { 0: 'Dom', 1: 'Lun', 2: 'Mar', 3: 'Mié', 4: 'Jue', 5: 'Vie', 6: 'Sáb' };
 
@@ -999,6 +1006,13 @@ async function runWeeklyCoach({ weekKey, userNote, regenerate, force } = {}) {
       priorReviews: _coachPriorReviews(rows),
       mode: 'async',
       clientVersion: COACH_APP_VERSION,
+      // v11.66 (fn v4): la función valida la propuesta con `validatePlanVersion` antes de
+      // guardarla y necesita saber qué sesiones cargan las piernas para RUN-BEFORE-LEGS. El
+      // servidor lo deriva del plan si falta, pero sólo `sessionClassMap()` sabe que `full` e
+      // `hybrid` también cuentan. Misma lista que usa `_coachPreviewGuardrails` en la app.
+      lowerSessionIds: Object.entries((typeof sessionClassMap === 'function' ? sessionClassMap() : {}) || {})
+        .filter(([, c]) => c && (c.subtype === 'lower' || c.subtype === 'full' || c.family === 'hybrid'))
+        .map(([sid]) => sid),
     };
     if (userNote) body.userNote = String(userNote).slice(0, COACH_MAX_USER_NOTE);
     if (regenerate) body.regenerate = true;
@@ -1239,6 +1253,19 @@ async function _coachValidateCtx(review, prev) {
     zones: (typeof _runningZones === 'function') ? _runningZones() : null,
     decisions: ((review || {}).output || {}).decisions || [],
     briefing: ((review || {}).output || {}).briefing || null,
+    // E-18: el reloj del piloto de kcal, para que `KCAL-STEP` pueda comprobar los 14 días
+    // sin depender de que el pack traiga la ventana calculada.
+    kcalTarget: (() => {
+      const v = Number((state && state.settings && state.settings.kcalLastAdjustValue));
+      return isFinite(v) && v > 0 ? v : null;
+    })(),
+    kcalLastAdjustDate: (state && state.settings && state.settings.kcalLastAdjustDate) || null,
+    daysSinceKcalAdjust: (() => {
+      const d = state && state.settings && state.settings.kcalLastAdjustDate;
+      if (!d) return null;
+      const n = Math.round((Date.parse(today() + 'T12:00:00') - Date.parse(d + 'T12:00:00')) / 86400000);
+      return isFinite(n) ? n : null;
+    })(),
     todayStr: today(),
   };
 }
@@ -1262,6 +1289,28 @@ async function applyCoachProposal(review) {
   }
   try {
     const prev = (typeof activePlan !== 'undefined') ? activePlan : null;
+
+    // ── E-15 · LA BASE PUEDE HABER CAMBIADO DESDE QUE SE PIDIÓ LA REVISIÓN ──────────
+    //
+    // El diff se mergea contra el `activePlan` DEL MOMENTO DE APLICAR, no contra la versión
+    // que el coach tenía delante cuando lo escribió. Entre la propuesta del domingo y el toque
+    // del lunes cabe un `setIdealVariant` (pasar de 4 a 5 días) o un rollback: el "sube la
+    // banca a 95" se estampa sobre otra base y nadie se entera. Se compara con la versión que
+    // viaja en el pack (`facts.plan.version`) y, si no coinciden, se pregunta.
+    const baseVersion = (() => {
+      const v = review && review.facts && review.facts.plan ? Number(review.facts.plan.version) : NaN;
+      return isFinite(v) ? v : null;
+    })();
+    const nowVersion = (prev && prev.version != null) ? Number(prev.version) : null;
+    if (baseVersion != null && nowVersion != null && baseVersion !== nowVersion) {
+      const msg = `The plan changed since this review (v${baseVersion} → v${nowVersion}). Apply anyway?`;
+      const seguir = (typeof confirm === 'function') ? confirm(msg) : true;
+      if (!seguir) {
+        if (typeof toast === 'function') toast('Not applied — regenerate the review on the current plan');
+        return null;
+      }
+    }
+
     const merged = mergeProposal(prev, review.output.proposal);
     const ctx = await _coachValidateCtx(review, prev);
     const diff = diffPlanVersions(prev || {}, merged);
@@ -1278,6 +1327,24 @@ async function applyCoachProposal(review) {
     } catch (e) { console.warn('[Coach] validador:', e); }
     const blk = (typeof blockWeek === 'function') ? blockWeek() : null;
 
+    // ── E-16 · LO QUE APLICAR VA A BORRAR, GUARDADO ANTES DE BORRARLO ───────────────
+    //
+    // `_coachReconcileOverrides` limpia los swaps de ejercicio que el plan nuevo absorbió y
+    // `clearFutureScheduleOverrides` borra los cambios de día hechos a mano. Las dos cosas
+    // están bien al aplicar — y eran irreversibles: el rollback restauraba `sessions` y
+    // `weekTemplate` pero no los overrides, así que Deshacer devolvía el plan viejo SIN los
+    // cambios manuales que el usuario tenía encima. Se guarda una instantánea en la versión
+    // nueva; `rollbackPlanVersion` la restaura si está.
+    const preApply = {
+      exerciseOverrides: (typeof exerciseOverrides === 'object' && exerciseOverrides)
+        ? JSON.parse(JSON.stringify(exerciseOverrides)) : {},
+      weekSchedule: await (async () => {
+        try {
+          return (typeof getWeekSchedule === 'function') ? (await getWeekSchedule()) || {} : {};
+        } catch (e) { return {}; }
+      })(),
+    };
+
     const nuevo = await createNewPlanVersion({
       label: `Coach · ${review.weekKey || _cWeekKey(today())}`,
       weekNumber: (typeof getWeekNumber === 'function') ? getWeekNumber() : undefined,
@@ -1288,6 +1355,12 @@ async function applyCoachProposal(review) {
         basedOn: (prev && prev.id) || null,
         weekKey: review.weekKey || null,
         reviewId: review.id || null,
+        // E-15: qué base tenía delante el coach y sobre qué base se aplicó de verdad. Sin las
+        // dos, "por qué el plan v16 dice esto" no se puede reconstruir.
+        baseVersion,
+        appliedOnVersion: nowVersion,
+        // E-16: los overrides que este apply está a punto de limpiar.
+        preApply,
         block: merged.block || blk,
         phase: merged.phase || null,
         running: merged.running || null,
@@ -1306,6 +1379,38 @@ async function applyCoachProposal(review) {
         await smartPut('plans', Object.assign({}, prev, { status: 'superseded', supersededBy: nuevo.id }));
       } catch (e) { console.warn('[Coach] superseded:', e); }
     }
+
+    // ── E-18 · EL PILOTO DE KCAL EMPIEZA A TENER RELOJ ─────────────────────────────
+    //
+    // `settings.kcalFirstAdjustDate` / `kcalLastAdjustDate` no existían, así que
+    // `progress.weight.validWindow.nextEligibleAdjustDate` era `null` SIEMPRE y el gate de los
+    // 14 días entre ajustes (`KCAL-STEP`, REC-002) no se podía comprobar: "el ritmo es un dial
+    // gobernado por el rendimiento" era prosa. Aplicar una propuesta que toca las kcal es el
+    // momento en que el ajuste ocurre, así que es aquí donde se sella la fecha.
+    //
+    // SÓLO SI EL NÚMERO CAMBIA. Si el coach repite el mismo objetivo cada domingo —lo normal
+    // cuando no hay que tocar nada— y esto reescribiera la fecha, el reloj de 14 días se
+    // reiniciaría cada semana y el gate no dispararía nunca. Se compara con el último valor
+    // sellado (`kcalLastAdjustValue`).
+    try {
+      const prop = (review.output && review.output.proposal) || {};
+      const nut = prop.nutrition || {};
+      const kcal = Number(nut.kcalTarget != null ? nut.kcalTarget : nut.kcal);
+      if (isFinite(kcal) && kcal > 0 && typeof state !== 'undefined' && state.settings) {
+        const anterior = Number(state.settings.kcalLastAdjustValue);
+        if (!isFinite(anterior) || anterior !== kcal) {
+          const ds = today();
+          state.settings = Object.assign({}, state.settings, {
+            kcalLastAdjustDate: ds,
+            kcalLastAdjustValue: kcal,
+            kcalFirstAdjustDate: state.settings.kcalFirstAdjustDate || ds,
+          });
+          // La misma ruta de escritura que Ajustes: `userSettings` sí se sincroniza, así que
+          // el pack del domingo siguiente lee la fecha desde cualquier dispositivo.
+          await smartPut('settings', { key: 'userSettings', data: state.settings });
+        }
+      }
+    } catch (e) { console.warn('[Coach] fechas de ajuste de kcal:', e); }
 
     await _coachReconcileOverrides(merged);
     // Los overrides de calendario por fecha sólo se limpian si el TEMPLATE cambió: si el coach
@@ -1438,13 +1543,46 @@ async function rollbackPlanVersion(toId) {
         await smartPut('plans', Object.assign({}, prev, { status: 'superseded', supersededBy: nuevo.id }));
       } catch (e) { console.warn('[Coach] superseded (rollback):', e); }
     }
+
+    // ── E-16 · DESHACER DEVUELVE TAMBIÉN LOS OVERRIDES ─────────────────────────────
+    //
+    // La instantánea la guardó `applyCoachProposal` en la versión que se está deshaciendo
+    // (`prev.preApply`): son los swaps de ejercicio y los cambios de día que ese apply borró.
+    // Se restauran desde la versión QUE SE DESHACE, no desde la que se restaura: lo que había
+    // encima del plan v13 cuando el coach lo sustituyó es lo que hay que devolver.
+    let restaurados = null;
+    const snap = (prev && prev.preApply) || null;
+    if (snap) {
+      try {
+        if (snap.exerciseOverrides && typeof exerciseOverrides === 'object') {
+          for (const k of Object.keys(exerciseOverrides)) delete exerciseOverrides[k];
+          Object.assign(exerciseOverrides, JSON.parse(JSON.stringify(snap.exerciseOverrides)));
+          await smartPut('settings', { key: 'exerciseOverrides', data: exerciseOverrides });
+        }
+        if (snap.weekSchedule && typeof saveWeekSchedule === 'function') {
+          await saveWeekSchedule(JSON.parse(JSON.stringify(snap.weekSchedule)));
+        }
+        restaurados = {
+          swaps: Object.keys(snap.exerciseOverrides || {}).length,
+          dias: Object.keys(snap.weekSchedule || {}).length,
+        };
+      } catch (e) { console.warn('[Coach] preApply en rollback:', e); }
+    }
+
     if (typeof logDecision === 'function') {
       await logDecision({
         source: 'user', type: 'plan-rollback',
         what: `Vuelta a "${base}" como v${nuevo.version}`,
         why: 'El usuario deshizo el plan activo',
         ruleIds: [],
-        evidence: { desde: (prev && prev.label) || null, desdeVersion: (prev && prev.version) != null ? prev.version : null, hasta: toId },
+        evidence: {
+          desde: (prev && prev.label) || null,
+          desdeVersion: (prev && prev.version) != null ? prev.version : null,
+          hasta: toId,
+          overridesRestaurados: restaurados
+            ? `${restaurados.swaps} swap(s) y ${restaurados.dias} día(s) de calendario`
+            : 'sin instantánea previa',
+        },
         ref: { planVersion: nuevo.version },
         outcome: 'done',
       });
@@ -1901,8 +2039,16 @@ function _coachAppliedHtml(brief, plan, review) {
 // ==================== VISTA COACH ====================
 
 function openCoachView() {
-  if (typeof showView === 'function') showView('coach');
-  if (typeof updateHeader === 'function') updateHeader('coach');
+  // B-4 (auditoría 2026-09-08): faltaba `body.dataset.tab`, y con `body[data-tab="home"]`
+  // la cabecera global está oculta por CSS: abrir Coach desde Home dejaba la vista sin
+  // título. `enterSecondaryView` (app.js) hace las tres cosas; `typeof` porque este módulo
+  // se carga como <script> aparte y no debe romperse si app.js no llegó.
+  if (typeof window.enterSecondaryView === 'function') {
+    window.enterSecondaryView('coach');
+  } else {
+    if (typeof showView === 'function') showView('coach');
+    if (typeof updateHeader === 'function') updateHeader('coach');
+  }
   renderCoachView().catch((e) => console.warn('[Coach] vista:', e));
 }
 
