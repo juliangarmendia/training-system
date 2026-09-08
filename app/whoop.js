@@ -575,9 +575,9 @@ async function whoopSyncData() {
 
 // ==================== WHOOP RECOVERY CARD ====================
 function getRecoveryColor(score) {
-  if (score >= 67) return { color: '#68e371', label: 'Green' };
-  if (score >= 34) return { color: '#fdd506', label: 'Yellow' };
-  return { color: '#ee343b', label: 'Red' };
+  if (score >= 67) return { color: 'var(--accent)', label: 'Green' };
+  if (score >= 34) return { color: 'var(--yellow)', label: 'Yellow' };
+  return { color: 'var(--red)', label: 'Red' };
 }
 
 // "hoy" / "ayer" / "hace 3 días" para una fecha YYYY-MM-DD, en local. La regla del proyecto:
@@ -667,8 +667,8 @@ async function renderWhoopRecoveryCard() {
     const remH = (latestSleep.remMs / 3600000).toFixed(1);
     sleepHTML = `
       <div class="whoop-sleep-breakdown">
-        <div class="whoop-sleep-stat"><span class="whoop-sleep-dot" style="background:#6366f1"></span> Deep ${deepH}h</div>
-        <div class="whoop-sleep-stat"><span class="whoop-sleep-dot" style="background:#8b5cf6"></span> REM ${remH}h</div>
+        <div class="whoop-sleep-stat"><span class="whoop-sleep-dot" style="background:var(--indigo)"></span> Deep ${deepH}h</div>
+        <div class="whoop-sleep-stat"><span class="whoop-sleep-dot" style="background:var(--purple)"></span> REM ${remH}h</div>
         <div class="whoop-sleep-stat"><span class="whoop-sleep-dot" style="background:var(--text3)"></span> Total ${latestSleep.durationHrs}h</div>
       </div>`;
   } else if (latestSleep && latestSleep.qualityPct != null) {
@@ -684,15 +684,18 @@ async function renderWhoopRecoveryCard() {
   const circumference = 2 * Math.PI * radius;
   const offset = circumference - (score / 100) * circumference;
 
+  // V-2 (auditoría 2026-09-08): el color del anillo va en `style` y no en el atributo
+  // `stroke`. Los atributos de presentación de SVG se parsean como pintura SVG, no como valor
+  // CSS: `stroke="var(--accent)"` deja el anillo sin trazo, y en `style` sí resuelve.
   container.innerHTML = `
     <div class="whoop-card-top">
       <div class="whoop-ring-wrap">
         <svg width="88" height="88" viewBox="0 0 88 88">
-          <circle cx="44" cy="44" r="${radius}" fill="none" stroke="var(--bg2)" stroke-width="6"/>
-          <circle cx="44" cy="44" r="${radius}" fill="none" stroke="${color}" stroke-width="6"
+          <circle cx="44" cy="44" r="${radius}" fill="none" stroke-width="6" style="stroke:var(--bg2)"/>
+          <circle cx="44" cy="44" r="${radius}" fill="none" stroke-width="6"
             stroke-dasharray="${circumference}" stroke-dashoffset="${offset}"
             stroke-linecap="round" transform="rotate(-90 44 44)"
-            style="transition:stroke-dashoffset 0.8s ease"/>
+            style="stroke:${color};transition:stroke-dashoffset 0.8s ease"/>
         </svg>
         <div class="whoop-ring-text">
           <span class="whoop-ring-score" style="color:${color}">${score}</span>

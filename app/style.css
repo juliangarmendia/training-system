@@ -22,13 +22,30 @@
   --font-sans: "Inter", -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
   --font-display: "Inter Tight", "Inter", -apple-system, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, 'SF Mono', Menlo, monospace;
-  /* Typography scale */
+  /* Typography scale.
+     V-2 (auditoría 2026-09-08): `--fs-2xs` y `--fs-3xs` existen porque el 80 % de los tamaños
+     literales que quedaban en las familias del coach eran 10px (etiquetas mono) y 9px (chips y
+     estados dentro de una tarjeta) — por debajo de `--fs-xs`, que era el suelo de la escala.
+     Sin token, cada familia nueva volvía a elegir el suyo: había cuatro tamaños para el mismo
+     eyebrow. `--fs-eyebrow` es el de la clase `.eyebrow` y NO se usa en ningún otro sitio. */
+  --fs-3xs: 9px; --fs-2xs: 10px; --fs-eyebrow: 10px;
   --fs-xs: 11px; --fs-sm: 13px; --fs-md: 15px; --fs-lg: 17px; --fs-xl: 22px; --fs-display: 34px; --fs-hero: 44px;
   /* Tinted accents per category (icon chips) — Whoop hues */
   --tint-orange: rgba(251,161,0,0.16);
   --tint-blue: rgba(0,163,255,0.16);
   --tint-green: rgba(104,227,113,0.16);
   --tint-purple: rgba(139,141,255,0.16);
+  /* V-2: el flash del cambio de fase de movilidad. Un tinte del MISMO violeta que
+     `--tint-purple`, sólo más opaco: era el único rgba(167,139,250,·) que no era un tinte. */
+  --tint-purple-strong: rgba(139,141,255,0.50);
+  /* EXCEPCIÓN DE MARCA, la única del fichero: el naranja de Strava. Un botón "Connect Strava"
+     en el verde de la app no se reconoce, y el color de marca de un tercero no es un token de
+     nuestra paleta — pero tampoco puede ser un hex suelto repetido en dos ficheros. */
+  --brand-strava: #fc4c02;
+  /* V-2: los tres tonos del suelo OLED. Estaban escritos dos veces (en `body` y en
+     `.pin-overlay`), así que el degradado de la app y el de la pantalla de login podían
+     divergir con un solo despiste. */
+  --bg-grad-1: #101118; --bg-grad-2: #0a0a0f; --bg-grad-3: #07070b;
   --tint-red: rgba(238,52,59,0.16);
   --tint-teal: rgba(34,205,229,0.16);
   --tint-yellow: rgba(253,213,6,0.16);
@@ -48,7 +65,7 @@ body {
     radial-gradient(60% 45% at 12% 0%, rgba(70,200,120,0.12) 0%, transparent 70%),
     radial-gradient(55% 40% at 100% 100%, rgba(40,120,235,0.11) 0%, transparent 70%),
     radial-gradient(120% 80% at 50% -10%, rgba(40,42,62,0.40) 0%, transparent 55%),
-    linear-gradient(180deg, #101118 0%, #0a0a0f 55%, #07070b 100%);
+    linear-gradient(180deg, var(--bg-grad-1) 0%, var(--bg-grad-2) 55%, var(--bg-grad-3) 100%);
   background-attachment: fixed;
   -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
   overflow: hidden; touch-action: manipulation;
@@ -65,19 +82,6 @@ body::before {
 /* Text selection uses the brand recovery green */
 ::selection { background: var(--accent); color: #000; }
 
-/* Apple Health hero number style — used for primary metrics */
-.metric-hero {
-  font-size: var(--fs-hero); font-weight: 700; letter-spacing: -1.2px;
-  line-height: 1; font-variant-numeric: tabular-nums; color: var(--text);
-}
-.metric-hero .metric-unit {
-  font-size: 16px; font-weight: 600; color: var(--text2);
-  letter-spacing: 0; margin-left: 4px; vertical-align: baseline;
-}
-.metric-display {
-  font-size: var(--fs-display); font-weight: 700; letter-spacing: -0.8px;
-  line-height: 1.05; font-variant-numeric: tabular-nums;
-}
 .metric-trend {
   display: inline-flex; align-items: center; gap: 4px;
   font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 20px;
@@ -100,14 +104,14 @@ body::before {
    Stats) y los pies del selector de plan y del preview del ideal. Las clases de la tarjeta de
    consejo (la píldora de recomendación, el título, el nivel de estrés, las razones, las
    alternativas, el aviso y los Rule IDs) se fueron con ella. */
-.t3-card { margin-bottom: 12px; padding: 14px 16px; }
+.t3-card { margin-bottom: 12px; }
 .t3-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
-.t3-eyebrow { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text2); }
-.t3-budget-num { font-size: 15px; font-weight: 800; font-variant-numeric: tabular-nums; }
-.t3-context { font-size: 13px; color: var(--text2); margin-bottom: 6px; }
+/* `.t3-eyebrow` vive en la regla `.eyebrow` (V-2). */
+.t3-budget-num { font-size: var(--fs-md); font-weight: 800; font-variant-numeric: tabular-nums; }
+.t3-context { font-size: var(--fs-sm); color: var(--text2); margin-bottom: 6px; }
 .t3-bar { height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; margin: 6px 0 8px; }
 .t3-bar-fill { height: 100%; border-radius: 4px; transition: width 0.5s; }
-.t3-foot { font-size: 10px; color: var(--text3); margin-top: 6px; font-style: italic; }
+.t3-foot { font-size: var(--fs-2xs); color: var(--text3); margin-top: 6px; font-style: italic; }
 
 /* T4 — Ideal Plan Preview */
 .ip-goal { margin-bottom: 12px; }
@@ -143,14 +147,14 @@ body::before {
 
 /* ========== Typography (Lovable: Inter Tight display + JetBrains Mono numerics) ========== */
 header h1, .modal-header h3, .section-label, .section-head-title, .wb-title,
-.rpb-title, .swap-title, .pin-prompt, #welcome-greeting,
+.rpb-title, .swap-title, #welcome-greeting,
 .whoop-recovery-label { font-family: var(--font-display); letter-spacing: -0.5px; }
 
 /* Numeric / data displays in monospace with tabular figures — the Whoop signature */
-.metric-hero, .metric-display, .wb-stat-val, .streak-num, .ring-value, .rtb-time,
+.wb-stat-val, .streak-num, .rtb-time,
 .workout-timer, .whoop-ring-score, .whoop-ring-pct, .hi-stat,
 .ss-val, .bc-val, .ws-val, .wm-val-sm, .sp-ring-text, .wc-row .wc-val,
-.set-input, .rest-config input, .warmup-weight, .hm-total {
+.set-input, .warmup-weight, .hm-total {
   font-family: var(--font-mono); font-variant-numeric: tabular-nums;
 }
 
@@ -169,12 +173,9 @@ header h1, .modal-header h3, .section-label, .section-head-title, .wb-title,
     radial-gradient(60% 45% at 12% 0%, rgba(70,200,120,0.14) 0%, transparent 70%),
     radial-gradient(55% 40% at 100% 100%, rgba(40,120,235,0.13) 0%, transparent 70%),
     radial-gradient(120% 80% at 50% -10%, rgba(40,42,62,0.40) 0%, transparent 55%),
-    linear-gradient(180deg, #101118 0%, #0a0a0f 55%, #07070b 100%);
+    linear-gradient(180deg, var(--bg-grad-1) 0%, var(--bg-grad-2) 55%, var(--bg-grad-3) 100%);
 }
 .pin-overlay.hidden { opacity: 0; pointer-events: none; }
-.pin-box { text-align: center; padding: 32px; width: 100%; max-width: 340px; }
-.pin-icon { font-size: 48px; margin-bottom: 16px; }
-.pin-prompt { font-size: 18px; font-weight: 600; margin-bottom: 24px; }
 
 /* ========== Modal ========== */
 .modal { position: fixed; inset: 0; background: rgba(8,9,12,0.92); -webkit-backdrop-filter: blur(24px) saturate(120%); backdrop-filter: blur(24px) saturate(120%); z-index: 900; overflow-y: auto; -webkit-overflow-scrolling: touch; transition: opacity 0.2s; }
@@ -230,9 +231,40 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
 /* ========== Cards ========== */
 /* Apple Health style cards — borderless, generous padding, soft elevation */
 /* Cards: solid elevated surface + subtle ring (Lovable), sitting over the gradient/grain */
-.card { background: var(--surface); border-radius: var(--radius); padding: 18px; border: 1px solid var(--border); box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
+/* V-2 (auditoría 2026-09-08): UN solo padding de tarjeta, y es éste.
+   Había cinco: 18px aquí y `14px 16px` en cada familia añadida entre v11.55 y v11.65
+   (`.t3-card`, `.coach-readout`, `.readiness-signals`, `.coach-goals`, `.coach-week-card`,
+   `.coach-brief`, `.coach-decs-card`, `.coach-vers-card`, `.cardio-rx`). El resultado en la
+   Home era una columna de tarjetas cuyo texto no arrancaba en la misma vertical, que es la
+   costura que más se nota en un dashboard y la que nadie sabe nombrar. 16px es el valor de
+   consenso: los 18px originales dejaban 354−36 px de línea útil en el iPhone y las familias
+   nuevas ya habían votado 16 ocho veces contra una.
+   `.stat-card` NO es un `.card` (vive dentro de `.stat-trio`) y mantiene su padding compacto:
+   ver el cálculo de los 390 px en su regla. */
+.card { background: var(--surface); border-radius: var(--radius); padding: 16px; border: 1px solid var(--border); box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
+
+/* V-2: UNA clase de eyebrow — 10px / 0.12em / mayúsculas / `--text3`.
+   Había cuatro tamaños (8,5 · 9 · 10 · 11 px), tres letter-spacings y dos colores para la
+   MISMA cosa: la etiqueta mono que titula un bloque dentro de una tarjeta. Las familias
+   históricas se agrupan aquí en vez de cambiar las plantillas: el HTML de `app.js`/`coach.js`
+   no se toca, y una familia nueva sólo tiene que añadir su selector a esta lista (o usar
+   directamente `.eyebrow`). */
+.eyebrow,
+.t3-eyebrow,
+.coach-week-title,
+.coach-brief-title,
+.coach-goals-head,
+.cwc-label,
+.stat-card-label {
+  font-family: var(--font-mono);
+  font-size: var(--fs-eyebrow);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--text3);
+}
+/* Lo único que sobrevive por familia es el hueco vertical, que no es tipografía. */
+.coach-goals-head { margin-bottom: 10px; }
 .form-card { display: flex; flex-direction: column; gap: 16px; }
-.nutrition-card { display: flex; flex-direction: column; gap: 14px; }
 
 /* Card stack: consecutive .card siblings inside .card-stack share outer corners */
 .card-stack { display: flex; flex-direction: column; gap: 1px; border-radius: var(--radius); overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
@@ -337,7 +369,7 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
 .ss-sub { font-size: 11px; color: var(--text2); font-weight: 500; }
 
 /* ========== Week Strip ========== */
-.ws-label { font-size: 9px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; margin: 6px 0 4px; }
+.ws-label { font-size: var(--fs-3xs); font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; margin: 6px 0 4px; }
 .ws-label:first-child { margin-top: 0; }
 .ws-row { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
 .ws-cell { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-xs); padding: 8px 2px; text-align: center; cursor: pointer; transition: all 0.15s; min-height: 62px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
@@ -345,15 +377,15 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
 .ws-cell.today { border-color: var(--accent); box-shadow: 0 0 8px var(--accent-glow); }
 .ws-cell.done { background: var(--accent-dim); }
 .ws-cell.empty { opacity: 0.4; }
-.ws-day { font-size: 9px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.3px; }
+.ws-day { font-size: var(--fs-3xs); font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.3px; }
 .ws-cell.today .ws-day { color: var(--accent); }
 .ws-icon { font-size: 16px; line-height: 1; margin: 2px 0; }
-.ws-session { font-size: 11px; font-weight: 800; color: var(--text); margin: 1px 0; line-height: 1; }
+.ws-session { font-size: var(--fs-xs); font-weight: 800; color: var(--text); margin: 1px 0; line-height: 1; }
 .ws-done { color: var(--accent); }
 .ws-sub { font-size: 8px; color: var(--text3); line-height: 1; min-height: 10px; }
 /* Run cell — Apple Health stylized pill (km label when done, ring when planned) */
 .ws-run-cell { padding: 6px 2px; min-height: 62px; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 6px; }
-.ws-run-pill { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.3px; transition: all 0.2s; }
+.ws-run-pill { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: var(--fs-xs); font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.3px; transition: all 0.2s; }
 .ws-run-pill.done { background: var(--blue); color: #000; box-shadow: 0 0 10px rgba(90,200,250,0.35); }
 .ws-run-pill.planned { background: transparent; border: 2px solid var(--blue); color: var(--blue); }
 .ws-run-pill.empty { width: 6px; height: 6px; background: var(--text3); opacity: 0.25; }
@@ -397,7 +429,7 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
 
 /* Superset grouping */
 .superset-group { border-left: 3px solid var(--purple); padding-left: 0; margin-bottom: 10px; border-radius: var(--radius); overflow: hidden; }
-.superset-label { font-size: 10px; font-weight: 700; color: var(--purple); text-transform: uppercase; letter-spacing: 0.5px; padding: 6px 16px; background: rgba(167,139,250,0.08); }
+.superset-label { font-size: 10px; font-weight: 700; color: var(--purple); text-transform: uppercase; letter-spacing: 0.5px; padding: 6px 16px; background: var(--tint-purple); }
 .superset-group .exercise-card { margin-bottom: 0; border-radius: 0; border-left: none; }
 .superset-group .exercise-card:last-child { border-radius: 0 0 var(--radius) var(--radius); }
 
@@ -433,14 +465,8 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
 .ghost-set { display: grid; grid-template-columns: 28px 1fr 1fr 50px 34px; gap: 5px; padding: 2px 0; opacity: 0.25; font-size: 11px; color: var(--text2); font-weight: 500; pointer-events: none; }
 .ghost-set span { text-align: center; }
 .ghost-set span:first-child { grid-column: 2; }
-.previous-data { font-size: 11px; color: var(--text3); margin-bottom: 8px; padding: 7px 10px; background: var(--bg2); border-radius: var(--radius-xs); border-left: 3px solid var(--border2); }
 .prev-header { font-size: 11px; color: var(--teal); font-weight: 600; margin-top: 2px; font-variant-numeric: tabular-nums; }
 .tap-hint { font-size: 9px; color: var(--text3); font-weight: 500; vertical-align: middle; opacity: 0.6; }
-.rest-btn-row { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
-.btn-rest { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-xs); color: var(--text); font-size: 12px; font-weight: 500; padding: 7px 12px; cursor: pointer; display: flex; align-items: center; gap: 5px; }
-.rest-config { display: flex; align-items: center; gap: 4px; }
-.rest-config input { width: 52px; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-xs); color: var(--text); font-size: 13px; padding: 5px; text-align: center; -webkit-appearance: none; }
-.rest-config span { font-size: 11px; color: var(--text2); }
 .exercise-notes { font-size: 11px; color: var(--text2); margin-top: 6px; padding: 8px; background: var(--bg2); border-radius: var(--radius-xs); border-left: 3px solid var(--accent-dim); line-height: 1.4; }
 .ex-note { width: 100%; box-sizing: border-box; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-xs); color: var(--text); font-size: 12px; padding: 8px; margin-top: 6px; font-family: inherit; resize: none; -webkit-appearance: none; }
 .ex-note:focus { border-color: var(--accent); outline: none; }
@@ -453,10 +479,6 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
 .btn-secondary:active { background: var(--border); }
 .btn-full { width: 100%; text-align: center; }
 .btn-lg { padding: 16px 20px; font-size: 16px; border-radius: var(--radius); }
-.btn-danger-sm { background: none; border: 1px solid var(--red); border-radius: var(--radius-xs); color: var(--red); font-size: 12px; font-weight: 600; padding: 6px 12px; cursor: pointer; }
-.expand-btn { background: none; border: none; color: var(--text3); font-size: 13px; cursor: pointer; padding: 8px 0; width: 100%; text-align: center; }
-.expand-content { display: flex; flex-direction: column; gap: 14px; }
-.expand-content.hidden { display: none; }
 
 /* ========== Forms ========== */
 .form-row { display: flex; flex-direction: column; gap: 6px; }
@@ -486,10 +508,6 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
 .checklist { display: flex; flex-direction: column; gap: 12px; }
 .check-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .check-row label { font-size: 13px; color: var(--text2); font-weight: 500; white-space: nowrap; }
-.quick-add { display: flex; gap: 8px; justify-content: center; }
-.quick-add-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-.quick-add button { flex: 1; padding: 8px 4px; border-radius: var(--radius-xs); border: 1px solid var(--accent); background: var(--accent-dim); color: var(--accent); font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap; }
-.quick-add button:active { background: var(--accent); color: #000; transform: scale(0.95); }
 
 /* ========== Run Plan Banner ========== */
 .run-plan-banner { background: linear-gradient(135deg, rgba(96,165,250,0.1), transparent 60%); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 16px; }
@@ -518,15 +536,6 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
 .hi-chev { color: var(--text3); font-size: 18px; font-weight: 300; margin-left: 4px; line-height: 1; opacity: 0.6; }
 
 /* ========== Protein Ring ========== */
-.macro-ring-container, .protein-ring-container { display: flex; justify-content: center; margin-bottom: 4px; }
-.macro-ring { position: relative; width: 130px; height: 130px; }
-.macro-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
-.ring-bg { fill: none; stroke: var(--border); stroke-width: 8; }
-.ring-fill { fill: none; stroke: var(--accent); stroke-width: 8; stroke-linecap: round; stroke-dasharray: 326.7; stroke-dashoffset: 326.7; transition: stroke-dashoffset 0.5s, stroke 0.3s; }
-.ring-label { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-.ring-value { font-size: 26px; font-weight: 800; }
-.ring-unit { font-size: 11px; color: var(--text2); }
-.ring-name { font-size: 10px; color: var(--text3); margin-top: 2px; }
 
 /* ========== Stats View ========== */
 .streak-row { display: flex; gap: 8px; margin-bottom: 12px; }
@@ -535,7 +544,6 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
 .streak-label { font-size: 10px; color: var(--text2); font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; margin-top: 2px; }
 
 
-.report-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 14px 16px; }
 .report-row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 13px; border-bottom: 1px solid var(--border); }
 .report-row:last-child { border-bottom: none; }
 .report-row .rr-label { color: var(--text2); }
@@ -663,11 +671,16 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
 .swap-option:active { background: var(--accent-dim); border-color: var(--accent); }
 .swap-cancel { display: block; width: 100%; padding: 8px; background: none; border: 1px solid var(--border); border-radius: var(--radius-xs); color: var(--text3); font-size: 12px; cursor: pointer; margin-top: 6px; }
 
-/* ========== Banner de aviso (lo usa el aviso de copia en la nube pendiente; el banner
-      reactivo de descarga se retiró en v11.62) ========== */
-.deload-banner { background: linear-gradient(135deg, rgba(251,191,36,0.12), transparent); border: 1px solid var(--yellow); border-radius: var(--radius-sm); padding: 12px 16px; display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
-.deload-icon { font-size: 18px; }
-.deload-text { font-size: 13px; color: var(--yellow); font-weight: 600; }
+/* ========== Aviso de copia en la nube pendiente (`renderSyncWarning`) ==========
+   V-3 (auditoría 2026-09-08): reutilizaba las clases `deload-*` del banner reactivo de
+   descarga que se retiró en v11.62. Una clase que se llama "deload" pintando un aviso de
+   sincronización es una pista falsa para el siguiente que lea el CSS buscando el banner de
+   descarga, y ató el color del aviso al amarillo de la descarga (el renderer lo pisaba con un
+   `style` inline en rojo). Ahora tiene su propia familia y su propio color. */
+.sync-warning-banner { background: linear-gradient(135deg, var(--tint-red), transparent); border: 1px solid var(--red); border-radius: var(--radius-sm); padding: 12px 16px; display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.sync-warning-icon { font-size: var(--fs-lg); }
+.sync-warning-title { font-size: var(--fs-sm); color: var(--red); font-weight: 700; }
+.sync-warning-text { font-size: var(--fs-xs); color: var(--text2); margin-top: 2px; }
 
 /* ========== Muscle Volume ========== */
 .heatmap-grid { display: grid; gap: 2px; align-items: center; }
@@ -744,7 +757,7 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
 .ws-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
 .ws-stat { background: var(--bg2); border-radius: var(--radius-xs); padding: 10px 6px; text-align: center; }
 .ws-val { display: block; font-size: 18px; font-weight: 800; }
-.ws-label { display: block; font-size: 9px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.3px; margin-top: 2px; }
+.ws-label { display: block; font-size: var(--fs-3xs); color: var(--text3); text-transform: uppercase; letter-spacing: 0.3px; margin-top: 2px; }
 
 /* ========== Macro Calculator ========== */
 .mc-summary { font-size: 13px; color: var(--text2); margin-bottom: 10px; }
@@ -856,7 +869,6 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
 .skeleton-line { height: 14px; margin-bottom: 8px; border-radius: 4px; }
 .skeleton-line.short { width: 60%; }
 .skeleton-line.medium { width: 80%; }
-.skeleton-chart { height: 160px; margin-bottom: 12px; }
 
 /* Empty states */
 .empty-state-box { text-align: center; padding: 40px 24px; }
@@ -864,15 +876,6 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
 .empty-state-title { font-size: 16px; font-weight: 700; color: var(--text2); margin-bottom: 6px; }
 .empty-state-text { font-size: 13px; color: var(--text3); line-height: 1.5; }
 
-/* Activity Rings */
-.activity-rings-card { display: flex; align-items: center; gap: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
-.activity-rings-legend { display: flex; flex-direction: column; gap: 10px; flex: 1; }
-.arl-row { display: flex; align-items: center; gap: 8px; }
-.arl-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-.arl-label { font-size: 13px; color: var(--text2); flex: 1; }
-.arl-val { font-size: 14px; font-weight: 800; }
-
-/* Streak fire */
 /* Resume workout banner */
 .resume-banner { display: flex; align-items: center; gap: 12px; background: linear-gradient(135deg, rgba(104,227,113,0.15), rgba(251,161,0,0.1)); border: 1px solid var(--accent); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 12px; cursor: pointer; animation: pulseGlow 2s ease-in-out infinite; }
 .resume-banner-icon { font-size: 24px; }
@@ -880,8 +883,8 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
 .resume-banner-title { font-size: 15px; font-weight: 800; color: var(--accent); }
 .resume-banner-sub { font-size: 12px; color: var(--text2); margin-top: 2px; }
 .resume-banner-discard { background: none; border: none; color: var(--text3); font-size: 11px; padding: 4px 8px; cursor: pointer; }
-.resume-banner-mobility { background: linear-gradient(135deg, rgba(167,139,250,0.18), rgba(96,165,250,0.10)); border-color: #a78bfa; }
-.resume-banner-mobility .resume-banner-title { color: #a78bfa; }
+.resume-banner-mobility { background: linear-gradient(135deg, var(--tint-purple), rgba(96,165,250,0.10)); border-color: var(--purple); }
+.resume-banner-mobility .resume-banner-title { color: var(--purple); }
 
 /* ========== Mobility phase label + switch overlay ========== */
 .mob-active-phase {
@@ -897,13 +900,13 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
 .mob-active-phase.phase-prep { color: var(--orange); }
 .mob-active-phase.phase-side1 { color: var(--blue); }
 .mob-active-phase.phase-side2 { color: var(--accent); }
-.mob-active-phase.phase-switch { color: #a78bfa; }
+.mob-active-phase.phase-switch { color: var(--purple); }
 .mob-active-phase.phase-hold { color: var(--text); }
 
 .mob-switch-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(167,139,250,0.18);
+  background: var(--tint-purple);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   display: flex;
@@ -917,7 +920,7 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
 .mob-switch-arrow {
   font-size: 96px;
   line-height: 1;
-  color: #a78bfa;
+  color: var(--purple);
   animation: switchArrowPulse 0.6s ease-in-out infinite alternate;
 }
 .mob-switch-text {
@@ -929,8 +932,8 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
   text-shadow: 0 2px 16px rgba(0,0,0,0.5);
 }
 @keyframes switchFlash {
-  0% { background: rgba(167,139,250,0.5); }
-  100% { background: rgba(167,139,250,0.18); }
+  0% { background: var(--tint-purple-strong); }
+  100% { background: var(--tint-purple); }
 }
 @keyframes switchArrowPulse {
   0% { transform: scale(1); opacity: 0.85; }
@@ -954,7 +957,6 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
   .btn-secondary:hover { background: var(--surface3); border-color: var(--border2); }
   .set-check:hover { border-color: var(--accent); }
   .action-sheet-btn:hover { background: var(--surface2); }
-  .quick-add button:hover { background: var(--accent); color: #000; }
   .swap-option:hover { background: var(--accent-dim); border-color: var(--accent); }
   .chart-tab:hover { border-color: var(--border2); background: var(--surface2); }
 }
@@ -1035,9 +1037,6 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
 .quick-pill:disabled { opacity: 0.55; cursor: not-allowed; }
 
 /* ========== Meal input row ========== */
-.meal-input-row { display: flex; gap: 8px; }
-.meal-input-row #meal-name { flex: 1; }
-.meal-protein-input { width: 70px; min-width: 70px; max-width: 70px; flex: 0 0 70px; text-align: center; }
 
 /* ========== Inline-row wrappers ========== */
 .bw-row, .plate-input-row { display: flex; gap: 8px; align-items: center; }
@@ -1108,7 +1107,6 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
 }
 
 /* ========== Daily Steps card ========== */
-.steps-card-wrap { padding: 12px 14px; margin-bottom: 12px; }
 .steps-row { display: flex; align-items: center; gap: 14px; }
 .steps-ring { flex-shrink: 0; }
 .steps-info { flex: 1; min-width: 0; }
@@ -1142,22 +1140,6 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
   color: var(--text);
 }
 .setup-details summary:hover { color: var(--accent); }
-.setup-steps {
-  padding-left: 22px;
-  line-height: 1.55;
-  font-size: 12px;
-  color: var(--text2);
-  margin: 6px 0 14px;
-}
-.setup-steps li { margin-bottom: 8px; }
-.setup-steps ul { margin: 4px 0; padding-left: 18px; }
-.setup-steps code {
-  background: var(--surface2);
-  padding: 1px 5px;
-  border-radius: 4px;
-  font-size: 11px;
-  font-family: ui-monospace, monospace;
-}
 .steps-btn-row {
   display: flex;
   gap: 6px;
@@ -1178,9 +1160,9 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
   border-top: 1px solid var(--border);
 }
 .integ-head { display: flex; align-items: center; gap: 8px; }
-.integ-name { font-size: 14px; font-weight: 700; }
+.integ-name { font-size: var(--fs-md); font-weight: 700; }
 .integ-pill {
-  font-size: 10px;
+  font-size: var(--fs-2xs);
   font-weight: 700;
   letter-spacing: 0.3px;
   text-transform: uppercase;
@@ -1190,15 +1172,15 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
   color: var(--text3);
 }
 .integ-pill.ok { color: var(--accent); border-color: var(--accent); }
-.integ-pill.warn { color: #fdd506; border-color: #fdd506; }
+.integ-pill.warn { color: var(--yellow); border-color: var(--yellow); }
 .integ-pill.off { color: var(--text3); }
-.integ-meta { font-size: 11px; color: var(--text3); margin-top: 4px; line-height: 1.5; }
-.integ-err { font-size: 11px; color: var(--red); margin-top: 4px; line-height: 1.5; opacity: 0.85; }
+.integ-meta { font-size: var(--fs-xs); color: var(--text3); margin-top: 4px; line-height: 1.5; }
+.integ-err { font-size: var(--fs-xs); color: var(--red); margin-top: 4px; line-height: 1.5; opacity: 0.85; }
 .integ-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
 .integ-actions .integ-btn {
   flex: 1;
   min-width: 120px;
-  font-size: 12px;
+  font-size: var(--fs-sm);
   padding: 8px 10px;
   text-align: center;
 }
@@ -1260,8 +1242,8 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
   align-items: baseline;
   gap: 8px;
 }
-.wcc-week { font-size: 13px; font-weight: 800; color: var(--accent); letter-spacing: 0.04em; }
-.wcc-source { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; }
+.wcc-week { font-size: var(--fs-sm); font-weight: 800; color: var(--accent); letter-spacing: 0.04em; }
+.wcc-source { font-size: var(--fs-2xs); color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; }
 .wcc-section-title {
   font-size: 11px;
   font-weight: 700;
@@ -1270,7 +1252,7 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
   color: var(--text2);
   margin-bottom: 4px;
 }
-.wcc-section-body { font-size: 13px; line-height: 1.5; color: var(--text); }
+.wcc-section-body { font-size: var(--fs-sm); line-height: 1.5; color: var(--text); }
 .wcc-section-body p { margin: 0 0 6px; }
 .wcc-empty {
   padding: 16px 8px;
@@ -1282,7 +1264,7 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
 .wcc-empty .muted { color: var(--text3); font-size: 12px; line-height: 1.5; }
 .wcc-stale {
   font-size: 11px;
-  color: var(--orange, #f59e0b);
+  color: var(--orange);
   background: rgba(245, 158, 11, 0.08);
   padding: 6px 10px;
   border-radius: 6px;
@@ -1302,7 +1284,7 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: #fc4c02;
+  color: var(--brand-strava);
   margin-bottom: 8px;
 }
 .wcc-rp-runs { display: flex; flex-direction: column; gap: 8px; }
@@ -1326,7 +1308,7 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
   margin-top: 4px;
   font-family: ui-monospace, monospace;
 }
-.wcc-rp-note { font-size: 11px; color: var(--text3); margin-top: 4px; line-height: 1.4; }
+.wcc-rp-note { font-size: var(--fs-xs); color: var(--text3); margin-top: 4px; line-height: 1.4; }
 .wcc-section-body p:last-child { margin-bottom: 0; }
 .wcc-section-body ul { margin: 4px 0; padding-left: 20px; }
 .wcc-section-body li { margin-bottom: 3px; }
@@ -1363,7 +1345,7 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
 }
 .wcc-nwp-phase-push { background: rgba(251,146,60,0.15); color: var(--orange); }
 .wcc-nwp-phase-deload { background: rgba(96,165,250,0.15); color: var(--blue); }
-.wcc-nwp-phase-baseline { background: rgba(167,139,250,0.15); color: #a78bfa; }
+.wcc-nwp-phase-baseline { background: var(--tint-purple); color: var(--purple); }
 .wcc-nwp-summary {
   font-size: 12px;
   color: var(--text2);
@@ -1461,23 +1443,6 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
 /* ========== Login form spacing ========== */
 .login-row { margin-bottom: 10px; }
 .login-error { color: var(--red); font-size: 12px; min-height: 18px; margin-bottom: 6px; }
-.login-video-card {
-  width: 180px;
-  height: 180px;
-  margin: 0 auto 18px;
-  border-radius: 28px;
-  overflow: hidden;
-  border: 1px solid var(--border);
-  box-shadow: 0 12px 40px rgba(0,0,0,0.45), 0 0 0 1px var(--accent-dim);
-  background: var(--surface);
-  position: relative;
-}
-.login-video {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
 
 /* ========== Shared text input ========== */
 .text-input {
@@ -1516,33 +1481,10 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
   to { opacity: 1; transform: none; }
 }
 
-/* ========== Quick-add buttons: uniform compact grid ========== */
-.quick-add-grid { grid-template-columns: repeat(4, 1fr); gap: 6px; }
-.quick-add-grid button {
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 2px;
-  padding: 8px 2px;
-  min-height: 48px;
-  font-size: 10px;
-  line-height: 1.1;
-  white-space: normal;
-  text-align: center;
-}
-.quick-add-grid button .qa-name { font-size: 10px; font-weight: 700; color: var(--accent); }
-.quick-add-grid button .qa-g { font-size: 9px; font-weight: 600; color: var(--text3); }
-
-/* ========== Protein ring label hierarchy ========== */
-.macro-ring { width: 140px; height: 140px; }
-.ring-value { font-size: var(--fs-display); font-weight: 900; line-height: 1; }
-.ring-unit { font-size: 10px; color: var(--text3); margin-top: 4px; }
-.ring-name { font-size: 9px; color: var(--text3); letter-spacing: 0.8px; text-transform: uppercase; margin-top: 2px; }
-
 /* ========== Stats default card spacing ========== */
 #view-stats .view-scroll > .card,
 #view-stats .view-scroll > .chart-box,
-#view-stats .view-scroll > .report-card,
 #view-stats .view-scroll > .week-compare,
-#view-stats .view-scroll > #activity-rings,
 #view-stats .view-scroll > .streak-row,
 #view-stats .view-scroll > .readiness-signals { margin-bottom: 12px; }
 
@@ -1593,7 +1535,6 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
   --shadow-card: 0 2px 8px rgba(0,0,0,0.10);
   --shadow-card-lg: 0 12px 40px rgba(0,0,0,0.45);
 }
-.login-video-card { box-shadow: var(--shadow-card-lg), 0 0 0 1px var(--accent-dim); }
 
 /* ========== Workout Header: bigger timer ========== */
 .workout-timer {
@@ -1676,18 +1617,6 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
 #workout-exercises.initial-animate .exercise-card:nth-child(6) { animation-delay: 0.25s; }
 #workout-exercises.initial-animate .exercise-card:nth-child(7) { animation-delay: 0.3s; }
 
-/* ========== Welcome screen hero ========== */
-.welcome-video-card {
-  width: 180px; height: 180px;
-  margin: 0 auto 20px;
-  border-radius: 28px;
-  overflow: hidden;
-  border: 1px solid var(--border);
-  box-shadow: var(--shadow-card-lg), 0 0 0 1px var(--accent-dim);
-  background: var(--surface);
-  position: relative;
-}
-.welcome-video-card video { width: 100%; height: 100%; object-fit: cover; display: block; }
 .welcome-headsup {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -1757,15 +1686,6 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
 }
 .ws-cell.empty .ws-session { color: var(--text3); font-weight: 600; }
 
-/* ========== Hero numbers: tabular-nums + bigger ========== */
-.hero-num {
-  font-size: 34px;
-  font-weight: 900;
-  line-height: 1;
-  letter-spacing: -0.5px;
-  font-variant-numeric: tabular-nums;
-}
-.hero-num-sub { font-size: 11px; color: var(--text3); margin-top: 4px; letter-spacing: 0.4px; text-transform: uppercase; }
 .bw-current-val { font-variant-numeric: tabular-nums; }
 
 /* ========== Primary CTA consistency: promote key buttons ========== */
@@ -1806,22 +1726,6 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
 #view-mobility, #view-mobility-active { --section-accent: var(--teal); --section-glow: rgba(34,205,229,0.12); }
 
 /* "Today's Plan" card stack — Apple Health style mini-rows */
-.todays-plan-stack { margin-bottom: 16px; }
-.todays-plan-row { display: flex; align-items: center; gap: 12px; padding: 14px 16px; cursor: pointer; transition: background 0.15s; }
-.todays-plan-row:active { background: var(--surface2); }
-.todays-plan-row.is-done { opacity: 0.6; }
-.todays-plan-icon { width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.todays-plan-icon svg { width: 18px; height: 18px; }
-.todays-plan-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.todays-plan-title { font-size: 15px; font-weight: 700; color: var(--text); letter-spacing: -0.2px; }
-.todays-plan-sub { font-size: 12px; color: var(--text2); font-weight: 500; }
-.todays-plan-cta { flex-shrink: 0; color: var(--text3); font-size: 18px; line-height: 1; }
-.todays-plan-check { color: var(--accent); font-size: 18px; font-weight: 700; }
-.todays-plan-rest { background: var(--surface); border-radius: var(--radius); padding: 16px 18px; margin-bottom: 16px; display: flex; align-items: center; gap: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
-.todays-plan-rest-icon { font-size: 26px; line-height: 1; }
-.todays-plan-rest-text { font-size: 14px; color: var(--text); }
-.todays-plan-rest-text strong { font-weight: 700; display: block; margin-bottom: 2px; }
-.todays-plan-rest-sub { font-size: 12px; color: var(--text2); font-weight: 500; }
 
 /* "Today's Mobility" card on Gym home */
 .mobility-today-card { background: var(--surface); border-radius: var(--radius); padding: 14px 16px; display: flex; align-items: center; gap: 12px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.3); cursor: pointer; transition: background 0.15s; }
@@ -1915,27 +1819,6 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
 .metric-card-value .metric-unit { font-size: 14px; font-weight: 600; color: var(--text2); margin-left: 4px; letter-spacing: 0; }
 .metric-card-trend { font-size: 12px; color: var(--text3); margin-top: 2px; }
 
-/* ========== Apple Health Activity Rings (home) ========== */
-.activity-rings-card { background: var(--surface); border-radius: var(--radius); padding: 18px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.3); display: flex; align-items: center; gap: 18px; }
-.ar-rings-wrap { position: relative; width: 124px; height: 124px; flex-shrink: 0; }
-.ar-rings-wrap svg { width: 100%; height: 100%; transform: rotate(-90deg); }
-.ar-ring-bg { fill: none; stroke-width: 11; }
-.ar-ring-fill { fill: none; stroke-width: 11; stroke-linecap: round; transition: stroke-dasharray 0.6s ease-out; }
-.ar-ring-1-bg { stroke: rgba(255,159,10,0.18); }
-.ar-ring-1-fill { stroke: var(--orange); }
-.ar-ring-2-bg { stroke: rgba(90,200,250,0.18); }
-.ar-ring-2-fill { stroke: var(--blue); }
-.ar-ring-3-bg { stroke: rgba(104,227,113,0.18); }
-.ar-ring-3-fill { stroke: var(--accent); }
-.ar-legend { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
-.ar-legend-row { display: flex; align-items: center; gap: 10px; }
-.ar-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-.ar-dot-orange { background: var(--orange); }
-.ar-dot-blue { background: var(--blue); }
-.ar-dot-green { background: var(--accent); }
-.ar-legend-label { font-size: 13px; color: var(--text2); font-weight: 500; min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ar-legend-val { font-size: 14px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; flex-shrink: 0; }
-
 /* ========== Block headers + timers (workout) ========== */
 .block-header { display: flex; align-items: center; justify-content: space-between; margin: 14px 0 6px; padding: 0 4px; }
 .block-header .block-title { font-size: 11px; font-weight: 700; color: var(--text2); text-transform: uppercase; letter-spacing: 0.6px; }
@@ -2008,22 +1891,25 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
 .sh-cta:active { transform: scale(0.98); }
 .sh-cta-ghost { background: rgba(255,255,255,0.12); color: var(--text); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
 .sh-cta-arrow { font-size: 18px; line-height: 1; }
-.session-hero-rest { aspect-ratio: auto; display: flex; align-items: center; gap: 14px; padding: 20px; background: var(--surface); }
-.sh-rest-emoji { font-size: 32px; }
-.sh-rest-text strong { font-family: var(--font-display); font-size: 16px; }
-.sh-rest-sub { font-size: 12px; color: var(--text2); margin-top: 2px; }
+/* V-5: `.session-hero-rest` y sus tres hijas se van — el día de descanso lo pinta ahora
+   `showEmptyState`, que es el estado vacío de toda la app. */
 
 /* ---- Stat trio ---- */
-/* v11.65: CUATRO tarjetas (Readiness · Strain · Streak · Volume) en 390 px de iPhone. Con el
-   padding de la vista (16+16) y 3 huecos de 8 px, cada tarjeta mide ~83 px: el label más largo
-   ("READINESS", 9 caracteres) sólo cabe bajando la mono a 8,5 px y el tracking a 0,1em, y el
-   número a 22 px. El sub "NO DATA TODAY" parte en dos líneas a propósito — el grid estira las
-   cuatro tarjetas a la misma altura, así que la fila no se descuadra. */
+/* v11.65: CUATRO tarjetas (Readiness · Strain · Streak · Volume) en 390 px de iPhone.
+   V-2 (2026-09-08): el label pasa al eyebrow común (10px / 0.12em), y para que quepa hay que
+   hacer la cuenta. Ancho útil = 390 − 32 (padding de `.view-scroll`) − 24 (3 huecos de 8) =
+   334; entre cuatro, 83,5 px por tarjeta. El label más largo es "READINESS": 9 caracteres de
+   mono (todas las familias del stack avanzan 0,6em) a 10px = 54 px, más 9 × 1,2 px de tracking
+   = 64,8 px. Con el padding anterior de 10 px por lado quedaban 63,5 px y se desbordaba, así
+   que el padding baja a 8: 67,5 px de hueco para 64,8 px de texto. Es la razón de que
+   `.stat-card` conserve padding propio en vez de heredar el de `.card` — no es un `.card`.
+   El sub "NO DATA TODAY" parte en dos líneas a propósito: el grid estira las cuatro tarjetas
+   a la misma altura, así que la fila no se descuadra. */
 .stat-trio { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 16px; }
-.stat-card { border-radius: 16px; padding: 12px 10px; background: linear-gradient(to bottom, rgba(255,255,255,0.05), rgba(255,255,255,0.01)); border: 1px solid rgba(255,255,255,0.07); box-shadow: 0 10px 30px -20px rgba(0,0,0,0.6); }
-.stat-card-label { font-family: var(--font-mono); font-size: 8.5px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text2); }
-.stat-card-val { font-family: var(--font-display); font-size: 22px; font-weight: 900; line-height: 1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; margin-top: 9px; }
-.stat-card-sub { font-family: var(--font-mono); font-size: 8.5px; text-transform: uppercase; letter-spacing: 0.1em; line-height: 1.35; color: var(--text3); margin-top: 4px; }
+.stat-card { border-radius: var(--radius-lg); padding: 12px 8px; background: linear-gradient(to bottom, rgba(255,255,255,0.05), rgba(255,255,255,0.01)); border: 1px solid var(--border); box-shadow: 0 10px 30px -20px rgba(0,0,0,0.6); }
+/* `.stat-card-label` vive en la regla `.eyebrow` (V-2). */
+.stat-card-val { font-family: var(--font-display); font-size: var(--fs-xl); font-weight: 900; line-height: 1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; margin-top: 9px; }
+.stat-card-sub { font-family: var(--font-mono); font-size: var(--fs-3xs); text-transform: uppercase; letter-spacing: 0.1em; line-height: 1.35; color: var(--text3); margin-top: 4px; }
 
 /* ---- Week strip: rounded glass cells, today = white (Lovable) ---- */
 
@@ -2042,6 +1928,14 @@ body[data-tab="home"] .home-scroll-v2 { padding-top: calc(var(--safe-top) + 10px
 .ht-date { margin-top: 4px; font-family: var(--font-display); font-size: 16px; font-weight: 600; letter-spacing: -0.02em; }
 .ht-date-sub { color: var(--text2); font-weight: 400; margin-left: 6px; }
 .ht-actions { display: flex; align-items: center; gap: 8px; }
+/* V-8: el punto de estado, a la izquierda del engranaje. 8 px, sin texto y sin animación:
+   informa de un vistazo y el motivo va en el `title`. Gris = sin conexión, ámbar = cola
+   pendiente de subir, verde = al día. Antes esto sólo existía en Stats y sólo con
+   cuarentena o con 24 h de retraso, así que registrar algo offline no decía nada. */
+.ht-status { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-right: 2px; }
+.ht-status-ok { background: var(--accent); }
+.ht-status-wait { background: var(--orange); }
+.ht-status-off { background: var(--text3); }
 .ht-icon { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 50%; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: var(--text); cursor: pointer; }
 .ht-icon svg { width: 16px; height: 16px; }
 .ht-icon:active { background: rgba(255,255,255,0.12); }
@@ -2071,7 +1965,7 @@ body[data-tab="home"] .home-scroll-v2 { padding-top: calc(var(--safe-top) + 10px
 .wc-line { display: block; width: 16px; height: 4px; border-radius: 2px; }
 .wc-leg { display: inline-flex; align-items: center; gap: 4px; margin-left: 10px; }
 .wc-leg-dot { display: inline-block; width: 8px; height: 4px; border-radius: 2px; }
-.cardio-rx { margin-top: 10px; padding: 14px 16px; }
+.cardio-rx { margin-top: 10px; }
 .cardio-rx-row { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
 .cardio-rx-row:last-of-type { border-bottom: none; }
 .cardio-rx-row > span { color: var(--text2); }
@@ -2118,18 +2012,14 @@ body[data-tab="home"] .home-scroll-v2 { padding-top: calc(var(--safe-top) + 10px
 .sh-title-sub { display: inline-block; }
 
 /* ---- This week queue (image rows) ---- */
-.home-queue { display: flex; flex-direction: column; gap: 10px; list-style: none; }
-.queue-row { width: 100%; display: flex; align-items: center; gap: 12px; padding: 8px; border-radius: 18px; background: linear-gradient(to right, rgba(255,255,255,0.05), rgba(255,255,255,0.01)); border: 1px solid rgba(255,255,255,0.07); color: var(--text); cursor: pointer; transition: background 0.15s; }
-.queue-row:active { background: rgba(255,255,255,0.08); }
-.queue-thumb { position: relative; width: 64px; height: 64px; flex-shrink: 0; border-radius: 14px; overflow: hidden; }
-.queue-thumb img { width: 100%; height: 100%; object-fit: cover; }
-.queue-body { flex: 1; min-width: 0; text-align: left; display: flex; flex-direction: column; }
-.queue-meta { display: flex; align-items: center; gap: 8px; font-family: var(--font-mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.25em; color: var(--text2); }
-.queue-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
-.queue-title { margin-top: 4px; font-family: var(--font-display); font-size: 15px; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.queue-sub { margin-top: 2px; font-size: 11px; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* V-4: la cola es UNA línea con la siguiente sesión. Se fueron `.home-queue` (la lista),
+   `.queue-row`, `.queue-thumb`, `.queue-body`, `.queue-meta`, `.queue-dot`, `.queue-title`,
+   `.queue-sub` y `.queue-empty` (el estado vacío lo pinta ahora `showEmptyState`). */
+.queue-next { width: 100%; display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: var(--radius); background: linear-gradient(to right, rgba(255,255,255,0.05), rgba(255,255,255,0.01)); border: 1px solid var(--border); color: var(--text); cursor: pointer; text-align: left; }
+.queue-next:active { background: rgba(255,255,255,0.08); }
+.queue-next-label { font-family: var(--font-mono); font-size: var(--fs-3xs); text-transform: uppercase; letter-spacing: 0.2em; color: var(--text3); flex-shrink: 0; }
+.queue-next-txt { flex: 1; min-width: 0; font-family: var(--font-display); font-size: var(--fs-md); font-weight: 600; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .queue-chev { color: var(--text2); font-size: 18px; flex-shrink: 0; }
-.queue-empty { padding: 20px; border-radius: 18px; background: var(--surface); color: var(--text3); font-size: 13px; text-align: center; }
 
 /* ==================================================
    LOGIN — Lovable cinematic (v11.3)
@@ -2515,28 +2405,28 @@ body[data-tab="home"] .home-scroll-v2 { padding-top: calc(var(--safe-top) + 10px
    dice qué hacer hoy, el otro qué pasó la última vez. Sin animaciones. */
 .coach-objective { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; margin-top: 3px; font-size: var(--fs-xs); color: var(--text); }
 .coach-objective b { font-variant-numeric: tabular-nums; font-weight: 700; }
-.coach-obj-label { color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; font-size: 10px; font-weight: 600; }
+.coach-obj-label { color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; font-size: var(--fs-2xs); font-weight: 600; }
 /* El chip de procedencia. Es lo que permite confiar en el número o corregirlo: coach (verde,
    lo fijó la revisión semanal), regla (teal, doble progresión), último (gris, se repite). */
-.coach-chip { font-family: var(--font-mono); font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; padding: 1px 5px; border-radius: 20px; white-space: nowrap; }
+.coach-chip { font-family: var(--font-mono); font-size: var(--fs-3xs); font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; padding: 1px 5px; border-radius: 20px; white-space: nowrap; }
 .coach-chip-coach { background: var(--accent-dim); color: var(--accent); }
 .coach-chip-rule { background: rgba(34,205,229,0.14); color: var(--teal); }
 .coach-chip-last { background: var(--surface3); color: var(--text3); }
 #workout-exercises .coach-objective { font-family: var(--font-mono); letter-spacing: 0.02em; }
 
 /* Lectura del coach en Home: objetivo vs. hecho por ejercicio, y el kg de la próxima vez. */
-.coach-readout { margin-top: 10px; padding: 14px 16px; }
+.coach-readout { margin-top: 10px; }
 .coach-readout-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.coach-readout-title { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.16em; color: var(--text2); }
-.coach-readout-close { background: none; border: none; color: var(--text3); font-size: 15px; line-height: 1; padding: 2px 4px; cursor: pointer; }
+.coach-readout-title { font-family: var(--font-mono); font-size: var(--fs-2xs); text-transform: uppercase; letter-spacing: 0.16em; color: var(--text2); }
+.coach-readout-close { background: none; border: none; color: var(--text3); font-size: var(--fs-md); line-height: 1; padding: 2px 4px; cursor: pointer; }
 .coach-readout-summary { margin-top: 8px; font-size: var(--fs-sm); color: var(--text); font-weight: 600; }
 .coach-readout-row { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: var(--fs-xs); }
 .coach-readout-row:last-of-type { border-bottom: none; }
 .coach-readout-name { flex: 1; min-width: 0; color: var(--text2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .coach-readout-done { color: var(--text); font-variant-numeric: tabular-nums; }
 .coach-readout-next { color: var(--accent); font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.coach-readout-foot { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border); font-size: 10px; color: var(--text3); }
-.coach-outcome { font-size: 11px; line-height: 1; }
+.coach-readout-foot { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border); font-size: var(--fs-2xs); color: var(--text3); }
+.coach-outcome { font-size: var(--fs-xs); line-height: 1; }
 .coach-outcome-up { color: var(--accent); }
 .coach-outcome-hold { color: var(--teal); }
 .coach-outcome-down { color: var(--yellow); }
@@ -2547,9 +2437,6 @@ body[data-tab="home"] .home-scroll-v2 { padding-top: calc(var(--safe-top) + 10px
    ================================================== */
 /* Las señales que justifican el color, en la tarjeta de Home. Una por línea porque cada una es
    un hecho comprobable ("HRV 7d 62 ms vs 71 de base"), no un adorno. */
-.coach-signals { margin: 6px 0 0; padding-left: 16px; font-size: var(--fs-xs); color: var(--text2); line-height: 1.6; }
-.coach-signals li { margin: 0; }
-.coach-signals-note { margin-top: 6px; font-size: var(--fs-xs); color: var(--text3); line-height: 1.5; }
 
 /* v11.62: las clases de la propuesta diaria y su lista de cambios se fueron con la tarjeta de
    consejo. Los botones siguen aquí porque los usa la tarjeta del coach SEMANAL (Aplicar /
@@ -2576,39 +2463,36 @@ body[data-tab="home"] .home-scroll-v2 { padding-top: calc(var(--safe-top) + 10px
 .coach-recovery-line .crl-perf { color: var(--text2); margin-bottom: 2px; }
 
 /* Stats › Today: la lista de señales que sustituye al score 0-100. Sin barra y sin número. */
-.readiness-signals { padding: 14px 16px; }
 .rs-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
-.rs-title { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.16em; color: var(--text2); }
+.rs-title { font-family: var(--font-mono); font-size: var(--fs-2xs); text-transform: uppercase; letter-spacing: 0.16em; color: var(--text2); }
 .rs-color { font-size: var(--fs-sm); font-weight: 700; }
-.rs-conf { font-size: 10px; color: var(--text3); margin-left: auto; }
+.rs-conf { font-size: var(--fs-2xs); color: var(--text3); margin-left: auto; }
 .rs-rows { margin-top: 8px; }
 .rs-row { display: flex; align-items: baseline; gap: 8px; padding: 5px 0; font-size: var(--fs-xs); line-height: 1.45; }
-.rs-dot { font-size: 10px; line-height: 1.6; color: var(--text3); }
+.rs-dot { font-size: var(--fs-2xs); line-height: 1.6; color: var(--text3); }
 .rs-text { flex: 1; min-width: 0; }
 .rs-fired .rs-text { color: var(--text); font-weight: 600; }
 .rs-ok .rs-text { color: var(--text2); }
 .rs-none .rs-text { color: var(--text3); }
-.rs-foot { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); font-size: 10px; color: var(--text3); }
+.rs-foot { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); font-size: var(--fs-2xs); color: var(--text3); }
 
 /* Objetivos (v11.60) — tres filas y las señales del coach. Cero gráficos: los de peso y
    fuerza ya existen en Stats › Body / Strength. Reutiliza los tokens de la tarjeta de
    señales; sin colores nuevos y sin animaciones. */
-.coach-goals { padding: 14px 16px; }
-.coach-goals-head { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.16em; color: var(--text2); margin-bottom: 10px; }
 .coach-goal-row { padding: 8px 0; border-bottom: 1px solid var(--border); }
 .coach-goal-row:last-of-type { border-bottom: none; }
 .coach-goal-head { display: flex; align-items: baseline; gap: 8px; }
 .coach-goal-label { font-size: var(--fs-xs); color: var(--text2); }
 .coach-goal-val { font-size: var(--fs-md); font-weight: 700; margin-left: auto; font-variant-numeric: tabular-nums; }
-.coach-goal-status { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; min-width: 78px; text-align: right; }
+.coach-goal-status { font-family: var(--font-mono); font-size: var(--fs-2xs); text-transform: uppercase; letter-spacing: 0.1em; min-width: 78px; text-align: right; }
 .coach-goal-status-ok { color: var(--accent); }
 .coach-goal-status-warn { color: var(--yellow); }
 .coach-goal-status-na { color: var(--text3); }
 .coach-goal-text { margin-top: 3px; font-size: var(--fs-xs); line-height: 1.45; color: var(--text3); }
 .coach-goal-sigs { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
-.coach-goal-sigs-title { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.16em; color: var(--text2); margin-bottom: 6px; }
+.coach-goal-sigs-title { font-family: var(--font-mono); font-size: var(--fs-2xs); text-transform: uppercase; letter-spacing: 0.16em; color: var(--text2); margin-bottom: 6px; }
 .coach-goal-sig { display: flex; align-items: baseline; gap: 8px; padding: 4px 0; font-size: var(--fs-xs); line-height: 1.45; color: var(--text2); }
-.coach-goal-sig-dot { font-size: 9px; line-height: 1.7; color: var(--text3); }
+.coach-goal-sig-dot { font-size: var(--fs-3xs); line-height: 1.7; color: var(--text3); }
 .coach-goal-sig-flag { color: var(--text); font-weight: 600; }
 .coach-goal-sig-flag .coach-goal-sig-dot { color: var(--yellow); }
 .coach-goal-sig-info .coach-goal-sig-dot { color: var(--teal); }
@@ -2618,11 +2502,10 @@ body[data-tab="home"] .home-scroll-v2 { padding-top: calc(var(--safe-top) + 10px
    una propuesta que hay que leer y decidir no necesita moverse. Los avisos duros van en rojo
    y los blandos en ámbar, pero NINGÚN botón se deshabilita — los duros restringen al coach,
    no al usuario. */
-.coach-week-card { padding: 14px 16px; margin-top: 10px; }
+.coach-week-card { margin-top: 10px; }
 .coach-week-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
-.coach-week-title { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.16em; color: var(--text2); }
-.coach-week-readiness { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; }
-.coach-week-open { margin-left: auto; background: none; border: none; padding: 0; color: var(--accent); font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.08em; cursor: pointer; }
+.coach-week-readiness { font-size: var(--fs-2xs); font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; }
+.coach-week-open { margin-left: auto; background: none; border: none; padding: 0; color: var(--accent); font-family: var(--font-mono); font-size: var(--fs-2xs); letter-spacing: 0.08em; cursor: pointer; }
 .coach-week-line { margin-top: 8px; font-size: var(--fs-sm); color: var(--text); line-height: 1.45; }
 .coach-week-bad { color: var(--red); }
 .coach-week-mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text2); }
@@ -2631,56 +2514,55 @@ body[data-tab="home"] .home-scroll-v2 { padding-top: calc(var(--safe-top) + 10px
 .coach-week-prios { margin: 8px 0 0; padding-left: 18px; font-size: var(--fs-sm); color: var(--text); line-height: 1.5; }
 .coach-week-prios li { margin: 3px 0; }
 .coach-week-next { margin-top: 10px; }
-.coach-week-next > summary { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--text2); cursor: pointer; }
+.coach-week-next > summary { font-family: var(--font-mono); font-size: var(--fs-2xs); text-transform: uppercase; letter-spacing: 0.12em; color: var(--text2); cursor: pointer; }
 .coach-week-md { margin-top: 6px; font-size: var(--fs-xs); color: var(--text2); line-height: 1.55; }
 .coach-week-md p { margin: 5px 0; }
 .coach-week-md ul { margin: 5px 0; padding-left: 16px; }
 .coach-week-md strong { color: var(--text); }
 .coach-week-diff { margin-top: 10px; }
-.coach-week-more { margin-top: 6px; font-size: 10px; color: var(--text3); }
+.coach-week-more { margin-top: 6px; font-size: var(--fs-2xs); color: var(--text3); }
 .coach-diff-group { margin-top: 8px; }
-.coach-diff-session { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text3); }
+.coach-diff-session { font-family: var(--font-mono); font-size: var(--fs-2xs); text-transform: uppercase; letter-spacing: 0.1em; color: var(--text3); }
 .coach-diff-row { padding: 3px 0 3px 10px; border-left: 2px solid var(--border2); font-size: var(--fs-xs); color: var(--text2); line-height: 1.45; }
 .coach-diff-row.-up { border-left-color: var(--accent); color: var(--text); }
 .coach-diff-row.-down { border-left-color: var(--yellow); color: var(--text); }
 .coach-diff-row.-add { border-left-color: var(--teal); color: var(--text); }
 .coach-diff-row.-remove { border-left-color: var(--text3); }
 .coach-week-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
-.coach-week-chip { font-family: var(--font-mono); font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; padding: 2px 6px; border-radius: 20px; }
+.coach-week-chip { font-family: var(--font-mono); font-size: var(--fs-3xs); font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; padding: 2px 6px; border-radius: 20px; }
 .coach-week-chip.-warn { background: var(--tint-yellow); color: var(--yellow); }
 .coach-week-chip.-hard { background: var(--tint-red); color: var(--red); }
 
 /* Vista Coach: briefing, decisiones y versiones. */
-.coach-brief { padding: 14px 16px; margin-top: 10px; }
-.coach-brief-title { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.16em; color: var(--text2); }
+.coach-brief { margin-top: 10px; }
 .coach-brief-legacy { color: var(--text3); letter-spacing: 0.04em; text-transform: none; }
 .coach-decs { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
 .coach-dec { padding: 8px 0; border-bottom: 1px solid var(--border); }
 .coach-dec:last-of-type { border-bottom: none; }
 .coach-dec-what { font-size: var(--fs-sm); color: var(--text); line-height: 1.45; }
-.coach-dec-type { font-family: var(--font-mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text3); }
+.coach-dec-type { font-family: var(--font-mono); font-size: var(--fs-3xs); text-transform: uppercase; letter-spacing: 0.08em; color: var(--text3); }
 .coach-dec-why { margin-top: 3px; font-size: var(--fs-xs); color: var(--text2); line-height: 1.5; }
 .coach-dec-nums { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
-.coach-dec-num { font-family: var(--font-mono); font-size: 9px; padding: 2px 6px; border-radius: 20px; background: var(--surface2); color: var(--text2); font-variant-numeric: tabular-nums; }
+.coach-dec-num { font-family: var(--font-mono); font-size: var(--fs-3xs); padding: 2px 6px; border-radius: 20px; background: var(--surface2); color: var(--text2); font-variant-numeric: tabular-nums; }
 .coach-dec-rules { margin-top: 6px; }
-.coach-dec-rules > summary { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text3); cursor: pointer; }
+.coach-dec-rules > summary { font-family: var(--font-mono); font-size: var(--fs-2xs); text-transform: uppercase; letter-spacing: 0.1em; color: var(--text3); cursor: pointer; }
 .coach-dec-rules ul { margin: 6px 0 0; padding-left: 16px; font-size: var(--fs-xs); color: var(--text2); line-height: 1.5; }
-.coach-decs-card, .coach-vers-card { padding: 14px 16px; margin-top: 10px; }
+.coach-decs-card, .coach-vers-card { margin-top: 10px; }
 .coach-dec-row { display: flex; align-items: baseline; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: var(--fs-xs); }
 .coach-dec-row:last-of-type { border-bottom: none; }
-.coach-dec-date { font-family: var(--font-mono); font-size: 10px; color: var(--text3); white-space: nowrap; }
-.coach-dec-kind { font-family: var(--font-mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text2); white-space: nowrap; }
+.coach-dec-date { font-family: var(--font-mono); font-size: var(--fs-2xs); color: var(--text3); white-space: nowrap; }
+.coach-dec-kind { font-family: var(--font-mono); font-size: var(--fs-3xs); text-transform: uppercase; letter-spacing: 0.06em; color: var(--text2); white-space: nowrap; }
 .coach-dec-txt { flex: 1; min-width: 0; color: var(--text2); line-height: 1.4; }
-.coach-dec-out { font-family: var(--font-mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em; padding: 2px 6px; border-radius: 20px; background: var(--surface2); color: var(--text3); white-space: nowrap; }
+.coach-dec-out { font-family: var(--font-mono); font-size: var(--fs-3xs); text-transform: uppercase; letter-spacing: 0.06em; padding: 2px 6px; border-radius: 20px; background: var(--surface2); color: var(--text3); white-space: nowrap; }
 .coach-dec-out.-accepted { background: var(--accent-dim); color: var(--accent); }
 .coach-dec-out.-declined { background: var(--surface3); color: var(--text2); }
 .coach-dec-out.-done { background: var(--tint-teal); color: var(--teal); }
 .coach-ver-row { display: flex; align-items: baseline; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: var(--fs-xs); }
 .coach-ver-row:last-of-type { border-bottom: none; }
 .coach-ver-row.-active .coach-ver-label { color: var(--accent); }
-.coach-ver-label { font-family: var(--font-mono); font-size: 10px; color: var(--text2); white-space: nowrap; }
+.coach-ver-label { font-family: var(--font-mono); font-size: var(--fs-2xs); color: var(--text2); white-space: nowrap; }
 .coach-ver-name { flex: 1; min-width: 0; color: var(--text3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.coach-ver-back { background: none; border: 1px solid var(--border2); border-radius: var(--radius-xs); padding: 4px 8px; color: var(--text2); font-size: 10px; cursor: pointer; white-space: nowrap; }
+.coach-ver-back { background: none; border: 1px solid var(--border2); border-radius: var(--radius-xs); padding: 4px 8px; color: var(--text2); font-size: var(--fs-2xs); cursor: pointer; white-space: nowrap; }
 
 /* Resumen de 2 líneas en Stats › Today (el resto vive en la vista Coach). */
 .wcc-summary { margin-top: 8px; font-size: var(--fs-sm); color: var(--text); line-height: 1.45; }
@@ -2700,15 +2582,14 @@ body[data-tab="home"] .home-scroll-v2 { padding-top: calc(var(--safe-top) + 10px
 /* Tarjeta del coach: foco, bloques con etiqueta, bullets y desplegables. */
 .cwc-focus { margin-top: 8px; font-size: var(--fs-sm); color: var(--text); line-height: 1.45; }
 .cwc-block { margin-top: 12px; }
-.cwc-label { font-family: var(--font-mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--text3); }
 .cwc-line { margin-top: 4px; font-size: var(--fs-sm); color: var(--text); line-height: 1.45; }
 .cwc-bullets { margin: 4px 0 0; padding-left: 16px; font-size: var(--fs-sm); color: var(--text2); line-height: 1.5; }
 .cwc-bullets li { margin: 2px 0; }
-.cwc-foot { margin-top: 10px; font-family: var(--font-mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text3); }
+.cwc-foot { margin-top: 10px; font-family: var(--font-mono); font-size: var(--fs-3xs); text-transform: uppercase; letter-spacing: 0.08em; color: var(--text3); }
 .cwc-why { margin-top: 12px; }
-.cwc-why > summary { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text3); cursor: pointer; }
+.cwc-why > summary { font-family: var(--font-mono); font-size: var(--fs-2xs); text-transform: uppercase; letter-spacing: 0.1em; color: var(--text3); cursor: pointer; }
 .cwc-ws { margin-top: 10px; }
-.cwc-ws > summary { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text3); cursor: pointer; }
+.cwc-ws > summary { font-family: var(--font-mono); font-size: var(--fs-2xs); text-transform: uppercase; letter-spacing: 0.1em; color: var(--text3); cursor: pointer; }
 .cwc-ws-table { margin-top: 6px; }
 
 /* Una fila por sesión de la semana: chip de estado, nombre y motivo. */
@@ -2716,7 +2597,7 @@ body[data-tab="home"] .home-scroll-v2 { padding-top: calc(var(--safe-top) + 10px
 .ws-row:last-of-type { border-bottom: none; }
 .ws-name { color: var(--text2); white-space: nowrap; }
 .ws-line { flex: 1; min-width: 0; color: var(--text3); line-height: 1.45; }
-.ws-chip { font-family: var(--font-mono); font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em; padding: 2px 6px; border-radius: 20px; background: var(--surface2); color: var(--text3); white-space: nowrap; }
+.ws-chip { font-family: var(--font-mono); font-size: var(--fs-3xs); text-transform: uppercase; letter-spacing: 0.06em; padding: 2px 6px; border-radius: 20px; background: var(--surface2); color: var(--text3); white-space: nowrap; }
 .ws-chip.kept { background: var(--surface2); color: var(--text3); }
 .ws-chip.changed { background: var(--accent-dim); color: var(--accent); }
 .ws-chip.new { background: var(--tint-teal); color: var(--teal); }
@@ -2725,3 +2606,46 @@ body[data-tab="home"] .home-scroll-v2 { padding-top: calc(var(--safe-top) + 10px
 /* "Cerrar semana y pedir la próxima": el gesto del domingo. */
 .coach-close-week { white-space: nowrap; }
 .coach-close-week[disabled] { opacity: 0.6; cursor: default; }
+
+/* ============================================================
+   R-11 (auditoría 2026-09-08) — LEDGER DE EVIDENCIA
+   ============================================================
+   Bloque al final del fichero a propósito, igual que el de B-4: es lo último que se añade y
+   así dos carriles que tocan el mismo push no se pisan en mitad del fichero.
+   Cinco columnas en 390 px: la regla se lleva el ancho sobrante y los tres números van a
+   ancho fijo con `tabular-nums`, que es lo único que hace legible una tabla en un teléfono.
+   Cero color por estado salvo el rojo del contador de retiradas — una regla que se retira es
+   la única fila que hay que ver de un vistazo. */
+.evl-head, .evl-row {
+  display: flex; align-items: baseline; gap: 6px;
+  padding: 5px 0; font-size: var(--fs-xs); line-height: 1.35;
+}
+.evl-head {
+  font-family: var(--font-mono); font-size: var(--fs-3xs); text-transform: uppercase;
+  letter-spacing: 0.08em; color: var(--text3); border-bottom: 1px solid var(--border);
+}
+.evl-row { border-bottom: 1px solid var(--border); }
+.evl-row:last-of-type { border-bottom: none; }
+.evl-row.-unknown .evl-rule { color: var(--text3); text-decoration: line-through; }
+.evl-rule {
+  flex: 1; min-width: 0; font-family: var(--font-mono); color: var(--text2);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.evl-row .evl-rule { color: var(--text); }
+.evl-num {
+  width: 34px; flex-shrink: 0; text-align: right;
+  font-variant-numeric: tabular-nums; color: var(--text2);
+}
+.evl-num.-bad { color: var(--red); font-weight: 700; }
+.evl-week { width: 34px; flex-shrink: 0; text-align: right; font-family: var(--font-mono); font-size: var(--fs-3xs); color: var(--text3); }
+.evl-grade { width: 72px; flex-shrink: 0; text-align: right; font-family: var(--font-mono); font-size: var(--fs-3xs); text-transform: uppercase; letter-spacing: 0.04em; color: var(--text3); }
+.evl-grade.-strong { color: var(--accent); }
+.evl-grade.-moderate { color: var(--teal); }
+.evl-grade.-weak_extrapolated { color: var(--yellow); }
+.evl-grade.-expert { color: var(--text2); }
+.evl-more {
+  margin-top: 8px; background: none; border: 1px solid var(--border2);
+  border-radius: var(--radius-xs); padding: 6px 10px; color: var(--text2);
+  font-family: var(--font-mono); font-size: var(--fs-2xs); text-transform: uppercase;
+  letter-spacing: 0.08em; cursor: pointer;
+}

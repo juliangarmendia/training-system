@@ -592,8 +592,11 @@ yes(/id="integrations-card"/.test(INDEX), 'existe el contenedor #integrations-ca
 yes(!/id="whoop-section"/.test(INDEX), 'y el bloque legacy de WHOOP en Ajustes ya no está');
 yes(!/renderWhoopUI/.test(INDEX) && !/renderWhoopUI/.test(APPJS),
     'nadie llama a renderWhoopUI (la pintaba el <details> legacy)');
-yes(/integrationsHandleReturn\(\)/.test(APPJS), 'init() atiende la vuelta del OAuth');
-yes(/renderIntegrationsCard\(\)/.test(APPJS), 'y pinta la tarjeta de Integraciones');
+// v11.68 (V-9): las dos llamadas pasan por `safeCall` — integrations.js es otro <script> y
+// desde v11.68 hay UNA sola forma de llamar a otro modulo. Lo que se vigila sigue siendo que
+// init() haga las dos cosas.
+yes(/safeCall\('integrationsHandleReturn'\)/.test(APPJS), 'init() atiende la vuelta del OAuth');
+yes(/safeCall\('renderIntegrationsCard'\)/.test(APPJS), 'y pinta la tarjeta de Integraciones');
 
 console.log('22. supabase-sync.js: pullStore extraído, 15 stores intactos');
 yes(/async function pullStore\(store/.test(SYNCJS), 'pullStore(store, {since, user}) existe');

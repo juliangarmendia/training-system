@@ -343,6 +343,16 @@ async function setSyncStatus(partial) {
   } catch (e) {}
 }
 
+// V-8 (auditoría 2026-09-08): cuántos cambios están esperando para subir. Lo necesita el
+// punto de estado del topbar de Home, que se pinta varias veces por sesión y no puede
+// arrastrar el resto de `getSyncStatus()` (la fila `settings/syncStatus` con sus contadores
+// históricos) para leer un número. Cuenta la cola SIN la cuarentena: lo cuarentenado no está
+// "esperando", está parado, y eso lo cuenta `#sync-warning` en rojo.
+async function syncPendingCount() {
+  const c = await countSyncQueue();
+  return Math.max(0, (c.total || 0) - (c.quarantined || 0));
+}
+
 async function getSyncStatus() {
   try {
     const row = await dbGet('settings', 'syncStatus');
@@ -435,6 +445,9 @@ async function syncAll() {
   // Update last sync timestamp
   await dbPut('settings', { key: 'lastSyncTimestamp', data: new Date().toISOString() });
   await setSyncStatus({ pulledAt: Date.now() });
+  // V-8: el punto de estado del topbar cuenta esta cola. Sin esto se queda en ámbar después
+  // de una subida que sí salió bien. `safeCall` vive en app.js, que se carga después.
+  try { if (typeof window.safeCall === 'function') window.safeCall('renderTopbarStatusDot'); } catch (e) {}
   console.log('[Sync] Sync complete');
 }
 
@@ -466,6 +479,7 @@ window.syncAll = syncAll;
 window.pullStore = pullStore;
 window.getSupaUser = getUser;
 window.getSyncStatus = getSyncStatus;
+window.syncPendingCount = syncPendingCount;
 // Nutricion v2 necesita Storage (subir la foto) y functions.invoke (parsearla). El
 // cliente se expone por getter y no como valor: initSupabase() lo crea despues de que
 // este fichero se evalue, asi que capturar la referencia ahora daria null para siempre.

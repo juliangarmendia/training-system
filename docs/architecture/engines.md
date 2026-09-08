@@ -242,6 +242,39 @@ decisión sale con su Rule ID. **El primero cambió en v11.62** y por eso se ree
 - **Decide:** nada — etiqueta y expone trazabilidad y conflictos (GEN-002, GEN-003).
 - **No debe:** dejar pasar una decisión sin fuente; normalizar enums (todos ya usan el vocabulario único).
 
+### 9b · Ledger de evidencia — `buildEvidenceLedger(decisions, rules)` (R-11, v11.68)
+
+El bucle **regla → decisión → resultado** existía entero y no se podía leer. El sistema obliga al
+coach a citar Rule IDs (`decisions[].ruleIds`) y guarda el resultado de cada decisión (`outcome`),
+pero no había ninguna agregación por Rule ID: la pregunta *"¿cuántas veces citamos REC-005 y
+cuántas se retiró?"* no tenía respuesta en ninguna pantalla. Y es la pregunta que gobierna el
+corpus: una regla `weak_extrapolated` citada veinte veces y declinada quince es exactamente la que
+hay que degradar en `evidence-to-rules.md`.
+
+| | |
+|---|---|
+| **Dónde** | `app/coach-engine.js` (puro), junto a los otros motores. **No** en `coach-facts.js`: eso lo sellaría en la edge function con `build-fn-assets.mjs`, y el servidor no lo usa — el ledger es una lectura de pantalla sobre datos que ya están en el teléfono |
+| **Inputs** | `decisions` (el store completo, en cualquier orden) y `rules` (el diccionario `COACH_RULES` de `coach-rules.js`, generado desde el corpus) |
+| **Outputs** | `[{ ruleId, cited, retired, lastWeek, grade, known }]`, ordenado por `cited` desc y, a igualdad, por `ruleId` asc (orden estable: la tabla no baila entre renders) |
+| **Pinta** | `_coachRenderLedger()` en la vista Coach, sección **"Evidence ledger"** justo debajo del log de decisiones (es su agregado). Top 15 + *"Show all N"*; vacío: *"No decisions yet — the ledger fills in as the coach cites rules."* |
+| **Test** | `tests/verify-visual-tokens.mjs` §8 — se **ejecuta** con un fixture de tres decisiones, no se grep-ea |
+
+Cuatro decisiones de diseño que el test fija:
+
+- **`retired` = `outcome === 'declined'`.** El vocabulario de `outcome` es cerrado
+  (`COACH_OUTCOME_LABEL`: `accepted` · `declined` · `done`) y no tiene un `retired`. Lo más cercano
+  a *"la regla no sobrevivió al contacto con la realidad"* es la propuesta que la citaba y se
+  rechazó. `LEDGER_RETIRED_OUTCOMES` acepta además `rejected` y `retired` por si el vocabulario
+  crece; lo que **no** se hace es inventar una categoría que nadie escribe.
+- **Un id repetido dentro de la misma decisión cuenta una vez.** Citar STR-001 dos veces en la
+  misma frase no son dos usos de la regla.
+- **`lastWeek` es la clave ISO más alta, no la última leída.** El store no viene ordenado.
+  Sin `weekKey` se deriva de `date` (ISO 8601, el jueves manda el año); sin fecha se queda en
+  `null` — dato ausente, no semana inventada.
+- **Un Rule ID que el corpus local no conoce se enseña con `known:false`**, tachado y sin grado.
+  Puede ser un id alucinado que se colase por el saneado, o una regla retirada del corpus: las dos
+  cosas son información sobre el bucle, y esconderlas es perder justo la señal interesante.
+
 ---
 
 ## Notas de implementación futura *(spec original, 2026-06 — superadas)*

@@ -2509,6 +2509,94 @@ function goalProgress(goals, facts) {
   };
 }
 
+// ==================== LEDGER DE EVIDENCIA (R-11, auditoría 2026-09-08) ====================
+//
+// POR QUÉ EXISTE. El sistema obliga al coach a citar Rule IDs en cada decisión
+// (`decisions[].ruleIds`) y guarda el resultado de cada una (`outcome`). Con eso hay un bucle
+// cerrado sobre el papel — regla → decisión → resultado — y NADIE podía leerlo: no había
+// ninguna agregación por Rule ID, así que la pregunta "¿cuántas veces citamos REC-005 y
+// cuántas se retiró?" no tenía respuesta en ningún sitio de la app. Una regla débil citada
+// veinte veces y declinada quince es exactamente lo que hay que degradar en el corpus, y sin
+// esta tabla se descubre leyendo el log a mano.
+//
+// PURO A PROPÓSITO: entra un array de decisiones y el diccionario de reglas, sale la tabla.
+// Sin IndexedDB, sin servidor, sin fecha de hoy. Así se puede testear con un fixture de tres
+// filas y así no cuesta nada (la vista Coach ya lee `decisions` para el log).
+//
+// QUÉ CUENTA COMO "RETIRADA". El vocabulario de `outcome` es cerrado
+// (`COACH_OUTCOME_LABEL` en coach.js): `accepted` · `declined` · `done`. Lo más cercano a
+// "la regla no sobrevivió al contacto con la realidad" es `declined` — la propuesta que la
+// citaba se rechazó. Se aceptan además `rejected` y `retired` por si el vocabulario crece;
+// lo que NO se hace es inventar una categoría que nadie escribe.
+const LEDGER_RETIRED_OUTCOMES = ['declined', 'rejected', 'retired'];
+
+/**
+ * Agrega `decisions[].ruleIds × outcome` por Rule ID.
+ *
+ * @param {Array} decisions filas del store `decisions` (en cualquier orden)
+ * @param {Object} rules    diccionario `{ [ruleId]: { rule, evidenceLevel } }` (COACH_RULES)
+ * @returns {Array} filas `{ ruleId, cited, retired, lastWeek, grade, known }`, ordenadas por
+ *   citas descendente y, a igualdad, por Rule ID ascendente (orden estable y reproducible).
+ *   `lastWeek` es la clave ISO más alta en la que se citó (`weekKey`, o la derivada de
+ *   `date` si la fila no la trae). `known:false` marca un id que el corpus local no conoce
+ *   — un id alucinado que se colase, o una regla retirada del corpus: se enseña, no se
+ *   esconde, porque eso también es información sobre el bucle.
+ */
+function buildEvidenceLedger(decisions, rules) {
+  const filas = Array.isArray(decisions) ? decisions : [];
+  const corpus = rules && typeof rules === 'object' ? rules : {};
+  const acc = new Map();
+  for (const d of filas) {
+    if (!d || !Array.isArray(d.ruleIds)) continue;
+    const outcome = String(d.outcome || '').toLowerCase();
+    const retirada = LEDGER_RETIRED_OUTCOMES.indexOf(outcome) !== -1;
+    // La semana: la declarada, o la que se deduce de la fecha. `_ledgerWeekOf` no reimplementa
+    // ISO: sólo reconoce la forma `YYYY-Www` y deja el resto en null (dato ausente, no cero).
+    const semana = _ledgerWeekOf(d);
+    // Un id repetido DENTRO de la misma decisión cuenta una vez: citar STR-001 dos veces en
+    // la misma frase no son dos usos de la regla.
+    const vistos = new Set();
+    for (const raw of d.ruleIds) {
+      const id = String(raw || '').trim();
+      if (!id || vistos.has(id)) continue;
+      vistos.add(id);
+      let f = acc.get(id);
+      if (!f) {
+        const r = corpus[id];
+        f = {
+          ruleId: id,
+          cited: 0,
+          retired: 0,
+          lastWeek: null,
+          grade: (r && r.evidenceLevel) || null,
+          known: !!r,
+        };
+        acc.set(id, f);
+      }
+      f.cited++;
+      if (retirada) f.retired++;
+      if (semana && (!f.lastWeek || semana > f.lastWeek)) f.lastWeek = semana;
+    }
+  }
+  return [...acc.values()].sort((a, b) => (b.cited - a.cited) || a.ruleId.localeCompare(b.ruleId));
+}
+
+/** La semana de una decisión: `weekKey` si la trae, si no la ISO de `date`. */
+function _ledgerWeekOf(d) {
+  const wk = String((d && d.weekKey) || '').trim();
+  if (/^\d{4}-W\d{2}$/.test(wk)) return wk;
+  const ds = String((d && d.date) || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ds)) return null;
+  // ISO 8601: el jueves de la semana manda el año.
+  const dt = new Date(ds + 'T12:00:00');
+  if (isNaN(dt.getTime())) return null;
+  const t = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate());
+  t.setDate(t.getDate() + 4 - (t.getDay() || 7));
+  const inicio = new Date(t.getFullYear(), 0, 1);
+  const n = Math.ceil((((t - inicio) / 86400000) + 1) / 7);
+  return `${t.getFullYear()}-W${String(n).padStart(2, '0')}`;
+}
+
 // ==================== EXPORTS PARA LOS TESTS ====================
 // tests/verify-coach-wiring.mjs, verify-block-week.mjs y verify-set-target.mjs cargan este
 // fichero con `vm` y leen este bloque. En el navegador no estorba (no hay `module`).
@@ -2610,5 +2698,9 @@ if (typeof module !== 'undefined' && module.exports) {
     _gpSlopeKgPerWeek,
     _gpBestE1rm,
     goalProgress,
+    // Ledger de evidencia (R-11, v11.68)
+    LEDGER_RETIRED_OUTCOMES,
+    _ledgerWeekOf,
+    buildEvidenceLedger,
   };
 }

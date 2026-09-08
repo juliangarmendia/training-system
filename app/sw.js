@@ -27,7 +27,7 @@
 //
 // `CACHE_NAME` NO cambia en este incremento: el bump de versión lo hace Julian al integrar.
 
-const CACHE_NAME = 'training-v11.67';
+const CACHE_NAME = 'training-v11.68';
 
 // La hoja de estilos de Google Fonts que pide `index.html`. Tiene que ser la MISMA URL,
 // carácter por carácter, o el `cache.match` no acierta.

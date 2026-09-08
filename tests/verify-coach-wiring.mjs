@@ -437,8 +437,11 @@ yes(/const rxExercises = rxResolved\.map\(/.test(RTP_SRC),
 yes(/resolveSessionExercises\(plannedSession, baseExercises\)/.test(RTP_SRC),
   'y los swaps se resuelven con la misma función que usa startWorkout');
 const HOME_SRC = fnSrc('async function renderHomeView(');
-yes(/typeof renderCoachReadout === 'function' \? renderCoachReadout\(\)/.test(HOME_SRC),
-  "renderHomeView() llama renderCoachReadout() con guard de typeof");
+// v11.68 (V-9): la guarda dejo de ser `typeof X === 'function' ? X() : null` y paso a
+// `safeCall('X')`, que es la UNICA forma de llamar a otro <script> desde app.js. Lo que este
+// test protege sigue igual: coach.js puede no haber cargado y Home tiene que pintarse.
+yes(/safeCall\('renderCoachReadout'\)/.test(HOME_SRC),
+  "renderHomeView() llama renderCoachReadout() por safeCall (coach.js es otro <script>)");
 
 // 9.g El módulo nuevo y su carga
 const iCoachJs = HTML.indexOf('src="coach.js"');
@@ -798,7 +801,7 @@ for (const [fn, label] of [
 ]) {
   yes(/invalidateReadiness\(\)/.test(fnSrc(fn)), `${label}() invalida la caché del readiness`);
 }
-yes(/invalidateReadiness\(\);[\s\S]{0,400}renderRecoveryLine\(\)/.test(APP),
+yes(/invalidateReadiness\(\);[\s\S]{0,400}safeCall\('renderRecoveryLine'\)/.test(APP),
   'y al llegar el dato de hoy en init se invalida ANTES de repintar la línea de recuperación');
 
 // 13.c/d/e RETIRADOS en v11.62 — el advisory delegaba, la tarjeta pintaba dos botones y el
@@ -857,10 +860,16 @@ yes(!/Descarga recomendada/.test(APP), 'ni el banner "Descarga recomendada"');
 // 13.i Versión y CSS
 eq(vSw, vHtml, 'CACHE_NAME del service worker == versión de index.html (otra vez, tras el bump)');
 yes(vNum(vHtml) >= vNum('11.59'), `la versión (v${vHtml}) es >= v11.59`);
-for (const clase of ['coach-signals', 'coach-btn', 'coach-btn-primary',
+for (const clase of ['coach-btn', 'coach-btn-primary',
                      'coach-recovery-line', 'crl-perf', 'crl-trend',
                      'readiness-signals', 'rs-row', 'rs-fired', 'rs-none']) {
   yes(new RegExp(`\\.${clase}[\\s,{:]`).test(CSS), `.${clase} existe en style.css`);
+}
+// v11.68 (V-3): `.coach-signals*` se borro. Nunca tuvo un solo uso en app/*.js ni en
+// index.html — las señales del readiness se pintan con `.rs-*`. CSS muerto es CSS que
+// alguien vuelve a usar sin querer, asi que ahora se vigila que NO vuelva.
+for (const clase of ['coach-signals', 'coach-signals-note']) {
+  yes(!new RegExp(`\\.${clase}[\\s,{:]`).test(CSS), `.${clase} ya NO está en style.css`);
 }
 // Y las de la tarjeta de consejo diario no pueden quedarse de adorno: CSS muerto es CSS que
 // alguien vuelve a usar sin querer.
@@ -969,7 +978,7 @@ yes(/Signals for the coach/.test(RGC_SRC), 'pinta la lista de señales');
 yes(!/canvas|chart|Chart/.test(RGC_SRC), 'sin gráficos nuevos (§B.9)');
 yes(!/[A-Z]{3}-\d{3}/.test(RGC_SRC.replace(/\/\/[^\n]*/g, '')), 'y sin Rule IDs crudos en pantalla');
 yes(/renderGoalsCard/.test(fnSrc('async function renderStats(')), 'renderStats la llama');
-yes(/typeof renderGoalsCard === 'function'/.test(APP), "con guarda typeof (vive en otro <script>)");
+yes(/safeCall\('renderGoalsCard'\)/.test(APP), "por safeCall (vive en otro <script>)");
 yes(/renderGoalsCard/.test(COACHJS.slice(COACHJS.indexOf('module.exports'))), 'y está exportada para los tests');
 
 // 14.g La caché de la semana se invalida cuando llega una carrera
@@ -981,10 +990,16 @@ yes(invals >= 3, `en los mismos ${invals} sitios que la caché de "días sin car
 // 14.h Versión y CSS
 eq(vSw, vHtml, 'CACHE_NAME del service worker == versión de index.html (tras el bump a v11.60)');
 yes(vNum(vHtml) >= vNum('11.60'), `la versión (v${vHtml}) es >= v11.60`);
-for (const clase of ['coach-goals', 'coach-goal-row', 'coach-goal-status-ok', 'coach-goal-status-warn',
+for (const clase of ['coach-goals-head', 'coach-goal-row', 'coach-goal-status-ok', 'coach-goal-status-warn',
                      'coach-goal-status-na', 'coach-goal-sig', 'cardio-rx-note']) {
   yes(new RegExp(`\\.${clase}[\\s,{:]`).test(CSS), `.${clase} existe en style.css`);
 }
+// v11.68 (V-2): `.coach-goals` ya NO tiene regla propia — su unico declarado era
+// `padding: 14px 16px`, uno de los cinco paddings de tarjeta que la auditoria conto. El
+// contenedor sigue existiendo en el HTML (`class="card coach-goals"`) y hereda el padding
+// unico de `.card`. Lo que se vigila es que nadie le vuelva a poner padding propio:
+// `verify-visual-tokens.mjs` lo comprueba para las nueve familias.
+yes(!/^\.coach-goals \{/m.test(CSS), '.coach-goals no vuelve a pisar el padding de .card (V-2)');
 
 
 // ── 15. Inc 9 — vista Coach, aprobación y retiro del cron (v11.61) ────────────────────────────
@@ -1111,9 +1126,9 @@ yes(/if \(mine\.length\) return/.test(MRW_SRC),
   'cualquier fila de esta semana (incl. sólo `failed`) corta el disparo: no se reintenta solo');
 yes(/pollCoachReview\(/.test(MRW_SRC), 'y retoma el polling de una revisión que quedó en marcha');
 const iCheckAuth = APP.indexOf('await checkAuth()');
-const iMaybe = APP.indexOf('await maybeRunWeeklyCoach()');
+const iMaybe = APP.indexOf("await safeCall('maybeRunWeeklyCoach')");
 yes(iCheckAuth > 0 && iMaybe > iCheckAuth, 'init() lo llama DESPUÉS de checkAuth()');
-yes(/await window\.syncAll\(\)[\s\S]{0,120}await maybeRunWeeklyCoach\(\)/.test(APP),
+yes(/await window\.syncAll\(\)[\s\S]{0,180}await safeCall\('maybeRunWeeklyCoach'\)/.test(APP),
   'y tras esperar un syncAll() (sin el pull, se pagaría una revisión que ya existe en la nube)');
 
 // 15.g Polling: 5 s, 5 min, y se para al ocultar la pestaña
@@ -1218,7 +1233,7 @@ yes(!APP.includes('tracking/weekly-reviews/latest.json'),
 const LWC_SRC = fnSrc('async function loadAndRenderWeeklyCoach(');
 yes(/dbGetAll\('coach_reviews'\)/.test(LWC_SRC), 'el resumen de Stats lee coach_reviews');
 yes(/dbGetAll\('weekly_reviews'\)/.test(LWC_SRC), 'con el legacy como fallback de sólo lectura');
-yes(/Abrir Coach/.test(LWC_SRC), 'y ofrece "Abrir Coach"');
+yes(/Open Coach/.test(LWC_SRC), 'y ofrece "Open Coach" (V-1: la UI es toda en inglés)');
 yes(!/fetch\(/.test(LWC_SRC), 'sin ningún fetch');
 
 // 15.k El pack desde los stores, y el botón de exportarlo
@@ -1277,7 +1292,7 @@ yes(/smartPut\('settings', \{ key: 'userSettings'/.test(COACHJS),
 // 15.m Home, vista y navegación
 yes(/renderCoachWeekCard/.test(fnSrc('async function renderHomeView(')),
   'renderHomeView llama renderCoachWeekCard');
-yes(/typeof renderCoachWeekCard === 'function'/.test(APP), 'con guarda typeof (vive en coach.js)');
+yes(/safeCall\('renderCoachWeekCard'\)/.test(APP), 'por safeCall (vive en coach.js)');
 yes(/async function renderCoachWeekCard\(/.test(COACHJS), 'renderCoachWeekCard vive en coach.js');
 yes(/async function renderCoachView\(/.test(COACHJS), 'y renderCoachView también');
 yes(/function openCoachView\(/.test(COACHJS), 'con openCoachView() como entrada');
@@ -1436,8 +1451,8 @@ yes(/id="coach-recovery-line" class="coach-recovery-line" data-group="today"/.te
 yes(HTML.indexOf('id="coach-recovery-line"') > HTML.indexOf('id="hard-day-budget"'),
   'y va DESPUÉS de la carga de la semana');
 const STATS16D = fnSrc('async function renderStats(');
-yes(/renderRecoveryLine\(\)/.test(STATS16D), 'renderStats la pinta');
-yes(/typeof renderRecoveryLine === 'function'/.test(STATS16D), 'con guarda typeof (vive en coach.js)');
+yes(/renderRecoveryLine/.test(STATS16D), 'renderStats la pinta');
+yes(/safeCall\('renderRecoveryLine'\)/.test(STATS16D), 'por safeCall (vive en coach.js)');
 yes(STATS16D.indexOf('renderHardDayBudget') < STATS16D.indexOf('renderRecoveryLine'),
   'detrás del presupuesto, que es el orden del HTML');
 
@@ -1604,6 +1619,27 @@ yes(HOME_IDS.indexOf('coach-week-card') < HOME_IDS.indexOf('todays-detail'),
 yes(!/<div id="coach-week-card" class="hidden">/.test(HTML),
   '#coach-week-card ya no arranca oculto (siempre hay algo que decir, aunque sea "cierra la semana")');
 
+// 17.a-bis V-4 · un destino por gesto en el topbar
+//
+// El fallo que esta subseccion existe para impedir: tres botones al mismo sitio. La campana,
+// el engranaje y el avatar hacian los tres `switchTab('settings')`, y la campana ademas
+// prometia notificaciones que la app no manda. Ahora el engranaje baja a Integraciones, el
+// avatar abre Ajustes, y en el hueco de la campana esta el punto de estado (V-8).
+const TOPBAR68 = fnSrc('function renderHomeTopbar(');
+yes(!/ht-bell/.test(APP), 'la campana del topbar no existe en ninguna parte de app.js');
+yes(!/ht-bell/.test(HTML), 'ni en index.html');
+yes(/id="ht-settings"/.test(TOPBAR68) && /id="ht-profile"/.test(TOPBAR68),
+  'quedan el engranaje y el avatar');
+yes(/openSettingsAt\('integrations-card'\)/.test(TOPBAR68),
+  'el engranaje abre Ajustes EN Integraciones (dos gestos, dos destinos)');
+yes(/id="ht-status"/.test(TOPBAR68), 'y el punto de estado (V-8) ocupa el hueco de la campana');
+yes(!/Julian Garmendia/.test(APP.replace(/\/\/.*/g, '')),
+  'el nombre por defecto ya no esta en el codigo (V-5; el comentario que lo cita no cuenta)');
+yes(/function homeAvatarInitials\(/.test(APP), 'las iniciales salen de homeAvatarInitials()');
+yes(/state\._authEmail/.test(fnSrc('function homeAvatarInitials(')),
+  'con el email de la sesion como segundo origen');
+yes(/return 'JG'/.test(fnSrc('function homeAvatarInitials(')), "y 'JG' solo como ultimo recurso");
+
 // 17.b Lo que B-1 se llevó de Home no vuelve, y el presupuesto sigue en Stats
 for (const id of ['training-advisory', 'recovery-hero', 'deload-reminder']) {
   yes(!HOME_HTML.includes(`id="${id}"`), `Home sigue sin #${id}`);
@@ -1740,9 +1776,9 @@ yes(/openCoachView\(\)/.test(CGL17), 'un toque abre la vista Coach');
 yes(!/<button/.test(CGL17), 'y no hay más botones que ese toque');
 yes(/_cNum\(/.test(CGL17), 'los números salen por el helper _cNum (punto decimal, un solo sitio)');
 const HOME17 = fnSrc('async function renderHomeView(');
-yes(/renderCoachGoalLine\(\)/.test(HOME17), 'renderHomeView llama renderCoachGoalLine()');
-yes(/typeof renderCoachGoalLine === 'function'/.test(HOME17), 'con guarda typeof');
-yes(/renderCoachWeekCard\(\)/.test(HOME17) && /renderHomeStatTrio\(\)/.test(HOME17),
+yes(/renderCoachGoalLine/.test(HOME17), 'renderHomeView llama renderCoachGoalLine()');
+yes(/safeCall\('renderCoachGoalLine'\)/.test(HOME17), 'por safeCall (V-9)');
+yes(/safeCall\('renderCoachWeekCard'\)/.test(HOME17) && /renderHomeStatTrio\(\)/.test(HOME17),
   'y sigue llamando a la tarjeta del coach y al trío de estadísticas (v11.65: la línea de'
   + ' recuperación se mudó a Stats)');
 for (const fn of ['renderCoachGoalLine', 'coachBriefFromReview']) {
@@ -1757,8 +1793,16 @@ for (const t of ['Focus', 'Phase', 'What changes and why', 'Why it holds']) {
 }
 yes(/_coachWsRowHtml\(/.test(RBRIEF17), 'y la tabla de sesiones fila a fila');
 const LWC17 = fnSrc('async function loadAndRenderWeeklyCoach(');
-yes(/rBrief\.focus/.test(LWC17), 'el teaser de Stats usa `focus` cuando lo hay');
-yes(/prios\[0\]/.test(LWC17), 'y las prioridades como fallback para las revisiones v1');
+// v11.68 (V-4): el teaser de Stats YA NO repite el `focus`.
+//
+// El fallo que esta subseccion existe para impedir es el contrario del de v11.65: la misma
+// frase del modelo en tres pantallas (tarjeta de Home, vista Coach y este teaser). El teaser
+// es un enlace con estado — dice qué semana y cómo va la revisión — y el foco vive en los dos
+// sitios donde se lee y se razona. Si alguien lo vuelve a meter aquí, esto lo caza.
+yes(!/\.focus/.test(LWC17), 'el teaser de Stats NO pinta el `focus` (vive en Home y en Coach)');
+yes(!/priorities/.test(LWC17), 'ni las prioridades v1, que eran el fallback del mismo dato');
+yes(/status === 'running'/.test(LWC17), 'lo que sí dice es el estado de la revisión');
+yes(/coachVoice/.test(LWC17), 'y la prosa legacy del cron retirado, que no duplica nada');
 
 // 17.j CSS nueva, al final del fichero y sin animaciones
 for (const clase of ['.coach-goal-line', '.cgl-row', '.cwc-focus', '.cwc-block', '.cwc-label',

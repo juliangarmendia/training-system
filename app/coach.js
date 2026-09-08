@@ -568,7 +568,7 @@ async function renderCoachGoalLine() {
 // LA VERSIÓN DE LA APP viaja al servidor (`clientVersion`) y al pack (`meta.appVersion`), que
 // es lo que permite luego saber qué código produjo una revisión rara.
 // `verify-coach-wiring.mjs` comprueba que coincide con la de index.html y con `CACHE_NAME`.
-const COACH_APP_VERSION = 'v11.67';
+const COACH_APP_VERSION = 'v11.68';
 
 const COACH_MAX_SESSION_IDS = 12;   // el tope que valida la edge function
 const COACH_MAX_EXERCISE_IDS = 150; // idem
@@ -2067,6 +2067,9 @@ async function renderCoachView() {
   await seccion('coach-proposal', (el) => _coachRenderProposal(el, review));
   await seccion('coach-goals-view', () => (typeof renderGoalsCard === 'function' ? renderGoalsCard('coach-goals-view') : null));
   await seccion('coach-decisions', (el) => _coachRenderDecisions(el));
+  // R-11 (auditoría 2026-09-08): el ledger va DEBAJO del log de decisiones porque es su
+  // agregado — primero qué se decidió, después qué reglas lo sostienen y cómo les va.
+  await seccion('coach-ledger', (el) => _coachRenderLedger(el));
   await seccion('coach-versions', (el) => _coachRenderVersions(el));
 }
 
@@ -2211,6 +2214,56 @@ async function _coachRenderDecisions(el) {
   </div>`;
 }
 
+// ==================== LEDGER DE EVIDENCIA (R-11) ====================
+//
+// La tabla que cierra el bucle regla → decisión → resultado. `buildEvidenceLedger` es puro y
+// vive en coach-engine.js; aquí sólo se leen las decisiones, se pasa el corpus local y se
+// pinta. Top 15 con "show all" porque el corpus tiene 72 reglas y una tabla de 72 filas en
+// 390 px no la lee nadie: las que importan son las citadas, y están arriba.
+const COACH_LEDGER_TOP = 15;
+let _coachLedgerAll = false;
+
+async function _coachRenderLedger(el) {
+  if (typeof buildEvidenceLedger !== 'function') { el.innerHTML = ''; return; }
+  const all = await dbGetAll('decisions').catch(() => []);
+  const corpus = (typeof COACH_RULES !== 'undefined' && COACH_RULES) ? COACH_RULES : {};
+  const filas = buildEvidenceLedger(all || [], corpus);
+  if (!filas.length) {
+    el.innerHTML = `<div class="card coach-decs-card">
+      <div class="coach-brief-title">Evidence ledger</div>
+      <div class="coach-week-empty">No decisions yet — the ledger fills in as the coach cites rules.</div>
+    </div>`;
+    return;
+  }
+  const visibles = _coachLedgerAll ? filas : filas.slice(0, COACH_LEDGER_TOP);
+  const mas = filas.length - visibles.length;
+  el.innerHTML = `<div class="card coach-decs-card">
+    <div class="coach-brief-title">Evidence ledger</div>
+    <div class="evl-head">
+      <span class="evl-rule">Rule</span>
+      <span class="evl-num">Cited</span>
+      <span class="evl-num">Retired</span>
+      <span class="evl-week">Last</span>
+      <span class="evl-grade">Evidence</span>
+    </div>
+    ${visibles.map((f) => `<div class="evl-row${f.known ? '' : ' -unknown'}">
+      <span class="evl-rule" title="${_cEsc((corpus[f.ruleId] || {}).rule || 'Rule with no text in the local corpus.')}">${_cEsc(f.ruleId)}</span>
+      <span class="evl-num">${f.cited}</span>
+      <span class="evl-num${f.retired ? ' -bad' : ''}">${f.retired || '·'}</span>
+      <span class="evl-week">${_cEsc(_cWeekShort(f.lastWeek) || '·')}</span>
+      <span class="evl-grade -${_cEsc(f.grade || 'unknown')}">${_cEsc(f.known ? (COACH_EVIDENCE_LABEL[f.grade] || f.grade || '—') : 'not in corpus')}</span>
+    </div>`).join('')}
+    ${mas > 0 ? `<button class="evl-more" id="coach-ledger-more">Show all ${filas.length}</button>` : ''}
+  </div>`;
+  const btn = el.querySelector('#coach-ledger-more');
+  if (btn) {
+    btn.addEventListener('click', () => {
+      _coachLedgerAll = true;
+      _coachRenderLedger(el).catch((e) => console.warn('[Coach] ledger:', e));
+    });
+  }
+}
+
 async function _coachRenderVersions(el) {
   const rows = await dbGetAll('plans').catch(() => []);
   const plans = (rows || []).filter((p) => p && p.id)
@@ -2327,6 +2380,7 @@ if (typeof module !== 'undefined' && module.exports) {
     buildCoachFactsFromStores, maybeRunWeeklyCoach, runWeeklyCoach, pollCoachReview,
     applyCoachProposal, rejectCoachProposal, rollbackPlanVersion,
     renderCoachWeekCard, renderCoachView, openCoachView, coachDiffGroups,
+    _coachRenderLedger, COACH_LEDGER_TOP,
     exportCoachFacts, coachAutoApplyMode, setCoachAutoApply,
   };
 }

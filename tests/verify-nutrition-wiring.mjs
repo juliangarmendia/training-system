@@ -161,7 +161,9 @@ yes(Number((APP.match(/DB_VERSION = (\d+)/) || [])[1]) >= 11,
 console.log('');
 console.log('10. Orden de la semilla respecto a la auth');
 const iAuth = APP.indexOf('await checkAuth()');
-const iSeed = APP.indexOf('seedFoods()');
+// v11.68 (V-9): la llamada pasa por `safeCall`, que es la unica forma de llamar a otro modulo
+// desde app.js. Lo que este test vigila no es la sintaxis de la llamada sino el ORDEN.
+const iSeed = APP.indexOf("safeCall('seedFoods')");
 yes(iAuth > 0 && iSeed > 0, 'se localizan checkAuth() y seedFoods() en init()');
 yes(iSeed > iAuth, 'seedFoods() corre DESPUES de checkAuth(), o la semilla no sincroniza');
 yes(/if \(!SUPABASE_URL \|\| !SUPABASE_ANON_KEY\) return;/.test(SYNC),

@@ -628,7 +628,7 @@
            Cada sección la pinta app/coach.js con su propio try/catch. -->
       <section id="view-coach" class="view">
         <div class="view-scroll">
-          <button id="coach-back" class="btn-secondary" style="margin-bottom:12px">‹ Volver</button>
+          <button id="coach-back" class="btn-secondary" style="margin-bottom:12px">‹ Back</button>
           <div id="coach-week"></div>
           <div id="coach-briefing"></div>
           <div id="coach-proposal"></div>
@@ -638,6 +638,10 @@
                los dos sitios. -->
           <div class="card coach-goals" id="coach-goals-view"></div>
           <div id="coach-decisions"></div>
+          <!-- R-11 (auditoría 2026-09-08): el ledger de evidencia — por Rule ID, veces citada,
+               veces retirada, última semana y grado. Es el agregado del log de decisiones que
+               tiene justo encima, así que va pegado a él y antes de las versiones del plan. -->
+          <div id="coach-ledger"></div>
           <div id="coach-versions"></div>
         </div>
       </section>
@@ -645,7 +649,7 @@
       <!-- Ideal Plan Preview (T4) -->
       <section id="view-ideal-preview" class="view">
         <div class="view-scroll">
-          <button id="ip-back" class="btn-secondary" style="margin-bottom:12px">‹ Volver</button>
+          <button id="ip-back" class="btn-secondary" style="margin-bottom:12px">‹ Back</button>
           <div id="ideal-preview-body"></div>
         </div>
       </section>
@@ -653,7 +657,7 @@
       <!-- Analítica de sangre (v11.43) -->
       <section id="view-analytics" class="view">
         <div class="view-scroll">
-          <button id="an-back" class="btn-secondary" style="margin-bottom:12px">‹ Volver</button>
+          <button id="an-back" class="btn-secondary" style="margin-bottom:12px">‹ Back</button>
           <div id="analytics-body"></div>
         </div>
       </section>
@@ -663,11 +667,11 @@
         <div class="view-scroll">
           <div class="section-label">Account</div>
           <div class="card" id="auth-section">
-            <p class="muted" style="font-size:13px;margin:0">Loading...</p>
+            <div class="skeleton skeleton-line"></div><div class="skeleton skeleton-line short"></div>
           </div>
           <div class="section-label" style="margin-top:24px">Sync</div>
           <div class="card" id="sync-section">
-            <p class="muted" style="font-size:13px;margin:0">Loading...</p>
+            <div class="skeleton skeleton-line"></div><div class="skeleton skeleton-line short"></div>
           </div>
 
           <!-- Integraciones de servidor (Coach v2.1 · A-3). Los tokens de WHOOP y Withings
@@ -677,13 +681,13 @@
                tokens en localStorage) se borró aquí: era la causa de las desconexiones. -->
           <div class="section-label" style="margin-top:24px">Integrations</div>
           <div class="card integrations-card" id="integrations-card">
-            <p class="muted" style="font-size:13px;margin:0">Loading…</p>
+            <div class="skeleton skeleton-line"></div><div class="skeleton skeleton-line short"></div>
           </div>
 
           <div class="section-label" style="margin-top:24px">Plan</div>
           <div class="card">
             <p class="muted" style="font-size:13px;margin:0 0 10px">Your <b>evidence-based ideal plan</b> is the live plan. Pick the <b>day count (3/4/5/6)</b> to match the week — it only changes going forward, your logged sessions stay untouched.</p>
-            <button id="btn-ideal-preview" class="btn-secondary btn-full" style="text-align:center">Mi plan</button>
+            <button id="btn-ideal-preview" class="btn-secondary btn-full" style="text-align:center">My plan</button>
           </div>
 
           <!-- Coach semanal (v11.61). "Exportar facts JSON" existe para poder INSPECCIONAR el
@@ -694,7 +698,7 @@
             <div class="form-row">
               <label for="setting-coach-auto-apply">How the weekly proposal is applied</label>
               <select id="setting-coach-auto-apply" class="text-input">
-                <option value="ask">Propone, yo apruebo</option>
+                <option value="ask">Proposes, I approve</option>
                 <option value="auto-if-clean">Automatic if there are no warnings (coming soon)</option>
                 <option value="auto">Always automatic (coming soon)</option>
               </select>
@@ -708,7 +712,7 @@
           <div class="section-label" style="margin-top:24px">Bloodwork</div>
           <div class="card">
             <p class="muted" style="font-size:13px;margin:0 0 10px">Your <b>6 blood panels (2021-2025)</b> scored 1-5 against guideline targets, not against the lab's range. Historical context, <b>not a diagnosis</b>.</p>
-            <button id="btn-analytics" class="btn-secondary btn-full" style="text-align:center">Mis marcadores</button>
+            <button id="btn-analytics" class="btn-secondary btn-full" style="text-align:center">My biomarkers</button>
           </div>
 
           <div class="section-label" style="margin-top:24px">Daily Steps</div>
@@ -723,7 +727,7 @@
 
             <div class="section-label" style="margin-top:8px">Strava (legacy COROS bridge)</div>
             <div class="card" id="strava-section">
-              <p class="muted" style="font-size:13px;margin:0">Loading...</p>
+              <div class="skeleton skeleton-line"></div><div class="skeleton skeleton-line short"></div>
             </div>
 
             <div class="section-label" style="margin-top:16px">Daily Steps via iOS Shortcut (legacy)</div>
@@ -802,7 +806,7 @@
           </div>
           <div class="section-label" style="margin-top:24px">App</div>
           <div class="card">
-            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v11.67<br>Data stored locally + cloud sync.<br>Works offline.</p>
+            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v11.68<br>Data stored locally + cloud sync.<br>Works offline.</p>
             <button id="btn-force-update" class="btn-secondary btn-full" style="text-align:center">Force Update App</button>
           </div>
         </div>

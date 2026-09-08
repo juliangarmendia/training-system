@@ -6,7 +6,7 @@
 > El *por qué* de cada cosa vive en [`../assessments/2026-08-16_system-audit.md`](../assessments/2026-08-16_system-audit.md).
 > Aquí está el *qué sigue*.
 >
-> Última actualización: **2026-09-08** (auditoría de la app: incremento 1 · v11.66 y incremento 3 · fn v4 hechos — P0, rendimiento, guardarraíles del coach en el servidor, corpus y advisors)
+> Última actualización: **2026-09-08** (auditoría de la app: incrementos 1 · v11.66, 2 · v11.67, 3 · fn v4, 4 · v11.67 inglés y 5 · v11.68 hechos — P0, rendimiento, motores, guardarraíles en el servidor, corpus, UI en inglés, visual/UX y ledger de evidencia)
 
 ## Regla de trabajo
 
@@ -233,11 +233,35 @@ y `parse-meal-photo` tampoco. Se arregla en Dashboard › Functions › Secrets 
 `supabase secrets set ANTHROPIC_API_KEY=…`). Es lo primero que hay que hacer antes de cerrar la
 semana el domingo 13.
 
-### Incrementos 4, 5 y 7
+### Incremento 5 · v11.68 · Visual, UX y ledger de evidencia — **hecho 2026-09-08**
 
-Pendientes, en el orden del informe: **v11.67** todo en inglés (V-1), **v11.69** visual y UX
-(V-2…V-5, V-8, V-9), **R-11** (ledger de evidencia en la vista Coach) y **A-7** (intervals.icu y
-Strava al servidor).
+El diagnóstico visual era que **los tokens no mandaban**: existen desde v11.0 y en el mismo fichero
+que los declara había cinco paddings de tarjeta, cuatro tamaños para el mismo *eyebrow* y hexes de
+la paleta por defecto de Tailwind conviviendo con los de la identidad. Nada de eso rompe nada — la
+app se ve "casi bien" — y por eso llevaba cinco versiones heredándose: cada familia nueva copiaba
+la anterior.
+
+| # | Qué | Estado |
+|---|---|---|
+| V-2 | **Los tokens mandan.** UN padding de `.card` (16px) y las **nueve** familias que lo pisaban con `14px 16px` (`.t3-card`, `.coach-readout`, `.readiness-signals`, `.coach-goals`, `.coach-week-card`, `.coach-brief`, `.coach-decs-card`, `.coach-vers-card`, `.cardio-rx`) ya no declaran padding. UNA clase `.eyebrow` (10px / 0.12em / mayúsculas / `--text3`) a la que resuelven las seis familias por agrupación en CSS, sin tocar las plantillas. Tokens nuevos `--fs-3xs` (9px), `--fs-2xs` (10px) y `--fs-eyebrow`, porque el 80 % de los literales que quedaban en el coach estaban por debajo del suelo de la escala. `.stat-card` con `--radius-lg` y `--border`, y padding compacto **justificado con la aritmética de los 390 px** (el label "READINESS" mide 64,8 px y el tile 83,5). Fuera los hexes de paleta: `#a78bfa`×5 → `--purple`, `#f59e0b` → `--orange`, `#fdd506`×2 → `--yellow`, la paleta de doce músculos de Tailwind en `app.js` → tokens, `#86efac` → `--accent2`, `whoop.js` (`#68e371`/`#ee343b`/`#fdd506`/`#6366f1`/`#8b5cf6`) → tokens, y el degradado del suelo OLED (escrito dos veces) → `--bg-grad-1/2/3`. Una sola excepción, documentada: `--brand-strava: #fc4c02`, que es color de marca de un tercero | **hecho** (v11.68) |
+| V-3 | **CSS muerto, 174 líneas en 28 familias**, cada una comprobada con grep sobre `app/*.js` + `index.html` antes de borrarla: los dos juegos de anillos (`.ring-*`, `.macro-ring*`, `.protein-ring-container`, `.activity-rings-card`, `.ar-*`, `.arl-*`), `.todays-plan-*` (la sustituyó `.sh-*`), `.pin-box/-icon/-prompt`, `.login-video*`/`.welcome-video-card` (`intro.mp4` no se referencia en ningún sitio), `.quick-add*`/`.meal-input-row`/`.meal-protein-input`/`.nutrition-card`, `.skeleton-chart`, `.metric-hero`/`.metric-display`, `.report-card`, `.hero-num*`, `.steps-card-wrap`, `.rest-config`/`.rest-btn-row`/`.btn-rest`, `.expand-btn`/`-content`, `.previous-data`, `.setup-steps`, `.btn-danger-sm`, `.coach-signals*`. `.skeleton-line` **se queda** porque V-8 la usa de verdad. Y `renderSyncWarning` gana familia propia `.sync-warning-*`: reutilizaba `.deload-*`, las clases del banner reactivo de descarga retirado en v11.62, y tenía que pisar su amarillo con un `style` inline en rojo | **hecho** (v11.68) |
+| V-4 | **Duplicación en Home.** La cola pasa de una lista de hasta seis filas con foto, nombre y `focus` a **una línea**: *"Next · Thu · Lower B"* (`.queue-next`). El calendario ya dice qué días hay algo y la tarjeta de hoy qué toca hoy; lo único que la cola aportaba y nadie más decía es cuál es la próxima. Se conserva el id `#home-queue` (los tests fijan el orden de Home) y el contador *"N ahead"* de la cabecera. Fuera la **campana** del topbar: los tres botones hacían `switchTab('settings')` y la campana además prometía notificaciones que la app no manda — ahora el engranaje baja a **Integraciones** (`openSettingsAt`) y el avatar abre Ajustes. Y el `focus` del coach sale del teaser de Stats: estaba en tres pantallas, ahora en dos (Home y vista Coach) | **hecho** (v11.68) |
+| V-5 | **El tile Strain deja de inventarse el dato.** Era `Σ(RPE con fallback 7)`, o sea ≈ 7 × series: un contador de series disfrazado de carga interna, en una identidad que imita la escala 0-21 de WHOOP. Ahora es `Σ(RPE)` **sólo sobre las series con RPE anotado**, sub `RPE LOAD`; sin una sola serie con RPE dice `—` / `LOG RPE`, que es la información de verdad. El nombre `'Julian Garmendia'` sale del fuente: `homeAvatarInitials()` va de `settings.name` → iniciales del email de la sesión (cacheado en `state._authEmail`) → `JG`. Y los estados vacíos escritos a mano de la cola y del día de descanso pasan por `showEmptyState`, con el mismo texto | **hecho** (v11.68) |
+| V-8 | **Carga y offline.** Punto de estado en el topbar, a la izquierda del engranaje: gris *"Offline — what you log stays on the phone and uploads later"*, ámbar *"N changes waiting to upload"*, verde *"Up to date"*, con el motivo en el `title`. Se repinta con `online`/`offline`, al volver a primer plano y después de cada `syncAll`. Lo alimenta un `syncPendingCount()` nuevo en `supabase-sync.js` (cola menos cuarentena: lo cuarentenado no espera, está parado, y eso lo cuenta `#sync-warning` en rojo). Esqueletos `.skeleton-line` en los tres bloques grandes de Home y en las tarjetas de Stats antes de la primera lectura de IndexedDB, y los cuatro `Loading…` estáticos de `index.html` sustituidos por el mismo esqueleto | **hecho** (v11.68) |
+| V-9 | **Una sola forma de llamar a otro módulo.** `safeCall(name, ...args)`: comprueba `window[name]`, captura el throw y lo anota con el nombre. Sustituye las tres sintaxis que convivían (`typeof X === 'function' ? X() : null`, `window.X ? …`, la llamada directa) en `renderHomeView`, `renderStats`, `init()` y el `visibilitychange` — nueve renderers de `coach.js`/`nutrition.js`/`integrations.js`/`whoop.js`. Y los `catch` vacíos de las **cinco rutas de usuario** (guardar entreno, borrador retroactivo, registrar cardio, pesada, medida de cintura) pasan a `toast('Something went wrong…')` + `console.warn`: guardar un entreno **no estaba** en un try/catch, así que un fallo de IndexedDB devolvía a Home sin nada guardado y sin un solo aviso. Los `catch` de fondo y de sincronización no se tocan | **hecho** (v11.68) |
+| R-11 | **Ledger de evidencia** en la vista Coach, debajo del log de decisiones: por Rule ID, veces citada, veces retirada, última semana y grado de evidencia; top 15 con *"Show all"*. `buildEvidenceLedger(decisions, rules)` es **puro** y vive en `coach-engine.js` (no en `coach-facts.js`: allí se sellaría en la edge function y el servidor no lo usa). Cierra el bucle regla → decisión → resultado, que existía entero y no se podía leer: *"¿cuántas veces citamos REC-005 y cuántas se retiró?"* no tenía respuesta en ninguna pantalla. Detalle en [`architecture/engines.md` §9b](architecture/engines.md) | **hecho** (v11.68) |
+
+Test nuevo: **`tests/verify-visual-tokens.mjs`** (179 comprobaciones) — un padding de `.card`, la
+clase `.eyebrow` única y las seis familias resolviendo a ella, cero `font-size` literales en las
+familias tocadas desde v11.55, cero hex fuera de paleta en CSS y en JS, las 28 familias borradas
+devolviendo 0 selectores, el Strain sin fallback, el topbar sin campana, `safeCall` usado en ≥ 6
+sitios y **el ledger ejecutado con un fixture** de tres decisiones. Suite: **34 ficheros en verde**.
+
+### Incrementos 6 (parcial) y 7
+
+Pendientes: **I-1** (migración de los advisors de Supabase) y **R-10** (job `test` en CI que
+bloquee el deploy) del incremento 6 — R-11 ya está hecho —, y **A-7** (intervals.icu y Strava al
+servidor), que espera a que WHOOP y Withings lleven una semana estables.
 
 ---
 

@@ -317,18 +317,27 @@ function animateNumber(el, newValue, suffix = '') {
 function rpeColor(rpe) {
   if (!rpe || rpe <= 0) return 'var(--text3)';
   if (rpe <= 6) return 'var(--accent)';
-  if (rpe <= 7) return '#86efac';
+  if (rpe <= 7) return 'var(--accent2)';
   if (rpe <= 7.5) return 'var(--yellow)';
   if (rpe <= 8.5) return 'var(--orange)';
   return 'var(--red)';
 }
 
-// Muscle badge colors
+// Muscle badge colors.
+//
+// V-2 (auditoría 2026-09-08): eran doce hexes de la paleta por defecto de Tailwind
+// (blue-400, emerald-400, violet-400, …), heredados del primer prototipo. Convivían con la
+// identidad Whoop-dark sin pertenecer a ella: el azul del pecho no era el azul de strain y el
+// verde de la espalda no era el verde de recuperación, así que la misma pantalla mostraba dos
+// familias de color. Ahora cada músculo apunta a un token, y cambiar la identidad cambia
+// también estas insignias. `MUSCLE_FALLBACK` cubre las claves que se reetiquetan en caliente
+// (`Power`, de los pliométricos) sin inventarles un color.
 const MUSCLE_COLORS = {
-  'Chest': '#60a5fa', 'Back': '#34d399', 'Shoulders': '#a78bfa', 'Rear Delt': '#a78bfa',
-  'Triceps': '#fb923c', 'Biceps': '#f472b6', 'Quads': '#4ade80', 'Hamstrings': '#fbbf24',
-  'Calves': '#94a3b8', 'Core': '#e2e8f0', 'Glutes': '#f472b6', 'Posterior': '#fbbf24',
+  'Chest': 'var(--blue)', 'Back': 'var(--accent)', 'Shoulders': 'var(--purple)', 'Rear Delt': 'var(--purple)',
+  'Triceps': 'var(--orange)', 'Biceps': 'var(--pink)', 'Quads': 'var(--accent2)', 'Hamstrings': 'var(--yellow)',
+  'Calves': 'var(--text2)', 'Core': 'var(--text)', 'Glutes': 'var(--pink)', 'Posterior': 'var(--yellow)',
 };
+const MUSCLE_FALLBACK = 'var(--text3)';
 
 // Key lifts for strength chart tracking
 const KEY_LIFTS = ['bench-press', 'back-squat', 'sumo-dl', 'ohp', 'barbell-row', 'chinups'];
@@ -750,8 +759,8 @@ function isTrainingType(t) {
   return sessionFamily(t) !== null;
 }
 
-// Canonical tone color per family. _homeTypeTone delegates here so colors stay
-// identical to today (strength→blue, cardio→accent/green, recovery→purple).
+// Canonical tone color per family: strength→blue, cardio→accent/green, recovery→purple.
+// (V-4 retiró `_homeTypeTone`, que era un envoltorio sin llamadores sobre esta función.)
 function typeTone(family) {
   const f = sessionFamily(family) || family;
   return (SESSION_TYPES[f] && SESSION_TYPES[f].tone) || 'var(--blue)';
@@ -2073,7 +2082,7 @@ async function showWelcomeScreen() {
     todayText = 'Rest day — recover well.';
   }
 
-  document.getElementById('welcome-greeting').textContent = `Hola, ${name}`;
+  document.getElementById('welcome-greeting').textContent = `Hi, ${name}`;
   document.getElementById('welcome-today').textContent = todayText;
 
   const headsUp = document.getElementById('welcome-headsup');
@@ -2389,14 +2398,44 @@ function showActionSheet(title, options) {
   });
 }
 
-function showSkeleton(container, count = 3) {
-  container.innerHTML = Array(count).fill('<div class="skeleton skeleton-card"></div>').join('');
+// V-8 (auditoría 2026-09-08): el esqueleto existía y se usaba en UN sitio, así que Home y
+// Stats se pintaban como un salto de vacío a contenido — en 4G lenta con la base fría son
+// varios cientos de milisegundos de tarjetas en blanco que parecen datos que no hay.
+// `kind: 'line'` usa `.skeleton-line` (tres rayas de texto) y es lo que va DENTRO de una
+// tarjeta que ya tiene su marco; `'card'` (el original) es para las listas de tarjetas.
+function showSkeleton(container, count = 3, kind = 'card') {
+  if (!container) return;
+  const cls = kind === 'line' ? 'skeleton skeleton-line' : 'skeleton skeleton-card';
+  container.innerHTML = Array(count).fill(`<div class="${cls}"></div>`).join('');
   container.classList.remove('morph-in');
 }
 
 function showEmptyState(container, icon, title, text) {
+  if (!container) return;
   container.innerHTML = `<div class="empty-state-box"><div class="empty-state-icon">${icon}</div><div class="empty-state-title">${title}</div><div class="empty-state-text">${text}</div></div>`;
   morphIn(container);
+}
+
+// V-9 (auditoría 2026-09-08): UNA forma de llamar a una función de otro módulo.
+//
+// Había tres, mezcladas sin criterio: `typeof X === 'function' ? X() : null`, `window.X ? …`
+// y la llamada directa. Los módulos entran por <script> aparte (`coach.js`, `nutrition.js`,
+// `integrations.js`, `whoop.js`), así que la llamada directa revienta el render entero si el
+// fichero no llegó, y las dos guardas dicen lo mismo con distinta sintaxis en sesenta sitios.
+// Aquí además se captura el throw: un renderer de otro módulo que falla deja SU hueco vacío
+// y un warning con su nombre, no una pantalla a medias.
+//
+// Devuelve `undefined` cuando la función no existe o lanzó. Si devuelve una promesa, la
+// promesa se devuelve tal cual — el `allSettled` de quien llama sigue viendo el rechazo.
+function safeCall(name, ...args) {
+  const fn = (typeof window !== 'undefined') ? window[name] : undefined;
+  if (typeof fn !== 'function') return undefined;
+  try {
+    return fn(...args);
+  } catch (e) {
+    console.warn(`[safeCall] ${name}:`, e);
+    return undefined;
+  }
 }
 
 function morphIn(container) {
@@ -2535,7 +2574,7 @@ async function openEditWorkout(id) {
   exHost.innerHTML = w.exercises.map((ex, exi) => {
     const exName = getExerciseName(ex.exerciseId);
     const muscle = getExerciseMuscle(ex.exerciseId);
-    const muscleColor = MUSCLE_COLORS[muscle] || '#666';
+    const muscleColor = MUSCLE_COLORS[muscle] || MUSCLE_FALLBACK;
 
     // Find plan exercise definition for target info + notes
     const planEx = session ? session.exercises.find(e => e.id === ex.exerciseId) : null;
@@ -2892,7 +2931,14 @@ async function logPastWorkout() {
     notes: '',
     inputUnit,
   };
-  await smartPut('workouts', workout);
+  // V-9: idem que en `finishWorkout` — sin esto, "crear borrador" no hacía nada visible.
+  try {
+    await smartPut('workouts', workout);
+  } catch (e) {
+    console.warn('[Gym] borrador de entreno:', e);
+    toast(`Something went wrong creating the draft: ${(e && e.message) || 'storage error'}`);
+    return;
+  }
   renderRecentWorkouts();
   toast('Draft created — edit the details');
   openEditWorkout(workout.id);
@@ -2976,7 +3022,7 @@ function viewCompletedWorkout(workout) {
   for (const ex of workout.exercises) {
     const exName = getExerciseName(ex.exerciseId);
     const muscle = getExerciseMuscle(ex.exerciseId);
-    const muscleColor = MUSCLE_COLORS[muscle] || '#666';
+    const muscleColor = MUSCLE_COLORS[muscle] || MUSCLE_FALLBACK;
 
     const setsHTML = ex.sets.map((s, i) => `
       <div class="set-row" style="opacity:${s.done ? 1 : 0.4}${s.rpe ? ';border-left:3px solid ' + rpeColor(s.rpe) : ''}">
@@ -3992,7 +4038,7 @@ function buildExerciseCard(ex, exIdx, previous, restSettings, exerciseNotes, del
   // v11.62: aquí estaba el recorte de series y el tope de RPE por recuperación. Fuera. Lo único
   // que comprime la sesión son el deload (programado) y el quick mode (elegido a mano).
   const rpeDisplay = deload && ex.rpe !== '-' ? 'RPE 5-6' : `RPE ${ex.rpe}`;
-  const muscleColor = MUSCLE_COLORS[ex.muscle] || '#666';
+  const muscleColor = MUSCLE_COLORS[ex.muscle] || MUSCLE_FALLBACK;
 
   // El objetivo manda sobre la nota estática. `source: 'none'` (medida, primera vez) NO cuenta
   // como objetivo: en ese caso la tarjeta tiene que quedar idéntica a la de v11.56.
@@ -4528,7 +4574,18 @@ async function finishWorkout() {
     console.warn('[Coach] lectura de sesión:', e);
   }
 
-  await smartPut('workouts', workout);
+  // V-9 (auditoría 2026-09-08): la escritura del entreno NO estaba en un try/catch. Un fallo
+  // de IndexedDB (cuota llena, base bloqueada por otra pestaña, migración a medias) rechazaba
+  // la promesa de `finishWorkout` y el usuario veía la app volver a Home sin nada guardado y
+  // sin un solo aviso — una hora de trabajo perdida en silencio. Con esto: toast, warning, y
+  // la sesión activa SE QUEDA para poder reintentar.
+  try {
+    await smartPut('workouts', workout);
+  } catch (e) {
+    console.warn('[Gym] guardar entreno:', e);
+    toast(`Something went wrong saving the workout: ${(e && e.message) || 'storage error'}`);
+    return;
+  }
 
   // El registro de decisiones es la memoria del coach (§B.7): UNA fila por sesión, con el
   // detalle por ejercicio en `evidence.perExercise`. Nunca bloquea el cierre de la sesión.
@@ -4911,6 +4968,8 @@ async function renderStats() {
   // Ensure a stats group is active (default: today)
   const anyActive = document.querySelector('#view-stats .view-scroll > [data-group].active-group');
   if (!anyActive) switchStatsGroup('today');
+  // V-8: esqueleto en las tarjetas del grupo visible antes de la primera lectura de IndexedDB.
+  showStatsSkeletons();
   const tanda = async (nombre, tareas) => {
     const res = await Promise.allSettled(tareas.map(([, fn]) => fn()));
     res.forEach((r, i) => {
@@ -4923,21 +4982,21 @@ async function renderStats() {
       ['sync-warning', () => renderSyncWarning()],
       ['streaks', () => renderStreaks()],
       // v11.59: el score 0-100 y su "Push hard today" salieron. Lo que se pinta ahora son las
-      // señales del readiness único, con su valor y su base (audit F-5). `typeof` porque vive
-      // en coach.js, que se carga por <script> aparte.
-      ['readiness-signals', () => (typeof renderReadinessSignals === 'function' ? renderReadinessSignals() : null)],
+      // señales del readiness único, con su valor y su base (audit F-5). Por `safeCall` porque
+      // vive en coach.js, que se carga por <script> aparte.
+      ['readiness-signals', () => safeCall('renderReadinessSignals')],
       // v11.62: la carga de la semana se muda de Home a Stats. Es un dato que se consulta, no
       // algo que haya que ver antes de entrenar.
       ['hard-day-budget', () => renderHardDayBudget()],
       // v11.65: la línea de rendimiento y tendencias baja de Home a Stats › Today.
-      ['recovery-line', () => (typeof renderRecoveryLine === 'function' ? renderRecoveryLine() : null)],
+      ['recovery-line', () => safeCall('renderRecoveryLine')],
       // E-12 (v11.66): los pasos que llegan de intervals.icu tenían renderer y no tenían sitio
       // donde pintarse. Ahora sí: `#steps-card`, justo debajo de la línea de recuperación.
       ['steps-card', () => renderStepsCard()],
-      // v11.60: peso, 10k cómodo y fuerza mantenida, con su tamaño de muestra. `typeof` porque
-      // vive en coach.js. Se mudará a la vista Coach en el incremento 9 (mismo id).
-      ['goals-card', () => (typeof renderGoalsCard === 'function' ? renderGoalsCard() : null)],
-      ['whoop-recovery', () => (window.renderWhoopRecoveryCard ? renderWhoopRecoveryCard() : null)],
+      // v11.60: peso, 10k cómodo y fuerza mantenida, con su tamaño de muestra. Por `safeCall`
+      // porque vive en coach.js. También se pinta en la vista Coach (`coach-goals-view`).
+      ['goals-card', () => safeCall('renderGoalsCard')],
+      ['whoop-recovery', () => safeCall('renderWhoopRecoveryCard')],
     ]);
     await tanda('week', [
       ['weekly-summary', () => renderWeeklySummary()],
@@ -5080,7 +5139,7 @@ async function loadAndRenderWeeklyCoach() {
       card.innerHTML = `
         <div class="wcc-header">
           <span class="wcc-week">Coach</span>
-          <span class="wcc-source">semanal</span>
+          <span class="wcc-source">weekly</span>
         </div>
         <div class="wcc-empty">
           <p>No review yet.</p>
@@ -5092,20 +5151,21 @@ async function loadAndRenderWeeklyCoach() {
     const ESTADO = (typeof COACH_STATUS_LABEL !== 'undefined' && COACH_STATUS_LABEL) || {};
     const wk = (review && review.weekKey) || (legacy && legacy.weekKey) || '';
     const estado = review ? (ESTADO[review.status] || review.status || '') : 'old review';
-    const rBrief = review ? (((review.output || {}).briefing) || {}) : {};
-    const prios = rBrief.priorities || [];
     const primeraLinea = (md) => String(md || '').split('\n').map(l => l.replace(/^[#*\-\s]+/, '').trim()).find(l => l) || '—';
-    // v11.65: el titular de la semana es `focus` (contrato v2). Las prioridades son el
-    // fallback para las revisiones v1, que no lo traían.
-    const linea = rBrief.focus
-      ? rBrief.focus
-      : prios.length
-      ? prios[0]
-      : (review && review.status === 'running'
-        ? 'The coach is reviewing the week…'
-        : (legacy
-          ? primeraLinea((legacy.coachVoice && legacy.coachVoice.lastWeek) || legacy.observed)
-          : 'No priorities this week.'));
+    // V-4 (auditoría 2026-09-08): el `focus` de la semana SALE de aquí.
+    //
+    // Estaba en tres sitios: la tarjeta de Home, la vista Coach y este teaser de Stats. La
+    // misma frase escrita por el modelo, palabra por palabra, en tres pantallas de una app de
+    // un solo usuario. El teaser no es donde se lee el foco (para eso está Home, que es la
+    // primera pantalla) ni donde se razona (para eso está la vista Coach): es un enlace con
+    // estado. Así que se queda con lo único que sólo él dice —qué semana y cómo va la
+    // revisión— y el foco vive en DOS sitios, no en tres. Las revisiones del cron retirado
+    // (`weekly_reviews`) mantienen su prosa, que no es `focus` y no duplica nada.
+    const linea = (review && review.status === 'running')
+      ? 'The coach is reviewing the week…'
+      : (legacy
+        ? primeraLinea((legacy.coachVoice && legacy.coachVoice.lastWeek) || legacy.observed)
+        : (review ? 'Open Coach for the focus of the week and the session table.' : 'No review this week.'));
 
     card.classList.remove('hidden');
     card.innerHTML = `
@@ -5114,7 +5174,7 @@ async function loadAndRenderWeeklyCoach() {
         <span class="wcc-source">${escapeHtml(String(estado))}</span>
       </div>
       <div class="wcc-summary">${escapeHtml(String(linea).slice(0, 220))}</div>
-      <button id="btn-open-coach-stats" class="btn-secondary btn-full" style="margin-top:10px;text-align:center">Abrir Coach</button>`;
+      <button id="btn-open-coach-stats" class="btn-secondary btn-full" style="margin-top:10px;text-align:center">Open Coach</button>`;
     const b = document.getElementById('btn-open-coach-stats');
     if (b && typeof openCoachView === 'function') b.addEventListener('click', openCoachView);
   } catch (e) {
@@ -5256,7 +5316,7 @@ function renderStravaUI() {
     });
   } else {
     container.innerHTML = `
-      <button id="btn-strava-connect" class="btn-secondary btn-full" style="border-color:#fc4c02;color:#fc4c02">Connect Strava</button>
+      <button id="btn-strava-connect" class="btn-secondary btn-full" style="border-color:var(--brand-strava);color:var(--brand-strava)">Connect Strava</button>
       <p class="muted" style="font-size:11px;margin-top:6px">Pulls runs from your COROS PACE 4 via Strava (already auto-syncing). One-time OAuth.</p>
     `;
     document.getElementById('btn-strava-connect').addEventListener('click', stravaConnect);
@@ -6203,8 +6263,8 @@ async function logZ2Finisher(minutes) {
   });
   state._lastCardioDate = null; state._runningWeek = null;   // v11.56: el finisher cuenta como cardio para la progresión
   toast(`Z2 ${mins}' logged`);
-  try { renderTodaysPlan(); } catch (e) {}
-  try { renderSessionHistory(); } catch (e) {}
+  try { renderTodaysPlan(); } catch (e) { console.warn('[Home] plan de hoy:', e); }
+  try { renderSessionHistory(); } catch (e) { console.warn('[Cardio] historial:', e); }
 }
 
 async function pushZ2FinisherToIntervalsIcu(minutes) {
@@ -6712,18 +6772,25 @@ async function renderBodyCompEstimator() {
     // campos `source`/`measured` que trae intervals.icu.
     const d = today();
     let existing = null;
-    try { existing = await dbGet('bodyweight', d); } catch (e) {}
-    await smartPut('bodyweight', {
-      ...(existing || {}),
-      date: d,
-      weight,
-      waist,
-      neck,
-      heightCm: height,
-      bfPct,
-      measured: true,
-      timestamp: Date.now(),
-    });
+    try { existing = await dbGet('bodyweight', d); } catch (e) { console.warn('[Peso] fila del día:', e); }
+    try {
+      await smartPut('bodyweight', {
+        ...(existing || {}),
+        date: d,
+        weight,
+        waist,
+        neck,
+        heightCm: height,
+        bfPct,
+        measured: true,
+        timestamp: Date.now(),
+      });
+    } catch (e) {
+      // V-9: la medida de cintura es de las que cuestan un metro y dos minutos.
+      console.warn('[Peso] guardar cintura:', e);
+      toast(`Something went wrong saving the measurement: ${(e && e.message) || 'storage error'}`);
+      return;
+    }
     _bwCache = weight; // igual que logBodyWeight(): refresca el peso de las estimaciones
 
     resultEl.innerHTML = `
@@ -6735,7 +6802,7 @@ async function renderBodyCompEstimator() {
       </div>
     `;
     toast(`Waist ${waist} cm saved`);
-    try { await renderBodyWeightChart(); } catch (e) {}
+    try { await renderBodyWeightChart(); } catch (e) { console.warn('[Peso] gráfico:', e); }
   });
 }
 
@@ -7239,7 +7306,14 @@ async function logCardio() {
     budgetWeight: meta.budgetWeight != null ? meta.budgetWeight : 0,
     notes, source: 'manual', week: getWeekNumber(),
   };
-  await smartPut('sessions', rec);
+  // V-9: registrar cardio tampoco podía fallar en silencio.
+  try {
+    await smartPut('sessions', rec);
+  } catch (e) {
+    console.warn('[Cardio] registrar sesión:', e);
+    toast(`Something went wrong logging the session: ${(e && e.message) || 'storage error'}`);
+    return;
+  }
   state._lastCardioDate = null; state._runningWeek = null;   // v11.56: invalida la caché de "días sin cardio"
 
   document.getElementById('cardio-duration').value = '';
@@ -7247,9 +7321,9 @@ async function logCardio() {
   document.getElementById('cardio-hr').value = '';
   document.getElementById('cardio-notes').value = '';
   setStarValue('cardio-feel', 3);
-  toast(`${title} registrado`);
+  toast(`${title} logged`);
   renderSessionHistory();
-  try { renderRunTotals(); } catch (e) {}
+  try { renderRunTotals(); } catch (e) { console.warn('[Cardio] totales:', e); }
 }
 
 // T2 (v11.20): render recently-logged non-run cardio + recovery sessions in the
@@ -7823,25 +7897,31 @@ async function askPainRating(prompt) {
 async function renderHomeView() {
   document.body.dataset.tab = 'home';
   renderHomeTopbar();
+  // V-8: esqueleto ANTES de tocar IndexedDB en los tres bloques grandes. Con la base fría son
+  // varios cientos de milisegundos con tres tarjetas en blanco, que se leen como "no hay
+  // datos" y no como "todavía estoy leyendo".
+  showHomeSkeletons();
   // B-5 (auditoría 2026-09-08): era `Promise.all`. El primer bloque que lanzaba cancelaba la
   // espera de los otros nueve y Home se quedaba a medio pintar EN SILENCIO — un fallo del
   // coach dejaba sin calendario, sin plan de hoy y sin cola. Con `allSettled` el bloque que
   // falla deja SU hueco vacío y se anota; los demás pintan.
   // V-7b: todo el pintado va dentro de un pase de render, así que los `dbGetAll` repetidos de
   // los bloques (eran doce de los mismos cuatro stores) se resuelven con una lectura cada uno.
+  // V-9: los renderers de OTROS módulos entran por `safeCall`, que es la única forma de
+  // llamarlos en toda la app (antes había tres sintaxis distintas para lo mismo).
   const bloques = [
     ['resume-banner', () => showResumeBanner()],
     ['plan-selector', () => renderPlanSelector()],       // T5.1 day-count selector (3/4/5/Ideal)
     ['week-calendar', () => renderWeekCalendar()],
-    // Lectura del coach de la sesión de hoy (app/coach.js, v11.57). Con `typeof` porque el
+    // Lectura del coach de la sesión de hoy (app/coach.js, v11.57). Por `safeCall` porque el
     // módulo se carga por <script> aparte: si no cargó, Home se pinta igual.
-    ['coach-readout', () => (typeof renderCoachReadout === 'function' ? renderCoachReadout() : null)],
+    ['coach-readout', () => safeCall('renderCoachReadout')],
     // Revisión semanal del coach (v11.61 · v11.65): qué pasó la semana pasada, en qué etapa
     // estoy, cuál es el foco y por qué cambia o por qué sigue igual. Desde v11.65 SIEMPRE
     // pinta: sin revisión ofrece "Cerrar semana ahora", que es de donde sale la primera.
-    ['coach-week-card', () => (typeof renderCoachWeekCard === 'function' ? renderCoachWeekCard() : null)],
+    ['coach-week-card', () => safeCall('renderCoachWeekCard')],
     // Cómo viene el objetivo (v11.65): peso, pendiente, hito, carrera y anclas en dos líneas.
-    ['coach-goal-line', () => (typeof renderCoachGoalLine === 'function' ? renderCoachGoalLine() : null)],
+    ['coach-goal-line', () => safeCall('renderCoachGoalLine')],
     ['todays-plan', () => renderTodaysPlan()],
     // v11.65: el WHOOP de hoy es el tile `Readiness` del trío de estadísticas; el párrafo de
     // rendimiento y tendencias que vivía aquí se mudó a Stats › Today. Un dashboard de tarjetas
@@ -7861,16 +7941,22 @@ async function renderHomeView() {
 }
 
 // ==================== HOME TOP BAR (Lovable) ====================
-// "Today" eyebrow + weekday/date on the left; bell, settings, avatar on the right.
+// "Today" eyebrow + weekday/date on the left; status dot, settings, avatar on the right.
+//
+// V-4 (auditoría 2026-09-08): la campana se va. Los tres botones hacían LO MISMO
+// (`switchTab('settings')`) y la campana además prometía notificaciones que la app no manda:
+// tres afordancias para un destino es peor que una, y una que miente es peor que dos.
+// V-8: en su hueco entra el punto de estado, que es la única cosa que el topbar todavía no
+// decía y que el usuario necesita saber ANTES de registrar algo — si está offline o si hay
+// cola pendiente de subir. Antes vivía sólo en `#sync-warning`, en Stats, y sólo con
+// cuarentena o con más de 24 h de retraso.
 function renderHomeTopbar() {
   const el = document.getElementById('home-topbar');
   if (!el) return;
   const d = new Date();
   const weekday = d.toLocaleDateString('en-US', { weekday: 'long' });
   const datestr = d.toLocaleDateString('en-US', { day: 'numeric', month: 'long' });
-  const name = (state.settings && state.settings.name) || 'Julian Garmendia';
-  const initials = (name.trim().split(/\s+/).map(w => w[0]).slice(0, 2).join('') || 'JG').toUpperCase();
-  const bell = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>`;
+  const initials = homeAvatarInitials();
   const gear = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`;
   el.innerHTML = `
     <div class="ht-left">
@@ -7878,13 +7964,121 @@ function renderHomeTopbar() {
       <div class="ht-date">${weekday} <span class="ht-date-sub">${datestr}</span></div>
     </div>
     <div class="ht-actions">
-      <button class="ht-icon" id="ht-bell" aria-label="Notifications">${bell}</button>
+      <span class="ht-status ht-status-ok" id="ht-status" role="img" aria-label="Sync status" title="Sync status"></span>
       <button class="ht-icon" id="ht-settings" aria-label="Settings">${gear}</button>
       <button class="ht-avatar" id="ht-profile" aria-label="Profile">${initials}</button>
     </div>`;
-  el.querySelector('#ht-bell').addEventListener('click', () => switchTab('settings'));
-  el.querySelector('#ht-settings').addEventListener('click', () => switchTab('settings'));
+  // El engranaje entra por Integraciones (`#integrations-card`), que es lo que se toca; el
+  // avatar entra por Ajustes por arriba (la cuenta). Dos destinos distintos para dos gestos
+  // distintos, en vez de tres botones al mismo sitio.
+  el.querySelector('#ht-settings').addEventListener('click', () => openSettingsAt('integrations-card'));
   el.querySelector('#ht-profile').addEventListener('click', () => switchTab('settings'));
+  renderTopbarStatusDot();
+}
+
+// V-5: las iniciales del avatar, sin nombre hard-coded.
+// Estaba `'Julian Garmendia'` escrito en el fuente como fallback: el día que otra persona
+// abriese la app vería las iniciales de Julian, y el día que Julian escriba su nombre en
+// Ajustes el literal seguiría ahí sin que nadie sepa por qué. Orden: `settings.name` →
+// iniciales del email de la sesión → 'JG'.
+function homeAvatarInitials() {
+  const name = String((state.settings && state.settings.name) || '').trim();
+  if (name) {
+    return (name.split(/\s+/).map((w) => w[0]).slice(0, 2).join('') || 'JG').toUpperCase();
+  }
+  const local = String(state._authEmail || '').split('@')[0];
+  const partes = local.split(/[._+-]+/).filter(Boolean);
+  if (partes.length >= 2) return (partes[0][0] + partes[1][0]).toUpperCase();
+  if (partes.length === 1) return partes[0].slice(0, 2).toUpperCase();
+  return 'JG';
+}
+
+// El email de la sesión, cacheado en `state`: `getSupaUser()` es asíncrono y el topbar se
+// pinta en el primer frame. Cuando llega, repinta — no antes.
+async function primeAuthEmail() {
+  if (state._authEmail !== undefined) return state._authEmail;
+  state._authEmail = null;
+  try {
+    const u = (typeof getSupaUser === 'function') ? await getSupaUser() : null;
+    state._authEmail = (u && u.email) || null;
+  } catch (e) {
+    console.warn('[auth] email de la sesión:', e);
+    state._authEmail = null;
+  }
+  if (state._authEmail && !((state.settings && state.settings.name) || '').trim()) renderHomeTopbar();
+  return state._authEmail;
+}
+
+// V-8: el punto de estado. Tres estados y un `title` que dice el motivo:
+//   gris  — sin conexión: lo que registres se queda en el teléfono y sube después
+//   ámbar — hay cola pendiente de subir (la app está online, pero algo no ha salido)
+//   verde — al día
+// Se repinta con `online`/`offline` y después de cada `syncAll`.
+async function renderTopbarStatusDot() {
+  const el = document.getElementById('ht-status');
+  if (!el) return;
+  let tone = 'ok';
+  let title = 'Up to date';
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    tone = 'off';
+    title = 'Offline — what you log stays on the phone and uploads later';
+  } else {
+    let pendientes = 0;
+    try {
+      pendientes = (typeof syncPendingCount === 'function') ? await syncPendingCount() : 0;
+    } catch (e) {
+      console.warn('[Sync] pendientes:', e);
+      pendientes = 0;
+    }
+    if (pendientes > 0) {
+      tone = 'wait';
+      title = `${pendientes} change${pendientes === 1 ? '' : 's'} waiting to upload`;
+    }
+  }
+  el.className = `ht-status ht-status-${tone}`;
+  el.setAttribute('title', title);
+  el.setAttribute('aria-label', `Sync status: ${title}`);
+}
+
+// V-8: el estado de red cambia sin que nadie repinte Home, así que el punto se engancha a los
+// dos eventos del navegador. `renderTopbarStatusDot` sale sola si el topbar no está montado.
+if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+  window.addEventListener('online', () => { renderTopbarStatusDot(); });
+  window.addEventListener('offline', () => { renderTopbarStatusDot(); });
+}
+
+// V-8: los esqueletos de Home. Sólo los tres bloques grandes que esperan a IndexedDB —
+// el calendario de la semana, la sesión de hoy y la cola. El topbar y el selector de plan
+// se pintan desde `state`, así que un esqueleto allí sería un parpadeo gratis.
+function showHomeSkeletons() {
+  const bloques = [['week-calendar', 3], ['todays-plan-card', 3], ['home-queue', 1]];
+  for (const [id, n] of bloques) {
+    const el = document.getElementById(id);
+    if (el && !el.innerHTML) showSkeleton(el, n, 'line');
+  }
+}
+
+// Idem en Stats: las tarjetas del grupo activo, que son las que el usuario está mirando.
+function showStatsSkeletons() {
+  const bloques = ['streak-row', 'readiness-signals', 'weekly-coach-card', 'weekly-summary'];
+  for (const id of bloques) {
+    const el = document.getElementById(id);
+    if (el && !el.innerHTML) showSkeleton(el, 2, 'line');
+  }
+}
+
+// V-4: Ajustes con destino. El engranaje del topbar abre Ajustes y baja a la tarjeta que se
+// va a tocar; sin ancla, "Integraciones" está a tres pantallas de scroll.
+function openSettingsAt(anchorId) {
+  switchTab('settings');
+  if (!anchorId) return;
+  // Un frame de margen: `switchTab` activa la vista y el scroll no existe hasta que se pinta.
+  setTimeout(() => {
+    const el = document.getElementById(anchorId);
+    if (el && typeof el.scrollIntoView === 'function') {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, 120);
 }
 
 // RETIRADO en v11.62: `renderRecoveryHero()` — la tarjeta grande de WHOOP en Home. Sus
@@ -9330,14 +9524,25 @@ async function renderHomeStatTrio() {
   const workouts = await dbGetAll('workouts');
   const weekWorkouts = workouts.filter(w => w.date >= weekStart && w.date <= weekEnd);
 
-  let volume = 0, strain = 0;
+  // V-5 (auditoría 2026-09-08): STRAIN = Σ(RPE × series hechas), y SÓLO con las series que
+  // llevan RPE anotado.
+  //
+  // Era `parseFloat(s.rpe) || 7`: sin RPE anotado la serie contaba como 7, así que el número
+  // era ≈ 7 × series — un contador de series disfrazado de carga interna, en un tile que imita
+  // la escala 0-21 de WHOOP. Dos series al fallo sin anotar daban lo mismo que dos series
+  // fáciles sin anotar, y una semana entera sin anotar un solo RPE daba un "strain" alto.
+  // Ahora: si NINGUNA serie de la semana lleva RPE, el tile dice "—" / "LOG RPE", que es la
+  // información de verdad (falta el dato, y así se consigue). El sub pasa a "RPE LOAD" porque
+  // esto no es el strain de WHOOP y no debe leerse como si lo fuera.
+  let volume = 0, strain = 0, strainSets = 0;
   weekWorkouts.forEach(w => {
     (w.exercises || []).forEach(ex => {
       (ex.sets || []).forEach(s => {
         if (s.done) {
           const wt = parseFloat(s.weight) || 0, reps = parseInt(s.reps) || 0;
           volume += wt * reps;
-          strain += parseFloat(s.rpe) || 7; // session-RPE style training-load proxy
+          const rpe = parseFloat(s.rpe);
+          if (Number.isFinite(rpe) && rpe > 0) { strain += rpe; strainSets++; }
         }
       });
     });
@@ -9380,7 +9585,7 @@ async function renderHomeStatTrio() {
 
   const cards = [
     { label: 'Readiness', value: rd.value, sub: rd.sub, tone: rd.tone },
-    { label: 'Strain', value: String(Math.round(strain)), sub: 'THIS WK', tone: 'var(--blue)' },
+    { label: 'Strain', value: strainSets ? String(Math.round(strain)) : '—', sub: strainSets ? 'RPE LOAD' : 'LOG RPE', tone: strainSets ? 'var(--blue)' : 'var(--text3)' },
     { label: 'Streak', value: String(streak), sub: streak === 1 ? 'WEEK' : 'WEEKS', tone: 'var(--yellow)' },
     { label: 'Volume', value: volTxt, sub: 'KG', tone: 'var(--accent)' },
   ];
@@ -9395,21 +9600,10 @@ async function renderHomeStatTrio() {
     </div>`;
 }
 
-// Type → tone + cover image (Lovable: lift=strain, run=recovery, mobility=sleep)
-function _homeTypeTone(type) {
-  // T1: delegate color to the taxonomy (typeTone) — outputs are identical to the
-  // previous hardcoded values (cardio→accent, recovery→purple, strength→blue).
-  if (type === 'run') return { color: typeTone('cardio'), name: 'run' };
-  if (type === 'mobility') return { color: typeTone('recovery'), name: 'mobility' };
-  return { color: typeTone('strength'), name: 'lift' };
-}
-function _homeCover(name, focus) {
-  const key = `${name || ''} ${focus || ''}`.toLowerCase();
-  if (/leg|lower|squat|quad|hamstring/.test(key)) return 'img/session-legs.jpg';
-  if (/push|chest|press|shoulder/.test(key)) return 'img/session-push.jpg';
-  if (/mobility|recovery|rest|stretch|run|zone/.test(key)) return 'img/session-rest.jpg';
-  return 'img/hero-pull.jpg';
-}
+// V-3/V-4: `_homeTypeTone` y `_homeCover` se van con las filas de la cola.
+// `_homeTypeTone` ya no tenía llamadores antes de este incremento (delegaba en `typeTone`) y
+// `_homeCover` sólo elegía la foto de las filas de `#home-queue`, que ahora es una línea sin
+// foto. El hero de la sesión de hoy (`.sh-img`) tiene su propio selector de imagen.
 
 // ==================== WEEK CALENDAR (Lovable single 7-day strip + Historial) ====================
 async function renderWeekCalendar() {
@@ -9539,46 +9733,43 @@ async function renderHomeQueue() {
     const p = plannedArr[i];
     if (!p || p.type === 'rest') return;
     if (p.type === 'gym') {
-      const focus = (p.subtitle || 'Strength') + (p.z2FinisherMin ? ` · +${p.z2FinisherMin}' Z2` : '');
-      rows.push({ ds, label: dayNames[i], name: p.name, focus, kind: 'gym', key: p.sessionId, img: _homeCover(p.name, p.subtitle), tone: typeTone('strength') });
+      rows.push({ ds, label: dayNames[i], name: p.name, kind: 'gym', key: p.sessionId });
     } else if (p.type === 'run') {
-      const focus = (p.subtitle || 'Zone 2') + (p.durationMin ? ` · ${p.durationMin}'` : '');
-      rows.push({ ds, label: dayNames[i], name: p.name, focus, kind: 'cardio', img: 'img/session-rest.jpg', tone: typeTone('cardio') });
+      rows.push({ ds, label: dayNames[i], name: p.name, kind: 'cardio' });
     } else if (p.type === 'recovery') {
-      rows.push({ ds, label: dayNames[i], name: p.name, focus: p.subtitle || 'Mobility + easy Z2', kind: 'recovery', img: 'img/session-rest.jpg', tone: typeTone('recovery') });
+      rows.push({ ds, label: dayNames[i], name: p.name, kind: 'recovery' });
     }
   });
 
   if (aheadEl) aheadEl.textContent = rows.length ? `${rows.length} ahead` : '';
 
   if (rows.length === 0) {
-    container.innerHTML = `<div class="queue-empty">Nothing else planned this week. Recovery counts.</div>`;
+    // V-5: el estado vacío por el helper de la casa, no una cadena ad hoc. Mismo texto.
+    showEmptyState(container, '😴', 'Nothing else planned this week', 'Recovery counts.');
     return;
   }
 
+  // V-4: UNA línea, la siguiente sesión. Era una lista con foto, nombre y `focus` de hasta
+  // seis sesiones — el mismo plan de la semana que ya cuentan el calendario (arriba) y la
+  // tarjeta de hoy, con el mismo `name + focus` de la tarjeta del coach. Tres veces la misma
+  // información en una pantalla de 390 px, y la cola era la copia menos útil: el calendario
+  // ya dice qué días hay algo, y para saber QUÉ hay se toca el día. Lo que la cola aporta y
+  // el calendario no es una sola cosa: cuál es la próxima. Eso es lo que queda.
+  const n = rows[0];
   container.innerHTML = `
-    <ul class="home-queue">
-      ${rows.slice(0, 6).map((r, i) => `
-        <li><button class="queue-row" data-q="${i}">
-          <span class="queue-thumb"><img src="${r.img}" alt="" loading="lazy"></span>
-          <span class="queue-body">
-            <span class="queue-meta"><span class="queue-dot" style="background:${r.tone}"></span>${r.label}</span>
-            <span class="queue-title">${r.name}</span>
-            <span class="queue-sub">${r.focus}</span>
-          </span>
-          <span class="queue-chev">›</span>
-        </button></li>`).join('')}
-    </ul>`;
-
-  rows.slice(0, 6).forEach((r, i) => {
-    const el = container.querySelector(`[data-q="${i}"]`);
-    if (!el) return;
+    <button class="queue-next" data-q="0">
+      <span class="queue-next-label">Next</span>
+      <span class="queue-next-txt">${escapeHtml(n.label)} · ${escapeHtml(n.name || 'Session')}</span>
+      <span class="queue-chev">›</span>
+    </button>`;
+  const el = container.querySelector('[data-q="0"]');
+  if (el) {
     el.addEventListener('click', () => {
-      if (r.kind === 'gym') showSessionPicker(r.key, r.ds);
-      else if (r.kind === 'cardio') switchTab('cardio');
-      else { switchTab('gym'); if (typeof openMobilityView === 'function') openMobilityView(); }
+      if (n.kind === 'gym') showSessionPicker(n.key, n.ds);
+      else if (n.kind === 'cardio') switchTab('cardio');
+      else { switchTab('gym'); safeCall('openMobilityView'); }
     });
-  });
+  }
 }
 
 // ==================== TODAY'S PLAN CARD ====================
@@ -9680,12 +9871,10 @@ async function renderTodaysPlan() {
   }
 
   // --- Pure rest day ---
+  // V-5: por `showEmptyState`, con el mismo emoji y el mismo texto. Había diez estados vacíos
+  // por el helper y unos treinta escritos a mano, cada uno con su marco y su tamaño de fuente.
   if (planned.type !== 'gym') {
-    container.innerHTML = `
-      <section class="session-hero session-hero-rest">
-        <div class="sh-rest-emoji">😌</div>
-        <div class="sh-rest-text"><strong>Rest day</strong><div class="sh-rest-sub">No training planned. Recovery counts.</div></div>
-      </section>`;
+    showEmptyState(container, '😌', 'Rest day', 'No training planned. Recovery counts.');
     return;
   }
 
@@ -10340,7 +10529,14 @@ async function logBodyWeight() {
   const weight = parseFloat(input.value);
   if (!weight || weight < 20 || weight > 300) { toast('Enter a valid weight'); return; }
 
-  await smartPut('bodyweight', { date: today(), weight, timestamp: Date.now() });
+  // V-9: la pesada es un dato de una sola oportunidad al día. Si no entra, hay que decirlo.
+  try {
+    await smartPut('bodyweight', { date: today(), weight, timestamp: Date.now() });
+  } catch (e) {
+    console.warn('[Peso] registrar pesada:', e);
+    toast(`Something went wrong saving the weigh-in: ${(e && e.message) || 'storage error'}`);
+    return;
+  }
   _bwCache = weight; // refresh cached value used for calorie estimation
   input.value = '';
   toast(`${weight} kg logged`);
@@ -10786,12 +10982,15 @@ async function renderSyncWarning() {
   const msg = quarantined > 0
     ? `${quarantined} record${quarantined === 1 ? '' : 's'} could not be uploaded. Your data is still on the phone.`
     : `${pending} change${pending === 1 ? '' : 's'} not uploaded for ${age}.`;
+  // V-3: familia propia (`.sync-warning-*`). Reutilizaba `.deload-*`, las clases del banner
+  // reactivo de descarga que se retiró en v11.62, y tenía que pisar su amarillo con un
+  // `style` inline en rojo para no parecer un aviso de descarga.
   container.innerHTML = `
-    <div class="deload-banner" style="border-color:var(--red)">
-      <span class="deload-icon">☁️</span>
+    <div class="sync-warning-banner">
+      <span class="sync-warning-icon">☁️</span>
       <div>
-        <div class="deload-text" style="font-weight:700">Cloud backup pending</div>
-        <div style="font-size:11px;color:var(--text2);margin-top:2px">${msg} Tap to retry.</div>
+        <div class="sync-warning-title">Cloud backup pending</div>
+        <div class="sync-warning-text">${msg} Tap to retry.</div>
       </div>
     </div>`;
   container.classList.remove('hidden');
@@ -10800,6 +10999,9 @@ async function renderSyncWarning() {
     await renderSyncWarning();
     const after = await getSyncStatus();
     toast(after.total > 0 ? `${after.total} still not uploaded` : 'Synced');
+    // V-8: el punto del topbar cuenta lo mismo que este banner; sin esto se quedaría ámbar
+    // después de un reintento con éxito.
+    safeCall('renderTopbarStatusDot');
   };
 }
 
@@ -11032,14 +11234,16 @@ async function renderMuscleVolume() {
 
   // Muscle rows
   sorted.forEach(muscle => {
-    const color = MUSCLE_COLORS[muscle] || '#666';
+    const color = MUSCLE_COLORS[muscle] || MUSCLE_FALLBACK;
     const total = muscleTotals[muscle];
     const inRange = total >= 10 && total <= 14;
     html += `<div class="hm-muscle" style="color:${color}">${muscle}</div>`;
     weekStrs.forEach(d => {
       const sets = (muscleDay[muscle] && muscleDay[muscle][d]) || 0;
       const intensity = sets / maxCell;
-      const bg = sets > 0 ? `${color}${Math.round(intensity * 0.6 * 255).toString(16).padStart(2, '0')}` : 'transparent';
+      // V-2: antes se concatenaba el alfa al hex (`#60a5fa99`). Con tokens eso no existe, así
+      // que el tinte se compone con `color-mix`, que es lo que el hex+alfa imitaba a mano.
+      const bg = sets > 0 ? `color-mix(in srgb, ${color} ${Math.round(intensity * 60)}%, transparent)` : 'transparent';
       html += `<div class="hm-cell" style="background:${bg}" title="${muscle}: ${sets} sets">${sets || ''}</div>`;
     });
     html += `<div class="hm-total" style="color:${inRange ? 'var(--accent)' : total < 10 ? 'var(--orange)' : 'var(--yellow)'}">${total}</div>`;
@@ -12184,9 +12388,7 @@ async function init() {
   // cero, que es exactamente la debilidad de Caltrack que este diseño existe para corregir.
   // v11.55 arreglo la causa raiz (el guard mira la configuracion, no el cliente: F-1), asi que
   // el orden ya no es critico. Se mantiene igual: no depender de un solo guard sale gratis.
-  if (typeof seedFoods === 'function') {
-    try { await seedFoods(); } catch (e) { console.warn('[Nutricion] seed:', e); }
-  }
+  try { await safeCall('seedFoods'); } catch (e) { console.warn('[Nutricion] seed:', e); }
 
   // Y empujar lo que los seeds de plan/ejercicios dejaron solo en local (ver la funcion).
   try { await backfillSeedStoresToCloud(); } catch (e) { console.warn('[Sync] backfill:', e); }
@@ -12195,12 +12397,10 @@ async function init() {
   // el pull de `coach_reviews`, una revisión que ya se creó en otro dispositivo no se vería aquí
   // y la app pagaría una segunda ($0,50-0,70). Todo en segundo plano para no retrasar el primer
   // pintado — `maybeRunWeeklyCoach` repinta la tarjeta de Home cuando llega la propuesta.
-  if (typeof maybeRunWeeklyCoach === 'function') {
-    (async () => {
-      try { if (window.syncAll) await window.syncAll(); } catch (e) { /* sin red, se decide con lo local */ }
-      await maybeRunWeeklyCoach();
-    })().catch(e => console.warn('[Coach] semanal:', e));
-  }
+  (async () => {
+    try { if (window.syncAll) await window.syncAll(); } catch (e) { /* sin red, se decide con lo local */ }
+    await safeCall('maybeRunWeeklyCoach');
+  })().catch(e => console.warn('[Coach] semanal:', e));
 
   renderRecentWorkouts();
   // B-3: el banner de la semana lo pintaba la tira retirada; ahora se pide aquí (primer
@@ -12234,8 +12434,8 @@ async function init() {
   // `integrationsHandleReturn()` va DESPUÉS de switchTab(): parsea `#settings?connected=…` y
   // abre Ajustes, y hacerlo antes lo pisaría el tab inicial. Va también después de checkAuth():
   // sin sesión no hay estado que leer.
-  if (typeof integrationsHandleReturn === 'function') integrationsHandleReturn().catch(() => {});
-  if (typeof renderIntegrationsCard === 'function') renderIntegrationsCard().catch(() => {});
+  Promise.resolve(safeCall('integrationsHandleReturn')).catch((e) => console.warn('[integraciones] vuelta:', e));
+  Promise.resolve(safeCall('renderIntegrationsCard')).catch((e) => console.warn('[integraciones] tarjeta:', e));
 
   // Legacy connection cards inside collapsible "Legacy connections" section
   renderStravaUI();
@@ -12256,10 +12456,10 @@ async function init() {
       }
     });
   }).catch(() => {});
-  if (typeof whoopSyncData === 'function') {
-    whoopSyncData().then((d) => {
+  {
+    Promise.resolve(safeCall('whoopSyncData')).then((d) => {
       if (state.currentTab !== 'home') return;
-      if (typeof renderWhoopRecoveryCard === 'function') renderWhoopRecoveryCard();
+      safeCall('renderWhoopRecoveryCard');
       // v11.58: si esta sincronización trajo el dato de HOY (ruta directa de WHOOP, o intervals
       // que ya lo tiene), el Home se repinta solo. Sin esto, la tarjeta se quedaría con el "Sin
       // dato de hoy" del primer render aunque el dato hubiese llegado dos segundos después.
@@ -12267,12 +12467,18 @@ async function init() {
       // recalcularlo, o la tarjeta se queda con el "sin dato de hoy" del primer render.
       invalidateReadiness();
       if (d && d.todaySource && d.todaySource !== 'missing') {
-        if (typeof renderRecoveryLine === 'function') renderRecoveryLine().catch(() => {});
+        Promise.resolve(safeCall('renderRecoveryLine')).catch(() => {});
         // v11.65: y el tile Readiness, que es donde se ve el número de hoy desde este incremento.
-        if (typeof renderHomeStatTrio === 'function') renderHomeStatTrio().catch(() => {});
+        renderHomeStatTrio().catch(() => {});
       }
     }).catch(() => {});
   }
+
+  // V-5: el email de la sesión, para las iniciales del avatar cuando no hay `settings.name`.
+  // En segundo plano: `getUser()` habla con Supabase y el topbar ya está pintado con 'JG'.
+  primeAuthEmail().catch((e) => console.warn('[auth] email:', e));
+  // V-8: y el punto de estado, que necesita contar la cola de sincronización.
+  renderTopbarStatusDot().catch((e) => console.warn('[Sync] punto de estado:', e));
 
   // Notifications
   initNotifications();
@@ -12315,9 +12521,11 @@ document.addEventListener('visibilitychange', () => {
   // tocar ese fichero. `whoopSyncData` tiene caché de 10 min: llamarlo dos veces no cuesta.
   if (document.visibilityState === 'visible' && state.currentTab === 'home') {
     (async () => {
-      try { if (typeof whoopSyncData === 'function') await whoopSyncData(); } catch (e) {}
-      try { if (typeof invalidateReadiness === 'function') invalidateReadiness(); } catch (e) {}
-      try { if (typeof renderHomeStatTrio === 'function') await renderHomeStatTrio(); } catch (e) {}
+      try { await safeCall('whoopSyncData'); } catch (e) { console.warn('[WHOOP] vuelta a primer plano:', e); }
+      invalidateReadiness();
+      try { await renderHomeStatTrio(); } catch (e) { console.warn('[Home] trío tras volver:', e); }
+      // V-8: y el punto de estado, porque la red pudo cambiar con la app en segundo plano.
+      renderTopbarStatusDot();
     })();
   }
 });
