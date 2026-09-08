@@ -119,20 +119,20 @@ function renderAuthUI() {
       const quarantined = st.quarantined || 0;
       const ageH = st.oldest ? Math.floor((Date.now() - st.oldest) / 3600000) : 0;
       const stale = pending > 0 && ageH >= 24;
-      const lastOk = st.lastOkAt ? new Date(st.lastOkAt).toLocaleString() : 'nunca';
+      const lastOk = st.lastOkAt ? new Date(st.lastOkAt).toLocaleString() : 'never';
 
       let statusHTML;
       if (quarantined > 0) {
         statusHTML = `<div style="font-size:12px;margin-top:8px;color:var(--red)">
-          ⚠ ${quarantined} registro${quarantined === 1 ? '' : 's'} en cuarentena (no se pudieron subir).
-          ${pending - quarantined > 0 ? `${pending - quarantined} pendiente(s).` : ''}<br>Último sync correcto: ${lastOk}</div>`;
+          ⚠ ${quarantined} record${quarantined === 1 ? '' : 's'} quarantined (could not be uploaded).
+          ${pending - quarantined > 0 ? `${pending - quarantined} pending.` : ''}<br>Last successful sync: ${lastOk}</div>`;
       } else if (stale) {
         statusHTML = `<div style="font-size:12px;margin-top:8px;color:var(--red)">
-          ⚠ ${pending} cambio${pending === 1 ? '' : 's'} sin subir desde hace ${ageH >= 48 ? `${Math.floor(ageH / 24)} días` : `${ageH} h`}.<br>Último sync correcto: ${lastOk}</div>`;
+          ⚠ ${pending} change${pending === 1 ? '' : 's'} not uploaded for ${ageH >= 48 ? `${Math.floor(ageH / 24)} days` : `${ageH} h`}.<br>Last successful sync: ${lastOk}</div>`;
       } else if (pending > 0) {
-        statusHTML = `<div class="muted" style="font-size:12px;margin-top:8px">${pending} cambio(s) en cola. Último sync: ${lastOk}</div>`;
+        statusHTML = `<div class="muted" style="font-size:12px;margin-top:8px">${pending} change(s) queued. Last sync: ${lastOk}</div>`;
       } else {
-        statusHTML = `<div class="muted" style="font-size:12px;margin-top:8px">✓ Todo sincronizado. Último sync: ${lastOk}</div>`;
+        statusHTML = `<div class="muted" style="font-size:12px;margin-top:8px">✓ Everything synced. Last sync: ${lastOk}</div>`;
       }
 
       section.innerHTML = `
@@ -147,7 +147,7 @@ function renderAuthUI() {
       document.getElementById('btn-force-sync').addEventListener('click', async () => {
         await syncAll();
         const after = await getSyncStatus();
-        toast(after.total > 0 ? `Quedan ${after.total} sin subir` : 'Sincronizado');
+        toast(after.total > 0 ? `${after.total} still not uploaded` : 'Synced');
         renderAuthUI();
       });
     } else {

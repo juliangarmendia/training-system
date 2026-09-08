@@ -64,14 +64,14 @@ vm.runInContext(`var WAIST_MIN_DELTA_DAYS = 10; ${SUM_SRC}; globalThis.renderWai
 const render = ctx.renderWaistSummary;
 
 const empty = render([]);
-empty.includes('linea base') ? ok('sin mediciones: invita a fijar la línea base, no pinta un delta falso') : bad('el estado vacío no avisa');
+empty.includes('baseline') ? ok('sin mediciones: invita a fijar la línea base, no pinta un delta falso') : bad('el estado vacío no avisa');
 
 // Dos mediciones a 3 días: por debajo del umbral de ruido (±0,5 cm), no debe dar delta.
 const tooClose = render([
   { date: '2026-09-06', waist: 92.5, bfPct: 19.8 },
   { date: '2026-09-09', waist: 92.0, bfPct: 19.6 },
 ]);
-(!/en \d+ dias/.test(tooClose) && tooClose.includes('2 semanas'))
+(!/in \d+ days/.test(tooClose) && tooClose.includes('2 weeks'))
   ? ok('mediciones a 3 días: NO reporta delta — 0,5 cm a 3 días es ruido de cinta')
   : bad('reporta un delta con 3 días de separación: eso es ruido presentado como progreso');
 
@@ -80,7 +80,7 @@ const farEnough = render([
   { date: '2026-08-23', waist: 93.5, bfPct: 20.4 },
   { date: '2026-09-06', waist: 92.5, bfPct: 19.8 },
 ]);
-/-1\.0 cm<\/b> en 14 dias/.test(farEnough)
+/-1\.0 cm<\/b> in 14 days/.test(farEnough)
   ? ok('a 14 días: −1,0 cm en 14 días, con signo correcto')
   : bad(`no calcula el delta a 14 días — salida: ${farEnough.replace(/\s+/g, ' ').slice(0, 160)}`);
 
@@ -177,7 +177,7 @@ const threePoints = render([
   puts.length = 0;
   getEl('bc-waist').value = '38';
   await getEl('btn-calc-bf').click();
-  (puts.length === 0 && getEl('bc-result').innerHTML.includes('mayor que el cuello'))
+  (puts.length === 0 && getEl('bc-result').innerHTML.includes('larger than the neck'))
     ? ok('cintura ≤ cuello: avisa y NO guarda — el log de Navy daría NaN')
     : bad('acepta cintura ≤ cuello: guardaría un bfPct NaN');
 

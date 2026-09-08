@@ -92,8 +92,8 @@ near(A.weight.trend7d, 85.6, 0.1, 'media de 7 días');
 near(A.weight.slope, -0.42, 0.05, 'pendiente kg/semana sobre la media de 7 d');
 between(A.weight.etaWeeks, 10, 12, 'ETA a 81 kg (alto de la banda objetivo)');
 between(A.weight.etaMilestoneWeeks, 7.5, 9.5, 'ETA al hito de 82 kg');
-yes(/pesadas/.test(A.weight.text), `el texto declara el tamaño de muestra: "${A.weight.text}"`);
-yes(/85,6|85,5|85,7/.test(A.weight.text), 'y la media con coma decimal (castellano)');
+yes(/weigh-ins/.test(A.weight.text), `el texto declara el tamaño de muestra: "${A.weight.text}"`);
+yes(/85\.6|85\.5|85\.7/.test(A.weight.text), 'y la media con punto decimal (UI en inglés)');
 yes(/82/.test(A.weight.text), 'y el hito de 82 kg');
 yes(!(A.signals || []).some(s => s.id === 'rate-too-fast'), '−0,42 kg/sem no dispara rate-too-fast');
 yes(!(A.signals || []).some(s => s.id === 'weight-at-target'), 'ni weight-at-target a 85,6 kg');
@@ -122,7 +122,7 @@ near(C.weight.slope, -0.9, 0.06, 'la pendiente lo confirma');
 const rtf = (C.signals || []).find(s => s.id === 'rate-too-fast');
 yes(!!rtf, 'dispara rate-too-fast');
 eq(rtf && rtf.severity, 'flag', 'como aviso');
-yes(/0,9|0,8|1,0/.test(rtf.text), `con la cifra dentro: "${rtf.text}"`);
+yes(/0\.9|0\.8|1\.0/.test(rtf.text), `con la cifra dentro: "${rtf.text}"`);
 yes(C.weight.etaWeeks != null, 'el ETA existe (hay pendiente), pero el estado avisa de que sobra prisa');
 
 // ── 4. Datos insuficientes: ni estado ni ETA ────────────────────────────────────────
@@ -134,7 +134,7 @@ const D = E.goalProgress(GOALS, facts({
 eq(D.weight.status, 'insufficient', 'estado = insufficient (<7 pesadas en 14 días)');
 eq(D.weight.etaWeeks, null, 'ETA = null');
 eq(D.weight.etaMilestoneWeeks, null, 'ETA al hito = null');
-yes(/5 pesada/.test(D.weight.text), `y el texto dice cuántas hay: "${D.weight.text}"`);
+yes(/5 weigh-in/.test(D.weight.text), `y el texto dice cuántas hay: "${D.weight.text}"`);
 eq(E.goalProgress(GOALS, facts({})).weight.status, 'insufficient', 'sin pesadas, tampoco se inventa nada');
 eq(E.goalProgress(GOALS, facts({})).weight.trend7d, null, 'y la media de 7 d es null, no 0');
 
@@ -245,7 +245,7 @@ eq(Q.running.phase, 'build', 'tres semanas de base → fase build');
 const qu = (Q.signals || []).find(s => s.id === 'quality-unlocked');
 yes(!!qu, 'dispara quality-unlocked');
 eq(qu && qu.severity, 'info', 'informativa: es una puerta abierta, no una prescripción');
-yes(/dura|calidad/i.test(qu.text), `y lo dice así: "${qu.text}"`);
+yes(/hard|quality/i.test(qu.text), `y lo dice así: "${qu.text}"`);
 
 // ── 9. Forma del retorno ────────────────────────────────────────────────────────────
 console.log('');
@@ -261,8 +261,8 @@ for (const [nombre, gp] of [['on-track', A], ['stalled', B], ['fast', C], ['insu
   yes(typeof gp.strength.text === 'string' && gp.strength.text.length > 0, `${nombre}: texto de fuerza`);
   yes(gp.signals.every(s => s.id && (s.severity === 'info' || s.severity === 'flag') && s.text),
     `${nombre}: señales con {id, severity, text}`);
-  yes(!/\d+\.\d/.test([gp.weight.text, gp.running.text, gp.strength.text].join(' ')),
-    `${nombre}: sin puntos decimales en pantalla (el castellano usa coma)`);
+  yes(!/\d+,\d/.test([gp.weight.text, gp.running.text, gp.strength.text].join(' ')),
+    `${nombre}: sin comas decimales en pantalla (la UI es inglesa: el punto separa)`);
   yes(!/[A-Z]{3}-\d{3}/.test([gp.weight.text, gp.running.text, gp.strength.text].join(' ')),
     `${nombre}: sin Rule IDs crudos en los textos (§B.9)`);
 }

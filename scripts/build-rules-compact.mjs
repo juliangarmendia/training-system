@@ -153,12 +153,12 @@ function main() {
 // sourceSha256: ${sourceSha256}
 // count: ${compact.length}
 //
-// POR QUÉ EXISTE. La vista Coach escribe "Regla STR-001 (evidencia fuerte): <texto>" debajo de
+// POR QUÉ EXISTE. La vista Coach escribe "Rule STR-001 (strong evidence): <texto>" debajo de
 // cada decisión del coach. Los Rule ID crudos en pantalla son ruido (§B.9) y el texto no puede
 // venir por fetch: la app entrena sin conexión, así que el corpus va en el APP_SHELL. Sólo
 // viajan \`rule\` y \`evidenceLevel\`; el resto de campos son para el prompt, no para la pantalla.
-// El texto de la regla se queda en el idioma del corpus (inglés); la etiqueta de evidencia la
-// traduce COACH_EVIDENCE_ES en app/coach.js.
+// El texto de la regla se queda en el idioma del corpus (inglés) y la etiqueta de evidencia
+// sale de COACH_EVIDENCE_LABEL en app/coach.js.
 
 const COACH_RULES = {
 ${jsBody}

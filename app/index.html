@@ -115,23 +115,23 @@
   <div id="nut-confirm-modal" class="modal hidden">
     <div class="modal-content">
       <div class="modal-header">
-        <h3>Revisa la comida</h3>
+        <h3>Review the meal</h3>
         <button id="nut-confirm-close" class="modal-close-btn">&times;</button>
       </div>
       <div id="nut-confirm-notes" class="nut-ai-notes"></div>
       <div id="nut-confirm-items" class="nut-items"></div>
-      <button id="nut-confirm-add" class="btn-secondary" style="margin-top:10px">+ Añadir alimento</button>
+      <button id="nut-confirm-add" class="btn-secondary" style="margin-top:10px">+ Add food</button>
       <div id="nut-confirm-totals" class="nut-confirm-totals"></div>
       <div class="form-row" style="margin-top:12px">
-        <label>Comida</label>
+        <label>Meal</label>
         <select id="nut-confirm-type" class="text-input sm">
-          <option value="desayuno">Desayuno</option>
-          <option value="comida">Comida</option>
-          <option value="cena">Cena</option>
+          <option value="desayuno">Breakfast</option>
+          <option value="comida">Lunch</option>
+          <option value="cena">Dinner</option>
           <option value="snack">Snack</option>
         </select>
       </div>
-      <button id="nut-confirm-save" class="btn-primary btn-lg" style="margin-top:12px">Guardar comida</button>
+      <button id="nut-confirm-save" class="btn-primary btn-lg" style="margin-top:12px">Save meal</button>
     </div>
   </div>
 
@@ -212,7 +212,7 @@
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="2" y1="12" x2="22" y2="12"/><rect x="3" y="8.5" width="2" height="7" rx="0.6"/><rect x="6" y="6.5" width="2.5" height="11" rx="0.6"/><rect x="15.5" y="6.5" width="2.5" height="11" rx="0.6"/><rect x="19" y="8.5" width="2" height="7" rx="0.6"/></svg>
             </div>
             <span class="section-head-title">Recent Workouts</span>
-            <button id="btn-free-session" class="section-head-link" style="background:none;border:none;cursor:pointer">🎛️ Libre</button>
+            <button id="btn-free-session" class="section-head-link" style="background:none;border:none;cursor:pointer">🎛️ Free</button>
             <button id="btn-log-past" class="section-head-link" style="background:none;border:none;cursor:pointer">+ Log past</button>
           </div>
           <div id="recent-workouts" class="recent-list"></div>
@@ -268,7 +268,7 @@
           </div>
           <div id="workout-exercises"></div>
           <!-- Sólo visible en sesión libre (v11.44) -->
-          <button id="btn-add-exercise" class="btn-secondary btn-full hidden" style="margin-top:8px;text-align:center">+ Añadir ejercicio</button>
+          <button id="btn-add-exercise" class="btn-secondary btn-full hidden" style="margin-top:8px;text-align:center">+ Add exercise</button>
           <div class="workout-actions">
             <div class="quality-select">
               <span class="label">How did it feel?</span>
@@ -318,55 +318,55 @@
             <div class="section-head-icon" style="background:var(--tint-blue);color:var(--blue)">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13" cy="4" r="2"/><path d="M5 21l3-9 2.5 2V21M15 11l-3-3-4 4 2 2"/></svg>
             </div>
-            <span class="section-head-title">Registrar cardio</span>
+            <span class="section-head-title">Log cardio</span>
           </div>
           <div class="card form-card">
-            <div class="form-row"><label>Modalidad</label>
+            <div class="form-row"><label>Modality</label>
               <select id="cardio-modality" class="text-input">
-                <option value="run_outdoor">Correr (afuera)</option>
-                <option value="treadmill">Cinta</option>
-                <option value="bike">Bici</option>
-                <option value="row">Remo</option>
+                <option value="run_outdoor">Run (outdoor)</option>
+                <option value="treadmill">Treadmill</option>
+                <option value="bike">Bike</option>
+                <option value="row">Row</option>
                 <option value="ski">SkiErg</option>
-                <option value="walk">Caminata (recuperación)</option>
+                <option value="walk">Walk (recovery)</option>
               </select>
             </div>
-            <div class="form-row"><label>Intensidad</label>
+            <div class="form-row"><label>Intensity</label>
               <select id="cardio-intensity" class="text-input">
-                <option value="zone2" selected>Zona 2 · fácil</option>
-                <option value="long_easy">Largo Z2 · calidad</option>
-                <option value="zone3">Zona 3</option>
-                <option value="threshold">Umbral</option>
-                <option value="intervals">Intervalos</option>
+                <option value="zone2" selected>Zone 2 · easy</option>
+                <option value="long_easy">Long Z2 · quality</option>
+                <option value="zone3">Zone 3</option>
+                <option value="threshold">Threshold</option>
+                <option value="intervals">Intervals</option>
               </select>
             </div>
-            <div class="form-row"><label>Duración (min)</label><input type="number" id="cardio-duration" step="1" min="0" placeholder="35" inputmode="numeric"></div>
-            <div class="form-row"><label>Distancia (km, opcional)</label><input type="number" id="cardio-distance" step="0.1" min="0" placeholder="" inputmode="decimal"></div>
-            <div class="form-row"><label>FC media (opcional)</label><input type="number" id="cardio-hr" step="1" min="0" placeholder="129" inputmode="numeric"></div>
-            <div class="form-row"><label>Cómo se sintió</label><div id="cardio-feel" class="stars"><button data-v="1" data-label="Terrible">1</button><button data-v="2" data-label="Poor">2</button><button data-v="3" class="selected" data-label="OK">3</button><button data-v="4" data-label="Good">4</button><button data-v="5" data-label="Crushed it">5</button></div></div>
+            <div class="form-row"><label>Duration (min)</label><input type="number" id="cardio-duration" step="1" min="0" placeholder="35" inputmode="numeric"></div>
+            <div class="form-row"><label>Distance (km, optional)</label><input type="number" id="cardio-distance" step="0.1" min="0" placeholder="" inputmode="decimal"></div>
+            <div class="form-row"><label>Avg HR (optional)</label><input type="number" id="cardio-hr" step="1" min="0" placeholder="129" inputmode="numeric"></div>
+            <div class="form-row"><label>How did it feel?</label><div id="cardio-feel" class="stars"><button data-v="1" data-label="Terrible">1</button><button data-v="2" data-label="Poor">2</button><button data-v="3" class="selected" data-label="OK">3</button><button data-v="4" data-label="Good">4</button><button data-v="5" data-label="Crushed it">5</button></div></div>
             <div class="form-row quality-legend-row"><span></span><div class="quality-legend">1 Terrible · 2 Poor · 3 OK · 4 Good · 5 Crushed it</div></div>
-            <div class="form-row"><textarea id="cardio-notes" class="input-notes" placeholder="Notas (opcional)" rows="2"></textarea></div>
-            <button id="btn-log-cardio" class="btn-primary btn-lg">Registrar cardio</button>
+            <div class="form-row"><textarea id="cardio-notes" class="input-notes" placeholder="Notes (optional)" rows="2"></textarea></div>
+            <button id="btn-log-cardio" class="btn-primary btn-lg">Log cardio</button>
           </div>
           <div class="section-head" style="margin-top:28px">
             <div class="section-head-icon" style="background:var(--tint-teal);color:var(--teal)">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>
             </div>
-            <span class="section-head-title">Cardio reciente</span>
+            <span class="section-head-title">Recent cardio</span>
           </div>
           <div id="sess-history" class="recent-list"></div>
           <div class="section-head" style="margin-top:28px">
             <div class="section-head-icon" style="background:var(--tint-blue);color:var(--blue)">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 17 9 11 13 15 21 7"/><polyline points="14 7 21 7 21 14"/></svg>
             </div>
-            <span class="section-head-title">Totales de distancia</span>
+            <span class="section-head-title">Distance totals</span>
           </div>
           <div id="run-totals-card" class="run-totals-card"></div>
           <div class="section-head" style="margin-top:28px">
             <div class="section-head-icon" style="background:var(--tint-blue);color:var(--blue)">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>
             </div>
-            <span class="section-head-title">Carreras (historial)</span>
+            <span class="section-head-title">Runs (history)</span>
           </div>
           <div id="run-history" class="recent-list"></div>
         </div>
@@ -379,9 +379,9 @@
       <section id="view-nutrition" class="view">
         <div class="view-scroll">
           <div class="stats-tabs" id="nut-tabs">
-            <button class="stats-tab active" data-nut-group="hoy">Hoy</button>
-            <button class="stats-tab" data-nut-group="tendencias">Tendencias</button>
-            <button class="stats-tab" data-nut-group="alimentos">Alimentos</button>
+            <button class="stats-tab active" data-nut-group="hoy">Today</button>
+            <button class="stats-tab" data-nut-group="tendencias">Trends</button>
+            <button class="stats-tab" data-nut-group="alimentos">Foods</button>
           </div>
 
           <!-- ===== HOY ===== -->
@@ -389,7 +389,7 @@
             <div class="section-head-icon" style="background:var(--tint-green);color:var(--accent)">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8h1a4 4 0 010 8h-1"/><path d="M2 8h16v9a4 4 0 01-4 4H6a4 4 0 01-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>
             </div>
-            <span class="section-head-title" id="nutrition-date-label">Hoy</span>
+            <span class="section-head-title" id="nutrition-date-label">Today</span>
           </div>
 
           <!-- El contrato del día en cuatro números, como la cabecera de Caltrack -->
@@ -399,9 +399,9 @@
                trasera directamente en iOS), galería (`multiple`, para carta + plato) y sólo
                texto. Las tres desembocan en el compositor: N fotos + una nota, UNA llamada. -->
           <div class="nut-capture-row" data-group="hoy">
-            <button id="btn-nut-photo" class="btn-primary nut-photo-btn"><span class="nut-photo-ico">📷</span> Cámara</button>
-            <button id="btn-nut-gallery" class="btn-secondary nut-cap-icon" aria-label="Elegir de la galería">🖼️</button>
-            <button id="btn-nut-write" class="btn-secondary nut-cap-icon" aria-label="Escribir sin foto">✏️</button>
+            <button id="btn-nut-photo" class="btn-primary nut-photo-btn"><span class="nut-photo-ico">📷</span> Camera</button>
+            <button id="btn-nut-gallery" class="btn-secondary nut-cap-icon" aria-label="Choose from the gallery">🖼️</button>
+            <button id="btn-nut-write" class="btn-secondary nut-cap-icon" aria-label="Write without a photo">✏️</button>
           </div>
           <input type="file" id="nut-photo-input" accept="image/*" capture="environment" hidden>
           <input type="file" id="nut-gallery-input" accept="image/*" multiple hidden>
@@ -409,15 +409,15 @@
           <div id="nut-composer" class="nut-composer hidden" data-group="hoy">
             <div id="nut-composer-thumbs" class="nut-thumbs"></div>
             <textarea id="nut-composer-note" class="input-notes nut-note" rows="2"
-              placeholder="¿Algo que la foto no diga? «me comí la mitad», «sin la salsa», «doble de pollo»…"></textarea>
+              placeholder="Anything the photo does not say? &quot;I ate half&quot;, &quot;no sauce&quot;, &quot;double chicken&quot;…"></textarea>
             <div class="nut-composer-hint">
-              La nota manda sobre lo que se ve: tú estuviste delante del plato.
-              Carta + plato juntos es la mejor combinación — la carta da los macros
-              publicados, la foto dice cuánto hay servido.
+              The note beats what is visible: you were the one in front of the plate.
+              Menu + plate together is the best combination — the menu gives the published
+              macros, the photo says how much was served.
             </div>
             <div class="nut-composer-actions">
-              <button id="btn-nut-discard" class="btn-secondary">Descartar</button>
-              <button id="btn-nut-analyze" class="btn-primary">Analizar</button>
+              <button id="btn-nut-discard" class="btn-secondary">Discard</button>
+              <button id="btn-nut-analyze" class="btn-primary">Analyze</button>
             </div>
           </div>
 
@@ -429,7 +429,7 @@
           <!-- Coach "resto del día": determinista, sin llamada al LLM -->
           <div id="nut-coach" data-group="hoy"></div>
 
-          <div class="section-label" style="margin-top:20px" data-group="hoy">Comidas de hoy</div>
+          <div class="section-label" style="margin-top:20px" data-group="hoy">Today's meals</div>
           <div id="nut-meals" class="recent-list" data-group="hoy"></div>
 
           <!-- La energía se conserva del formulario anterior: el motor de fatiga la
@@ -437,22 +437,22 @@
           <div class="card" style="margin-top:16px" data-group="hoy">
             <div class="checklist">
               <div class="check-row">
-                <label>Nivel de energía</label>
+                <label>Energy level</label>
                 <div id="nut-energy" class="stars compact"><button data-v="1">1</button><button data-v="2">2</button><button data-v="3" class="selected">3</button><button data-v="4">4</button><button data-v="5">5</button></div>
               </div>
             </div>
-            <button id="btn-nut-energy" class="btn-secondary" style="margin-top:10px">Guardar energía</button>
+            <button id="btn-nut-energy" class="btn-secondary" style="margin-top:10px">Save energy</button>
           </div>
 
-          <div class="section-label" style="margin-top:24px" data-group="hoy">Esta semana</div>
+          <div class="section-label" style="margin-top:24px" data-group="hoy">This week</div>
           <div id="nutrition-history" class="recent-list" data-group="hoy"></div>
 
           <!-- ===== TENDENCIAS ===== -->
           <div id="nut-streak" data-group="tendencias"></div>
           <div id="nut-trends" data-group="tendencias"></div>
-          <div class="section-label" style="margin-top:20px" data-group="tendencias">Déficit por semana</div>
+          <div class="section-label" style="margin-top:20px" data-group="tendencias">Deficit by week</div>
           <div id="nut-weekly" data-group="tendencias"></div>
-          <div class="section-label" style="margin-top:20px" data-group="tendencias">Calibración del mantenimiento</div>
+          <div class="section-label" style="margin-top:20px" data-group="tendencias">Maintenance calibration</div>
           <div id="nut-calibration" data-group="tendencias"></div>
 
           <!-- ===== ALIMENTOS ===== -->
@@ -675,39 +675,39 @@
                espejo `integration_status` y dispara authorize / sincronizar / desconectar. La
                pinta app/integrations.js. El <details> legacy de WHOOP (OAuth en el cliente,
                tokens en localStorage) se borró aquí: era la causa de las desconexiones. -->
-          <div class="section-label" style="margin-top:24px">Integraciones</div>
+          <div class="section-label" style="margin-top:24px">Integrations</div>
           <div class="card integrations-card" id="integrations-card">
-            <p class="muted" style="font-size:13px;margin:0">Cargando…</p>
+            <p class="muted" style="font-size:13px;margin:0">Loading…</p>
           </div>
 
           <div class="section-label" style="margin-top:24px">Plan</div>
           <div class="card">
-            <p class="muted" style="font-size:13px;margin:0 0 10px">Tu <b>plan ideal evidence-based</b> es el plan vivo. Elegí los <b>días (3/4/5/6)</b> según la semana — cambia solo hacia adelante, tus sesiones registradas quedan intactas.</p>
+            <p class="muted" style="font-size:13px;margin:0 0 10px">Your <b>evidence-based ideal plan</b> is the live plan. Pick the <b>day count (3/4/5/6)</b> to match the week — it only changes going forward, your logged sessions stay untouched.</p>
             <button id="btn-ideal-preview" class="btn-secondary btn-full" style="text-align:center">Mi plan</button>
           </div>
 
           <!-- Coach semanal (v11.61). "Exportar facts JSON" existe para poder INSPECCIONAR el
                pack en el iPhone antes de gastar un céntimo en una llamada al modelo. -->
-          <div class="section-label" style="margin-top:24px">Coach semanal</div>
+          <div class="section-label" style="margin-top:24px">Weekly coach</div>
           <div class="card">
-            <p class="muted" style="font-size:13px;margin:0 0 10px">El coach revisa la semana y <b>propone</b>; tú apruebas. La propuesta aparece en Home y en la vista Coach.</p>
+            <p class="muted" style="font-size:13px;margin:0 0 10px">The coach reviews the week and <b>proposes</b>; you approve. The proposal shows up on Home and in the Coach view.</p>
             <div class="form-row">
-              <label for="setting-coach-auto-apply">Aplicación de la propuesta semanal</label>
+              <label for="setting-coach-auto-apply">How the weekly proposal is applied</label>
               <select id="setting-coach-auto-apply" class="text-input">
                 <option value="ask">Propone, yo apruebo</option>
-                <option value="auto-if-clean">Automático si no hay avisos (próximamente)</option>
-                <option value="auto">Automático siempre (próximamente)</option>
+                <option value="auto-if-clean">Automatic if there are no warnings (coming soon)</option>
+                <option value="auto">Always automatic (coming soon)</option>
               </select>
             </div>
             <button id="btn-open-coach" class="btn-secondary btn-full" style="text-align:center;margin-top:10px">Abrir Coach</button>
-            <button id="btn-export-facts" class="btn-secondary btn-full" style="text-align:center;margin-top:8px">Exportar facts JSON</button>
-            <p class="muted" style="font-size:11px;margin-top:6px">Copia al portapapeles los hechos que el coach recibe (sin filas crudas). Sirve para revisar qué ve antes de pedirle una revisión.</p>
+            <button id="btn-export-facts" class="btn-secondary btn-full" style="text-align:center;margin-top:8px">Export facts JSON</button>
+            <p class="muted" style="font-size:11px;margin-top:6px">Copies the facts the coach receives to the clipboard (no raw rows). Useful to check what it sees before asking for a review.</p>
             <div id="coach-facts-out" class="hidden" style="margin-top:8px"></div>
           </div>
 
-          <div class="section-label" style="margin-top:24px">Analítica</div>
+          <div class="section-label" style="margin-top:24px">Bloodwork</div>
           <div class="card">
-            <p class="muted" style="font-size:13px;margin:0 0 10px">Tus <b>6 analíticas (2021-2025)</b> con puntaje 1-5 contra objetivos de guía, no contra el rango del laboratorio. Contexto histórico, <b>no diagnóstico</b>.</p>
+            <p class="muted" style="font-size:13px;margin:0 0 10px">Your <b>6 blood panels (2021-2025)</b> scored 1-5 against guideline targets, not against the lab's range. Historical context, <b>not a diagnosis</b>.</p>
             <button id="btn-analytics" class="btn-secondary btn-full" style="text-align:center">Mis marcadores</button>
           </div>
 
@@ -771,8 +771,8 @@
             <!-- Objetivos por tipo de dia (v11.49): plans/nutrition-notes.md cicla 2.700 kcal
                  en dia de entreno y 2.400 en descanso. Un unico numero no podia representarlo,
                  y `calorieTarget` ademas no estaba cableado a nada. -->
-            <div class="form-row"><label>Calorías · día de entreno</label><input type="number" id="setting-calorie-target-training" step="50" min="0" value="2700" inputmode="numeric"></div>
-            <div class="form-row"><label>Calorías · día de descanso</label><input type="number" id="setting-calorie-target-rest" step="50" min="0" value="2400" inputmode="numeric"></div>
+            <div class="form-row"><label>Calories · training day</label><input type="number" id="setting-calorie-target-training" step="50" min="0" value="2700" inputmode="numeric"></div>
+            <div class="form-row"><label>Calories · rest day</label><input type="number" id="setting-calorie-target-rest" step="50" min="0" value="2400" inputmode="numeric"></div>
             <div class="form-row"><label>Goal weight (kg)</label><input type="number" id="setting-goal-weight" step="0.5" min="20" max="300" placeholder="e.g. 78" inputmode="decimal"></div>
             <p class="muted" style="font-size:11px;margin-top:-6px">Used to project ETA and progress on the Body card.</p>
             <button id="btn-save-settings" class="btn-primary">Save Settings</button>
@@ -802,7 +802,7 @@
           </div>
           <div class="section-label" style="margin-top:24px">App</div>
           <div class="card">
-            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v11.66<br>Data stored locally + cloud sync.<br>Works offline.</p>
+            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v11.67<br>Data stored locally + cloud sync.<br>Works offline.</p>
             <button id="btn-force-update" class="btn-secondary btn-full" style="text-align:center">Force Update App</button>
           </div>
         </div>

@@ -308,7 +308,7 @@ const ADHOC_SRC = SRC.slice(SRC.indexOf('async function addAdHocExercise'), SRC.
 const sheets = (ADHOC_SRC.match(/showActionSheet\(/g) || []).length;
 ok(sheets === 2, `dos showActionSheet: músculo → ejercicio (hay ${sheets})`);
 ok(!/¿Cuántas series\?/.test(ADHOC_SRC), 'ya no pregunta el número de series');
-ok(!/_MUSCLE_ES/.test(ADHOC_SRC), 'no traduce los grupos: salen en inglés como la insignia de cada tarjeta');
+ok(!/_MUSCLE_LABEL/.test(ADHOC_SRC), 'no remapea los grupos: salen como la insignia de cada tarjeta');
 ok(/label: m\b/.test(ADHOC_SRC), 'el grupo se etiqueta con el nombre del músculo tal cual');
 ok(/sets: 3,/.test(ADHOC_SRC), 'entra con 3 series por defecto');
 

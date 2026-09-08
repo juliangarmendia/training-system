@@ -100,7 +100,7 @@ idéntica a la guardada (mataba `updated_at` en cada render).
 | `app/integrations.js` | `integrationsGetStatus({force})`, `integrationsIsActive(p)` (síncrona, lee la caché), `integrationsStatusOf(p)`, `integrationsConnect(p)`, `integrationsDisconnect(p)`, `integrationsSync(p,{days})`, `renderIntegrationsCard()`, `integrationsHandleReturn()` |
 | `app/supabase-sync.js` | `pullStore(store, {since, user})` — el bucle de bajada de `syncAll` para un store. Siempre `dbPut`, nunca `smartPut` |
 | `app/whoop.js` | Ya no hace OAuth. `whoopSyncData()` = caché 10 min → `pullStore('wellness')` → `intervalsFetchWellness()` → si falta el readiness de hoy con origen WHOOP y la integración está activa, `integrationsSync('whoop',{days:2})` → construye `recovery[]`/`sleep[]` desde los últimos 7 días de `wellness` |
-| Ajustes › **Integraciones** | Dos filas (WHOOP, Withings): pill `Conectado`/`Reconectar`/`No conectado`, "último sync 07:42 · evento 07:41", `last_error`, y los botones Conectar / Sincronizar ahora / Desconectar |
+| Settings › **Integrations** | Dos filas (WHOOP, Withings): pill `Connected`/`Reconnect`/`Not connected`, "last sync 07:42 · event 07:41", `last_error`, y los botones Connect / Sync now / Disconnect. La UI está entera en inglés desde v11.67 (`INTEG_PILL_EN`, `INTEG_CONNECT_ERROR_EN`) |
 
 Orden de carga en `index.html`: `supabase-sync.js` → **`integrations.js`** → `whoop.js`. Está en
 `APP_SHELL` de `sw.js`. `whoop-callback.html` **se borró**: el callback aterriza en el servidor.
@@ -135,10 +135,10 @@ Logs de las funciones: `supabase functions logs whoop-sync` (o `whoop-webhook`,
 
 Síntomas frecuentes:
 
-- **La tarjeta dice "Reconectar".** Mirar `last_error`. Si dice `invalid_grant`, el token de
+- **La tarjeta dice "Reconnect".** Mirar `last_error`. Si dice `invalid_grant`, el token de
   refresco murió de verdad y hay que reconectar. Cualquier otra cosa es un bug: `invalid_client`,
   5xx y timeouts no deberían llegar a marcar `needs_reconnect`.
-- **"WHOOP aún no puntuó la noche" a media mañana.** Comprobar `integration_events`: si no hay
+- **"WHOOP hasn't scored the night yet" a media mañana.** Comprobar `integration_events`: si no hay
   `recovery.updated`, el webhook no está registrado en el panel de WHOOP o la firma no cuadra
   (401 sin fila). El cron de las :00/:30 lo recoge igual como red.
 - **Sale el dato de ayer.** No debería: si no hay fila de hoy con score, la app dice `missing` con

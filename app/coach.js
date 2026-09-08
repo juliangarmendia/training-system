@@ -65,12 +65,12 @@ async function renderCoachReadout() {
       // `measureUnit` presente = el número no son kilos (altura del cajón en cm).
       const u = it.measureUnit ? ` ${it.measureUnit}` : '';
       const hecho = it.outcome === 'skipped'
-        ? 'sin series'
+        ? 'no sets'
         : `${it.done.topKg != null ? fmt(it.done.topKg) + u : '—'}×${(it.done.reps || []).join('/')}` +
           (it.done.avgRpe ? ` @${fmt(it.done.avgRpe)}` : '');
       const next = it.next && it.next.kg != null
         ? `<span class="coach-readout-next" title="${escapeHtml(it.next.reason || '')}">→ ${fmt(it.next.kg)}</span>`
-        : (it.outcome === 'skipped' ? '<span class="coach-readout-next">saltado</span>' : '');
+        : (it.outcome === 'skipped' ? '<span class="coach-readout-next">skipped</span>' : '');
       return `
         <div class="coach-readout-row">
           <span class="coach-outcome ${cls[it.outcome] || ''}">${glyph[it.outcome] || '○'}</span>
@@ -85,12 +85,12 @@ async function renderCoachReadout() {
     el.innerHTML = `
       <div class="card coach-readout">
         <div class="coach-readout-head">
-          <span class="coach-readout-title">Lectura del coach · ${escapeHtml(nombre)}${mins ? ' · ' + mins : ''}</span>
-          <button class="coach-readout-close" id="coach-readout-close" aria-label="Cerrar">✕</button>
+          <span class="coach-readout-title">Coach readout · ${escapeHtml(nombre)}${mins ? ' · ' + mins : ''}</span>
+          <button class="coach-readout-close" id="coach-readout-close" aria-label="Close">✕</button>
         </div>
         <div class="coach-readout-summary">${escapeHtml(R.line || '')}</div>
         ${rows}
-        <div class="coach-readout-foot">Próxima vez ya está aplicado en la tarjeta.</div>
+        <div class="coach-readout-foot">Next time is already applied on the card.</div>
       </div>`;
     el.classList.remove('hidden');
     const close = document.getElementById('coach-readout-close');
@@ -133,15 +133,15 @@ async function renderReadinessSignals() {
   let r;
   try { r = await computeReadiness(); } catch (e) { console.warn('[readiness] card:', e); el.innerHTML = ''; return; }
 
-  const ES = { green: 'verde', yellow: 'amarilla', red: 'roja', unknown: 'sin dato de hoy' };
+  const LABEL = { green: 'green', yellow: 'yellow', red: 'red', unknown: 'no data today' };
   const COL = { green: 'var(--accent)', yellow: 'var(--yellow)', red: 'var(--red)', unknown: 'var(--text3)' };
-  const CONF = { high: 'confianza alta', medium: 'confianza media', low: 'confianza baja' };
+  const CONF = { high: 'high confidence', medium: 'medium confidence', low: 'low confidence' };
   const color = COL[r.color] || 'var(--text3)';
 
   const rows = (r.signals || []).map(s => {
     const cls = s.status === 'insufficient' ? 'rs-none' : (s.fired ? 'rs-fired' : 'rs-ok');
     const txt = s.status === 'insufficient'
-      ? `${s.label || s.id}: sin dato — ${s.reason || ''}`
+      ? `${s.label || s.id}: no data — ${s.reason || ''}`
       : s.text;
     const dot = s.status === 'insufficient' ? '○' : '●';
     return `<div class="rs-row ${cls}"><span class="rs-dot"${s.fired ? ` style="color:${color}"` : ''}>${dot}</span><span class="rs-text">${escapeHtml(String(txt))}</span></div>`;
@@ -152,13 +152,13 @@ async function renderReadinessSignals() {
   const last = r.whoopLastAvailable;
   const whoopSig = (r.signals || []).find(s => s.id === 'whoop') || {};
   const lastLine = (whoopSig.status === 'insufficient' && last && last.score != null)
-    ? `<div class="rs-foot">Último dato de WHOOP: ${last.score}% (${(typeof whoopDayLabel === 'function' ? whoopDayLabel(last.date, today()) : last.date)}) — no cuenta como hoy.</div>`
+    ? `<div class="rs-foot">Last WHOOP reading: ${last.score}% (${(typeof whoopDayLabel === 'function' ? whoopDayLabel(last.date, today()) : last.date)}) — it does not count as today.</div>`
     : '';
 
   el.innerHTML = `
     <div class="rs-head">
-      <span class="rs-title">Recuperación</span>
-      <span class="rs-color" style="color:${color}">${ES[r.color] || r.color}</span>
+      <span class="rs-title">Recovery</span>
+      <span class="rs-color" style="color:${color}">${LABEL[r.color] || r.color}</span>
       <span class="rs-conf">${CONF[r.confidence] || ''}</span>
     </div>
     <div class="rs-rows">${rows}</div>
@@ -201,7 +201,7 @@ async function renderReadinessSignals() {
 /** Ventana de la línea de rendimiento: dos semanas. Más atrás ya no describe "cómo vengo". */
 const RECOVERY_LINE_DAYS = 14;
 
-/** "HRV estable (−3 %)" / "RHR 44" / "sueño 7,4 h" desde las señales que SÍ tienen dato. */
+/** "HRV steady (−3 %)" / "RHR 44" / "sleep 7.4 h" desde las señales que SÍ tienen dato. */
 function _crlTrendBits(signals) {
   const bits = [];
   const by = (id) => (signals || []).find(s => s && s.id === id && s.status === 'ok') || null;
@@ -211,7 +211,7 @@ function _crlTrendBits(signals) {
   if (hrv && hrv.value != null && hrv.baseline) {
     const pct = Math.round((hrv.value / hrv.baseline - 1) * 100);
     const signo = (pct < 0 ? '−' : '+') + Math.abs(pct) + ' %';
-    bits.push(`HRV ${hrv.fired ? 'baja' : 'estable'} (${signo})`);
+    bits.push(`HRV ${hrv.fired ? 'down' : 'steady'} (${signo})`);
   }
   const rhr = by('rhr7v28');
   if (rhr && rhr.value != null) {
@@ -219,7 +219,7 @@ function _crlTrendBits(signals) {
     bits.push(`RHR ${rhr.value}` + (rhr.fired && d != null ? ` (${d < 0 ? '−' : '+'}${Math.abs(d)})` : ''));
   }
   const slp = by('sleep7');
-  if (slp && slp.value != null) bits.push(`sueño ${fmt(slp.value)} h`);
+  if (slp && slp.value != null) bits.push(`sleep ${fmt(slp.value)} h`);
   return bits;
 }
 
@@ -256,12 +256,12 @@ async function renderRecoveryLine() {
       // fuera de hoy. Sin `%` de recomendación al lado: es un número, no una instrucción.
       const whoop = (r.signals || []).find(s => s && s.id === 'whoop') || {};
       if (whoop.status === 'ok' && whoop.value != null) {
-        bits.push(`WHOOP hoy ${whoop.value} %`);
+        bits.push(`WHOOP today ${whoop.value} %`);
       } else {
         const last = r.whoopLastAvailable;
         bits.push((last && last.score != null)
-          ? `sin dato de hoy (último: ${last.score} % ${(typeof whoopDayLabel === 'function' ? whoopDayLabel(last.date, ds) : last.date)})`
-          : 'sin dato de hoy');
+          ? `no data today (last: ${last.score} % ${(typeof whoopDayLabel === 'function' ? whoopDayLabel(last.date, ds) : last.date)})`
+          : 'no data today');
       }
       trend = bits.join(' · ');
     }
@@ -271,7 +271,7 @@ async function renderRecoveryLine() {
     // justo encima. La ventana la dice el propio título (RECOVERY_LINE_DAYS = 14 d).
     el.innerHTML =
       `<section class="card t3-card">
-        <div class="t3-head"><span class="t3-eyebrow">Rendimiento · ${RECOVERY_LINE_DAYS} d</span></div>
+        <div class="t3-head"><span class="t3-eyebrow">Performance · ${RECOVERY_LINE_DAYS} d</span></div>
         ${perf ? `<div class="crl-perf">${escapeHtml(perf)}</div>` : ''}
         ${trend ? `<div class="crl-trend">${escapeHtml(trend)}</div>` : ''}
       </section>`;
@@ -396,8 +396,8 @@ async function renderGoalsCard(containerId = 'coach-goals') {
       fast: 'warn', insufficient: 'na',
     };
     const WLABEL = {
-      'at-target': 'en la banda', 'on-track': 'en rumbo', slow: 'lento',
-      stalled: 'estancado', fast: 'muy rápido', insufficient: 'sin señal',
+      'at-target': 'in the band', 'on-track': 'on track', slow: 'slow',
+      stalled: 'stalled', fast: 'too fast', insufficient: 'no signal',
     };
     const anclas = gp.strength.anchors || [];
     const conDato = anclas.filter(a => a.maintained !== null);
@@ -415,39 +415,39 @@ async function renderGoalsCard(containerId = 'coach-goals') {
       </div>`;
 
     const filas = [
-      row('Peso',
-        gp.weight.trend7d != null ? `${String(gp.weight.trend7d).replace('.', ',')} kg` : '—',
+      row('Weight',
+        gp.weight.trend7d != null ? `${gp.weight.trend7d} kg` : '—',
         WSTATE[gp.weight.status] || 'na',
         gp.weight.text,
         WLABEL[gp.weight.status] || gp.weight.status),
-      row('10k cómodo',
+      row('Comfortable 10k',
         `${pct10k} %`,
         gp.running.phase === 'ready10k' ? 'ok' : (gp.running.runCount === 0 ? 'na' : 'warn'),
         gp.running.text,
-        (typeof RW_PHASE_ES !== 'undefined' && RW_PHASE_ES[gp.running.phase]) || gp.running.phase),
-      row('Fuerza mantenida',
+        (typeof RW_PHASE_LABEL !== 'undefined' && RW_PHASE_LABEL[gp.running.phase]) || gp.running.phase),
+      row('Strength held',
         `${mantenidas}/${anclas.length}`,
         gp.strength.allMaintained === null ? 'na' : (gp.strength.allMaintained ? 'ok' : 'warn'),
         gp.strength.text,
         // "mantenida" en verde sólo si TODAS las anclas tienen dato. Con 1 de 6 medidas, un
         // verde diría "la fuerza se mantiene" sobre cinco ejercicios que nadie ha tocado.
         gp.strength.allMaintained === null
-          ? 'sin ventana'
-          : (!gp.strength.allMaintained ? 'ojo'
-            : (conDato.length === anclas.length ? 'mantenida' : `${conDato.length} de ${anclas.length} con dato`))),
+          ? 'no window'
+          : (!gp.strength.allMaintained ? 'watch'
+            : (conDato.length === anclas.length ? 'held' : `${conDato.length} of ${anclas.length} with data`))),
     ].join('');
 
     const senales = (gp.signals || []).length
       ? `<div class="coach-goal-sigs">
-           <div class="coach-goal-sigs-title">Señales para el coach</div>
+           <div class="coach-goal-sigs-title">Signals for the coach</div>
            ${gp.signals.map(s => `
              <div class="coach-goal-sig coach-goal-sig-${s.severity}">
                <span class="coach-goal-sig-dot">●</span>${escapeHtml(s.text)}
              </div>`).join('')}
          </div>`
-      : '<div class="coach-goal-sigs"><div class="coach-goal-sigs-title">Señales para el coach</div><div class="coach-goal-sig coach-goal-sig-info">Ninguna esta semana.</div></div>';
+      : '<div class="coach-goal-sigs"><div class="coach-goal-sigs-title">Signals for the coach</div><div class="coach-goal-sig coach-goal-sig-info">None this week.</div></div>';
 
-    el.innerHTML = `<div class="coach-goals-head">Objetivos</div>${filas}${senales}`;
+    el.innerHTML = `<div class="coach-goals-head">Goals</div>${filas}${senales}`;
   } catch (e) {
     // Patrón `renderHomeView`: cada sección con su try/catch. Un resumen no tumba la pestaña.
     console.warn('[Coach] renderGoalsCard:', e);
@@ -462,21 +462,21 @@ async function renderGoalsCard(containerId = 'coach-goals') {
 // (2026-09-07) que la Home dijera también **cómo viene el objetivo**. Esto es esa respuesta en
 // una o dos líneas apagadas, con su tamaño de muestra al lado y sin un solo botón.
 //
-//   Peso 85,9 · −0,42 kg/sem · hito 82 kg en ~9 sem
-//   10k: fase base · 12,1 km/sem · Z2 3/4 · Fuerza 5/6 anclas
+//   Weight 85.9 · −0.42 kg/wk · milestone 82 kg in ~9 wk
+//   10k: base phase · 12.1 km/wk · Z2 3/4 · Strength 5/6 anchors
 //
 // NO CALCULA NADA: todo sale de `_coachGoalProgressFromStores()` → `goalProgress`, que es puro
 // y con test (`verify-goal-progress.mjs`). La regla de la casa: los números no se calculan en
 // el renderer, y menos aún dos veces con dos redondeos distintos.
 //
-// EL FALLBACK ES HONESTO, no un guion: "sin señal (3 pesadas en 14 d)" dice por qué no hay
+// EL FALLBACK ES HONESTO, no un guion: "no signal (3 weigh-ins in 14 d)" dice por qué no hay
 // número. Un "—" haría pensar que el sistema no mira el peso.
 
-/** Número en castellano: coma decimal y el menos tipográfico (−), no el guion. */
+/** Número para pantalla: punto decimal y el menos tipográfico (−), no el guion. */
 function _cNum(v, dec) {
   const n = Number(v);
   if (v == null || !isFinite(n)) return '—';
-  const s = (typeof _rwFmt === 'function') ? _rwFmt(Math.abs(n), dec) : String(Math.abs(n)).replace('.', ',');
+  const s = (typeof _rwFmt === 'function') ? _rwFmt(Math.abs(n), dec) : String(Math.abs(n));
   return (n < 0 ? '−' : '') + s;
 }
 
@@ -495,16 +495,16 @@ async function renderCoachGoalLine() {
     const w = gp.weight || {};
     const peso = [];
     if (w.status === 'insufficient' || w.trend7d == null) {
-      peso.push(`Peso sin señal (${n14} pesada${n14 === 1 ? '' : 's'} en 14 d)`);
+      peso.push(`Weight no signal (${n14} weigh-in${n14 === 1 ? '' : 's'} in 14 d)`);
     } else {
-      peso.push(`Peso ${_cNum(w.trend7d, 1)}`);
-      if (w.slope != null) peso.push(`${_cNum(w.slope, 2)} kg/sem`);
+      peso.push(`Weight ${_cNum(w.trend7d, 1)}`);
+      if (w.slope != null) peso.push(`${_cNum(w.slope, 2)} kg/wk`);
       const hito = Number(((goals || {}).primary || {}).milestoneKg);
       const banda = (((goals || {}).primary || {}).targetWeightKg) || [];
       if (w.etaMilestoneWeeks != null && w.etaMilestoneWeeks > 0 && isFinite(hito)) {
-        peso.push(`hito ${_cNum(hito, 0)} kg en ~${_cNum(w.etaMilestoneWeeks, 0)} sem`);
+        peso.push(`milestone ${_cNum(hito, 0)} kg in ~${_cNum(w.etaMilestoneWeeks, 0)} wk`);
       } else if (w.etaWeeks != null && w.etaWeeks > 0 && banda.length === 2) {
-        peso.push(`${_cNum(banda[1], 0)} kg en ~${_cNum(w.etaWeeks, 0)} sem`);
+        peso.push(`${_cNum(banda[1], 0)} kg in ~${_cNum(w.etaWeeks, 0)} wk`);
       }
     }
 
@@ -513,18 +513,18 @@ async function renderCoachGoalLine() {
     const s = gp.strength || {};
     const otros = [];
     if (r.runCount === 0) {
-      otros.push('10k: sin carreras en 4 semanas');
+      otros.push('10k: no runs in 4 weeks');
     } else {
-      const fase = (typeof RW_PHASE_ES !== 'undefined' && RW_PHASE_ES[r.phase]) || r.phase;
-      otros.push(`10k: fase ${fase}`);
-      otros.push(`${_cNum(r.weeklyKm, 1)} km/sem`);
+      const fase = (typeof RW_PHASE_LABEL !== 'undefined' && RW_PHASE_LABEL[r.phase]) || r.phase;
+      otros.push(`10k: ${fase} phase`);
+      otros.push(`${_cNum(r.weeklyKm, 1)} km/wk`);
       if (r.z2Sample > 0) otros.push(`Z2 ${r.z2Compliance}/${r.z2Sample}`);
     }
     const anclas = s.anchors || [];
     const conDato = anclas.filter((a) => a.maintained !== null);
     otros.push(conDato.length
-      ? `Fuerza ${conDato.filter((a) => a.maintained).length}/${anclas.length} anclas`
-      : `Fuerza sin señal (0 de ${anclas.length} anclas con dato)`);
+      ? `Strength ${conDato.filter((a) => a.maintained).length}/${anclas.length} anchors`
+      : `Strength no signal (0 of ${anclas.length} anchors with data)`);
 
     el.innerHTML =
       `<div class="coach-goal-line" role="button" tabindex="0">` +
@@ -568,7 +568,7 @@ async function renderCoachGoalLine() {
 // LA VERSIÓN DE LA APP viaja al servidor (`clientVersion`) y al pack (`meta.appVersion`), que
 // es lo que permite luego saber qué código produjo una revisión rara.
 // `verify-coach-wiring.mjs` comprueba que coincide con la de index.html y con `CACHE_NAME`.
-const COACH_APP_VERSION = 'v11.66';
+const COACH_APP_VERSION = 'v11.67';
 
 const COACH_MAX_SESSION_IDS = 12;   // el tope que valida la edge function
 const COACH_MAX_EXERCISE_IDS = 150; // idem
@@ -576,73 +576,75 @@ const COACH_MAX_USER_NOTE = 1200;   // idem
 const COACH_POLL_MS = 5000;
 const COACH_POLL_MAX_MS = 5 * 60 * 1000;
 
-const COACH_STATUS_ES = {
-  running: 'en marcha', proposed: 'propuesta', applied: 'aplicada',
-  rejected: 'rechazada', expired: 'vencida', failed: 'falló',
+const COACH_STATUS_LABEL = {
+  running: 'running', proposed: 'proposed', applied: 'applied',
+  rejected: 'rejected', expired: 'expired', failed: 'failed',
 };
-const COACH_EVIDENCE_ES = {
-  strong: 'fuerte', moderate: 'moderada',
-  weak_extrapolated: 'débil/extrapolada', expert: 'opinión experta',
+// El adjetivo, no el sustantivo: la etiqueta se arma como "<nivel> evidence", así que
+// `expert` va suelto aunque el corpus lo llame "expert opinion".
+const COACH_EVIDENCE_LABEL = {
+  strong: 'strong', moderate: 'moderate',
+  weak_extrapolated: 'weak/extrapolated', expert: 'expert',
 };
-const COACH_ERROR_ES = {
-  refusal: 'el modelo se negó a responder',
-  parse: 'el modelo no devolvió el formato esperado',
-  api: 'error de la API del modelo',
-  invoke: 'no se pudo llamar a la función',
+const COACH_ERROR_LABEL = {
+  refusal: 'the model refused to answer',
+  parse: 'the model did not return the expected format',
+  api: 'model API error',
+  invoke: 'the function could not be called',
 };
-const COACH_DECISION_ES = {
-  progression: 'progresión', structure: 'estructura', running: 'carrera',
-  nutrition: 'nutrición', recovery: 'recuperación',
-  'session-readout': 'lectura de sesión',
+const COACH_DECISION_LABEL = {
+  progression: 'progression', structure: 'structure', running: 'running',
+  nutrition: 'nutrition', recovery: 'recovery',
+  'session-readout': 'session readout',
   // v11.62: los dos siguientes ya NO se escriben (el ajuste diario y el banner reactivo de
   // descarga se retiraron). Se conservan para poder leer las decisiones históricas.
-  'readiness-adjust': 'ajuste por recuperación (histórico: ya no se escribe)',
-  'plan-apply': 'plan aplicado', 'plan-adjust': 'plan ajustado', 'plan-reject': 'plan rechazado',
-  'plan-rollback': 'versión restaurada', 'running-week': 'semana de carrera',
-  'deload-request': 'descarga (histórico: ya no se escribe)',
-  'goal-update': 'objetivo', 'target-override': 'objetivo manual', other: 'otra',
+  'readiness-adjust': 'recovery adjustment (historical: no longer written)',
+  'plan-apply': 'plan applied', 'plan-adjust': 'plan adjusted', 'plan-reject': 'plan rejected',
+  'plan-rollback': 'version restored', 'running-week': 'running week',
+  'deload-request': 'deload (historical: no longer written)',
+  'goal-update': 'goal', 'target-override': 'manual target', other: 'other',
 };
-const COACH_OUTCOME_ES = { accepted: 'aceptada', declined: 'rechazada', done: 'hecha' };
-// Los ids de guardarraíl no son Rule IDs, pero tampoco son castellano. Etiqueta corta por id;
+const COACH_OUTCOME_LABEL = { accepted: 'accepted', declined: 'declined', done: 'done' };
+// Los ids de guardarraíl no son Rule IDs, pero tampoco son frase. Etiqueta corta por id;
 // el texto completo (con los números) va en el `title` del chip.
-const COACH_GUARD_ES = {
-  'LOAD-JUMP': 'salto de carga', 'NO-SOURCE-KG': 'kg sin origen', 'DELOAD-VOLUME': 'volumen en descarga',
-  'HARD-CARDIO': 'cardio duro', 'RUN-BEFORE-LEGS': 'dura antes de pierna', 'ANCHOR-SWAP': 'ancla cambiada',
-  'VOL-CAP': 'tope de series', 'KM-JUMP': 'salto de km', 'PROTEIN-FLOOR': 'suelo de proteína',
-  'KCAL-FLOOR': 'suelo de kcal', 'DELOAD-DIETBREAK': 'diet break', 'PLYO-PLACEMENT': 'colocación del plyo',
-  'CORE-PATTERNS': 'patrones de core', 'MIN-STRENGTH': 'mínimo de fuerza', 'DECISION-EVIDENCE': 'decisión sin evidencia',
-  'EX-UNKNOWN': 'ejercicio desconocido', 'SESSION-COUNT': 'días de gimnasio', 'EA-GATE': 'energía disponible',
-  'MOBILITY-FLOOR': 'suelo de movilidad', 'PRESS-EXPOSURES': 'exposiciones de empuje',
-  'SESSION-LENGTH': 'duración de sesión', 'HYBRID-PLUS-LONG': 'híbrido + largo', 'TARGET-N1': 'objetivo con n=1',
-  'READINESS-N': 'pocos días de recuperación', 'WEIGHT-WINDOW': 'ventana de peso', 'HARD-BUDGET': 'presupuesto duro',
-  'SUMMER-PACE': 'ritmo en verano', 'Z2-CEILING': 'techo de Z2', CHURN: 'demasiados cambios',
-  ROTATION: 'rotación fuera de semana 1', 'CTL-FOR-STRENGTH': 'ctl/atl para fuerza',
-  'VALIDATOR-ERROR': 'validador incompleto',
+const COACH_GUARD_LABEL = {
+  'LOAD-JUMP': 'load jump', 'NO-SOURCE-KG': 'kg with no source', 'DELOAD-VOLUME': 'deload volume',
+  'HARD-CARDIO': 'hard cardio', 'RUN-BEFORE-LEGS': 'hard run before legs', 'ANCHOR-SWAP': 'anchor swapped',
+  'VOL-CAP': 'set cap', 'KM-JUMP': 'km jump', 'PROTEIN-FLOOR': 'protein floor',
+  'KCAL-FLOOR': 'kcal floor', 'DELOAD-DIETBREAK': 'diet break', 'PLYO-PLACEMENT': 'plyo placement',
+  'CORE-PATTERNS': 'core patterns', 'MIN-STRENGTH': 'strength minimum', 'DECISION-EVIDENCE': 'decision without evidence',
+  'EX-UNKNOWN': 'unknown exercise', 'SESSION-COUNT': 'gym days', 'EA-GATE': 'energy availability',
+  'MOBILITY-FLOOR': 'mobility floor', 'PRESS-EXPOSURES': 'press exposures',
+  'SESSION-LENGTH': 'session length', 'HYBRID-PLUS-LONG': 'hybrid + long run', 'TARGET-N1': 'target on n=1',
+  'READINESS-N': 'few recovery days', 'WEIGHT-WINDOW': 'weight window', 'HARD-BUDGET': 'hard-day budget',
+  'SUMMER-PACE': 'summer pace', 'Z2-CEILING': 'Z2 ceiling', CHURN: 'too many changes',
+  ROTATION: 'rotation outside week 1', 'CTL-FOR-STRENGTH': 'ctl/atl for strength',
+  'VALIDATOR-ERROR': 'validator incomplete',
   // v11.65 (contrato v2): una sesión del plan sin fila en `weekSummary`. Blando: el coach
   // debe justificar también lo que mantiene, pero un hueco no impide aplicar.
-  'WEEK-SUMMARY': 'sesión sin resumen',
+  'WEEK-SUMMARY': 'session without summary',
   // fn v4 (auditoría 2026-09-08): los 6 ids que cierran E-14, E-17, E-18 y R-5. Van del 34 al 39.
-  'ORDER-SAME-DAY': 'cardio antes de levantar',   // G-S17, INT-003
-  'FREQ-FLOOR': 'patrón 1×/semana',               // G-S18, STR-002
-  'RECOVERY-ONLY': 'sólo recuperación',           // G-S19, READ-005
-  'KCAL-STEP': 'paso de kcal',                    // G-H14, REC-002
-  'MVPA-FLOOR': 'minutos de cardio',              // G-S20, END-009
-  'PLYO-CONTACTS': 'contactos de plyo',           // G-S16, ATH-001
+  'ORDER-SAME-DAY': 'cardio before lifting',      // G-S17, INT-003
+  'FREQ-FLOOR': 'pattern 1×/week',                // G-S18, STR-002
+  'RECOVERY-ONLY': 'recovery only',               // G-S19, READ-005
+  'KCAL-STEP': 'kcal step',                       // G-H14, REC-002
+  'MVPA-FLOOR': 'cardio minutes',                 // G-S20, END-009
+  'PLYO-CONTACTS': 'plyo contacts',               // G-S16, ATH-001
 };
-const COACH_DOW_ES = { 0: 'Dom', 1: 'Lun', 2: 'Mar', 3: 'Mié', 4: 'Jue', 5: 'Vie', 6: 'Sáb' };
+const COACH_DOW_LABEL = { 0: 'Sun', 1: 'Mon', 2: 'Tue', 3: 'Wed', 4: 'Thu', 5: 'Fri', 6: 'Sat' };
 
-/** "Regla STR-001 (evidencia fuerte): <texto>". El id crudo sólo va en el `title`. */
-function COACH_RULE_ES(ruleId) {
+/** "Rule STR-001 (strong evidence): <texto>". El id crudo sólo va en el `title`. */
+function COACH_RULE_LABEL(ruleId) {
   const r = (typeof COACH_RULES !== 'undefined' && COACH_RULES) ? COACH_RULES[ruleId] : null;
   if (!r) return null;
-  const nivel = COACH_EVIDENCE_ES[r.evidenceLevel] || r.evidenceLevel || '';
-  return { id: ruleId, text: r.rule, level: r.evidenceLevel, levelEs: nivel,
-    label: `Regla ${ruleId}${nivel ? ` (evidencia ${nivel})` : ''}` };
+  const nivel = COACH_EVIDENCE_LABEL[r.evidenceLevel] || r.evidenceLevel || '';
+  return { id: ruleId, text: r.rule, level: r.evidenceLevel, levelLabel: nivel,
+    label: `Rule ${ruleId}${nivel ? ` (${nivel} evidence)` : ''}` };
 }
 
 function _cKg(v) {
   if (v == null || !isFinite(Number(v))) return '—';
-  return (typeof _coachFmtKg === 'function') ? _coachFmtKg(Number(v)) : String(v).replace('.', ',');
+  return (typeof _coachFmtKg === 'function') ? _coachFmtKg(Number(v)) : String(v);
 }
 function _cEsc(s) { return (typeof escapeHtml === 'function') ? escapeHtml(String(s == null ? '' : s)) : String(s == null ? '' : s); }
 function _cMd(md) {
@@ -656,8 +658,8 @@ function _cWeekShort(wk) { const m = String(wk || '').match(/W(\d{2})$/); return
 function _cTargetWeek(ds) {
   return (typeof coachTargetWeekKey === 'function') ? coachTargetWeekKey(ds || today()) : _cWeekKey(ds);
 }
-function _cPhaseEs(p) {
-  const M = (typeof PHASE_ES !== 'undefined' && PHASE_ES) || {};
+function _cPhaseLabel(p) {
+  const M = (typeof PHASE_LABEL !== 'undefined' && PHASE_LABEL) || {};
   return M[String(p || '')] || (p ? String(p) : null);
 }
 /** 'B1', 'B2'… desde el ancla del usuario. El motor hace la cuenta; aquí sólo se lee settings. */
@@ -690,12 +692,12 @@ function _cBlockLabel(ds) {
 
 const COACH_PHASES = ['base', 'build', 'intensify', 'deload', 'maintenance'];
 const COACH_MAX_WEEK_SUMMARY = 12;
-const COACH_WS_STATUS_ES = { kept: 'sigue', changed: 'cambia', new: 'nueva', removed: 'fuera' };
+const COACH_WS_STATUS_LABEL = { kept: 'holds', changed: 'changes', new: 'new', removed: 'out' };
 const _COACH_V1_LINE = {
-  kept: 'sin cambios',
-  changed: 'cambia (revisión v1: el coach no dio el motivo)',
-  new: 'sesión nueva',
-  removed: 'sesión fuera',
+  kept: 'no changes',
+  changed: 'changes (v1 review: the coach gave no reason)',
+  new: 'new session',
+  removed: 'session removed',
 };
 
 /**
@@ -719,7 +721,7 @@ function coachBriefFromReview(review, opts = {}) {
   if (esV2) {
     weekSummary = prop.weekSummary.slice(0, COACH_MAX_WEEK_SUMMARY).map((w) => ({
       sessionId: (w && w.sessionId) || null,
-      status: (w && COACH_WS_STATUS_ES[w.status]) ? w.status : 'kept',
+      status: (w && COACH_WS_STATUS_LABEL[w.status]) ? w.status : 'kept',
       line: (w && w.line) ? String(w.line) : '',
     }));
   } else {
@@ -768,7 +770,7 @@ function coachBriefFromReview(review, opts = {}) {
 //
 // El contrato exacto de `input`/`deps` está en docs/architecture/coach-facts-schema.md.
 async function buildCoachFactsFromStores({ todayStr = today(), weekKey } = {}) {
-  if (typeof buildCoachFacts !== 'function') throw new Error('coach-facts.js no cargó');
+  if (typeof buildCoachFacts !== 'function') throw new Error('coach-facts.js did not load');
   const g = (s) => dbGetAll(s).catch(() => []);
   const [workouts, runs, sessions, mobility, wellness, steps, bodyweight, nutrition, decisions, coachReviews] =
     await Promise.all(['workouts', 'runs', 'sessions', 'mobility_sessions', 'wellness', 'steps',
@@ -970,26 +972,26 @@ async function maybeRunWeeklyCoach() {
  */
 async function runWeeklyCoach({ weekKey, userNote, regenerate, force } = {}) {
   const wk = weekKey || _cWeekKey(today());
-  if (_coachInvoking) { if (typeof toast === 'function') toast('El coach ya está trabajando'); return null; }
+  if (_coachInvoking) { if (typeof toast === 'function') toast('The coach is already working'); return null; }
   if (!force && !regenerate) {
     const previas = ((await dbGetAll('coach_reviews').catch(() => [])) || []).filter((r) => r && r.weekKey === wk);
     const enMarcha = previas.find((r) => r.status === 'running');
     if (enMarcha) {
       pollCoachReview(enMarcha.id);
-      if (typeof toast === 'function') toast('El coach ya está con esa semana');
+      if (typeof toast === 'function') toast('The coach is already on that week');
       return { status: 'running', reviewId: enMarcha.id };
     }
     const propuesta = previas.find((r) => r.status === 'proposed');
     if (propuesta) { try { openCoachView(); } catch (e) {} return propuesta; }
   }
   if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-    if (typeof toast === 'function') toast('Sin conexión: se intentará al volver');
+    if (typeof toast === 'function') toast('Offline: it will retry when you are back');
     return null;
   }
   const supa = (typeof getSupaClient === 'function') ? getSupaClient() : null;
   const user = (supa && typeof getUser === 'function') ? await getUser() : null;
   if (!supa || !user) {
-    if (typeof toast === 'function') toast('Necesitas sesión en la nube para pedir la revisión');
+    if (typeof toast === 'function') toast('You need a cloud session to request the review');
     return null;
   }
 
@@ -1021,7 +1023,7 @@ async function runWeeklyCoach({ weekKey, userNote, regenerate, force } = {}) {
     // de la sesión en la cabecera Authorization, que es lo que la función valida con
     // `asUser.auth.getUser()`. Un `fetch` a mano tendría que reconstruirlo.
     const { data, error } = await supa.functions.invoke('coach-weekly-review', { body });
-    if (error) throw new Error(error.message || 'La función del coach falló');
+    if (error) throw new Error(error.message || 'The coach function failed');
     if (data && data.error) throw new Error(data.error);
 
     if (data && data.status === 'running' && data.reviewId) {
@@ -1048,11 +1050,11 @@ async function runWeeklyCoach({ weekKey, userNote, regenerate, force } = {}) {
       try { await renderCoachWeekCard(); } catch (e) {}
       try { if (state && state.currentView === 'coach') await renderCoachView(); } catch (e) {}
       if (typeof toast === 'function') {
-        toast(data.cached ? 'Revisión de esta semana ya hecha (sin coste)' : 'Revisión del coach lista');
+        toast(data.cached ? "This week's review was already done (no cost)" : 'Coach review ready');
       }
       return row;
     }
-    throw new Error('Respuesta inesperada del coach');
+    throw new Error('Unexpected response from the coach');
   } catch (e) {
     console.warn('[Coach] runWeeklyCoach:', e);
     // El fallo queda como FILA, no como un toast que se va. Sin rastro, "el coach no dijo nada
@@ -1066,7 +1068,7 @@ async function runWeeklyCoach({ weekKey, userNote, regenerate, force } = {}) {
         error: { kind: 'invoke', message: String((e && e.message) || e).slice(0, 400) },
       });
     } catch (e2) { /* si ni eso se puede escribir, queda el console.warn */ }
-    if (typeof toast === 'function') toast(`El coach falló: ${(e && e.message) || 'error'}`);
+    if (typeof toast === 'function') toast(`The coach failed: ${(e && e.message) || 'error'}`);
     try { await renderCoachWeekCard(); } catch (e2) {}
     return null;
   } finally {
@@ -1157,8 +1159,8 @@ async function _coachPollTick() {
       try { if (state && state.currentView === 'coach') await renderCoachView(); } catch (e) {}
       if (typeof toast === 'function') {
         toast(row.status === 'proposed'
-          ? 'El coach ya tiene la propuesta de la semana'
-          : `Revisión del coach: ${COACH_STATUS_ES[row.status] || row.status}`);
+          ? "The coach has this week's proposal ready"
+          : `Coach review: ${COACH_STATUS_LABEL[row.status] || row.status}`);
       }
       return;
     }
@@ -1204,7 +1206,7 @@ async function _coachExpireIfStale(review) {
   const wk = _cWeekKey(today());
   if (!wk || !review.weekKey || String(review.weekKey) >= String(wk)) return review;
   const row = Object.assign({}, review, { status: 'expired', updatedAt: new Date().toISOString() });
-  try { await smartPut('coach_reviews', row); } catch (e) { console.warn('[Coach] expirar:', e); }
+  try { await smartPut('coach_reviews', row); } catch (e) { console.warn('[Coach] expire:', e); }
   return row;
 }
 
@@ -1280,11 +1282,11 @@ async function _coachValidateCtx(review, prev) {
  */
 async function applyCoachProposal(review) {
   if (!review || !review.output || !review.output.proposal) {
-    if (typeof toast === 'function') toast('Esa revisión no trae propuesta');
+    if (typeof toast === 'function') toast('That review carries no proposal');
     return null;
   }
   if (typeof mergeProposal !== 'function' || typeof createNewPlanVersion !== 'function') {
-    if (typeof toast === 'function') toast('No se puede aplicar: falta coach-facts.js');
+    if (typeof toast === 'function') toast('Cannot apply: coach-facts.js is missing');
     return null;
   }
   try {
@@ -1324,7 +1326,7 @@ async function applyCoachProposal(review) {
     let guardrails = [];
     try {
       guardrails = validatePlanVersion(Object.assign({}, merged, { coachBrief }), ctx) || [];
-    } catch (e) { console.warn('[Coach] validador:', e); }
+    } catch (e) { console.warn('[Coach] validator:', e); }
     const blk = (typeof blockWeek === 'function') ? blockWeek() : null;
 
     // ── E-16 · LO QUE APLICAR VA A BORRAR, GUARDADO ANTES DE BORRARLO ───────────────
@@ -1410,7 +1412,7 @@ async function applyCoachProposal(review) {
           await smartPut('settings', { key: 'userSettings', data: state.settings });
         }
       }
-    } catch (e) { console.warn('[Coach] fechas de ajuste de kcal:', e); }
+    } catch (e) { console.warn('[Coach] kcal adjust dates:', e); }
 
     await _coachReconcileOverrides(merged);
     // Los overrides de calendario por fecha sólo se limpian si el TEMPLATE cambió: si el coach
@@ -1424,7 +1426,7 @@ async function applyCoachProposal(review) {
       status: 'applied', appliedPlanId: nuevo.id, appliedAt: Date.now(),
       updatedAt: new Date().toISOString(), guardrails,
     });
-    try { await smartPut('coach_reviews', row); } catch (e) { console.warn('[Coach] revisión aplicada:', e); }
+    try { await smartPut('coach_reviews', row); } catch (e) { console.warn('[Coach] review applied:', e); }
 
     const ruleIds = [];
     for (const d of (((review.output || {}).decisions) || [])) {
@@ -1433,21 +1435,21 @@ async function applyCoachProposal(review) {
     if (typeof logDecision === 'function') {
       await logDecision({
         source: 'user', type: 'plan-apply',
-        what: `Plan v${nuevo.version} aplicado desde la revisión ${review.weekKey || ''}`.trim(),
-        why: 'Aprobado con un toque',
+        what: `Plan v${nuevo.version} applied from review ${review.weekKey || ''}`.trim(),
+        why: 'Approved with one tap',
         ruleIds,
         evidence: {
           // v11.65: el foco, la fase y el reparto sigue/cambia entran en la decisión. Sin
           // esto, el registro decía "plan v15 aplicado" y no de qué iba la semana.
-          focus: coachBrief.focus || 'sin foco declarado',
-          phase: coachBrief.phase || 'sin fase',
+          focus: coachBrief.focus || 'no focus declared',
+          phase: coachBrief.phase || 'no phase',
           kept: (coachBrief.weekSummary || []).filter((w) => w.status === 'kept').length,
           changed: (coachBrief.weekSummary || []).filter((w) => w.status !== 'kept').length,
-          sesionesTocadas: (merged.touched || []).join(', ') || 'ninguna',
-          cambiosEstructurales: diff.structural,
-          diasDeTemplate: (diff.weekTemplate || []).length,
-          avisos: guardrails.map((g) => g.id).join(', ') || 'ninguno',
-          avisosDuros: guardrails.filter((g) => g.level === 'hard').length,
+          sessionsTouched: (merged.touched || []).join(', ') || 'none',
+          structuralChanges: diff.structural,
+          templateDays: (diff.weekTemplate || []).length,
+          warnings: guardrails.map((g) => g.id).join(', ') || 'none',
+          hardWarnings: guardrails.filter((g) => g.level === 'hard').length,
         },
         ref: { planVersion: nuevo.version, reviewId: review.id || null },
         outcome: 'accepted',
@@ -1456,14 +1458,14 @@ async function applyCoachProposal(review) {
 
     const duros = guardrails.filter((g) => g.level === 'hard').length;
     if (typeof toast === 'function') {
-      toast(`Plan v${nuevo.version} activo${guardrails.length ? ` · ${guardrails.length} aviso${guardrails.length === 1 ? '' : 's'}${duros ? ` (${duros} en rojo)` : ''}` : ' · sin avisos'}`);
+      toast(`Plan v${nuevo.version} active${guardrails.length ? ` · ${guardrails.length} warning${guardrails.length === 1 ? '' : 's'}${duros ? ` (${duros} in red)` : ''}` : ' · no warnings'}`);
     }
     try { if (typeof renderHomeView === 'function') await renderHomeView(); } catch (e) {}
     try { if (state && state.currentView === 'coach') await renderCoachView(); } catch (e) {}
     return nuevo;
   } catch (e) {
     console.warn('[Coach] applyCoachProposal:', e);
-    if (typeof toast === 'function') toast(`No se pudo aplicar: ${(e && e.message) || 'error'}`);
+    if (typeof toast === 'function') toast(`Could not apply: ${(e && e.message) || 'error'}`);
     return null;
   }
 }
@@ -1479,24 +1481,24 @@ async function rejectCoachProposal(review, reason) {
     if (typeof logDecision === 'function') {
       await logDecision({
         source: 'user', type: 'plan-reject',
-        what: `Propuesta de ${review.weekKey || 'esta semana'} rechazada`,
-        why: reason || 'Sin motivo indicado',
+        what: `Proposal for ${review.weekKey || 'this week'} rejected`,
+        why: reason || 'No reason given',
         ruleIds: [],
         evidence: {
-          prioridades: ((((review.output || {}).briefing) || {}).priorities || []).join(' · ') || 'ninguna',
-          decisiones: (((review.output || {}).decisions) || []).length,
+          priorities: ((((review.output || {}).briefing) || {}).priorities || []).join(' · ') || 'none',
+          decisions: (((review.output || {}).decisions) || []).length,
         },
         ref: { reviewId: review.id },
         outcome: 'declined',
       });
     }
-    if (typeof toast === 'function') toast('Propuesta rechazada — el plan sigue igual');
+    if (typeof toast === 'function') toast('Proposal rejected — the plan stays as it is');
     try { await renderCoachWeekCard(); } catch (e) {}
     try { if (state && state.currentView === 'coach') await renderCoachView(); } catch (e) {}
     return row;
   } catch (e) {
     console.warn('[Coach] rejectCoachProposal:', e);
-    if (typeof toast === 'function') toast('No se pudo rechazar');
+    if (typeof toast === 'function') toast('Could not reject');
     return null;
   }
 }
@@ -1514,11 +1516,11 @@ async function rollbackPlanVersion(toId) {
   try {
     const rows = await dbGetAll('plans').catch(() => []);
     const old = (rows || []).find((p) => p && p.id === toId);
-    if (!old) { if (typeof toast === 'function') toast('No encuentro esa versión'); return null; }
+    if (!old) { if (typeof toast === 'function') toast('Cannot find that version'); return null; }
     const prev = (typeof activePlan !== 'undefined') ? activePlan : null;
-    if (prev && prev.id === toId) { if (typeof toast === 'function') toast('Esa versión ya es la activa'); return null; }
+    if (prev && prev.id === toId) { if (typeof toast === 'function') toast('That version is already active'); return null; }
     const base = old.label || old.id;
-    const label = /\(restaurada\)\s*$/.test(base) ? base : `${base} (restaurada)`;
+    const label = /\(restored\)\s*$/.test(base) ? base : `${base} (restored)`;
     const nuevo = await createNewPlanVersion({
       label,
       weekNumber: (typeof getWeekNumber === 'function') ? getWeekNumber() : undefined,
@@ -1566,34 +1568,34 @@ async function rollbackPlanVersion(toId) {
           swaps: Object.keys(snap.exerciseOverrides || {}).length,
           dias: Object.keys(snap.weekSchedule || {}).length,
         };
-      } catch (e) { console.warn('[Coach] preApply en rollback:', e); }
+      } catch (e) { console.warn('[Coach] preApply on rollback:', e); }
     }
 
     if (typeof logDecision === 'function') {
       await logDecision({
         source: 'user', type: 'plan-rollback',
-        what: `Vuelta a "${base}" como v${nuevo.version}`,
-        why: 'El usuario deshizo el plan activo',
+        what: `Rolled back to "${base}" as v${nuevo.version}`,
+        why: 'The user undid the active plan',
         ruleIds: [],
         evidence: {
-          desde: (prev && prev.label) || null,
-          desdeVersion: (prev && prev.version) != null ? prev.version : null,
-          hasta: toId,
-          overridesRestaurados: restaurados
-            ? `${restaurados.swaps} swap(s) y ${restaurados.dias} día(s) de calendario`
-            : 'sin instantánea previa',
+          from: (prev && prev.label) || null,
+          fromVersion: (prev && prev.version) != null ? prev.version : null,
+          to: toId,
+          overridesRestored: restaurados
+            ? `${restaurados.swaps} swap(s) and ${restaurados.dias} calendar day(s)`
+            : 'no prior snapshot',
         },
         ref: { planVersion: nuevo.version },
         outcome: 'done',
       });
     }
-    if (typeof toast === 'function') toast(`Restaurada como v${nuevo.version}`);
+    if (typeof toast === 'function') toast(`Restored as v${nuevo.version}`);
     try { if (typeof renderHomeView === 'function') await renderHomeView(); } catch (e) {}
     try { if (state && state.currentView === 'coach') await renderCoachView(); } catch (e) {}
     return nuevo;
   } catch (e) {
     console.warn('[Coach] rollbackPlanVersion:', e);
-    if (typeof toast === 'function') toast('No se pudo restaurar');
+    if (typeof toast === 'function') toast('Could not restore');
     return null;
   }
 }
@@ -1625,20 +1627,20 @@ async function _coachReconcileOverrides(merged) {
     }
     if (changed) await smartPut('settings', { key: 'exerciseOverrides', data: exerciseOverrides });
   } catch (e) {
-    console.warn('[Coach] overrides tras aplicar:', e);
+    console.warn('[Coach] overrides after apply:', e);
   }
 }
 
-// ==================== EL DIFF, EN CASTELLANO ====================
+// ==================== EL DIFF, PARA PANTALLA ====================
 
 function _coachSlotLabel(slot) {
-  if (!slot || slot.type === 'rest') return 'descanso';
+  if (!slot || slot.type === 'rest') return 'rest';
   if (slot.type === 'gym') {
     const s = (typeof activePlan !== 'undefined' && activePlan && activePlan.sessions) ? activePlan.sessions[slot.session] : null;
-    return (s && s.name) || slot.session || 'gimnasio';
+    return (s && s.name) || slot.session || 'gym';
   }
   if (slot.type === 'run') return slot.label || 'cardio';
-  if (slot.type === 'recovery') return slot.label || 'recuperación';
+  if (slot.type === 'recovery') return slot.label || 'recovery';
   return slot.type;
 }
 
@@ -1667,9 +1669,9 @@ function coachDiffGroups(prev, merged) {
     const items = [];
     for (const id of (s.added || [])) items.push({ kind: 'add', text: `+ ${_coachExName(sid, id, prev, merged)}` });
     for (const id of (s.removed || [])) items.push({ kind: 'remove', text: `− ${_coachExName(sid, id, prev, merged)}` });
-    if (s.reordered) items.push({ kind: 'add', text: 'orden nuevo' });
+    if (s.reordered) items.push({ kind: 'add', text: 'new order' });
     for (const c of (s.setsChanged || [])) {
-      items.push({ kind: (c.to > c.from ? 'up' : 'down'), text: `${_coachExName(sid, c.exId, prev, merged)} · ${c.from} → ${c.to} series` });
+      items.push({ kind: (c.to > c.from ? 'up' : 'down'), text: `${_coachExName(sid, c.exId, prev, merged)} · ${c.from} → ${c.to} sets` });
     }
     for (const t of (s.targets || [])) {
       const nom = _coachExName(sid, t.exId, prev, merged);
@@ -1683,35 +1685,35 @@ function coachDiffGroups(prev, merged) {
         items.push({ kind: 'up', text: `${nom} · RPE ${t.fromRpe || '—'} → ${t.toRpe || '—'}` });
       }
     }
-    if (s.focusChanged) items.push({ kind: 'add', text: 'foco nuevo' });
-    if (s.sessionAdded) items.push({ kind: 'add', text: 'sesión nueva' });
-    if (s.sessionRemoved) items.push({ kind: 'remove', text: 'sesión fuera' });
+    if (s.focusChanged) items.push({ kind: 'add', text: 'new focus' });
+    if (s.sessionAdded) items.push({ kind: 'add', text: 'new session' });
+    if (s.sessionRemoved) items.push({ kind: 'remove', text: 'session removed' });
     if (items.length) groups.push({ session: nombreSesion(sid), items });
   }
   const semana = [];
   for (const t of (d.weekTemplate || [])) {
     const sale = !t.to || t.to.type === 'rest';
-    semana.push({ kind: sale ? 'remove' : 'add', text: `${COACH_DOW_ES[t.dow]} · ${_coachSlotLabel(t.from)} → ${_coachSlotLabel(t.to)}` });
+    semana.push({ kind: sale ? 'remove' : 'add', text: `${COACH_DOW_LABEL[t.dow]} · ${_coachSlotLabel(t.from)} → ${_coachSlotLabel(t.to)}` });
   }
   if (d.running) {
     const a = d.running.from || {}, b = d.running.to || {};
     if ((a.weeklyKmTarget || null) !== (b.weeklyKmTarget || null)) {
-      semana.push({ kind: (Number(b.weeklyKmTarget) > Number(a.weeklyKmTarget || 0) ? 'up' : 'down'), text: `Carrera · ${a.weeklyKmTarget != null ? a.weeklyKmTarget : '—'} → ${b.weeklyKmTarget != null ? b.weeklyKmTarget : '—'} km/sem` });
+      semana.push({ kind: (Number(b.weeklyKmTarget) > Number(a.weeklyKmTarget || 0) ? 'up' : 'down'), text: `Running · ${a.weeklyKmTarget != null ? a.weeklyKmTarget : '—'} → ${b.weeklyKmTarget != null ? b.weeklyKmTarget : '—'} km/wk` });
     }
     if ((a.longRunKm || null) !== (b.longRunKm || null)) {
-      semana.push({ kind: (Number(b.longRunKm) > Number(a.longRunKm || 0) ? 'up' : 'down'), text: `Largo · ${a.longRunKm != null ? a.longRunKm : '—'} → ${b.longRunKm != null ? b.longRunKm : '—'} km` });
+      semana.push({ kind: (Number(b.longRunKm) > Number(a.longRunKm || 0) ? 'up' : 'down'), text: `Long run · ${a.longRunKm != null ? a.longRunKm : '—'} → ${b.longRunKm != null ? b.longRunKm : '—'} km` });
     }
   }
   for (const dow of (merged && merged.cardioDays) || []) {
     const c = ((merged.weekTemplate || {})[dow] || {}).cardio || {};
-    if (c.durationMin != null) semana.push({ kind: 'up', text: `${COACH_DOW_ES[dow]} · ${c.subtype || 'zone2'} ${c.durationMin}′` });
+    if (c.durationMin != null) semana.push({ kind: 'up', text: `${COACH_DOW_LABEL[dow]} · ${c.subtype || 'zone2'} ${c.durationMin}′` });
   }
-  if (semana.length) groups.push({ session: 'Semana', items: semana });
+  if (semana.length) groups.push({ session: 'Week', items: semana });
   return { diff: d, groups };
 }
 
 function _coachDiffHtml(groups, max) {
-  if (!groups || !groups.length) return '<div class="coach-week-empty">Sin cambios estructurales.</div>';
+  if (!groups || !groups.length) return '<div class="coach-week-empty">No structural changes.</div>';
   const lim = max || 0;
   let pintados = 0;
   const out = [];
@@ -1726,7 +1728,7 @@ function _coachDiffHtml(groups, max) {
     if (lim && pintados >= lim) break;
   }
   const total = groups.reduce((n, g) => n + g.items.length, 0);
-  if (lim && total > pintados) out.push(`<div class="coach-week-more">+${total - pintados} cambio${total - pintados === 1 ? '' : 's'} más en la vista Coach</div>`);
+  if (lim && total > pintados) out.push(`<div class="coach-week-more">+${total - pintados} more change${total - pintados === 1 ? '' : 's'} in the Coach view</div>`);
   return out.join('');
 }
 
@@ -1735,7 +1737,7 @@ function _coachGuardChipsHtml(guardrails) {
   if (!gs.length) return '';
   return `<div class="coach-week-chips">${gs.map((g) => {
     const dur = g.level === 'hard';
-    return `<span class="coach-week-chip ${dur ? '-hard' : '-warn'}" title="${_cEsc(g.text || '')}">${_cEsc(COACH_GUARD_ES[g.id] || g.id)}</span>`;
+    return `<span class="coach-week-chip ${dur ? '-hard' : '-warn'}" title="${_cEsc(g.text || '')}">${_cEsc(COACH_GUARD_LABEL[g.id] || g.id)}</span>`;
   }).join('')}</div>`;
 }
 
@@ -1766,7 +1768,7 @@ async function _coachPreviewGuardrails(review, prev, merged) {
     if (_coachGuardCache.size > 4) _coachGuardCache.delete(_coachGuardCache.keys().next().value);
     return out;
   } catch (e) {
-    console.warn('[Coach] guardarraíles (preview):', e);
+    console.warn('[Coach] guardrails (preview):', e);
     return [];
   }
 }
@@ -1782,10 +1784,10 @@ async function _coachPreviewGuardrails(review, prev, merged) {
 // El estado `running` va en el propio botón (texto + `disabled`) y no en un spinner aparte:
 // la respuesta tarda 60-180 s y sin marca visible el usuario pulsa dos veces.
 
-const COACH_CLOSE_WEEK_ES = 'Cerrar semana y pedir la próxima';
+const COACH_CLOSE_WEEK_LABEL = 'Close the week and ask for the next';
 
 function _coachCloseWeekBtn(id, label) {
-  return `<button class="coach-btn coach-close-week" id="${id || 'coach-close-week'}">${_cEsc(label || COACH_CLOSE_WEEK_ES)}</button>`;
+  return `<button class="coach-btn coach-close-week" id="${id || 'coach-close-week'}">${_cEsc(label || COACH_CLOSE_WEEK_LABEL)}</button>`;
 }
 
 function _coachBindCloseWeek(id) {
@@ -1796,7 +1798,7 @@ function _coachBindCloseWeek(id) {
     const antes = b.textContent;
     if (b.dataset) b.dataset.running = '1';
     b.disabled = true;
-    b.textContent = 'Cerrando la semana…';
+    b.textContent = 'Closing the week…';
     try {
       await runWeeklyCoach({ weekKey: _cTargetWeek(today()) });
     } finally {
@@ -1831,7 +1833,7 @@ async function renderCoachWeekCard(opts = {}) {
     if (opts.pending) {
       el.innerHTML = `<div class="card coach-week-card">
         <div class="coach-week-head"><span class="coach-week-title">Coach · ${_cEsc(_cWeekShort(objetivo))}</span></div>
-        <div class="coach-week-line">Preparando los hechos de la semana…</div>
+        <div class="coach-week-line">Building this week's facts…</div>
       </div>`;
       return;
     }
@@ -1852,16 +1854,16 @@ async function renderCoachWeekCard(opts = {}) {
 
     if (!review) {
       // ESTADO `none` — la primera semana, y el único sitio desde el que se puede arrancar.
-      cuerpo = '<div class="coach-week-line">Primera semana con el coach. El domingo cierra la semana, interpreta el recorrido y propone la siguiente. Hasta entonces la rutina no cambia.</div>';
-      acciones = _coachCloseWeekBtn('coach-close-week', 'Cerrar semana ahora');
+      cuerpo = '<div class="coach-week-line">First week with the coach. On Sunday it closes the week, reads the trajectory and proposes the next one. Until then the routine does not change.</div>';
+      acciones = _coachCloseWeekBtn('coach-close-week', 'Close the week now');
       cerrar = 'coach-close-week';
     } else if (review.status === 'running') {
       const desde = (_coachPoll && _coachPoll.reviewId === review.id) ? _coachPoll.started : Number(review.createdAt || Date.now());
       const rendido = _coachPollGaveUp === review.id;
       cuerpo = rendido
-        ? '<div class="coach-week-line">Sigue en marcha; vuelve más tarde. La revisión llegará con la próxima sincronización.</div>'
-        : `<div class="coach-week-line">El coach está revisando ${wkTxt}… <span id="coach-week-elapsed" class="coach-week-mono">${_coachElapsed(desde)}</span></div>`;
-      if (rendido) acciones = '<button class="coach-btn" id="coach-week-regen">Regenerar</button>';
+        ? '<div class="coach-week-line">Still running; come back later. The review will arrive with the next sync.</div>'
+        : `<div class="coach-week-line">The coach is reviewing ${wkTxt}… <span id="coach-week-elapsed" class="coach-week-mono">${_coachElapsed(desde)}</span></div>`;
+      if (rendido) acciones = '<button class="coach-btn" id="coach-week-regen">Regenerate</button>';
       else if (!_coachPoll || _coachPoll.reviewId !== review.id) pollCoachReview(review.id);
     } else if (review.status === 'proposed') {
       const prev = plan || {};
@@ -1875,18 +1877,18 @@ async function renderCoachWeekCard(opts = {}) {
       const nextWeek = ((review.output || {}).briefing || {}).nextWeek;
       const prios = brief.priorities;
       cuerpo = `
-        ${brief.focus ? `<div class="cwc-focus">Foco: ${_cEsc(brief.focus)}</div>` : ''}
+        ${brief.focus ? `<div class="cwc-focus">Focus: ${_cEsc(brief.focus)}</div>` : ''}
         ${prios.length ? `<ol class="coach-week-prios">${prios.map((p) => `<li>${_cEsc(p)}</li>`).join('')}</ol>` : ''}
         ${_coachWhyHtml(brief, { plegado: true })}
-        ${nextWeek ? `<details class="coach-week-next"><summary>La semana que viene</summary><div class="coach-week-md">${_cMd(nextWeek)}</div></details>` : ''}
+        ${nextWeek ? `<details class="coach-week-next"><summary>Next week</summary><div class="coach-week-md">${_cMd(nextWeek)}</div></details>` : ''}
         <div class="coach-week-diff">${_coachDiffHtml(groups, 8)}</div>
         ${_coachGuardChipsHtml(guardrails)}`;
       // NINGÚN BOTÓN DESHABILITADO, tampoco con avisos duros: los duros restringen al coach,
       // no al usuario (principio 4 del plan).
       acciones = `
-        <button class="coach-btn coach-btn-primary" id="coach-week-apply">Aplicar</button>
-        <button class="coach-btn" id="coach-week-reject">Rechazar</button>
-        <button class="coach-btn" id="coach-week-regen-note">Regenerar con nota</button>`;
+        <button class="coach-btn coach-btn-primary" id="coach-week-apply">Apply</button>
+        <button class="coach-btn" id="coach-week-reject">Reject</button>
+        <button class="coach-btn" id="coach-week-regen-note">Regenerate with a note</button>`;
     } else if (review.status === 'applied') {
       const ver = (plan && plan.version != null) ? plan.version : null;
       // El brief del PLAN si el plan salió de esta revisión; si no, el de la revisión (con el
@@ -1894,20 +1896,20 @@ async function renderCoachWeekCard(opts = {}) {
       const brief = (plan && plan.coachBrief && plan.reviewId === review.id)
         ? plan.coachBrief
         : coachBriefFromReview(review, { prev: plan, next: plan });
-      cabecera = head(ver != null ? ` · plan v${ver}` : '', 'Ver todo ›');
+      cabecera = head(ver != null ? ` · plan v${ver}` : '', 'See all ›');
       cuerpo = _coachAppliedHtml(brief, plan, review);
       const volver = (plan && plan.basedOn) || null;
-      if (volver) acciones = `<button class="coach-btn" id="coach-week-undo" data-plan="${_cEsc(volver)}">Deshacer</button>`;
+      if (volver) acciones = `<button class="coach-btn" id="coach-week-undo" data-plan="${_cEsc(volver)}">Undo</button>`;
     } else if (review.status === 'failed') {
       const kind = (review.error && review.error.kind) || 'api';
-      cuerpo = `<div class="coach-week-line coach-week-bad">La revisión de ${wkTxt} falló: ${_cEsc(COACH_ERROR_ES[kind] || kind)}.</div>`;
-      acciones = '<button class="coach-btn" id="coach-week-regen">Regenerar</button>';
+      cuerpo = `<div class="coach-week-line coach-week-bad">The ${wkTxt} review failed: ${_cEsc(COACH_ERROR_LABEL[kind] || kind)}.</div>`;
+      acciones = '<button class="coach-btn" id="coach-week-regen">Regenerate</button>';
     } else if (review.status === 'expired' || review.status === 'rejected') {
-      cuerpo = `<div class="coach-week-line">Propuesta de ${wkTxt} ${review.status === 'expired' ? 'vencida (era de una semana anterior)' : 'rechazada'}.</div>`;
-      acciones = `${_coachCloseWeekBtn('coach-close-week')}<button class="coach-btn" id="coach-week-regen">Regenerar</button>`;
+      cuerpo = `<div class="coach-week-line">Proposal for ${wkTxt} ${review.status === 'expired' ? 'expired (it was from an earlier week)' : 'rejected'}.</div>`;
+      acciones = `${_coachCloseWeekBtn('coach-close-week')}<button class="coach-btn" id="coach-week-regen">Regenerate</button>`;
       cerrar = 'coach-close-week';
     } else {
-      cuerpo = '<div class="coach-week-line">Sin revisión utilizable de esta semana.</div>';
+      cuerpo = '<div class="coach-week-line">No usable review for this week.</div>';
       acciones = _coachCloseWeekBtn('coach-close-week');
       cerrar = 'coach-close-week';
     }
@@ -1924,13 +1926,13 @@ async function renderCoachWeekCard(opts = {}) {
     if (review) {
       on('coach-week-apply', async () => { await applyCoachProposal(review); });
       on('coach-week-reject', async () => {
-        const why = (typeof prompt === 'function') ? prompt('¿Por qué la rechazas? (opcional)') : null;
+        const why = (typeof prompt === 'function') ? prompt('Why are you rejecting it? (optional)') : null;
         if (why === null) return;   // Cancelar no rechaza
         await rejectCoachProposal(review, (why || '').trim() || null);
       });
       on('coach-week-regen', () => runWeeklyCoach({ weekKey: _cWeekKey(today()), regenerate: true }));
       on('coach-week-regen-note', () => {
-        const nota = (typeof prompt === 'function') ? prompt('¿Qué debería tener en cuenta? (una o dos frases)') : null;
+        const nota = (typeof prompt === 'function') ? prompt('What should it take into account? (one or two sentences)') : null;
         if (!nota) return;
         return runWeeklyCoach({ weekKey: _cWeekKey(today()), userNote: nota.trim(), regenerate: true });
       });
@@ -1952,7 +1954,7 @@ function _coachSessionName(sid, plan) {
 }
 
 /**
- * "POR QUÉ CAMBIA" y "POR QUÉ SE MANTIENE".
+ * "WHAT CHANGES AND WHY" y "WHY IT HOLDS".
  *
  * EL ORDEN NO ES DECORATIVO: si algo cambia, lo primero que hay que leer es por qué; si no
  * cambia nada (`whyChanged === ''`, que el contrato v2 garantiza cuando la semana sigue igual),
@@ -1965,26 +1967,26 @@ function _coachWhyHtml(brief, opts = {}) {
   const mantiene = String(b.whyKept || '').trim();
   if (!cambia && !mantiene) return '';
   if (opts.plegado) {
-    return `<details class="cwc-why"><summary>Por qué cambia · por qué se mantiene</summary>
-      ${cambia ? `<div class="cwc-label">POR QUÉ CAMBIA</div><div class="coach-week-md">${_cMd(cambia)}</div>` : ''}
-      ${mantiene ? `<div class="cwc-label">POR QUÉ SE MANTIENE</div><div class="coach-week-md">${_cMd(mantiene)}</div>` : ''}
+    return `<details class="cwc-why"><summary>What changes · why it holds</summary>
+      ${cambia ? `<div class="cwc-label">WHAT CHANGES AND WHY</div><div class="coach-week-md">${_cMd(cambia)}</div>` : ''}
+      ${mantiene ? `<div class="cwc-label">WHY IT HOLDS</div><div class="coach-week-md">${_cMd(mantiene)}</div>` : ''}
     </details>`;
   }
   const bloqueCambia = cambia
-    ? `<div class="cwc-block"><div class="cwc-label">POR QUÉ CAMBIA</div><div class="coach-week-md">${_cMd(cambia)}</div></div>`
+    ? `<div class="cwc-block"><div class="cwc-label">WHAT CHANGES AND WHY</div><div class="coach-week-md">${_cMd(cambia)}</div></div>`
     : '';
   if (!mantiene) return bloqueCambia;
   const bloqueMantiene = cambia
-    ? `<details class="cwc-why"><summary>POR QUÉ SE MANTIENE</summary><div class="coach-week-md">${_cMd(mantiene)}</div></details>`
-    : `<div class="cwc-block"><div class="cwc-label">POR QUÉ SE MANTIENE</div><div class="coach-week-md">${_cMd(mantiene)}</div></div>`;
+    ? `<details class="cwc-why"><summary>WHY IT HOLDS</summary><div class="coach-week-md">${_cMd(mantiene)}</div></details>`
+    : `<div class="cwc-block"><div class="cwc-label">WHY IT HOLDS</div><div class="coach-week-md">${_cMd(mantiene)}</div></div>`;
   return bloqueCambia + bloqueMantiene;
 }
 
 /** Una fila de `weekSummary`: chip de estado + nombre de la sesión + su motivo. */
 function _coachWsRowHtml(w, plan) {
-  const st = (w && COACH_WS_STATUS_ES[w.status]) ? w.status : 'kept';
+  const st = (w && COACH_WS_STATUS_LABEL[w.status]) ? w.status : 'kept';
   return `<div class="ws-row">
-    <span class="ws-chip ${_cEsc(st)}">${_cEsc(COACH_WS_STATUS_ES[st])}</span>
+    <span class="ws-chip ${_cEsc(st)}">${_cEsc(COACH_WS_STATUS_LABEL[st])}</span>
     <span class="ws-name">${_cEsc(_coachSessionName(w && w.sessionId, plan))}</span>
     <span class="ws-line">${_cEsc((w && w.line) || '')}</span>
   </div>`;
@@ -2006,33 +2008,33 @@ function _coachAppliedHtml(brief, plan, review) {
 
   const pasada = (b.lastWeekSummary || []).slice(0, 3);
   const bloquePasada = pasada.length
-    ? `<div class="cwc-block"><div class="cwc-label">SEMANA PASADA</div>
+    ? `<div class="cwc-block"><div class="cwc-label">LAST WEEK</div>
        <ul class="cwc-bullets">${pasada.map((l) => `<li>${_cEsc(l)}</li>`).join('')}</ul></div>`
     : '';
 
   const blk = (typeof blockWeek === 'function') ? blockWeek() : null;
   const total = (typeof DELOAD_BLOCK_WEEKS !== 'undefined') ? DELOAD_BLOCK_WEEKS : 5;
   const bits = [];
-  if (blk && blk.index) bits.push(`Semana ${blk.index}/${total}`);
+  if (blk && blk.index) bits.push(`Week ${blk.index}/${total}`);
   const bl = _cBlockLabel(today());
   if (bl) bits.push(bl);
-  const fase = _cPhaseEs(b.phase);
-  if (fase) bits.push(`fase ${fase}`);
-  if (b.focus) bits.push(`Foco: ${b.focus}`);
+  const fase = _cPhaseLabel(b.phase);
+  if (fase) bits.push(`${fase} phase`);
+  if (b.focus) bits.push(`Focus: ${b.focus}`);
   const bloqueEsta = bits.length
-    ? `<div class="cwc-block"><div class="cwc-label">ESTA SEMANA</div>
+    ? `<div class="cwc-block"><div class="cwc-label">THIS WEEK</div>
        <div class="cwc-line">${_cEsc(bits.join(' · '))}</div></div>`
     : '';
 
   const n = ((review || {}).guardrails || []).length;
-  const pie = `<div class="cwc-foot">${n ? `${n} aviso${n === 1 ? '' : 's'}` : 'sin avisos'}</div>`;
+  const pie = `<div class="cwc-foot">${n ? `${n} warning${n === 1 ? '' : 's'}` : 'no warnings'}</div>`;
 
   return `
     ${bloquePasada}
     ${bloqueEsta}
     ${_coachWhyHtml(b)}
-    ${cambian.length ? `<details class="cwc-ws"><summary>Qué cambia (${cambian.length} ${cambian.length === 1 ? 'sesión' : 'sesiones'})</summary>${cambian.map((w) => _coachWsRowHtml(w, plan)).join('')}</details>` : ''}
-    ${rows.length ? `<details class="cwc-ws"><summary>Todas las sesiones (${rows.length})</summary>${rows.map((w) => _coachWsRowHtml(w, plan)).join('')}</details>` : ''}
+    ${cambian.length ? `<details class="cwc-ws"><summary>What changes (${cambian.length} ${cambian.length === 1 ? 'session' : 'sessions'})</summary>${cambian.map((w) => _coachWsRowHtml(w, plan)).join('')}</details>` : ''}
+    ${rows.length ? `<details class="cwc-ws"><summary>All sessions (${rows.length})</summary>${rows.map((w) => _coachWsRowHtml(w, plan)).join('')}</details>` : ''}
     ${pie}`;
 }
 
@@ -2049,7 +2051,7 @@ function openCoachView() {
     if (typeof showView === 'function') showView('coach');
     if (typeof updateHeader === 'function') updateHeader('coach');
   }
-  renderCoachView().catch((e) => console.warn('[Coach] vista:', e));
+  renderCoachView().catch((e) => console.warn('[Coach] view:', e));
 }
 
 /** Seis secciones, cada una con su try/catch: un fallo en una no vacía el resto del scroll. */
@@ -2073,16 +2075,16 @@ async function _coachRenderWeek(el, review) {
   const lunes = blk && blk.deloadMonday ? blk.deloadMonday : null;
   const total = (typeof DELOAD_BLOCK_WEEKS !== 'undefined') ? DELOAD_BLOCK_WEEKS : (blk && blk.weeksTotal) || 5;
   const bloque = (blk && blk.index)
-    ? `Semana ${blk.index}/${total} · ${_cEsc(blk.label || '')}${lunes ? ` · descarga el ${_cEsc(lunes)}` : ''}`
-    : 'Sin ancla de bloque';
+    ? `Week ${blk.index}/${total} · ${_cEsc(blk.label || '')}${lunes ? ` · deload on ${_cEsc(lunes)}` : ''}`
+    : 'No block anchor';
 
   let recu = '';
   try {
     const r = (typeof computeReadiness === 'function') ? await computeReadiness() : null;
     if (r) {
-      const ES = { green: 'verde', yellow: 'amarilla', red: 'roja', unknown: 'sin dato de hoy' };
+      const LABEL = { green: 'green', yellow: 'yellow', red: 'red', unknown: 'no data today' };
       const COL = { green: 'var(--accent)', yellow: 'var(--yellow)', red: 'var(--red)', unknown: 'var(--text3)' };
-      recu = `<span class="coach-week-readiness" style="color:${COL[r.color] || 'var(--text3)'}">recuperación ${_cEsc(ES[r.color] || r.color)}</span>`;
+      recu = `<span class="coach-week-readiness" style="color:${COL[r.color] || 'var(--text3)'}">recovery ${_cEsc(LABEL[r.color] || r.color)}</span>`;
     }
   } catch (e) { recu = ''; }
 
@@ -2093,7 +2095,7 @@ async function _coachRenderWeek(el, review) {
       ${recu}
     </div>
     <div class="coach-week-line">${bloque}</div>
-    ${review ? `<div class="coach-week-status">Revisión ${_cEsc(COACH_STATUS_ES[review.status] || review.status || '—')}${review.attempt ? ` · intento ${review.attempt}` : ''}</div>` : '<div class="coach-week-status">Aún no hay revisión de esta semana.</div>'}
+    ${review ? `<div class="coach-week-status">Review ${_cEsc(COACH_STATUS_LABEL[review.status] || review.status || '—')}${review.attempt ? ` · attempt ${review.attempt}` : ''}</div>` : '<div class="coach-week-status">No review for this week yet.</div>'}
     ${prios.length ? `<ol class="coach-week-prios">${prios.slice(0, 3).map((p) => `<li>${_cEsc(p)}</li>`).join('')}</ol>` : ''}
     <div class="coach-actions">${_coachCloseWeekBtn('coach-close-week-view')}</div>
   </div>`;
@@ -2111,17 +2113,17 @@ async function _coachRenderBriefing(el, review) {
     // no cambian, que es el punto entero del contrato.
     const plan = (typeof activePlan !== 'undefined' && activePlan) ? activePlan : null;
     const cb = coachBriefFromReview(review, { prev: plan, next: plan });
-    const fase = _cPhaseEs(cb.phase);
+    const fase = _cPhaseLabel(cb.phase);
     const rows = cb.weekSummary || [];
     el.innerHTML = `<div class="card coach-brief">
-      ${cb.focus ? `<div class="coach-brief-title">Foco</div><div class="cwc-line">${_cEsc(cb.focus)}</div>` : ''}
-      ${fase ? `<div class="coach-brief-title" style="margin-top:12px">Fase</div><div class="cwc-line">${_cEsc(fase)}</div>` : ''}
-      ${(cb.lastWeekSummary || []).length ? `<div class="coach-brief-title" style="margin-top:12px">Semana pasada</div><ul class="cwc-bullets">${cb.lastWeekSummary.map((l) => `<li>${_cEsc(l)}</li>`).join('')}</ul>` : ''}
-      ${brief.lastWeek ? `<div class="coach-brief-title" style="margin-top:12px">Qué pasó</div><div class="coach-week-md">${_cMd(brief.lastWeek)}</div>` : ''}
-      ${String(cb.whyChanged || '').trim() ? `<div class="coach-brief-title" style="margin-top:12px">Por qué cambia</div><div class="coach-week-md">${_cMd(cb.whyChanged)}</div>` : ''}
-      ${String(cb.whyKept || '').trim() ? `<div class="coach-brief-title" style="margin-top:12px">Por qué se mantiene</div><div class="coach-week-md">${_cMd(cb.whyKept)}</div>` : ''}
-      ${brief.nextWeek ? `<div class="coach-brief-title" style="margin-top:12px">Qué cambio</div><div class="coach-week-md">${_cMd(brief.nextWeek)}</div>` : ''}
-      ${rows.length ? `<div class="coach-brief-title" style="margin-top:12px">Las sesiones de la semana (${rows.length})</div><div class="cwc-ws-table">${rows.map((w) => _coachWsRowHtml(w, plan)).join('')}</div>` : ''}
+      ${cb.focus ? `<div class="coach-brief-title">Focus</div><div class="cwc-line">${_cEsc(cb.focus)}</div>` : ''}
+      ${fase ? `<div class="coach-brief-title" style="margin-top:12px">Phase</div><div class="cwc-line">${_cEsc(fase)}</div>` : ''}
+      ${(cb.lastWeekSummary || []).length ? `<div class="coach-brief-title" style="margin-top:12px">Last week</div><ul class="cwc-bullets">${cb.lastWeekSummary.map((l) => `<li>${_cEsc(l)}</li>`).join('')}</ul>` : ''}
+      ${brief.lastWeek ? `<div class="coach-brief-title" style="margin-top:12px">What happened</div><div class="coach-week-md">${_cMd(brief.lastWeek)}</div>` : ''}
+      ${String(cb.whyChanged || '').trim() ? `<div class="coach-brief-title" style="margin-top:12px">What changes and why</div><div class="coach-week-md">${_cMd(cb.whyChanged)}</div>` : ''}
+      ${String(cb.whyKept || '').trim() ? `<div class="coach-brief-title" style="margin-top:12px">Why it holds</div><div class="coach-week-md">${_cMd(cb.whyKept)}</div>` : ''}
+      ${brief.nextWeek ? `<div class="coach-brief-title" style="margin-top:12px">What I am changing</div><div class="coach-week-md">${_cMd(brief.nextWeek)}</div>` : ''}
+      ${rows.length ? `<div class="coach-brief-title" style="margin-top:12px">This week's sessions (${rows.length})</div><div class="cwc-ws-table">${rows.map((w) => _coachWsRowHtml(w, plan)).join('')}</div>` : ''}
     </div>`;
     return;
   }
@@ -2131,9 +2133,9 @@ async function _coachRenderBriefing(el, review) {
   const cv = latest && latest.coachVoice;
   if (!cv && !(latest && latest.observed)) { el.innerHTML = ''; return; }
   el.innerHTML = `<div class="card coach-brief">
-    <div class="coach-brief-title">Qué pasó <span class="coach-brief-legacy">${_cEsc(latest.weekKey || '')} · revisión antigua</span></div>
+    <div class="coach-brief-title">What happened <span class="coach-brief-legacy">${_cEsc(latest.weekKey || '')} · old review</span></div>
     <div class="coach-week-md">${_cMd((cv && cv.lastWeek) || latest.observed || '')}</div>
-    ${(cv && cv.nextWeek) || latest.planNext ? `<div class="coach-brief-title" style="margin-top:12px">Qué cambio</div><div class="coach-week-md">${_cMd((cv && cv.nextWeek) || latest.planNext)}</div>` : ''}
+    ${(cv && cv.nextWeek) || latest.planNext ? `<div class="coach-brief-title" style="margin-top:12px">What I am changing</div><div class="coach-week-md">${_cMd((cv && cv.nextWeek) || latest.planNext)}</div>` : ''}
   </div>`;
 }
 
@@ -2150,43 +2152,43 @@ async function _coachRenderProposal(el, review) {
       .slice(0, 8)
       .map(([k, v]) => `<span class="coach-dec-num">${_cEsc(k)}: ${_cEsc(v)}</span>`).join('');
     const reglas = (d.ruleIds || []).map((rid) => {
-      const r = COACH_RULE_ES(rid);
+      const r = COACH_RULE_LABEL(rid);
       return r
         ? `<li title="${_cEsc(rid)}"><b>${_cEsc(r.label)}:</b> ${_cEsc(r.text)}</li>`
-        : `<li title="${_cEsc(rid)}">Regla sin texto en el corpus local.</li>`;
+        : `<li title="${_cEsc(rid)}">Rule with no text in the local corpus.</li>`;
     }).join('');
     return `<div class="coach-dec">
-      <div class="coach-dec-what"><b>${_cEsc(d.what || '')}</b>${d.type ? ` <span class="coach-dec-type">${_cEsc(COACH_DECISION_ES[d.type] || d.type)}</span>` : ''}</div>
+      <div class="coach-dec-what"><b>${_cEsc(d.what || '')}</b>${d.type ? ` <span class="coach-dec-type">${_cEsc(COACH_DECISION_LABEL[d.type] || d.type)}</span>` : ''}</div>
       ${d.why ? `<div class="coach-dec-why">${_cEsc(d.why)}</div>` : ''}
       ${cifras ? `<div class="coach-dec-nums">${cifras}</div>` : ''}
-      ${reglas ? `<details class="coach-dec-rules"><summary>por qué</summary><ul>${reglas}</ul></details>` : ''}
+      ${reglas ? `<details class="coach-dec-rules"><summary>why</summary><ul>${reglas}</ul></details>` : ''}
     </div>`;
   }).join('');
 
   const pedidos = ((review.output || {}).requestedData || []);
   el.innerHTML = `<div class="card coach-week-card">
-    <div class="coach-week-head"><span class="coach-week-title">Propuesta · ${_cEsc(_cWeekShort(review.weekKey))}</span></div>
+    <div class="coach-week-head"><span class="coach-week-title">Proposal · ${_cEsc(_cWeekShort(review.weekKey))}</span></div>
     <div class="coach-week-diff">${_coachDiffHtml(groups)}</div>
     ${decisiones ? `<div class="coach-decs">${decisiones}</div>` : ''}
     ${_coachGuardChipsHtml(guardrails)}
-    ${pedidos.length ? `<div class="coach-week-status">Lo que el coach pide: ${_cEsc(pedidos.slice(0, 4).join(' · '))}</div>` : ''}
-    ${(review.sanitized || []).length ? `<details class="coach-dec-rules"><summary>saneado al recibir (${review.sanitized.length})</summary><ul>${review.sanitized.slice(0, 12).map((s) => `<li>${_cEsc(s)}</li>`).join('')}</ul></details>` : ''}
+    ${pedidos.length ? `<div class="coach-week-status">What the coach is asking for: ${_cEsc(pedidos.slice(0, 4).join(' · '))}</div>` : ''}
+    ${(review.sanitized || []).length ? `<details class="coach-dec-rules"><summary>sanitized on receipt (${review.sanitized.length})</summary><ul>${review.sanitized.slice(0, 12).map((s) => `<li>${_cEsc(s)}</li>`).join('')}</ul></details>` : ''}
     <div class="coach-actions">
-      <button class="coach-btn coach-btn-primary" id="coach-view-apply">Aplicar</button>
-      <button class="coach-btn" id="coach-view-reject">Rechazar</button>
-      <button class="coach-btn" id="coach-view-regen">Regenerar con nota</button>
+      <button class="coach-btn coach-btn-primary" id="coach-view-apply">Apply</button>
+      <button class="coach-btn" id="coach-view-reject">Reject</button>
+      <button class="coach-btn" id="coach-view-regen">Regenerate with a note</button>
     </div>
   </div>`;
 
   const on = (id, fn) => { const b = document.getElementById(id); if (b) b.addEventListener('click', fn); };
   on('coach-view-apply', async () => { await applyCoachProposal(review); });
   on('coach-view-reject', async () => {
-    const why = (typeof prompt === 'function') ? prompt('¿Por qué la rechazas? (opcional)') : null;
+    const why = (typeof prompt === 'function') ? prompt('Why are you rejecting it? (optional)') : null;
     if (why === null) return;
     await rejectCoachProposal(review, (why || '').trim() || null);
   });
   on('coach-view-regen', () => {
-    const nota = (typeof prompt === 'function') ? prompt('¿Qué debería tener en cuenta? (una o dos frases)') : null;
+    const nota = (typeof prompt === 'function') ? prompt('What should it take into account? (one or two sentences)') : null;
     if (!nota) return;
     return runWeeklyCoach({ weekKey: _cWeekKey(today()), userNote: nota.trim(), regenerate: true });
   });
@@ -2199,12 +2201,12 @@ async function _coachRenderDecisions(el) {
     .slice(0, 20);
   if (!rows.length) { el.innerHTML = ''; return; }
   el.innerHTML = `<div class="card coach-decs-card">
-    <div class="coach-brief-title">Decisiones</div>
+    <div class="coach-brief-title">Decisions</div>
     ${rows.map((d) => `<div class="coach-dec-row">
       <span class="coach-dec-date">${_cEsc(d.date || '')}</span>
-      <span class="coach-dec-kind">${_cEsc(COACH_DECISION_ES[d.type] || d.type || '')}</span>
+      <span class="coach-dec-kind">${_cEsc(COACH_DECISION_LABEL[d.type] || d.type || '')}</span>
       <span class="coach-dec-txt">${_cEsc(d.what || '')}</span>
-      ${d.outcome ? `<span class="coach-dec-out -${_cEsc(d.outcome)}">${_cEsc(COACH_OUTCOME_ES[d.outcome] || d.outcome)}</span>` : ''}
+      ${d.outcome ? `<span class="coach-dec-out -${_cEsc(d.outcome)}">${_cEsc(COACH_OUTCOME_LABEL[d.outcome] || d.outcome)}</span>` : ''}
     </div>`).join('')}
   </div>`;
 }
@@ -2216,18 +2218,18 @@ async function _coachRenderVersions(el) {
     .slice(0, 20);
   if (!plans.length) { el.innerHTML = ''; return; }
   const activaId = (typeof activePlan !== 'undefined' && activePlan) ? activePlan.id : null;
-  const AUT = { 'coach-llm': 'Coach', 'ideal-seed': 'Ideal', user: 'Tú' };
+  const AUT = { 'coach-llm': 'Coach', 'ideal-seed': 'Ideal', user: 'You' };
   el.innerHTML = `<div class="card coach-vers-card">
-    <div class="coach-brief-title">Versiones del plan</div>
+    <div class="coach-brief-title">Plan versions</div>
     ${plans.map((p) => {
       const activa = p.id === activaId;
       const partes = [`v${p.version != null ? p.version : '?'}`];
       if (p.author) partes.push(AUT[p.author] || p.author);
       if (p.weekKey) partes.push(_cWeekShort(p.weekKey));
       return `<div class="coach-ver-row${activa ? ' -active' : ''}">
-        <span class="coach-ver-label">${_cEsc(partes.join(' · '))}${activa ? ' · activa' : ''}</span>
+        <span class="coach-ver-label">${_cEsc(partes.join(' · '))}${activa ? ' · active' : ''}</span>
         <span class="coach-ver-name">${_cEsc(p.label || '')}</span>
-        ${activa ? '' : `<button class="coach-ver-back" data-plan="${_cEsc(p.id)}">Volver a esta</button>`}
+        ${activa ? '' : `<button class="coach-ver-back" data-plan="${_cEsc(p.id)}">Roll back to this</button>`}
       </div>`;
     }).join('')}
   </div>`;
@@ -2252,7 +2254,7 @@ async function _coachRenderVersions(el) {
 async function exportCoachFacts() {
   const out = document.getElementById('coach-facts-out');
   const btn = document.getElementById('btn-export-facts');
-  if (btn) { btn.disabled = true; btn.textContent = 'Construyendo…'; }
+  if (btn) { btn.disabled = true; btn.textContent = 'Building…'; }
   try {
     const facts = await buildCoachFactsFromStores({});
     const json = JSON.stringify(facts);
@@ -2270,26 +2272,26 @@ async function exportCoachFacts() {
     if (!copiado && typeof File === 'function' && navigator.share && navigator.canShare) {
       try {
         const f = new File([json], `facts-${facts.meta && facts.meta.weekKey ? facts.meta.weekKey : today()}.json`, { type: 'application/json' });
-        if (navigator.canShare({ files: [f] })) { await navigator.share({ files: [f], title: 'Facts del coach' }); copiado = true; }
+        if (navigator.canShare({ files: [f] })) { await navigator.share({ files: [f], title: 'Coach facts' }); copiado = true; }
       } catch (e) { copiado = false; }
     }
 
     if (out) {
       out.classList.remove('hidden');
       out.innerHTML = copiado
-        ? `<p class="muted" style="font-size:11px;margin:0">Copiado · ${kb} KB · ${gaps} hueco${gaps === 1 ? '' : 's'} de datos declarado${gaps === 1 ? '' : 's'}.</p>`
-        : `<p class="muted" style="font-size:11px;margin:0 0 6px">No se pudo copiar solo (${kb} KB). Selecciona y copia:</p>
+        ? `<p class="muted" style="font-size:11px;margin:0">Copied · ${kb} KB · ${gaps} data gap${gaps === 1 ? '' : 's'} declared.</p>`
+        : `<p class="muted" style="font-size:11px;margin:0 0 6px">Could not copy automatically (${kb} KB). Select and copy:</p>
            <textarea readonly rows="6" class="text-input" style="width:100%;font-family:var(--font-mono);font-size:10px">${_cEsc(json)}</textarea>`;
     }
-    if (typeof toast === 'function') toast(`Facts: ${kb} KB · ${gaps} hueco${gaps === 1 ? '' : 's'} de datos`);
+    if (typeof toast === 'function') toast(`Facts: ${kb} KB · ${gaps} data gap${gaps === 1 ? '' : 's'}`);
     return facts;
   } catch (e) {
     console.warn('[Coach] exportCoachFacts:', e);
     if (out) { out.classList.remove('hidden'); out.innerHTML = `<p class="muted" style="font-size:11px;margin:0;color:var(--red)">${_cEsc((e && e.message) || 'error')}</p>`; }
-    if (typeof toast === 'function') toast('No se pudo construir el pack');
+    if (typeof toast === 'function') toast('Could not build the pack');
     return null;
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = 'Exportar facts JSON'; }
+    if (btn) { btn.disabled = false; btn.textContent = 'Export facts JSON'; }
   }
 }
 
@@ -2310,7 +2312,7 @@ async function setCoachAutoApply(mode) {
   state.settings = Object.assign({}, state.settings, { coachAutoApply: v });
   await smartPut('settings', { key: 'userSettings', data: state.settings });
   if (typeof toast === 'function') {
-    toast(v === 'ask' ? 'El coach propone, tú apruebas' : 'Guardado — el modo automático llega más adelante');
+    toast(v === 'ask' ? 'The coach proposes, you approve' : 'Saved — automatic mode comes later');
   }
 }
 
@@ -2319,8 +2321,8 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     renderCoachReadout, renderReadinessSignals, renderRecoveryLine, renderGoalsCard,
     renderCoachGoalLine, _coachGoalProgressFromStores,
-    COACH_APP_VERSION, COACH_RULE_ES, COACH_EVIDENCE_ES, COACH_GUARD_ES, COACH_STATUS_ES,
-    COACH_PHASES, COACH_WS_STATUS_ES, COACH_CLOSE_WEEK_ES,
+    COACH_APP_VERSION, COACH_RULE_LABEL, COACH_EVIDENCE_LABEL, COACH_GUARD_LABEL, COACH_STATUS_LABEL,
+    COACH_PHASES, COACH_WS_STATUS_LABEL, COACH_CLOSE_WEEK_LABEL,
     coachBriefFromReview, _coachAppliedHtml, _coachWhyHtml,
     buildCoachFactsFromStores, maybeRunWeeklyCoach, runWeeklyCoach, pollCoachReview,
     applyCoachProposal, rejectCoachProposal, rollbackPlanVersion,

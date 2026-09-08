@@ -99,7 +99,7 @@ a impedir.
 fila en `weekSummary`, y sólo cuando hay `coachBrief` — un plan de la semilla o del usuario no
 lleva resumen. La decisión `plan-apply` gana `{focus, phase, kept, changed}` en su `evidence`.
 
-### "Cerrar semana y pedir la próxima" — la semana de una revisión
+### "Close the week and ask for the next" — la semana de una revisión
 
 > **La revisión es PARA `weekKey` y SOBRE lo anterior.**
 
@@ -232,8 +232,8 @@ sube de 4 a **6** (el coach razona sobre el recorrido, y con 4 no se ve un bloqu
 `briefing.whyKept` · `briefing.lastWeekSummary` · `proposal.weekSummary`. Al aplicar, esos campos se
 estampan en la versión nueva del plan como [`coachBrief`](#coachbrief--por-qué-esta-semana-es-así-v1165-plan-v21-b4)
 (§B.4 del plan v2.1), con fallback derivado de `diffPlanVersions` para revisiones v1. La Home los
-pinta en la tarjeta `#coach-week-card` (estado `applied`: SEMANA PASADA · ESTA SEMANA · POR QUÉ
-CAMBIA / POR QUÉ SE MANTIENE · los dos desplegables de sesiones) y la vista Coach en el briefing
+pinta en la tarjeta `#coach-week-card` (estado `applied`: LAST WEEK · THIS WEEK · WHAT CHANGES
+AND WHY / WHY IT HOLDS · los dos desplegables de sesiones) y la vista Coach en el briefing
 completo con la tabla de `weekSummary`; el teaser de Stats usa `focus` con `priorities[0]` como
 fallback v1.
 

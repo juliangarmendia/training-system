@@ -49,9 +49,9 @@ function bloodStaleness(dateISO, todayISO) {
   const today = todayISO ? new Date(todayISO) : new Date();
   const months = (today - new Date(dateISO)) / (1000 * 60 * 60 * 24 * 30.44);
   const m = Math.round(months);
-  if (months <= BLOOD_STALE_FRESH_MONTHS) return { level: 'fresco', months: m, label: 'fresco' };
-  if (months <= BLOOD_STALE_EXPIRED_MONTHS) return { level: 'caducado', months: m, label: `${m} meses` };
-  return { level: 'historico', months: m, label: `${m} meses` };
+  if (months <= BLOOD_STALE_FRESH_MONTHS) return { level: 'fresco', months: m, label: 'fresh' };
+  if (months <= BLOOD_STALE_EXPIRED_MONTHS) return { level: 'caducado', months: m, label: `${m} months` };
+  return { level: 'historico', months: m, label: `${m} months` };
 }
 
 // ==================== MARCADORES ====================
@@ -61,51 +61,51 @@ function bloodStaleness(dateISO, todayISO) {
 const BLOOD_MARKERS = [
   // ---------- Lípidos y riesgo cardiovascular ----------
   {
-    key: 'nonHdl', label: 'Colesterol no-HDL', unit: 'mg/dL', family: 'lipidos', shape: 'lower',
+    key: 'nonHdl', label: 'Non-HDL cholesterol', unit: 'mg/dL', family: 'lipidos', shape: 'lower',
     bands: [{ score: 5, max: 85 }, { score: 4, max: 100 }, { score: 3, max: 130 }, { score: 2, max: null }],
-    labRange: 'no lo imprime el laboratorio',
-    target: '<85 muy alto riesgo · <100 alto · <130 moderado',
-    source: 'ESC/EAS 2019, mantenido en el Focused Update 2025',
-    note: 'El marcador aterogénico más útil que se puede calcular con lo que ya tienes medido.',
+    labRange: 'the lab does not print it',
+    target: '<85 very high risk · <100 high · <130 moderate',
+    source: 'ESC/EAS 2019, kept in the 2025 Focused Update',
+    note: 'The most useful atherogenic marker you can compute from what you already have measured.',
   },
   {
-    key: 'apoB', label: 'Apolipoproteína B', unit: 'mg/dL', family: 'lipidos', shape: 'lower',
+    key: 'apoB', label: 'Apolipoprotein B', unit: 'mg/dL', family: 'lipidos', shape: 'lower',
     bands: [{ score: 5, max: 65 }, { score: 4, max: 80 }, { score: 3, max: 100 }, { score: 2, max: null }],
-    labRange: '66-133 (hombres)',
-    target: '<65 muy alto riesgo · <80 alto · <100 moderado',
+    labRange: '66-133 (men)',
+    target: '<65 very high risk · <80 high · <100 moderate',
     source: 'ESC/EAS 2019',
-    note: 'El 66-133 del laboratorio es un intervalo POBLACIONAL, no un umbral de riesgo: todo su tramo alto queda por encima de cualquier objetivo de guía. "Dentro de rango" y "buen número" no son lo mismo.',
+    note: 'The lab\'s 66-133 is a POPULATION interval, not a risk threshold: its whole upper stretch sits above every guideline target. "Within range" and "good number" are not the same thing.',
   },
   {
-    key: 'tg', label: 'Triglicéridos', unit: 'mg/dL', family: 'lipidos', shape: 'lower',
+    key: 'tg', label: 'Triglycerides', unit: 'mg/dL', family: 'lipidos', shape: 'lower',
     bands: [{ score: 5, max: 135 }, { score: 3, max: 499 }, { score: 1, max: null }],
     labRange: '0-149',
-    target: '<135 (por debajo de la banda "elevada" 135-499)',
+    target: '<135 (below the "elevated" 135-499 band)',
     source: 'ESC/EAS 2025 Focused Update',
   },
   {
-    key: 'totalChol', label: 'Colesterol total', unit: 'mg/dL', family: 'lipidos', shape: null,
-    labRange: '100-199', target: 'sin objetivo propio',
-    noScore: 'Las guías no le fijan diana: entra en la decisión vía no-HDL y ApoB.',
+    key: 'totalChol', label: 'Total cholesterol', unit: 'mg/dL', family: 'lipidos', shape: null,
+    labRange: '100-199', target: 'no target of its own',
+    noScore: 'Guidelines set no target for it: it enters the decision through non-HDL and ApoB.',
   },
   {
-    key: 'ldlCalc', label: 'LDL (calculado)', unit: 'mg/dL', family: 'lipidos', shape: null,
-    labRange: '0-99', target: '<55 / <70 / <100 / <116 según riesgo',
-    noScore: 'Es una función aritmética de total, HDL y triglicéridos — puntuarlo cuenta los mismos tres números otra vez. Y OJO con la serie: 149 (IACA) → 170 (IACA) → 143 (LabCorp) mezcla laboratorios y ecuaciones distintas. Ninguna ecuación publicada reproduce el 170.',
+    key: 'ldlCalc', label: 'LDL (calculated)', unit: 'mg/dL', family: 'lipidos', shape: null,
+    labRange: '0-99', target: '<55 / <70 / <100 / <116 by risk',
+    noScore: 'It is an arithmetic function of total, HDL and triglycerides — scoring it counts the same three numbers again. And WATCH the sequence: 149 (IACA) → 170 (IACA) → 143 (LabCorp) mixes different labs and equations. No published equation reproduces the 170.',
   },
   {
     key: 'hdl', label: 'HDL', unit: 'mg/dL', family: 'lipidos', shape: null,
-    labRange: '>39 · "elevado" ≥60', target: 'sin objetivo hacia arriba en ninguna guía vigente',
-    noScore: 'El "elevado ≥60" del laboratorio es la convención retirada del NCEP ATP III. Ninguna guía vigente fija diana de HDL hacia arriba, así que no hay 5 que ganar. Se lee en tres estados: <40 marcador de riesgo · sin señal · muy alto (>90, cohortes con curva en U).',
-    states: [{ max: 40, label: 'bajo — marcador de riesgo' }, { max: 90, label: 'sin señal' }, { max: null, label: 'muy alto' }],
+    labRange: '>39 · "elevated" ≥60', target: 'no upward target in any current guideline',
+    noScore: 'The lab\'s "elevated ≥60" is the retired NCEP ATP III convention. No current guideline sets an upward HDL target, so there is no 5 to earn. It reads as three states: <40 risk marker · no signal · very high (>90, cohorts with a U-shaped curve).',
+    states: [{ max: 40, label: 'low — risk marker' }, { max: 90, label: 'no signal' }, { max: null, label: 'very high' }],
   },
   {
-    key: 'apoA1', label: 'Apolipoproteína A-I', unit: 'mg/dL', family: 'lipidos', shape: null,
-    labRange: '104-202', target: 'sin objetivo', noScore: 'Ninguna guía le fija diana.',
+    key: 'apoA1', label: 'Apolipoprotein A-I', unit: 'mg/dL', family: 'lipidos', shape: null,
+    labRange: '104-202', target: 'no target', noScore: 'No guideline sets a target for it.',
   },
   {
-    key: 'ldlHdlRatio', label: 'Ratio LDL/HDL', unit: '', family: 'lipidos', shape: null,
-    labRange: '0,0-3,6', target: '—', noScore: 'Derivado: es LDL dividido por HDL.',
+    key: 'ldlHdlRatio', label: 'LDL/HDL ratio', unit: '', family: 'lipidos', shape: null,
+    labRange: '0.0-3.6', target: '—', noScore: 'Derived: it is LDL divided by HDL.',
   },
 
   // ---------- Metabólico ----------
@@ -117,123 +117,123 @@ const BLOOD_MARKERS = [
       { score: 2, min: null, max: 6.4 },
       { score: 1, min: null, max: null },
     ],
-    labRange: '≤5,6 · prediabetes 5,7-6,4',
-    target: '5,0-5,4 % — banda de MENOR riesgo',
-    source: 'ARIC (Selvin 2010, n=11.092 sin diabetes, ~14 años)',
-    note: '"Cuanto más baja, mejor" es falso: por debajo de 5,0 % reaparece exceso de mortalidad en ARIC. Es un marcador de banda, con dos colas.',
+    labRange: '≤5.6 · prediabetes 5.7-6.4',
+    target: '5.0-5.4 % — LOWEST-risk band',
+    source: 'ARIC (Selvin 2010, n=11,092 without diabetes, ~14 years)',
+    note: '"The lower the better" is false: below 5.0 % excess mortality reappears in ARIC. It is a band marker, with two tails.',
   },
   {
-    key: 'glucose', label: 'Glucosa en ayunas', unit: 'mg/dL', family: 'metabolico', shape: 'band',
+    key: 'glucose', label: 'Fasting glucose', unit: 'mg/dL', family: 'metabolico', shape: 'band',
     bands: [{ score: 5, min: 70, max: 99 }, { score: 3, min: 70, max: 125 }, { score: 1, min: null, max: null }],
     labRange: '70-100', target: '<100 (IFG 100-125 · diabetes ≥126)', source: 'ADA Standards of Care 2026',
   },
   {
-    key: 'insulin', label: 'Insulina en ayunas', unit: 'mU/L', family: 'metabolico', shape: null,
-    labRange: '3,0-24,0', target: 'sin objetivo publicado',
-    noScore: 'No existe rango óptimo publicado, y la ADLM recomienda explícitamente NO medirla con esta finalidad.',
+    key: 'insulin', label: 'Fasting insulin', unit: 'mU/L', family: 'metabolico', shape: null,
+    labRange: '3.0-24.0', target: 'no published target',
+    noScore: 'There is no published optimal range, and the ADLM explicitly recommends NOT measuring it for this purpose.',
   },
   {
     key: 'homa', label: 'HOMA-IR', unit: '', family: 'metabolico', shape: null,
-    labRange: '<2,5', target: 'sin umbral definido',
-    noScore: 'Lo dice el grupo que inventó el modelo (Oxford, Diabetes Trials Unit): "There is no absolute value for HOMA indices". Además es glucosa × insulina / 405 — no es un tercer dato.',
+    labRange: '<2.5', target: 'no defined threshold',
+    noScore: 'The group that invented the model says so (Oxford, Diabetes Trials Unit): "There is no absolute value for HOMA indices". And it is glucose × insulin / 405 — not a third data point.',
   },
 
   // ---------- Micronutrientes ----------
   {
-    key: 'vitD', label: '25-OH vitamina D', unit: 'ng/mL', family: 'micronutrientes', shape: 'higher',
+    key: 'vitD', label: '25-OH vitamin D', unit: 'ng/mL', family: 'micronutrientes', shape: 'higher',
     bands: [{ score: 4, min: 20 }, { score: 3, min: 16 }, { score: 2, min: 12 }, { score: 1, min: null }],
-    labRange: 'óptimo >30 · insuf. 20-30 · deficiencia <20',
-    target: '≥20 ng/mL (50 nmol/L) — suficiencia IOM 2011 y objetivo ESCEO 2022',
+    labRange: 'optimal >30 · insuff. 20-30 · deficiency <20',
+    target: '≥20 ng/mL (50 nmol/L) — IOM 2011 sufficiency and ESCEO 2022 target',
     source: 'IOM 2011 · ESCEO 2022 · Endocrine Society (Demay 2024)',
-    note: 'No tiene 5 a propósito: la guía VIGENTE de la Endocrine Society (Demay 2024) dice que no hay evidencia clara que defina el nivel óptimo. El "40-60" que circula por todas partes es de la versión de 2011, y la propia sociedad se desdijo. Sin diana publicada no hay 5 (Regla A).',
-    caution: 'Medida en agosto en Argentina = nadir invernal austral. Parte del valor es estacional.',
+    note: 'It has no 5 on purpose: the CURRENT Endocrine Society guideline (Demay 2024) says there is no clear evidence defining the optimal level. The "40-60" that circulates everywhere is from the 2011 version, and the society itself walked it back. No published target, no 5 (Rule A).',
+    caution: 'Measured in August in Argentina = southern winter nadir. Part of the value is seasonal.',
   },
   {
-    key: 'ferritin', label: 'Ferritina', unit: 'ng/mL', family: 'micronutrientes', shape: 'band',
+    key: 'ferritin', label: 'Ferritin', unit: 'ng/mL', family: 'micronutrientes', shape: 'band',
     bands: [
       { score: 4, min: 30, max: 200 },
       { score: 3, min: 15, max: 300 },
       { score: 2, min: 15, max: 400 },
       { score: 1, min: null, max: null },
     ],
-    labRange: '30-400 (hombres)',
-    target: '<15 µg/L = deficiencia · >200 µg/L en hombres sanos = riesgo de sobrecarga de hierro',
-    source: 'OMS 2020 (WHO guideline on ferritin concentrations)',
-    note: 'El rango 30-400 del laboratorio esconde el techo real: la OMS marca >200 µg/L en hombres sanos como riesgo de sobrecarga. 191 está a NUEVE unidades. A favor de que sea reserva real y no inflamación: PCR 0,24 mg/dL en el mismo panel y ESR 5 mm en jun-2023.',
+    labRange: '30-400 (men)',
+    target: '<15 µg/L = deficiency · >200 µg/L in healthy men = iron-overload risk',
+    source: 'WHO 2020 (WHO guideline on ferritin concentrations)',
+    note: 'The lab\'s 30-400 hides the real ceiling: the WHO flags >200 µg/L in healthy men as overload risk. 191 is NINE units away. In favour of it being real stores and not inflammation: CRP 0.24 mg/dL in the same panel and ESR 5 mm in Jun-2023.',
   },
   {
-    key: 'homocysteine', label: 'Homocisteína', unit: 'µmol/L', family: 'micronutrientes', shape: 'lower',
+    key: 'homocysteine', label: 'Homocysteine', unit: 'µmol/L', family: 'micronutrientes', shape: 'lower',
     bands: [{ score: 4, max: 15 }, { score: 2, max: 30 }, { score: 1, max: null }],
-    labRange: '<15', target: 'sin diana terapéutica',
-    source: 'Cochrane 2017 (15 ECA, 71.422 participantes, calidad ALTA)',
-    note: 'Tope en 4 por la Regla A: bajar la homocisteína NO cambia los desenlaces duros, así que no hay diana que cumplir.',
+    labRange: '<15', target: 'no therapeutic target',
+    source: 'Cochrane 2017 (15 RCTs, 71,422 participants, HIGH quality)',
+    note: 'Capped at 4 by Rule A: lowering homocysteine does NOT change hard outcomes, so there is no target to hit.',
   },
-  { key: 'b12', label: 'Vitamina B12', unit: 'pg/mL', family: 'micronutrientes', shape: null, labRange: '197-771', target: 'sin objetivo', noScore: 'Sin diana publicada; se lee dentro o fuera del intervalo.' },
-  { key: 'folate', label: 'Ácido fólico', unit: 'ng/mL', family: 'micronutrientes', shape: null, labRange: '4,6-34,8', target: 'sin objetivo', noScore: 'Sin diana publicada.' },
-  { key: 'selenium', label: 'Selenio', unit: 'ng/mL', family: 'micronutrientes', shape: null, labRange: '70-150', target: 'sin objetivo', noScore: 'Sin diana publicada.' },
-  { key: 'zinc', label: 'Zinc', unit: 'µg/mL', family: 'micronutrientes', shape: null, labRange: '0,66-1,10', target: 'sin objetivo', noScore: 'Sin diana publicada.' },
+  { key: 'b12', label: 'Vitamin B12', unit: 'pg/mL', family: 'micronutrientes', shape: null, labRange: '197-771', target: 'no target', noScore: 'No published target; it reads as inside or outside the interval.' },
+  { key: 'folate', label: 'Folate', unit: 'ng/mL', family: 'micronutrientes', shape: null, labRange: '4.6-34.8', target: 'no target', noScore: 'No published target.' },
+  { key: 'selenium', label: 'Selenium', unit: 'ng/mL', family: 'micronutrientes', shape: null, labRange: '70-150', target: 'no target', noScore: 'No published target.' },
+  { key: 'zinc', label: 'Zinc', unit: 'µg/mL', family: 'micronutrientes', shape: null, labRange: '0.66-1.10', target: 'no target', noScore: 'No published target.' },
   {
-    key: 'b6', label: 'Vitamina B6 (piridoxal-P)', unit: 'µg/L', family: 'micronutrientes', shape: null,
-    labRange: 'no legible en el PDF', target: '—', uncertain: true,
-    noScore: 'El rango del laboratorio no se pudo leer con certeza, así que no se puntúa. Nota de seguridad relacionada: la EFSA rebajó en 2023 el máximo tolerable de INGESTA de 25 a 12 mg/día (neuropatía periférica). Multivitamínicos y pre-entrenos suelen llevar B6 muy por encima — vale la pena mirar etiquetas.',
+    key: 'b6', label: 'Vitamin B6 (pyridoxal-P)', unit: 'µg/L', family: 'micronutrientes', shape: null,
+    labRange: 'not legible in the PDF', target: '—', uncertain: true,
+    noScore: 'The lab range could not be read with certainty, so it is not scored. Related safety note: in 2023 the EFSA cut the tolerable INTAKE maximum from 25 to 12 mg/day (peripheral neuropathy). Multivitamins and pre-workouts often carry B6 far above that — worth reading labels.',
   },
 
   // ---------- Inflamación ----------
   {
-    key: 'crp', label: 'PCR', unit: 'mg/dL', family: 'inflamacion', shape: null,
-    labRange: '<0,80', target: 'sin estratos aplicables',
-    noScore: 'Los estratos de riesgo publicados (<1 / 1-3 / >3 mg/L) son de PCR ULTRASENSIBLE. El intervalo que imprime el laboratorio (<0,80 mg/dL) es de PCR estándar, así que aplicarlos sería un error de método.',
+    key: 'crp', label: 'CRP', unit: 'mg/dL', family: 'inflamacion', shape: null,
+    labRange: '<0.80', target: 'no applicable strata',
+    noScore: 'The published risk strata (<1 / 1-3 / >3 mg/L) are for HIGH-SENSITIVITY CRP. The interval the lab prints (<0.80 mg/dL) is standard CRP, so applying them would be a method error.',
   },
   {
-    key: 'esr', label: 'Eritrosedimentación (ESR)', unit: 'mm', family: 'inflamacion', shape: 'lower',
+    key: 'esr', label: 'Sedimentation rate (ESR)', unit: 'mm', family: 'inflamacion', shape: 'lower',
     bands: [{ score: 4, max: 15 }, { score: 2, max: 40 }, { score: 1, max: null }],
-    labRange: '0-15 (hombres)', target: 'sin diana; marcador inespecífico',
-    confounder: 'Sube con ejercicio intenso en días previos, infección reciente, o sin causa identificable.',
-    note: 'Pasó de 5 mm (jun-2023) a 21 mm (jun-2024) sin PCR simultánea con la que contrastar. Una medición aislada de un marcador inespecífico: repetir junto a PCR ultrasensible.',
+    labRange: '0-15 (men)', target: 'no target; non-specific marker',
+    confounder: 'Rises with hard exercise in the previous days, a recent infection, or for no identifiable reason.',
+    note: 'Went from 5 mm (Jun-2023) to 21 mm (Jun-2024) with no simultaneous CRP to contrast it against. A single reading of a non-specific marker: repeat it alongside high-sensitivity CRP.',
   },
 
   // ---------- Órganos y hormonas ----------
   {
     key: 'tsh', label: 'TSH', unit: 'mUI/L', family: 'organos', shape: 'band',
     bands: [{ score: 4, min: 0.27, max: 4.20 }, { score: 2, min: 0.1, max: 10 }, { score: 1, min: null, max: null }],
-    labRange: '0,27-4,20', target: 'ninguna guía fija diana en un eutiroideo',
-    note: 'Tope en 4 por la Regla A. El "óptimo <2,5" que circula no sale de ninguna guía vigente — y aplicarlo daría un 3 a un valor que simplemente está dentro del intervalo. Relevante para el seguimiento del déficit: la adaptación metabólica puede mover la TSH, así que estos valores son buen punto de comparación.',
+    labRange: '0.27-4.20', target: 'no guideline sets a target in a euthyroid person',
+    note: 'Capped at 4 by Rule A. The "optimal <2.5" that circulates comes from no current guideline — and applying it would give a 3 to a value that is simply inside the interval. Relevant for tracking the deficit: metabolic adaptation can move TSH, so these values are a good comparison point.',
   },
-  { key: 'ft4', label: 'T4 libre', unit: 'ng/dL', family: 'organos', shape: null, labRange: '0,93-1,70', target: 'sin objetivo', noScore: 'Sin diana publicada.' },
+  { key: 'ft4', label: 'Free T4', unit: 'ng/dL', family: 'organos', shape: null, labRange: '0.93-1.70', target: 'no target', noScore: 'No published target.' },
   {
-    key: 'egfr', label: 'TFGe (CKD-EPI)', unit: 'mL/min/1,73m²', family: 'organos', shape: 'higher',
+    key: 'egfr', label: 'eGFR (CKD-EPI)', unit: 'mL/min/1.73m²', family: 'organos', shape: 'higher',
     bands: [{ score: 5, min: 90 }, { score: 4, min: 60 }, { score: 3, min: 45 }, { score: 2, min: 30 }, { score: 1, min: null }],
-    labRange: 'estadios G1-G5', target: 'G1 ≥90 · G2 60-89 · G3a 45-59 · G3b 30-44 · G4 15-29',
-    source: 'KDIGO 2024', note: 'Es la medida que KDIGO usa de verdad para estadificar. 84 = G2.',
+    labRange: 'stages G1-G5', target: 'G1 ≥90 · G2 60-89 · G3a 45-59 · G3b 30-44 · G4 15-29',
+    source: 'KDIGO 2024', note: 'This is the measure KDIGO actually uses for staging. 84 = G2.',
   },
   {
-    key: 'creatinine', label: 'Creatinina', unit: 'mg/dL', family: 'organos', shape: 'band',
+    key: 'creatinine', label: 'Creatinine', unit: 'mg/dL', family: 'organos', shape: 'band',
     bands: [{ score: 4, min: 0.70, max: 1.20 }, { score: 2, min: 0.5, max: 1.5 }, { score: 1, min: null, max: null }],
-    labRange: '0,70-1,20 (hombres)', target: 'KDIGO 2024: sólo interesa como insumo de la TFGe',
+    labRange: '0.70-1.20 (men)', target: 'KDIGO 2024: only relevant as an input to eGFR',
     source: 'KDIGO 2024',
-    note: 'Tope en 4: no es una diana en sí misma. Hay TRES mediciones, no una: 1,44 (2021) → 1,40 (2023-06) → 1,15 (2024-09). Con más masa muscular la creatinina sube sin que el riñón cambie.',
+    note: 'Capped at 4: it is not a target in itself. There are THREE readings, not one: 1.44 (2021) → 1.40 (2023-06) → 1.15 (2024-09). With more muscle mass creatinine rises without the kidney changing.',
   },
   {
     key: 'urea', label: 'Urea', unit: 'mg/dL', family: 'organos', shape: 'lower',
     bands: [{ score: 4, max: 48.5 }, { score: 2, max: 80 }, { score: 1, max: null }],
-    labRange: '16,6-48,5', target: 'KDIGO 2024 NO usa urea para estadificar',
-    confounder: 'La mueven la ingesta de proteína y el estado de hidratación.',
-    note: 'El hecho descriptivo, sin conclusión: 59,0 por encima del intervalo, con creatinina 1,15 en rango, TFGe 84, tira de proteínas negativa y densidad urinaria 1.036 en LA MISMA extracción (orina muy concentrada). Qué explica ese conjunto es pregunta para tu médico. La acción concreta sí es clara: repetirla en ayunas, bien hidratado y con 48 h sin sesión dura.',
+    labRange: '16.6-48.5', target: 'KDIGO 2024 does NOT use urea for staging',
+    confounder: 'Protein intake and hydration status move it.',
+    note: 'The descriptive fact, with no conclusion: 59.0 above the interval, with creatinine 1.15 in range, eGFR 84, a negative protein dipstick and urine specific gravity 1.036 in the SAME draw (very concentrated urine). What explains that set is a question for your doctor. The concrete action is clear: repeat it fasted, well hydrated, and with 48 h clear of a hard session.',
   },
-  { key: 'ast', label: 'AST (TGO)', unit: 'U/L', family: 'organos', shape: null, labRange: '<40', target: 'sin objetivo', confounder: 'El entrenamiento de fuerza la sube.', noScore: 'Sin diana publicada, y con confusor: sacar sangre 48 h después de una sesión dura mueve el número.' },
-  { key: 'alt', label: 'ALT (TGP)', unit: 'U/L', family: 'organos', shape: null, labRange: '<41', target: 'sin objetivo', confounder: 'El entrenamiento de fuerza la sube.', noScore: 'Sin diana publicada, y con confusor.' },
-  { key: 'alp', label: 'Fosfatasa alcalina', unit: 'U/L', family: 'organos', shape: null, labRange: '40-129', target: 'sin objetivo', noScore: 'Sin diana publicada.' },
-  { key: 'biliTotal', label: 'Bilirrubina total', unit: 'mg/dL', family: 'organos', shape: null, labRange: '≤1,2', target: 'sin objetivo', noScore: 'Sin diana publicada.' },
-  { key: 'cortisolAM', label: 'Cortisol salival matutino', unit: 'µg/dL', family: 'organos', shape: null, labRange: '<0,74 (8 h)', target: 'sin objetivo', noScore: 'Sin diana publicada. El nocturno (<0,11 sobre <0,28) indica ritmo conservado.' },
-  { key: 'urineSg', label: 'Densidad urinaria', unit: '', family: 'organos', shape: null, labRange: '1.003-1.030', target: '—', noScore: 'Es una foto del estado de hidratación en el momento de la muestra, no un marcador de salud. 1.036 en sep-2024 = orina muy concentrada, y es contexto directo de la urea de ese día.' },
+  { key: 'ast', label: 'AST (SGOT)', unit: 'U/L', family: 'organos', shape: null, labRange: '<40', target: 'no target', confounder: 'Strength training raises it.', noScore: 'No published target, and confounded: drawing blood 48 h after a hard session moves the number.' },
+  { key: 'alt', label: 'ALT (SGPT)', unit: 'U/L', family: 'organos', shape: null, labRange: '<41', target: 'no target', confounder: 'Strength training raises it.', noScore: 'No published target, and confounded.' },
+  { key: 'alp', label: 'Alkaline phosphatase', unit: 'U/L', family: 'organos', shape: null, labRange: '40-129', target: 'no target', noScore: 'No published target.' },
+  { key: 'biliTotal', label: 'Total bilirubin', unit: 'mg/dL', family: 'organos', shape: null, labRange: '≤1.2', target: 'no target', noScore: 'No published target.' },
+  { key: 'cortisolAM', label: 'Morning salivary cortisol', unit: 'µg/dL', family: 'organos', shape: null, labRange: '<0.74 (8 am)', target: 'no target', noScore: 'No published target. The night value (<0.11 against <0.28) shows the rhythm is preserved.' },
+  { key: 'urineSg', label: 'Urine specific gravity', unit: '', family: 'organos', shape: null, labRange: '1.003-1.030', target: '—', noScore: 'It is a snapshot of hydration status at the moment of the sample, not a health marker. 1.036 in Sep-2024 = very concentrated urine, and it is direct context for that day\'s urea.' },
 ];
 
 const BLOOD_FAMILIES = [
-  { key: 'lipidos', label: 'Lípidos y riesgo cardiovascular' },
-  { key: 'metabolico', label: 'Metabólico' },
-  { key: 'micronutrientes', label: 'Micronutrientes' },
-  { key: 'inflamacion', label: 'Inflamación' },
-  { key: 'organos', label: 'Órganos y hormonas' },
+  { key: 'lipidos', label: 'Lipids and cardiovascular risk' },
+  { key: 'metabolico', label: 'Metabolic' },
+  { key: 'micronutrientes', label: 'Micronutrients' },
+  { key: 'inflamacion', label: 'Inflammation' },
+  { key: 'organos', label: 'Organs and hormones' },
 ];
 
 // ==================== PANELES ====================
@@ -242,28 +242,28 @@ const BLOOD_FAMILIES = [
 
 const BLOOD_PANELS = [
   {
-    date: '2021-05-14', lab: 'IACA', scope: 'Hemograma, glucemia, lípidos, ionograma, hepatograma, TSH, orina',
+    date: '2021-05-14', lab: 'IACA', scope: 'CBC, glucose, lipids, electrolytes, liver panel, TSH, urine',
     values: { totalChol: 226, ldlCalc: 149, hdl: 66, tg: 54, nonHdl: 160, glucose: 91, urea: 35.0, creatinine: 1.44, ast: 25, alt: 19, alp: 64, biliTotal: 1.1, tsh: 2.45, urineSg: 1.022 },
   },
   {
-    date: '2023-06-28', lab: 'IACA', scope: 'Hemograma, ESR, glucemia, urea, PCR, Ca/Mg, hepatograma, CK, LDH, TSH, T4L',
+    date: '2023-06-28', lab: 'IACA', scope: 'CBC, ESR, glucose, urea, CRP, Ca/Mg, liver panel, CK, LDH, TSH, free T4',
     values: { glucose: 95, urea: 40.0, creatinine: 1.40, crp: 0.09, esr: 5, ast: 27, alt: 33, alp: 59, biliTotal: 0.8, tsh: 3.33, ft4: 1.22 },
   },
   {
-    date: '2023-08-07', lab: 'IACA', scope: 'El más completo: HbA1c, ApoA/ApoB, ferritina, B12, folato, vit. D, cortisol salival, insulina, HOMA, homocisteína, selenio, zinc, B6',
-    note: 'Fecha corregida: el 4 de agosto fue la admisión, la sangre se extrajo el 7.',
+    date: '2023-08-07', lab: 'IACA', scope: 'The most complete: HbA1c, ApoA/ApoB, ferritin, B12, folate, vit. D, salivary cortisol, insulin, HOMA, homocysteine, selenium, zinc, B6',
+    note: 'Date corrected: August 4 was the intake, the blood was drawn on the 7th.',
     values: { hba1c: 5.3, glucose: 106, insulin: 10.6, homa: 2.8, apoB: 110, apoA1: 141, crp: 0.24, ferritin: 191, b12: 682, folate: 7.2, vitD: 11.2, homocysteine: 9, selenium: 82, zinc: 1.11, b6: 42, cortisolAM: 0.56 },
   },
   {
-    date: '2024-06-04', lab: 'IACA', scope: 'Hemograma, ESR, glucemia, urea, hepatograma',
+    date: '2024-06-04', lab: 'IACA', scope: 'CBC, ESR, glucose, urea, liver panel',
     values: { glucose: 98, urea: 32.0, esr: 21, ast: 27, alt: 25, alp: 58, biliTotal: 0.3 },
   },
   {
-    date: '2024-09-20', lab: 'IACA', scope: 'Hemograma, glucemia, urea, creatinina, TFGe, lípidos, hepatograma, TSH, T4L, insulina, HOMA, orina',
+    date: '2024-09-20', lab: 'IACA', scope: 'CBC, glucose, urea, creatinine, eGFR, lipids, liver panel, TSH, free T4, insulin, HOMA, urine',
     values: { totalChol: 260, ldlCalc: 170, hdl: 68, tg: 101, glucose: 95, insulin: 5.5, homa: 1.3, urea: 59.0, creatinine: 1.15, egfr: 84, ast: 27, alt: 29, alp: 63, biliTotal: 0.9, tsh: 3.07, ft4: 1.28, urineSg: 1.036 },
   },
   {
-    date: '2025-02-04', lab: 'LabCorp', scope: 'Perfil lipídico con ratio LDL/HDL + cribado infeccioso de rutina (todo no reactivo)',
+    date: '2025-02-04', lab: 'LabCorp', scope: 'Lipid panel with LDL/HDL ratio + routine infectious screening (all non-reactive)',
     values: { totalChol: 230, ldlCalc: 143, hdl: 65, tg: 126, nonHdl: 165, ldlHdlRatio: 2.2 },
   },
 ];
@@ -271,26 +271,26 @@ const BLOOD_PANELS = [
 // ==================== NUNCA MEDIDO ====================
 // Lo ausente informa tanto como lo presente.
 const BLOOD_NEVER_MEASURED = [
-  { label: 'Testosterona total y libre + SHBG', why: 'Ninguno de los 6 paneles la incluye. El sistema vigila la baja disponibilidad energética por sus efectos endocrinos y usa la libido como proxy en el seguimiento semanal — pero el marcador real nunca se midió. Es la ausencia más llamativa en alguien con déficit prolongado.' },
-  { label: 'Lp(a)', why: 'Se mide UNA vez en la vida (es genética). Con ApoB 110, es la pieza que falta para estratificar riesgo de verdad.' },
-  { label: 'PCR ultrasensible', why: 'La PCR estándar que hay no permite aplicar los estratos de riesgo publicados. Y hace falta para contrastar la ESR de 21.' },
-  { label: 'VO₂max medido', why: 'El predictor de mortalidad por cualquier causa mejor estudiado. Las estimaciones de Whoop y COROS no son lo mismo.' },
+  { label: 'Total and free testosterone + SHBG', why: 'None of the 6 panels includes it. The system watches low energy availability for its endocrine effects and uses libido as a proxy in the weekly check-in — but the real marker was never measured. It is the most glaring absence in someone with a prolonged deficit.' },
+  { label: 'Lp(a)', why: 'Measured ONCE in a lifetime (it is genetic). With ApoB 110, it is the missing piece for real risk stratification.' },
+  { label: 'High-sensitivity CRP', why: 'The standard CRP on file does not allow the published risk strata to be applied. And it is needed to contrast the ESR of 21.' },
+  { label: 'Measured VO₂max', why: 'The best-studied predictor of all-cause mortality. Whoop and COROS estimates are not the same thing.' },
 ];
 
 // ==================== QUÉ PEDIR EN LA PRÓXIMA ANALÍTICA ====================
 const BLOOD_REQUEST_LIST = [
-  'Perfil lipídico + ApoB + Lp(a)',
-  'Glucosa + HbA1c',
-  '25-OH vitamina D',
-  'Testosterona total y libre + SHBG',
-  'Ferritina (+ transferrina y saturación si la ferritina vuelve alta)',
-  'PCR ultrasensible + ESR',
-  'Urea, creatinina y TFGe',
-  'TSH + T4 libre',
-  'Hepatograma',
+  'Lipid panel + ApoB + Lp(a)',
+  'Glucose + HbA1c',
+  '25-OH vitamin D',
+  'Total and free testosterone + SHBG',
+  'Ferritin (+ transferrin and saturation if ferritin comes back high)',
+  'High-sensitivity CRP + ESR',
+  'Urea, creatinine and eGFR',
+  'TSH + free T4',
+  'Liver panel',
 ];
 
-const BLOOD_REQUEST_CONDITIONS = 'En ayunas · sin entrenamiento fuerte las 48 h previas (mueve CK, AST/ALT y ESR) · bien hidratado (la urea de 59 con densidad 1.036 muestra por qué).';
+const BLOOD_REQUEST_CONDITIONS = 'Fasted · no hard training in the previous 48 h (it moves CK, AST/ALT and ESR) · well hydrated (the urea of 59 with specific gravity 1.036 shows why).';
 
 // ==================== SUPLEMENTACIÓN ====================
 // Solo nutrición deportiva con position stand publicado. Corregir una deficiencia documentada
@@ -298,34 +298,34 @@ const BLOOD_REQUEST_CONDITIONS = 'En ayunas · sin entrenamiento fuerte las 48 h
 const BLOOD_SUPPLEMENTS = {
   worth: [
     {
-      name: 'Creatina monohidrato', tier: 'Grupo A del AIS', dose: '3-5 g/día (la carga es opcional)',
-      effect: 'Masa libre de grasa +1,39 kg; en entrenados +1,82 kg',
-      source: 'ISSN 2017 (Kreider) · meta-análisis Ashtary-Larky 2025, 61 ensayos, 1.457 participantes',
-      caveat: 'El COI documenta 1-2 kg de aumento de masa corporal por agua intracelular tras la carga. Con la báscula como objetivo: saltate la carga, 5 g/día directo, y no leas el salto inicial como retroceso.',
+      name: 'Creatine monohydrate', tier: 'AIS Group A', dose: '3-5 g/day (loading is optional)',
+      effect: 'Fat-free mass +1.39 kg; in trained lifters +1.82 kg',
+      source: 'ISSN 2017 (Kreider) · Ashtary-Larky 2025 meta-analysis, 61 trials, 1,457 participants',
+      caveat: 'The IOC documents 1-2 kg of body-mass gain from intracellular water after loading. With the scale as the target: skip the loading phase, 5 g/day straight, and do not read the initial jump as a setback.',
     },
     {
-      name: 'Cafeína', tier: 'Grupo A del AIS', dose: '3-6 mg/kg ≈ 261-523 mg, ~60 min antes',
-      effect: 'Resistencia aeróbica 2-4 % · fuerza 2-7 % (tamaño de efecto 0,16-0,20, pequeño)',
+      name: 'Caffeine', tier: 'AIS Group A', dose: '3-6 mg/kg ≈ 261-523 mg, ~60 min before',
+      effect: 'Aerobic endurance 2-4 % · strength 2-7 % (effect size 0.16-0.20, small)',
       source: 'ISSN 2021 (Guest)',
-      caveat: 'Manda la genética más que la dosis: con CYP1A2, el genotipo AA mejoró 6,8 % y el CC EMPEORÓ 13,7 %. Y en este sistema tiene coste: una dosis así por la tarde compromete el sueño, y el sueño es la puerta del día siguiente.',
+      caveat: 'Genetics matter more than dose: with CYP1A2, the AA genotype improved 6.8 % and CC got WORSE by 13.7 %. And in this system it has a cost: a dose like that in the afternoon compromises sleep, and sleep is the gate to the next day.',
     },
     {
-      name: 'Proteína en polvo', tier: 'Sports food (AIS), no suplemento de rendimiento', dose: 'lo que falte para llegar al objetivo diario',
-      effect: '+2,49 kg en 1RM y +0,30 kg de masa libre de grasa, con MÁS efecto en entrenados',
-      source: 'Morton 2018, BJSM, 49 ECA, 1.863 participantes',
-      caveat: 'El plateau de 1,62 g/kg/día NO se derivó en déficit: Morton excluyó explícitamente a sujetos en restricción energética. Si llegas con comida, el polvo es comodidad, no intervención.',
+      name: 'Protein powder', tier: 'Sports food (AIS), not a performance supplement', dose: 'whatever is missing to hit the daily target',
+      effect: '+2.49 kg on 1RM and +0.30 kg of fat-free mass, with MORE effect in trained lifters',
+      source: 'Morton 2018, BJSM, 49 RCTs, 1,863 participants',
+      caveat: 'The 1.62 g/kg/day plateau was NOT derived in a deficit: Morton explicitly excluded subjects under energy restriction. If you get there with food, powder is convenience, not intervention.',
     },
-    { name: 'Omega-3', tier: 'Grupo B del AIS (evidencia emergente)', dose: '2-3 g/día', effect: 'Efecto moderado sobre el daño inducido por el ejercicio', source: 'Marco del AIS', caveat: 'No es prioritario.' },
+    { name: 'Omega-3', tier: 'AIS Group B (emerging evidence)', dose: '2-3 g/day', effect: 'Moderate effect on exercise-induced damage', source: 'AIS framework', caveat: 'Not a priority.' },
   ],
   notWorth: [
-    { name: 'Magnesio', why: 'Grupo C del AIS. Cochrane 2020: improbable que dé profilaxis de calambres clínicamente significativa.' },
-    { name: 'BCAA y HMB', why: 'Grupo C del AIS — y se venden precisamente como protectores de masa magra en déficit.' },
-    { name: 'Vitamina E', why: 'Doble negativa: Grupo C del AIS y recomendación grado D (EN CONTRA) de la USPSTF 2022.' },
-    { name: 'Multivitamínicos', why: 'Grupo B, y la USPSTF 2022 concluye evidencia insuficiente (grado I) para prevención cardiovascular y de cáncer.' },
-    { name: 'Vitaminas B sin déficit', why: 'Cochrane 2017: sin reducción de infarto ni mortalidad, evidencia de calidad ALTA.' },
-    { name: 'Ácido alfa-lipoico, fosfato, SAMe, tirosina', why: 'Grupo C del AIS.' },
+    { name: 'Magnesium', why: 'AIS Group C. Cochrane 2020: unlikely to give clinically meaningful cramp prophylaxis.' },
+    { name: 'BCAAs and HMB', why: 'AIS Group C — and they are sold precisely as lean-mass protectors in a deficit.' },
+    { name: 'Vitamin E', why: 'Doubly negative: AIS Group C and a grade D (AGAINST) recommendation from the USPSTF 2022.' },
+    { name: 'Multivitamins', why: 'Group B, and the USPSTF 2022 concludes insufficient evidence (grade I) for cardiovascular and cancer prevention.' },
+    { name: 'B vitamins without a deficiency', why: 'Cochrane 2017: no reduction in infarction or mortality, HIGH-quality evidence.' },
+    { name: 'Alpha-lipoic acid, phosphate, SAMe, tyrosine', why: 'AIS Group C.' },
   ],
-  risk: 'Consenso del COI 2018: en el estudio seminal ~15 % de más de 600 productos contenían prohormonas no declaradas, el problema persiste, y la FDA ha retirado suplementos con dosis potencialmente tóxicas de vitaminas A, D, B6 y selenio. Cada suplemento añadido es una superficie de riesgo, no sólo una línea de gasto.',
+  risk: 'IOC 2018 consensus: in the seminal study ~15 % of more than 600 products contained undeclared prohormones, the problem persists, and the FDA has pulled supplements with potentially toxic doses of vitamins A, D, B6 and selenium. Every supplement added is a risk surface, not just a line of spending.',
 };
 
 // ==================== LECTORES ====================

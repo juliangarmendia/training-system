@@ -108,9 +108,9 @@ for (const k of ['insulin', 'homa', 'hdl', 'ldlCalc', 'totalChol', 'apoA1', 'ldl
 
 // El HDL usa el indicador de tres estados en vez de puntaje
 sec('3c. El HDL se lee en tres estados, no en puntaje');
-ok(bloodMarkerState('hdl', 65) === 'sin señal', 'HDL 65 → "sin señal" (no "bueno ✅")');
-ok(bloodMarkerState('hdl', 35) === 'bajo — marcador de riesgo', 'HDL 35 → marcador de riesgo');
-ok(bloodMarkerState('hdl', 95) === 'muy alto', 'HDL 95 → muy alto (cohortes con curva en U)');
+ok(bloodMarkerState('hdl', 65) === 'no signal', 'HDL 65 → "no signal" (no "bueno ✅")');
+ok(bloodMarkerState('hdl', 35) === 'low — risk marker', 'HDL 35 → marcador de riesgo');
+ok(bloodMarkerState('hdl', 95) === 'very high', 'HDL 95 → muy alto (cohortes con curva en U)');
 
 // ---------- 4. Claves cruzadas ----------
 sec('4. Toda clave medida tiene definición, y toda definición tiene medición');

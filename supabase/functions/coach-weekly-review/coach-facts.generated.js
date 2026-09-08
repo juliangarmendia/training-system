@@ -8,7 +8,7 @@
 //
 //   node scripts/build-fn-assets.mjs
 //
-// sourceSha256: 05c731b665e359b5f423efaf6f47fcf12c3d6a9e932704af1a672832047d1b5b
+// sourceSha256: e4baaa52cc34d259ff93dd6262894fe3b8779a5f365dec04e786e9af8b1fc9d2
 // source: app/coach-facts.js
 //
 // tests/verify-fn-assets.mjs FALLA si app/coach-facts.js cambia y nadie regeneró esto: dos
@@ -481,8 +481,8 @@ function _z2Ceiling(ctx, d, gaps) {
   if (Array.isArray(band) && band.length === 2 && _n(band[1]) != null) {
     return { bpm: _rMin(band[1]), source: 'icuZones', lthr: _n(z.lthr), maxHr: _n(z.maxHr) };
   }
-  gaps.push(`Sin zonas de FC de intervals.icu (\`icuZones\`): el techo de Z2 usado es ${d.z2Ceiling != null ? d.z2Ceiling : FACTS_Z2_CEILING_DEFAULT} bpm DECLARADO, no medido.`);
-  return { bpm: d.z2Ceiling != null ? _rMin(d.z2Ceiling) : FACTS_Z2_CEILING_DEFAULT, source: 'declarado', lthr: null, maxHr: null };
+  gaps.push(`No intervals.icu HR zones (\`icuZones\`): the Z2 ceiling in use is ${d.z2Ceiling != null ? d.z2Ceiling : FACTS_Z2_CEILING_DEFAULT} bpm DECLARED, not measured.`);
+  return { bpm: d.z2Ceiling != null ? _rMin(d.z2Ceiling) : FACTS_Z2_CEILING_DEFAULT, source: 'declared', lthr: null, maxHr: null };
 }
 
 // ---------- meta ----------
@@ -512,7 +512,7 @@ function _factsMeta(ctx) {
 function _factsGoals(ctx) {
   const g = ctx.settings && ctx.settings.goals;
   if (!g) {
-    ctx.gaps.push('No hay `settings.goals`: los objetivos no están sembrados, así que no hay contra qué medir el progreso.');
+    ctx.gaps.push('No `settings.goals`: goals are not seeded, so there is nothing to measure progress against.');
     return null;
   }
   return {
@@ -574,7 +574,7 @@ function _deloadIntervals(ctx, from, to) {
   while (mon && stop && mon <= stop && guard++ < 60) {
     const blk = blockWeekFromDates(mon, anchor, blockWeeks);
     if (blk && blk.isDeload) {
-      out.push({ from: mon, to: _cfShift(mon, 6 + FACTS_DELOAD_WASHOUT_DAYS), reason: 'deload / diet break + 5 días' });
+      out.push({ from: mon, to: _cfShift(mon, 6 + FACTS_DELOAD_WASHOUT_DAYS), reason: 'deload / diet break + 5 days' });
     }
     mon = _cfShift(mon, 7);
   }
@@ -721,14 +721,14 @@ function _trajWeight(ctx) {
   const targetHi = Array.isArray(band) ? _n(band[band.length - 1]) : _n(band);
 
   const notes = [];
-  if (startKg == null && !first) notes.push('sin peso de partida ni pesadas medidas: no hay recorrido que medir');
+  if (startKg == null && !first) notes.push('no starting weight and no measured weigh-ins: there is no trajectory to measure');
   if (since.length && since.length < FACTS_TRAJ_MIN_SLOPE_POINTS) {
-    notes.push(`sólo ${since.length} pesadas medidas desde el inicio (gate ${FACTS_TRAJ_MIN_SLOPE_POINTS}): la pendiente del recorrido va a null`);
+    notes.push(`only ${since.length} measured weigh-ins since the start (gate ${FACTS_TRAJ_MIN_SLOPE_POINTS}): the trajectory slope goes to null`);
   }
   if (slopeUsedForEta === 'sinceStart') {
-    notes.push('el ETA usa la pendiente de TODO el recorrido (no hay 28 días con pesadas): incluye descargas y diet breaks');
+    notes.push('the ETA uses the slope of the WHOLE trajectory (there are no 28 days with weigh-ins): it includes deloads and diet breaks');
   }
-  if (slope != null && slope >= 0) notes.push('la pendiente no baja: no hay ETA hasta que lo haga');
+  if (slope != null && slope >= 0) notes.push('the slope is not going down: no ETA until it does');
 
   return {
     startKg, startDate,
@@ -870,7 +870,7 @@ function _trajAnchors(ctx) {
       if (entries.length >= 2 && a != null && b != null && a > 0) row.trendSinceStartPct = _rPct(((b - a) / a) * 100);
       // En peso corporal la "tendencia" son REPS, no kg: decirlo evita que el modelo lea el
       // porcentaje como si fuera carga.
-      if (isBw) row.trendBasis = 'reps (peso corporal: no hay e1RM sobre el lastre)';
+      if (isBw) row.trendBasis = 'reps (bodyweight: no e1RM over the added load)';
     }
     out.push(row);
   }
@@ -929,7 +929,7 @@ function _trajRunning(ctx) {
     z2ComplianceByWeek: z2,
     z2WeekKeys: weekKeys.slice(-FACTS_TRAJ_Z2_WEEKS),
     phaseHistory,
-    note: 'weeklyKm y weekKeys van de la semana MÁS ANTIGUA a la actual, con 0 en las semanas sin carreras. z2ComplianceByWeek es la FRACCIÓN de carreras con FC media ≤ techo Z2 + tolerancia (null = ninguna carrera con FC esa semana).',
+    note: 'weeklyKm and weekKeys run from the OLDEST week to the current one, with 0 in weeks with no runs. z2ComplianceByWeek is the FRACTION of runs with mean HR ≤ Z2 ceiling + tolerance (null = no run with HR that week).',
   };
 }
 
@@ -1097,7 +1097,7 @@ function _factsWeight(ctx) {
     lastMeasured: measured.length ? { date: measured[measured.length - 1].date, kg: _rBw(measured[measured.length - 1].kg) } : null,
     daysSinceMeasured: measured.length ? _cfDiff(measured[measured.length - 1].date, ctx.todayStr) : null,
     validWindow: win,
-    note: 'La media y las pendientes usan SÓLO pesadas medidas (`measured: true` / `weightMeasured`). Los valores suavizados de intervals.icu (forward-fill) quedan fuera: meterían pendiente 0 los días sin báscula.',
+    note: 'The mean and the slopes use ONLY measured weigh-ins (`measured: true` / `weightMeasured`). The smoothed intervals.icu values (forward-fill) are left out: they would inject a 0 slope on days with no scale reading.',
   };
 }
 
@@ -1121,18 +1121,18 @@ function _weightValidWindow(ctx, measured) {
   const reasons = [];
   const dl = _deloadIntervals(ctx, _cfShift(ctx.todayStr, -27), ctx.todayStr);
   const excluded = dl.intervals.filter(iv => iv.to >= _cfShift(ctx.todayStr, -27));
-  if (!dl.known) reasons.push('sin `deloadAnchorDate`: no se puede saber qué semanas fueron descarga');
+  if (!dl.known) reasons.push('no `deloadAnchorDate`: there is no way to know which weeks were deloads');
   const n14 = measured.filter(r => { const dd = _cfDiff(r.date, ctx.todayStr); return dd != null && dd >= 0 && dd < 14; }).length;
-  if (n14 < FACTS_MIN_NUTRITION_DAYS_14) reasons.push(`sólo ${n14} pesadas medidas en 14 días (gate: ${FACTS_MIN_NUTRITION_DAYS_14})`);
-  if (excluded.length) reasons.push(`la ventana contiene ${excluded.length} semana(s) de descarga / diet break + 5 días`);
+  if (n14 < FACTS_MIN_NUTRITION_DAYS_14) reasons.push(`only ${n14} measured weigh-ins in 14 days (gate: ${FACTS_MIN_NUTRITION_DAYS_14})`);
+  if (excluded.length) reasons.push(`the window contains ${excluded.length} deload / diet break week(s) + 5 days`);
 
   const firstAdjust = _cfDate(ctx.settings.kcalFirstAdjustDate)
     || _cfDate((ctx.settings.goals && ctx.settings.goals.constraints && ctx.settings.goals.constraints.firstAdjustDate));
   const lastAdjust = _cfDate(ctx.settings.kcalLastAdjustDate);
   const daysSinceAdjust = lastAdjust ? _cfDiff(lastAdjust, ctx.todayStr) : null;
-  if (firstAdjust && ctx.todayStr < firstAdjust) reasons.push(`antes de la primera fecha de ajuste elegible (${firstAdjust})`);
-  if (daysSinceAdjust != null && daysSinceAdjust < 14) reasons.push(`sólo ${daysSinceAdjust} días desde el último ajuste de kcal (gate: 14)`);
-  if (!firstAdjust && !lastAdjust) reasons.push('no hay fecha de primer ajuste ni de último ajuste en `settings`: el gate de 14 días no se puede comprobar');
+  if (firstAdjust && ctx.todayStr < firstAdjust) reasons.push(`before the first eligible adjustment date (${firstAdjust})`);
+  if (daysSinceAdjust != null && daysSinceAdjust < 14) reasons.push(`only ${daysSinceAdjust} days since the last kcal adjustment (gate: 14)`);
+  if (!firstAdjust && !lastAdjust) reasons.push('no first-adjustment or last-adjustment date in `settings`: the 14-day gate cannot be checked');
 
   const nextEligible = lastAdjust ? _cfShift(lastAdjust, 14) : (firstAdjust || null);
   return {
@@ -1191,11 +1191,11 @@ function _factsRunProgress(ctx) {
 function _tenKReadiness(ctx, runs, longest) {
   const longKm = longest ? _n(longest.distance) : null;
   const z2 = longest ? _z2Compliant(longest, ctx.z2Ceiling.bpm) : null;
-  let verdict = 'sin señal';
+  let verdict = 'no signal';
   if (runs.length) {
-    if (longKm != null && longKm >= 10 && z2 === true) verdict = 'listo para intentarlo';
-    else if (longKm != null && longKm >= 8) verdict = 'acercándose';
-    else verdict = 'lejos';
+    if (longKm != null && longKm >= 10 && z2 === true) verdict = 'ready to attempt it';
+    else if (longKm != null && longKm >= 8) verdict = 'getting close';
+    else verdict = 'far off';
   }
   return {
     verdict,
@@ -1203,7 +1203,7 @@ function _tenKReadiness(ctx, runs, longest) {
     longestZ2Compliant: z2,
     driftBpm: null,
     criteria: { km10: longKm != null ? longKm >= 10 : null, avgHrUnderCeiling: z2, driftUnder5: null, rpeUnder5: null, painFree: null, nextDayRhr: null },
-    basis: 'Sólo se pueden medir distancia y FC media. Deriva de FC, RPE, dolor y RHR del día siguiente no están en los stores: van a null.',
+    basis: 'Only distance and mean HR can be measured. HR drift, RPE, pain and next-day RHR are not in the stores: they go to null.',
   };
 }
 
@@ -1212,7 +1212,7 @@ function _tenKReadiness(ctx, runs, longest) {
 function _factsPlan(ctx) {
   const p = ctx.plan;
   if (!p) {
-    ctx.gaps.push('No hay plan activo en el pack: el coach no puede proponer un diff sobre nada.');
+    ctx.gaps.push('No active plan in the pack: the coach cannot propose a diff against nothing.');
     return null;
   }
   const tpl = {};
@@ -1326,7 +1326,7 @@ function _factsAdherence(ctx) {
     };
   });
   if (anyApprox) {
-    ctx.gaps.push('`adherence.planned` es APROXIMADO en al menos una semana: los registros llevan otra versión del plan, así que lo planificado se ha proyectado desde la plantilla actual.');
+    ctx.gaps.push('`adherence.planned` is APPROXIMATE in at least one week: the logs carry a different plan version, so what was planned has been projected from the current template.');
   }
   return rows;
 }
@@ -1433,7 +1433,7 @@ function _factsLifts(ctx) {
     };
   }
   if (!ctx.d.hasConvert) {
-    ctx.gaps.push('Falta `deps.convertWeight`: los pesos se han tomado en la unidad en que se guardaron, así que un registro en lb NO está convertido a kg.');
+    ctx.gaps.push('`deps.convertWeight` is missing: weights were taken in the unit they were stored in, so a log in lb is NOT converted to kg.');
   }
   return out;
 }
@@ -1479,12 +1479,12 @@ function _liftSession(ctx, id, item, sets, measureUnit, isBw, plannedSets) {
     row.measureUnit = measureUnit;
     row.topKg = null;
     row.e1rm = null;
-    row.note = `Se mide en ${measureUnit}: no es carga y no tiene e1RM.`;
+    row.note = `Measured in ${measureUnit}: it is not load and has no e1RM.`;
   } else if (isBw) {
     row.addedKg = _rKg(top.val);
     row.topKg = _rKg(top.val);
     row.e1rm = null;
-    row.note = 'Peso corporal + lastre: el número es el LASTRE (+kg). No se estima e1RM sobre el lastre.';
+    row.note = 'Bodyweight + added load: the number is the ADDED LOAD (+kg). No e1RM is estimated over added load.';
   } else {
     row.topKg = _rKg(top.val);
     row.e1rm = _rKg(d.estimate1RM(top.val, top.reps));
@@ -1559,7 +1559,7 @@ function _factsSkipped(ctx) {
     out.push({
       id, name: (lib && lib.name) || id,
       skips: s.skips, exposures: s.exposures, rate: _rPct(s.rate * 100),
-      action: 'reordenar antes o quitar (no recordar)',
+      action: 'move earlier or drop (do not just remember it)',
     });
   }
   return out.sort((a, b) => b.rate - a.rate || b.skips - a.skips);
@@ -1610,7 +1610,7 @@ function _factsCardio(ctx) {
     };
   });
   if (driftMissing || !runs.length) {
-    ctx.gaps.push('Deriva de FC (2ª mitad vs 1ª) NO disponible: los registros no traen streams de FC. `hrDrift` va a null en todas las carreras — no la infieras del `decoupling` cuando también sea null.');
+    ctx.gaps.push('HR drift (2nd half vs 1st) NOT available: the logs carry no HR streams. `hrDrift` goes to null on every run — do not infer it from `decoupling` when that is null too.');
   }
   const last = ctx.runs[0] || null;
   const lastCardio = [...ctx.runs.map(r => _cfDate(r.date)), ...ctx.sessions.map(s => _cfDate(s.date))].filter(Boolean).sort().pop() || null;
@@ -1627,7 +1627,7 @@ function _factsCardio(ctx) {
       return _rPct(w.filter(r => _z2Compliant(r, ctx.z2Ceiling.bpm) === true).length / w.length * 100);
     })(),
     maxWeekKm4w: _rKm(Math.max(0, ...weeks.map(w => _n(w.km) || 0))) || 0,
-    note: 'Carreras y sesiones vienen DEDUPEADAS (`dedupeRuns`/`dedupeSessions`): la misma actividad de COROS puede llegar por Strava y por intervals.icu. Los finishers Z2 post-fuerza (`origin: z2_finisher`) cuentan como minutos aeróbicos reales.',
+    note: 'Runs and sessions arrive DEDUPED (`dedupeRuns`/`dedupeSessions`): the same COROS activity can come in through both Strava and intervals.icu. Post-strength Z2 finishers (`origin: z2_finisher`) count as real aerobic minutes.',
   };
 }
 
@@ -1681,7 +1681,7 @@ function _factsReadiness(ctx) {
   const load = latest || {};
 
   if (scores7.length < FACTS_MIN_WELLNESS_DAYS_7) {
-    ctx.gaps.push(`Sólo ${scores7.length}/7 días de wellness con readiness: por debajo de ${FACTS_MIN_WELLNESS_DAYS_7} no se juzga la recuperación (READ-004).`);
+    ctx.gaps.push(`Only ${scores7.length}/7 wellness days with readiness: below ${FACTS_MIN_WELLNESS_DAYS_7} recovery is not judged (READ-004).`);
   }
 
   return {
@@ -1710,7 +1710,7 @@ function _factsReadiness(ctx) {
       hrv: _rMs(today.hrv), restingHR: _rMin(today.restingHR),
       sleepHrs: _rHrs(_n(today.sleepSecs) != null ? _n(today.sleepSecs) / 3600 : null),
       source: today.readinessSource || null,
-    } : { date: ctx.todayStr, readiness: null, color: 'unknown', note: 'Sin dato de hoy: intervals.icu por la mañana sigue mostrando el de ayer y no se usa como si fuera de hoy.' },
+    } : { date: ctx.todayStr, readiness: null, color: 'unknown', note: "No data for today: in the morning intervals.icu still shows yesterday's, and it is not used as if it were today's." },
     lastDataDate: latest ? _cfDate(latest.date) : null,
     aerobicLoad: {
       ctl: _round(load.ctl, 0.1),
@@ -1718,7 +1718,7 @@ function _factsReadiness(ctx) {
       form: (_n(load.ctl) != null && _n(load.atl) != null) ? _round(_n(load.ctl) - _n(load.atl), 0.1) : null,
       rampRate: _round(load.rampRate, 0.01),
       date: latest ? _cfDate(latest.date) : null,
-      note: 'sólo cardio: las sesiones de fuerza no llegan a intervals.icu, así que esto NO es la carga total (F-3). `form = ctl − atl` (F-2); `rampRate` es ΔCTL/semana, no forma, y los umbrales de TSB de la literatura no aplican a este rango (±2 medido).',
+      note: 'cardio only: strength sessions never reach intervals.icu, so this is NOT total load (F-3). `form = ctl − atl` (F-2); `rampRate` is ΔCTL/week, not form, and the TSB thresholds from the literature do not apply to this range (±2 measured).',
     },
     internalLoad: _internalLoad(ctx),
     pressExposuresPerWeek: _pressExposures(ctx),
@@ -1746,7 +1746,7 @@ function _readinessVerdict(ctx) {
       wellness: ctx.wellness,
       // El dato de HOY o NINGUNO (F-6): aquí nunca se coge "el último que haya".
       whoopToday: score != null ? { score, source: todayRow.readinessSource || null } : null,
-      whoopMissingReason: score == null ? 'Sin dato de recuperación de hoy en `wellness`' : undefined,
+      whoopMissingReason: score == null ? 'No recovery data for today in `wellness`' : undefined,
       workouts: ctx.workouts,
       cutoffs: { green: FACTS_GREEN, yellow: FACTS_YELLOW },
     }) || {};
@@ -1917,7 +1917,7 @@ function _factsNutrition(ctx) {
   const floor = _n(ctx.settings.goals && ctx.settings.goals.constraints && ctx.settings.goals.constraints.proteinG);
 
   if (l28.length < FACTS_MIN_NUTRITION_DAYS_28) {
-    ctx.gaps.push(`Nutrición registrada sólo ${l28.length}/${FACTS_LONG_WINDOW_DAYS} días: **NO inferir ingesta** ni calcular déficit a partir de estos datos — manda la báscula (${l14.length}/14 en la ventana corta, gate ${FACTS_MIN_NUTRITION_DAYS_14}).`);
+    ctx.gaps.push(`Nutrition logged on only ${l28.length}/${FACTS_LONG_WINDOW_DAYS} days: **do NOT infer intake** or compute a deficit from this data — the scale rules (${l14.length}/14 over the last 14 days, gate ${FACTS_MIN_NUTRITION_DAYS_14}).`);
   }
 
   let deficits = null;
@@ -1934,7 +1934,7 @@ function _factsNutrition(ctx) {
     daysLogged7: l7.length,
     daysLogged14: l14.length,
     daysLogged28: l28.length,
-    pilot: l14.length >= FACTS_MIN_NUTRITION_DAYS_14 ? 'tracker' : 'peso',
+    pilot: l14.length >= FACTS_MIN_NUTRITION_DAYS_14 ? 'tracker' : 'weight',
     protein: {
       mean7: _rMin(_mean(l7.map(n => _n(n.protein)))),
       mean28: _rMin(_mean(l28.map(n => _n(n.protein)))),
@@ -1955,12 +1955,12 @@ function _factsNutrition(ctx) {
       daysUnder30: eaVals.filter(x => x < 30).length,
       daysUnder27: eaVals.filter(x => x < 27).length,
       lowestClosed: eaVals.length ? _rHrs(Math.min(...eaVals)) : null,
-      note: 'Sólo días CERRADOS (fecha < hoy). La EA es una magnitud diaria (REC-008): intradía siempre sale "crítica" y no significa nada (F-12).',
+      note: 'CLOSED days only (date < today). EA is a daily quantity (REC-008): intraday it always reads "critical" and means nothing (F-12).',
     },
     maintenance: {
       modelMean7: _rMin(_mean(l7.map(n => _n(n.burn)))),
       modelMean28: _rMin(_mean(l28.map(n => _n(n.burn)))),
-      source: 'modelo (Katch-McArdle + NEAT/pasos + EEE + TEF), no medido',
+      source: 'model (Katch-McArdle + NEAT/steps + EEE + TEF), not measured',
       // LA FFM QUE DIVIDE LA EA Y ALIMENTA EL BMR, DE UNA SOLA FUENTE (E-9, auditoría
       // 2026-09-08): `ffmKg()` en coach-engine.js — Withings de menos de 14 días → derivada de
       // la última fila con %grasa → declarada — y con su `source` al lado. Aquí se publicaba
@@ -1995,7 +1995,7 @@ function _factsSteps(ctx) {
     floor,
     daysAtFloor28: floor != null ? s28.filter(s => (_n(s.steps) || 0) >= floor).length : null,
     n7: s7.length, n28: s28.length,
-    note: 'Pasos sin convertir a kcal: el gasto por paso ya entra en el mantenimiento modelado, contarlo dos veces infla el déficit aparente.',
+    note: 'Steps are not converted to kcal: the per-step expenditure is already inside the modelled maintenance, and counting it twice inflates the apparent deficit.',
   };
 }
 
@@ -2016,7 +2016,7 @@ function _factsMobility(ctx) {
     total4w: _sum(weeks.map(w => w.sessions)),
     daysSinceLast: ctx.mobility.length ? _cfDiff(_cfDate(ctx.mobility[0].date), ctx.todayStr) : null,
     floorPerWeek: 2,
-    note: 'Éxito = ≥2 sesiones registradas por semana (ATH-006). La forma mínima que OCURRE vale más que la ideal que no.',
+    note: 'Success = ≥2 logged sessions per week (ATH-006). The minimal version that HAPPENS beats the ideal one that does not.',
   };
 }
 
@@ -2104,11 +2104,11 @@ function _factsPriorReviews(ctx) {
       decisions: [],
       excerpt: _trunc(cv.nextWeek || legacy.planNext, FACTS_EXCERPT_CHARS),
       planSummary: _trunc(np.summary, FACTS_EXCERPT_CHARS),
-      note: 'Revisión previa al coach in-app (markdown/`latest.json`). No lleva decisiones estructuradas ni ruleIds: trátala como prosa, no como datos.',
+      note: 'Review from before the in-app coach (markdown/`latest.json`). It carries no structured decisions and no ruleIds: treat it as prose, not as data.',
     });
   }
   if (!rows.length) {
-    ctx.gaps.push('No hay revisiones previas: no se puede revisar ninguna decisión anterior ("te dije X"). Es la primera revisión del coach.');
+    ctx.gaps.push('No prior reviews: there is no earlier decision to review ("I told you X"). This is the first coach review.');
   }
   return rows;
 }
@@ -2143,39 +2143,39 @@ function _factsGaps(ctx, facts) {
   const gaps = ctx.gaps.slice();
   const nWorkouts = ctx.workouts.filter(x => _inWindow(x.date, ctx.from4w, ctx.todayStr)).length;
   if (nWorkouts < FACTS_MIN_WORKOUTS) {
-    gaps.push(`Sólo ${nWorkouts} sesiones de fuerza registradas en la ventana de 4 semanas (gate ${FACTS_MIN_WORKOUTS}): la señal de progresión es débil y el volumen no se sube.`);
+    gaps.push(`Only ${nWorkouts} strength sessions logged in the 4-week window (gate ${FACTS_MIN_WORKOUTS}): the progression signal is weak and volume does not go up.`);
   }
   const nRuns = ctx.runs.filter(x => _inWindow(x.date, ctx.from4w, ctx.todayStr)).length;
   if (nRuns === 0) {
-    gaps.push('Cero carreras en la ventana de 4 semanas: no hay cómo evaluar la Z2 ni justificar una rampa de km — sin rampa (END-003).');
+    gaps.push('Zero runs in the 4-week window: there is no way to evaluate Z2 or justify a km ramp — no ramp (END-003).');
   }
   const w = facts.progress && facts.progress.weight;
   if (w && (w.nMeasured28 || 0) < FACTS_MIN_MEASURED_WEIGHTS) {
-    gaps.push(`Sólo ${w.nMeasured28 || 0} pesadas MEDIDAS en 28 días (gate ${FACTS_MIN_MEASURED_WEIGHTS}): la pendiente no es señal y no se ajustan calorías por ella.`);
+    gaps.push(`Only ${w.nMeasured28 || 0} MEASURED weigh-ins in 28 days (gate ${FACTS_MIN_MEASURED_WEIGHTS}): the slope is not signal and calories are not adjusted on it.`);
   } else if (w && (w.nMeasured7 || 0) < FACTS_MIN_MEASURED_WEIGHTS_7) {
-    gaps.push(`Sólo ${w.nMeasured7 || 0} pesadas medidas en 7 días (gate ${FACTS_MIN_MEASURED_WEIGHTS_7}): la media de 7 días es orientativa.`);
+    gaps.push(`Only ${w.nMeasured7 || 0} measured weigh-ins in 7 days (gate ${FACTS_MIN_MEASURED_WEIGHTS_7}): the 7-day mean is indicative only.`);
   }
   if (w && w.validWindow && !w.validWindow.ok) {
-    gaps.push(`Ventana de peso NO válida para ajustar calorías: ${w.validWindow.reasons.join('; ')}.`);
+    gaps.push(`Weight window NOT valid for adjusting calories: ${w.validWindow.reasons.join('; ')}.`);
   }
   for (const [name, s] of Object.entries(facts.staleness || {})) {
-    if (s.stale && s.n > 0) gaps.push(`Dato viejo en \`${name}\`: el último es de ${s.lastDate} (${s.daysAgo} días).`);
-    if (s.n === 0) gaps.push(`El store \`${name}\` viene vacío en el pack: no hay nada que leer ahí.`);
+    if (s.stale && s.n > 0) gaps.push(`Stale data in \`${name}\`: the last one is from ${s.lastDate} (${s.daysAgo} days).`);
+    if (s.n === 0) gaps.push(`The \`${name}\` store arrives empty in the pack: there is nothing to read there.`);
   }
   // ---- Huecos de la TRAYECTORIA (esquema 2) ----
   const tr = facts.trajectory || null;
   const prog = tr && tr.program;
   if (prog) {
     if (prog.weeksSince != null && prog.weeksSince < FACTS_TRAJ_MIN_WEEKS) {
-      gaps.push(`Trayectoria corta (${prog.weeksSince} semanas, <${FACTS_TRAJ_MIN_WEEKS}): pendientes orientativas, no señal.`);
+      gaps.push(`Short trajectory (${prog.weeksSince} weeks, <${FACTS_TRAJ_MIN_WEEKS}): slopes are indicative, not signal.`);
     }
     const sinceAnchor = (prog.blocks || []).filter(b => _n(b.index) != null && _n(b.index) >= 1);
     if (sinceAnchor.length === 1) {
-      gaps.push('Un solo bloque desde el ancla: no hay bloque anterior con el que comparar.');
+      gaps.push('Only one block since the anchor: there is no earlier block to compare against.');
     }
   }
   for (const a of (tr && tr.anchors) || []) {
-    if (!a.exposures) gaps.push(`Ancla \`${a.id}\` con 0 exposiciones registradas: no se puede decir si se mantiene.`);
+    if (!a.exposures) gaps.push(`Anchor \`${a.id}\` with 0 logged exposures: there is no way to say whether it is being maintained.`);
   }
   // Dedupe conservando el orden: el mismo hueco dicho dos veces le baja el peso a los demás.
   return [...new Set(gaps)];
@@ -2263,10 +2263,10 @@ const VP_FREQ_FLOOR_MIN_VARIANT = 4;
  * lunes y con la extensión el jueves. De ahí que el aislamiento cuente dentro de su familia.
  */
 const VP_PATTERN_FAMILIES = {
-  squat: { label: 'sentadilla / rodilla', patterns: { squat: 1, 'single-leg': 1, 'isolation-quad': 1 } },
-  hinge: { label: 'bisagra / cadena posterior', patterns: { hinge: 1, 'isolation-ham': 1, glute: 1 } },
-  press: { label: 'empuje', patterns: { 'horizontal-press': 1, 'vertical-press': 1 } },
-  pull: { label: 'tirón', patterns: { 'horizontal-pull': 1, 'vertical-pull': 1, 'isolation-lat': 1 } },
+  squat: { label: 'squat / knee', patterns: { squat: 1, 'single-leg': 1, 'isolation-quad': 1 } },
+  hinge: { label: 'hinge / posterior chain', patterns: { hinge: 1, 'isolation-ham': 1, glute: 1 } },
+  press: { label: 'press', patterns: { 'horizontal-press': 1, 'vertical-press': 1 } },
+  pull: { label: 'pull', patterns: { 'horizontal-pull': 1, 'vertical-pull': 1, 'isolation-lat': 1 } },
 };
 /** Fallback por id cuando el llamador no pasa `exerciseLibrary` (la edge function no lo tiene).
  *  Espejo parcial de `MOVEMENT_PATTERNS` (app.js): sólo los ids del plan ideal y sus alternativas. */
@@ -2319,13 +2319,13 @@ const VP_ANCHOR_SWAPS = {
 };
 const VP_ANCHORS = ['back-squat', 'bench-press', 'ohp', 'barbell-row', 'chinups', 'trap-bar-dl', 'sumo-dl', 'conv-dl'];
 
-/** Formatea un número para un texto en castellano (coma decimal, sin ceros de más). */
+/** Formatea un número para un texto de pantalla (punto decimal, sin ceros de más). */
 function _vpNum(v, decimals) {
   const x = _n(v);
   if (x == null) return '—';
   if (typeof _coachFmtKg === 'function' && (decimals == null || decimals === 1)) return _coachFmtKg(x);
   const s = (decimals == null ? x : Number(x.toFixed(decimals)));
-  return String(s).replace('.', ',');
+  return String(s);
 }
 
 /**
@@ -2372,7 +2372,7 @@ function validatePlanVersion(plan, ctx) {
         const byRpe = t.porRPE === true || /rpe/i.test(String(t.note || ''));
         if (!hasEvidence && !byRpe) {
           add('NO-SOURCE-KG', 'hard',
-            `${ex.name || ex.id} en ${s.name || sid}: ${_vpNum(t.kg)} kg sin dato de origen ni marca "ajustar por RPE, sin dato". Todo kg viene de un dato o va marcado.`,
+            `${ex.name || ex.id} in ${s.name || sid}: ${_vpNum(t.kg)} kg with no source data and no "adjust by RPE, no data" marker. Every kg comes from data or is marked.`,
             ['GEN-002']);
         }
       }
@@ -2389,18 +2389,18 @@ function validatePlanVersion(plan, ctx) {
         const lastTop = lift && lift.sessions && lift.sessions.length ? _n(lift.sessions[0].topKg) : null;
         if (lastTop == null || lastTop <= 0) {
           add('LOAD-JUMP', 'hard',
-            `${ex.name || ex.id} en ${s.name || sid}: objetivo de ${_vpNum(kg)} kg sin ningún top set previo con el que compararlo. Sin histórico no se prescribe carga: primera vez es "elige un peso que deje 2-3 reps".`,
+            `${ex.name || ex.id} in ${s.name || sid}: a ${_vpNum(kg)} kg target with no previous top set to compare it against. With no history, load is not prescribed: the first time is "pick a weight that leaves 2-3 reps".`,
             ['STR-001', 'LOAD-001']);
           continue;
         }
         const pct = ((kg - lastTop) / lastTop) * 100;
         if (pct > VP_LOAD_JUMP_PCT) {
           add('LOAD-JUMP', 'hard',
-            `${ex.name || ex.id}: salto de carga de ${_vpNum(lastTop)} a ${_vpNum(kg)} kg (+${_vpNum(pct, 1)} %), por encima del +${VP_LOAD_JUMP_PCT} % sobre el último top set.`,
+            `${ex.name || ex.id}: load jump from ${_vpNum(lastTop)} to ${_vpNum(kg)} kg (+${_vpNum(pct, 1)} %), above the +${VP_LOAD_JUMP_PCT} % over the last top set.`,
             ['STR-001', 'LOAD-001']);
         } else if (pct < -VP_LOAD_DROP_PCT) {
           add('LOAD-JUMP', 'warn',
-            `${ex.name || ex.id}: caída de carga de ${_vpNum(lastTop)} a ${_vpNum(kg)} kg (${_vpNum(pct, 1)} %), más del −${VP_LOAD_DROP_PCT} % sin que sea deload. Si es intencionado, dilo en la razón.`,
+            `${ex.name || ex.id}: load drop from ${_vpNum(lastTop)} to ${_vpNum(kg)} kg (${_vpNum(pct, 1)} %), more than −${VP_LOAD_DROP_PCT} % outside a deload. If it is deliberate, say so in the reason.`,
             ['STR-001', 'LOAD-001']);
         }
         // ---- G-S6 · TARGET-N1 ----
@@ -2408,11 +2408,11 @@ function validatePlanVersion(plan, ctx) {
         const days = lift ? _n(lift.daysSinceLast) : null;
         if (n === 1) {
           add('TARGET-N1', 'warn',
-            `${ex.name || ex.id}: el objetivo de ${_vpNum(kg)} kg se apoya en UNA sola sesión (n=1). Es una hipótesis, no una tendencia.`,
+            `${ex.name || ex.id}: the ${_vpNum(kg)} kg target rests on a SINGLE session (n=1). That is a hypothesis, not a trend.`,
             ['STR-001', 'GEN-002']);
         } else if (days != null && days > VP_TARGET_STALE_DAYS) {
           add('TARGET-N1', 'warn',
-            `${ex.name || ex.id}: el último dato es de hace ${days} días (>${VP_TARGET_STALE_DAYS}). Toca reentrada: la serie 1 decide, no el objetivo.`,
+            `${ex.name || ex.id}: the last data point is ${days} days old (>${VP_TARGET_STALE_DAYS}). This is a re-entry: set 1 decides, not the target.`,
             ['LOAD-004', 'STR-001']);
         }
       }
@@ -2425,7 +2425,7 @@ function validatePlanVersion(plan, ctx) {
           if (!ex || !ex.id) continue;
           if (!idSet.has(ex.id)) {
             add('EX-UNKNOWN', 'hard',
-              `\`${ex.id}\` (${s.name || sid}) no está en la biblioteca de ejercicios: la app no lo puede pintar ni guardar su historial. Usa un id existente o añádelo antes.`,
+              `\`${ex.id}\` (${s.name || sid}) is not in the exercise library: the app cannot render it or store its history. Use an existing id or add it first.`,
               ['SEL-001', 'SEL-003']);
           }
         }
@@ -2439,7 +2439,7 @@ function validatePlanVersion(plan, ctx) {
     for (const [muscle, n] of Object.entries(setsNow.byMuscle)) {
       if (deficit && n > VP_MAX_SETS_PER_MUSCLE) {
         add('VOL-CAP', 'hard',
-          `${muscle}: ${n} series/semana, por encima del tope de ${VP_MAX_SETS_PER_MUSCLE} en déficit (STR-003 marca 10-14). En déficit se mantiene el volumen, no se sube.`,
+          `${muscle}: ${n} sets/week, above the cap of ${VP_MAX_SETS_PER_MUSCLE} in a deficit (STR-003 says 10-14). In a deficit volume is maintained, not raised.`,
           ['STR-003', 'STR-001']);
       }
     }
@@ -2447,7 +2447,7 @@ function validatePlanVersion(plan, ctx) {
       const pct = ((setsNow.total - setsPrev.total) / setsPrev.total) * 100;
       if (pct > VP_LOAD_JUMP_PCT && !_vpVolumeGatesOk(facts)) {
         add('VOL-CAP', 'hard',
-          `Volumen total de ${setsPrev.total} a ${setsNow.total} series (+${_vpNum(pct, 1)} %) sin los tres gates: adherencia ≥75 %, semana verde y nutrición ≥10/14 registrados. Añadir series en déficit sin los tres es la vía rápida al agujero.`,
+          `Total volume from ${setsPrev.total} to ${setsNow.total} sets (+${_vpNum(pct, 1)} %) without the three gates: adherence ≥75 %, a green week and nutrition logged ≥10/14. Adding sets in a deficit without all three is the fast lane into a hole.`,
           ['STR-003', 'STR-001']);
       }
     }
@@ -2456,24 +2456,24 @@ function validatePlanVersion(plan, ctx) {
     if (isDeload) {
       if (setsPrev && setsPrev.total > 0 && setsNow.total > setsPrev.total * VP_DELOAD_VOLUME_FACTOR) {
         add('DELOAD-VOLUME', 'hard',
-          `Semana de DESCARGA con ${setsNow.total} series frente a ${setsPrev.total} de la semana de carga: por encima del ${Math.round(VP_DELOAD_VOLUME_FACTOR * 100)} % que define una descarga (series al 50 %, RPE 5-6, kg 85-90 %).`,
+          `DELOAD week with ${setsNow.total} sets against ${setsPrev.total} in the loading week: above the ${Math.round(VP_DELOAD_VOLUME_FACTOR * 100)} % that defines a deload (sets at 50 %, RPE 5-6, kg 85-90 %).`,
           ['LOAD-004']);
       }
       const plyo = _vpPlyoExercises(sessions);
       if (plyo.length) {
         add('DELOAD-VOLUME', 'hard',
-          `Semana de descarga con pliometría (${plyo.map(x => x.id).join(', ')}): en la descarga no hay box jump.`,
+          `Deload week with plyometrics (${plyo.map(x => x.id).join(', ')}): there is no box jump in a deload.`,
           ['LOAD-004', 'ATH-001']);
       }
       const hard = _vpHardCardio(p, tpl);
       if (hard.count > 0) {
         add('DELOAD-VOLUME', 'hard',
-          `Semana de descarga con ${hard.count} sesión(es) dura(s) de cardio (${hard.labels.join(', ')}): la descarga recorta la carrera un 30-40 %, no añade calidad.`,
+          `Deload week with ${hard.count} hard cardio session(s) (${hard.labels.join(', ')}): a deload cuts running by 30-40 %, it does not add quality.`,
           ['LOAD-004', 'END-004']);
       }
       if (p.block && p.block.phase && p.block.phase !== 'deload') {
         add('DELOAD-VOLUME', 'hard',
-          `La semana ${c.block && c.block.index ? c.block.index : '?'}/${(c.block && c.block.weeksTotal) || 5} es de descarga por calendario pero el plan la marca \`phase: '${p.block.phase}'\`. El calendario manda (LOAD-004).`,
+          `Week ${c.block && c.block.index ? c.block.index : '?'}/${(c.block && c.block.weeksTotal) || 5} is a deload by calendar but the plan marks it \`phase: '${p.block.phase}'\`. The calendar rules (LOAD-004).`,
           ['LOAD-004']);
       }
     }
@@ -2482,7 +2482,7 @@ function validatePlanVersion(plan, ctx) {
     const hardAll = _vpHardCardio(p, tpl);
     if (hardAll.count > VP_MAX_HARD_CARDIO) {
       add('HARD-CARDIO', 'hard',
-        `${hardAll.count} sesiones duras de cardio/híbrido en la semana (${hardAll.labels.join(', ')}): el tope es ${VP_MAX_HARD_CARDIO}. Nunca la dura y el híbrido la misma semana.`,
+        `${hardAll.count} hard cardio/hybrid sessions in the week (${hardAll.labels.join(', ')}): the cap is ${VP_MAX_HARD_CARDIO}. Never the hard session and the hybrid in the same week.`,
         ['END-004', 'BUD-001']);
     }
 
@@ -2503,10 +2503,10 @@ function validatePlanVersion(plan, ctx) {
           const km = _n((slot && slot.cardio && slot.cardio.distanceKm) != null
             ? slot.cardio.distanceKm : (slot && slot.distanceKm));
           const que = (km != null && km >= VP_LONG_RUN_HARD_KM)
-            ? `largo de ${_vpNum(km, 1)} km (≥${VP_LONG_RUN_HARD_KM}: cuenta como dura)`
-            : (_vpSlotIsHardCardio(slot) ? 'cardio duro/híbrido' : 'sesión dura declarada en `running.hardSessions`');
+            ? `${_vpNum(km, 1)} km long run (≥${VP_LONG_RUN_HARD_KM}: counts as hard)`
+            : (_vpSlotIsHardCardio(slot) ? 'hard/hybrid cardio' : 'hard session declared in `running.hardSessions`');
           add('RUN-BEFORE-LEGS', 'hard',
-            `${_vpDow(dow)}: ${que} menos de 24 h antes de la pierna del ${_vpDow(next)} (${ns.session}). La calidad va lejos de pierna (INT-001).`,
+            `${_vpDow(dow)}: ${que} less than 24 h before the leg session on ${_vpDow(next)} (${ns.session}). Quality work stays away from legs (INT-001).`,
             ['INT-001', 'HYB-002']);
         }
       }
@@ -2518,7 +2518,7 @@ function validatePlanVersion(plan, ctx) {
     // la interferencia intra-sesión, pero el ORDEN concreto es ordenación práctica.
     for (const d of _vpCardioBeforeLift(tpl, sessions)) {
       add('ORDER-SAME-DAY', 'warn',
-        `${_vpDow(d.dow)}: el cardio va ANTES de ${d.name}. Si el objetivo del día es la fuerza, se levanta primero (INT-003, \`weak_extrapolated\`: es ordenación práctica, no un resultado medido). Si el objetivo dominante del día es aeróbico, dilo en la razón.`,
+        `${_vpDow(d.dow)}: cardio comes BEFORE ${d.name}. If the goal of the day is strength, you lift first (INT-003, \`weak_extrapolated\`: practical sequencing, not a measured result). If the dominant goal of the day is aerobic, say so in the reason.`,
         ['INT-003', 'INT-001']);
     }
 
@@ -2535,7 +2535,7 @@ function validatePlanVersion(plan, ctx) {
           const replacement = nowIds.find(id => allowed[id]);
           if (!replacement) {
             add('ANCHOR-SWAP', 'hard',
-              `${anchor} sale de ${s.name || sid} y no entra un sustituto permitido (${Object.keys(allowed).join(' / ') || 'ninguno'}). Un ancla no se rota por estancamiento: se cambia el esquema de series.`,
+              `${anchor} leaves ${s.name || sid} and no allowed substitute comes in (${Object.keys(allowed).join(' / ') || 'none'}). An anchor is not rotated out because it stalled: you change the set scheme.`,
               ['STR-010', 'LOAD-003']);
           }
         }
@@ -2552,16 +2552,16 @@ function validatePlanVersion(plan, ctx) {
     if (kmNow != null) {
       if (daysSinceRun != null && daysSinceRun >= VP_REENTRY_DAYS && kmNow > VP_REENTRY_KM_CAP) {
         add('KM-JUMP', 'hard',
-          `${_vpNum(kmNow, 1)} km/semana tras ${daysSinceRun} días sin correr: la reentrada tiene tope de ${VP_REENTRY_KM_CAP} km.`,
+          `${_vpNum(kmNow, 1)} km/week after ${daysSinceRun} days without running: re-entry is capped at ${VP_REENTRY_KM_CAP} km.`,
           ['END-003', 'LOAD-001']);
       } else if (kmMax != null && kmMax > 0 && kmNow > kmMax * VP_KM_HARD_FACTOR) {
         add('KM-JUMP', 'hard',
-          `${_vpNum(kmNow, 1)} km/semana frente a un máximo de ${_vpNum(kmMax, 1)} km en 4 semanas: por encima de ×${String(VP_KM_HARD_FACTOR).replace('.', ',')} (${_vpNum(kmMax * VP_KM_HARD_FACTOR, 1)} km).`,
+          `${_vpNum(kmNow, 1)} km/week against a 4-week maximum of ${_vpNum(kmMax, 1)} km: above ×${VP_KM_HARD_FACTOR} (${_vpNum(kmMax * VP_KM_HARD_FACTOR, 1)} km).`,
           ['END-003', 'LOAD-001']);
       } else if (kmPrev != null && kmPrev > 0 && kmNow > Math.max(kmPrev * VP_KM_SOFT_FACTOR, kmPrev + VP_KM_FLOOR_KM)) {
         const cap = Math.max(kmPrev * VP_KM_SOFT_FACTOR, kmPrev + VP_KM_FLOOR_KM);
         add('KM-JUMP', 'warn',
-          `${_vpNum(kmNow, 1)} km/semana frente a ${_vpNum(kmPrev, 1)} de la semana pasada (tope orientativo ${_vpNum(cap, 1)} km): por encima del 10 % orientativo, que es heurística prudente NO validada (Buist 2008 no encontró diferencia entre 10 % y 24 %).`,
+          `${_vpNum(kmNow, 1)} km/week against ${_vpNum(kmPrev, 1)} last week (indicative cap ${_vpNum(cap, 1)} km): above the indicative 10 %, which is prudent heuristic and NOT validated (Buist 2008 found no difference between 10 % and 24 %).`,
           ['END-003', 'LOAD-001']);
       }
     }
@@ -2570,17 +2570,17 @@ function validatePlanVersion(plan, ctx) {
     const nut = _vpNutrition(p, decisions);
     if (nut.proteinG != null && nut.proteinG < floors.proteinG) {
       add('PROTEIN-FLOOR', 'hard',
-        `Proteína a ${_vpNum(nut.proteinG, 0)} g/día, por debajo del suelo de ${floors.proteinG} g. La proteína no cede nunca (REC-001).`,
+        `Protein at ${_vpNum(nut.proteinG, 0)} g/day, below the floor of ${floors.proteinG} g. Protein never gives way (REC-001).`,
         ['REC-001', 'REC-008']);
     }
     if (nut.kcalTraining != null && nut.kcalTraining < floors.kcalTraining) {
       add('KCAL-FLOOR', 'hard',
-        `Día de entreno a ${_vpNum(nut.kcalTraining, 0)} kcal, por debajo del suelo de ${floors.kcalTraining}.`,
+        `Training day at ${_vpNum(nut.kcalTraining, 0)} kcal, below the floor of ${floors.kcalTraining}.`,
         ['REC-001', 'REC-008']);
     }
     if (nut.kcalRest != null && nut.kcalRest < floors.kcalRest) {
       add('KCAL-FLOOR', 'hard',
-        `Día de descanso a ${_vpNum(nut.kcalRest, 0)} kcal, por debajo del suelo de ${floors.kcalRest}.`,
+        `Rest day at ${_vpNum(nut.kcalRest, 0)} kcal, below the floor of ${floors.kcalRest}.`,
         ['REC-001', 'REC-008']);
     }
     // Omitir la proteína en una semana de déficit no es lo mismo que bajarla, pero se parece
@@ -2588,7 +2588,7 @@ function validatePlanVersion(plan, ctx) {
     // adivinando cuál de los dos números manda (E-14f). Blando: puede estar en el briefing.
     if (deficit && _vpTouchesKcal(decisions, p) && nut.proteinG == null) {
       add('PROTEIN-FLOOR', 'warn',
-        `La propuesta toca la ingesta en una semana de déficit y no dice nada de la proteína: sin guía de proteína, el suelo de ${floors.proteinG} g queda sólo en la cabeza de quien lo recuerde (REC-001).`,
+        `The proposal touches intake in a deficit week and says nothing about protein: with no protein guidance, the ${floors.proteinG} g floor lives only in whoever remembers it (REC-001).`,
         ['REC-001', 'REC-008']);
     }
 
@@ -2607,7 +2607,7 @@ function validatePlanVersion(plan, ctx) {
       const delta = kcalNow - kcalPrev;
       if (Math.abs(delta) > VP_KCAL_STEP_MAX) {
         add('KCAL-STEP', 'hard',
-          `Objetivo de kcal de ${_vpNum(kcalPrev, 0)} a ${_vpNum(kcalNow, 0)} (${delta > 0 ? '+' : '−'}${_vpNum(Math.abs(delta), 0)}): el paso máximo es ${VP_KCAL_STEP_MAX} kcal (REC-002). Un salto mayor no se puede leer en la pendiente: a las 2 semanas no se sabe si bajó por el ajuste o por el agua.`,
+          `kcal target from ${_vpNum(kcalPrev, 0)} to ${_vpNum(kcalNow, 0)} (${delta > 0 ? '+' : '−'}${_vpNum(Math.abs(delta), 0)}): the maximum step is ${VP_KCAL_STEP_MAX} kcal (REC-002). A bigger jump cannot be read in the slope: two weeks later there is no telling whether it dropped from the adjustment or from water.`,
           ['REC-002', 'REC-008']);
       }
       const daysSince = _n(c.daysSinceKcalAdjust) != null ? _n(c.daysSinceKcalAdjust)
@@ -2615,7 +2615,7 @@ function validatePlanVersion(plan, ctx) {
       const lastDate = c.kcalLastAdjustDate || (kcalWin && kcalWin.lastAdjustDate) || null;
       if (daysSince != null && daysSince < VP_KCAL_ADJUST_DAYS) {
         add('KCAL-STEP', 'hard',
-          `Ajuste de kcal ${daysSince} día(s) después del último (${lastDate || 'sin fecha'}): el gate son ${VP_KCAL_ADJUST_DAYS} días (REC-002). Dos ajustes dentro de la misma ventana hacen ilegible la pendiente de los dos.`,
+          `kcal adjustment ${daysSince} day(s) after the last one (${lastDate || 'no date'}): the gate is ${VP_KCAL_ADJUST_DAYS} days (REC-002). Two adjustments inside the same window make the slope of both unreadable.`,
           ['REC-002', 'REC-008']);
       }
     }
@@ -2630,11 +2630,11 @@ function validatePlanVersion(plan, ctx) {
       const db = nut.dietBreak === true;
       if (isDeload && nut.dietBreak === false) {
         add('DELOAD-DIETBREAK', 'warn',
-          'Semana de descarga sin diet break: el deload y la subida a mantenimiento se programan juntos (REC-005, `weak_extrapolated`: mejora la eficiencia de la pérdida, NO preserva más masa magra — es práctica, no evidencia fuerte). Si van separados, dilo en la razón.',
+          'Deload week without a diet break: the deload and the bump to maintenance are scheduled together (REC-005, `weak_extrapolated`: it improves the efficiency of the loss, it does NOT preserve more lean mass — practice, not strong evidence). If they go separately, say so in the reason.',
           ['REC-005', 'LOAD-004']);
       } else if (!isDeload && db) {
         add('DELOAD-DIETBREAK', 'warn',
-          'Diet break en una semana de carga: mantenimiento y descarga van juntos (REC-005, `weak_extrapolated`), no en semanas distintas.',
+          'Diet break in a loading week: maintenance and deload go together (REC-005, `weak_extrapolated`), not in separate weeks.',
           ['REC-005', 'LOAD-004']);
       }
     }
@@ -2643,11 +2643,11 @@ function validatePlanVersion(plan, ctx) {
     for (const item of _vpPlyoExercises(sessions)) {
       if (item.sid !== VP_PLYO_SESSION) {
         add('PLYO-PLACEMENT', 'hard',
-          `${item.id} está en ${item.sessionName}: la pliometría va en ${VP_PLYO_SESSION} y en fresco (INT-004).`,
+          `${item.id} is in ${item.sessionName}: plyometrics belong in ${VP_PLYO_SESSION} and when fresh (INT-004).`,
           ['ATH-001', 'INT-004']);
       } else if (item.index > 0) {
         add('PLYO-PLACEMENT', 'hard',
-          `${item.id} va en posición ${item.index + 1} de ${item.sessionName}: la potencia va PRIMERA, con intención máxima y sin fatiga previa.`,
+          `${item.id} sits at position ${item.index + 1} of ${item.sessionName}: power goes FIRST, with maximal intent and no prior fatigue.`,
           ['ATH-001', 'INT-004']);
       }
       // El TOPE de contactos se separó de la COLOCACIÓN el 2026-09-08 (auditoría R-7), y con
@@ -2658,7 +2658,7 @@ function validatePlanVersion(plan, ctx) {
       // potencia en déficit y por el historial lumbar. Eso es prudencia, no un muro.
       if (item.contacts != null && item.contacts > VP_MAX_PLYO_CONTACTS) {
         add('PLYO-CONTACTS', 'warn',
-          `${item.id}: ${item.contacts} contactos, por encima del tope de ${VP_MAX_PLYO_CONTACTS} (ATH-001 marca 40-80). Es prudencia por el historial lumbar, no evidencia: el caveat de ATH-001 dice que "la dosis baja es óptima" NO está soportado. Si subes, dilo y sube despacio.`,
+          `${item.id}: ${item.contacts} contacts, above the cap of ${VP_MAX_PLYO_CONTACTS} (ATH-001 says 40-80). This is caution because of the low-back history, not evidence: the ATH-001 caveat says that "the low dose is optimal" is NOT supported. If you go up, say so and go up slowly.`,
           ['ATH-001', 'ATH-004']);
       }
     }
@@ -2673,7 +2673,7 @@ function validatePlanVersion(plan, ctx) {
         const ps = tpl[prev] || tpl[String(prev)];
         if (ps && _vpSlotIsHardCardio(ps)) {
           add('PLYO-PLACEMENT', 'hard',
-            `Pliometría el ${_vpDow(dow)} justo después del cardio duro del ${_vpDow(prev)}: el plyo nunca va después de aeróbico (INT-004).`,
+            `Plyometrics on ${_vpDow(dow)} right after the hard cardio on ${_vpDow(prev)}: plyo never goes after aerobic work (INT-004).`,
             ['INT-004', 'ATH-001']);
         }
       }
@@ -2683,10 +2683,10 @@ function validatePlanVersion(plan, ctx) {
     if (Object.keys(sessions).length) {
       const core = _vpCorePatterns(sessions, c);
       if (!core.antiRotation || !core.antiExtension) {
-        const falta = [!core.antiRotation ? 'anti-rotación (Pallof, suitcase carry, bird dog)' : null,
-                       !core.antiExtension ? 'anti-extensión (ab wheel, plancha, dead bug)' : null].filter(Boolean);
+        const falta = [!core.antiRotation ? 'anti-rotation (Pallof, suitcase carry, bird dog)' : null,
+                       !core.antiExtension ? 'anti-extension (ab wheel, plank, dead bug)' : null].filter(Boolean);
         add('CORE-PATTERNS', 'hard',
-          `La semana no cubre ${falta.join(' ni ')}. Con historial lumbar, anti-rotación Y anti-extensión van SIEMPRE (ATH-003, \`strong\`); la flexión es la opcional.`,
+          `The week does not cover ${falta.join(' or ')}. With a low-back history, anti-rotation AND anti-extension go in ALWAYS (ATH-003, \`strong\`); flexion is the optional one.`,
           ['ATH-003']);
       }
     }
@@ -2696,7 +2696,7 @@ function validatePlanVersion(plan, ctx) {
       const gymDays = _vpCount(tpl, s => s.type === 'gym');
       if (gymDays < VP_MIN_STRENGTH_SESSIONS) {
         add('MIN-STRENGTH', 'hard',
-          `${gymDays} sesión(es) de fuerza en la semana: el mínimo eficaz son ${VP_MIN_STRENGTH_SESSIONS} (LONG-002). Por debajo se pierde masa en déficit.`,
+          `${gymDays} strength session(s) in the week: the effective minimum is ${VP_MIN_STRENGTH_SESSIONS} (LONG-002). Below that you lose mass in a deficit.`,
           ['LONG-002', 'STR-001']);
       }
     }
@@ -2709,7 +2709,7 @@ function validatePlanVersion(plan, ctx) {
       const hasNums = nums && typeof nums === 'object' && Object.keys(nums).length > 0;
       if (!ids.length || !hasNums) {
         add('DECISION-EVIDENCE', 'hard',
-          `Decisión "${_trunc(dec.what || dec.id || 'sin título', 80)}" ${!ids.length ? 'sin Rule IDs' : ''}${!ids.length && !hasNums ? ' y ' : ''}${!hasNums ? 'sin números en `evidence.numbers`' : ''}. Cada decisión se traza a datos y a reglas, o no se toma.`,
+          `Decision "${_trunc(dec.what || dec.id || 'untitled', 80)}" ${!ids.length ? 'with no Rule IDs' : ''}${!ids.length && !hasNums ? ' and ' : ''}${!hasNums ? 'with no numbers in `evidence.numbers`' : ''}. Every decision traces to data and to rules, or it is not taken.`,
           ['GEN-002']);
       }
       // ---- G-S13 · CTL-FOR-STRENGTH ----
@@ -2717,7 +2717,7 @@ function validatePlanVersion(plan, ctx) {
       const type = String(dec.type || '');
       if (/\bctl\b|\batl\b|ramprate|ramp rate/.test(txt) && /progress|structure|deload|recovery|strength/.test(type + ' ' + txt)) {
         add('CTL-FOR-STRENGTH', 'warn',
-          `La decisión "${_trunc(dec.what || dec.id, 80)}" se apoya en ctl/atl/rampRate para una decisión de fuerza o de descarga. Esa carga sólo ve el cardio (F-3) y \`rampRate\` no es la forma (F-2): la señal de fuerza es RPE, top set y calidad de la sesión.`,
+          `Decision "${_trunc(dec.what || dec.id, 80)}" leans on ctl/atl/rampRate for a strength or deload decision. That load only sees cardio (F-3) and \`rampRate\` is not form (F-2): the strength signal is RPE, top set and session quality.`,
           ['GEN-002', 'READ-003']);
       }
 
@@ -2738,7 +2738,7 @@ function validatePlanVersion(plan, ctx) {
         const hasPerf = VP_PERF_RE.test(`${txt} ${numKeys} ${numVals}`);
         if (lowers && !hasPerf) {
           add('RECOVERY-ONLY', 'warn',
-            `La decisión "${_trunc(dec.what || dec.id, 80)}" baja carga citando SÓLO reglas de recuperación (${ids.join(', ')}) y sin un dato de rendimiento al lado (top set, RPE a carga igual, \`readout\`, cumplimiento de Z2). La recuperación es contexto, no dosis (READ-005): sola se anota en el briefing y el plan no se toca.`,
+            `Decision "${_trunc(dec.what || dec.id, 80)}" lowers load citing ONLY recovery rules (${ids.join(', ')}) and with no performance data alongside (top set, RPE at equal load, \`readout\`, Z2 compliance). Recovery is context, not dose (READ-005): on its own it goes in the briefing and the plan is left alone.`,
             ['READ-005', 'READ-002']);
         }
       }
@@ -2759,13 +2759,13 @@ function validatePlanVersion(plan, ctx) {
         : VP_MAX_STRENGTH_DAYS;
       if (gymDays > hardCap) {
         add('SESSION-COUNT', 'hard',
-          `${gymDays} días de fuerza en la semana, por encima del tope de ${hardCap}${variant != null ? ` (variante ${variant} + ${VP_VARIANT_SLACK}, y nunca más de ${VP_MAX_STRENGTH_DAYS})` : ` (sin variante en el contexto se usa el techo absoluto de ${VP_MAX_STRENGTH_DAYS})`}. Más de ${VP_MAX_STRENGTH_DAYS} sesiones/semana no se programan sin justificarlo (CLAUDE.md), y el calendario es del usuario: el coach cambia el contenido, no el número de días.`,
+          `${gymDays} strength days in the week, above the cap of ${hardCap}${variant != null ? ` (variant ${variant} + ${VP_VARIANT_SLACK}, and never more than ${VP_MAX_STRENGTH_DAYS})` : ` (with no variant in context the absolute ceiling of ${VP_MAX_STRENGTH_DAYS} applies)`}. More than ${VP_MAX_STRENGTH_DAYS} sessions/week are not programmed without justifying it (CLAUDE.md), and the calendar belongs to the user: the coach changes the content, not the number of days.`,
           ['BUD-001', 'LONG-002']);
       } else {
         const allowed = variant != null ? _vpStrengthDaysForVariant(variant) : null;
         if (allowed != null && gymDays > allowed) {
           add('SESSION-COUNT', 'warn',
-            `${gymDays} días de gimnasio frente a los ${allowed} de la variante ${variant} que eligió el usuario. La variante es SU calendario: el coach cambia el contenido, no el número de días.`,
+            `${gymDays} gym days against the ${allowed} of variant ${variant} the user chose. The variant is THEIR calendar: the coach changes the content, not the number of days.`,
             ['BUD-001']);
         }
       }
@@ -2784,7 +2784,7 @@ function validatePlanVersion(plan, ctx) {
         const n = exp[fam] || 0;
         if (n < VP_MIN_PATTERN_EXPOSURES) {
           add('FREQ-FLOOR', 'warn',
-            `${def.label}: ${n} exposición(es) en la semana, por debajo de ${VP_MIN_PATTERN_EXPOSURES} (STR-002, \`strong\`: cada patrón mayor dos veces por semana). Con ${n === 0 ? 'ninguna' : 'una sola'} exposición el patrón no se mantiene, se visita.`,
+            `${def.label}: ${n} exposure(s) in the week, below ${VP_MIN_PATTERN_EXPOSURES} (STR-002, \`strong\`: every major pattern twice a week). With ${n === 0 ? 'no' : 'a single'} exposure the pattern is not maintained, it is visited.`,
             ['STR-002', 'STR-001']);
         }
       }
@@ -2797,7 +2797,7 @@ function validatePlanVersion(plan, ctx) {
     const mvpa = _vpWeeklyCardioMin(p, tpl);
     if (mvpa && mvpa.slots > 0 && mvpa.min < VP_MIN_MVPA_MIN) {
       add('MVPA-FLOOR', 'warn',
-        `${_vpNum(mvpa.min, 0)} min de cardio en la semana, por debajo del suelo de ${VP_MIN_MVPA_MIN} (END-009, consenso ACSM 2024: 150 es el mínimo y ${VP_MVPA_FAT_LOSS_MIN}-300 la banda de pérdida de grasa). Se arregla con minutos FÁCILES y pasos (REC-009), no con otra sesión dura.`,
+        `${_vpNum(mvpa.min, 0)} min of cardio in the week, below the floor of ${VP_MIN_MVPA_MIN} (END-009, ACSM 2024 consensus: 150 is the minimum and ${VP_MVPA_FAT_LOSS_MIN}-300 the fat-loss band). It is fixed with EASY minutes and steps (REC-009), not with another hard session.`,
         ['END-009', 'LONG-001', 'REC-009']);
     }
 
@@ -2808,7 +2808,7 @@ function validatePlanVersion(plan, ctx) {
       const kmUp = (kmNow != null && kmPrev != null) ? kmNow > kmPrev : false;
       if (volUp || kmUp) {
         add('EA-GATE', 'warn',
-          `${ea.daysUnder30} días con EA <30 kcal/kg FFM y el plan sube ${volUp ? 'series' : ''}${volUp && kmUp ? ' y ' : ''}${kmUp ? 'km' : ''}. Con la disponibilidad energética baja, primero se come (REC-008).`,
+          `${ea.daysUnder30} days with EA <30 kcal/kg FFM and the plan raises ${volUp ? 'sets' : ''}${volUp && kmUp ? ' and ' : ''}${kmUp ? 'km' : ''}. With low energy availability, you eat first (REC-008).`,
           ['REC-008', 'REC-001']);
       }
     }
@@ -2818,7 +2818,7 @@ function validatePlanVersion(plan, ctx) {
       const mob = _vpMobilitySlots(sessions, tpl);
       if (mob < VP_MIN_MOBILITY_SLOTS) {
         add('MOBILITY-FLOOR', 'warn',
-          `${mob} slot(s) de movilidad en la semana: el objetivo son ${VP_MIN_MOBILITY_SLOTS} registradas (ATH-006). La forma mínima que ocurre vale más que la ideal que no.`,
+          `${mob} mobility slot(s) in the week: the target is ${VP_MIN_MOBILITY_SLOTS} logged (ATH-006). The minimal version that happens beats the ideal one that does not.`,
           ['ATH-006']);
       }
     }
@@ -2827,7 +2827,7 @@ function validatePlanVersion(plan, ctx) {
     const press = _vpPressExposures(sessions, tpl, c);
     if (press > VP_MAX_PRESS_EXPOSURES) {
       add('PRESS-EXPOSURES', 'warn',
-        `${press} exposiciones de empuje en la semana (tope orientativo ${VP_MAX_PRESS_EXPOSURES}). En W35 fueron 5 en 10 días y la banca cayó: aquello fue FRECUENCIA, no carga (STR-002).`,
+        `${press} press exposures in the week (indicative cap ${VP_MAX_PRESS_EXPOSURES}). In W35 it was 5 in 10 days and the bench dropped: that was FREQUENCY, not load (STR-002).`,
         ['STR-002', 'INT-001']);
     }
 
@@ -2837,7 +2837,7 @@ function validatePlanVersion(plan, ctx) {
       const est = _vpSessionMin(s);
       if (est != null && est > maxMin) {
         add('SESSION-LENGTH', 'warn',
-          `${s.name || sid}: ~${Math.round(est)} min estimados, por encima de ${maxMin}. Si se pasa de ${maxMin}' de forma habitual, hay demasiado volumen.`,
+          `${s.name || sid}: ~${Math.round(est)} min estimated, above ${maxMin}. If it regularly runs past ${maxMin}', there is too much volume.`,
           ['STR-003', 'BUD-001']);
       }
     }
@@ -2846,7 +2846,7 @@ function validatePlanVersion(plan, ctx) {
     const hybridDays = _vpCount(tpl || {}, s => s.type === 'run' && /hybrid|hibrido|híbrido|sled|trineo|ski/i.test(String(s.subtype || '') + String(s.label || '')));
     if (hybridDays > 0 && kmNow != null && kmPrev != null && kmNow > kmPrev) {
       add('HYBRID-PLUS-LONG', 'warn',
-        `Híbrido en la semana y el largo sube (${_vpNum(kmPrev, 1)} → ${_vpNum(kmNow, 1)} km): dos estímulos duros a la vez. Nunca el híbrido y el largo creciendo la misma semana.`,
+        `Hybrid in the week and the long run going up (${_vpNum(kmPrev, 1)} → ${_vpNum(kmNow, 1)} km): two hard stimuli at once. Never the hybrid and a growing long run in the same week.`,
         ['HYB-002', 'END-003', 'BUD-001']);
     }
 
@@ -2854,7 +2854,7 @@ function validatePlanVersion(plan, ctx) {
     const rn = _n(facts.readiness && facts.readiness.score && facts.readiness.score.n7);
     if (rn != null && rn < FACTS_MIN_WELLNESS_DAYS_7) {
       add('READINESS-N', 'warn',
-        `La lectura de recuperación se apoya en ${rn}/7 días de wellness (gate ${FACTS_MIN_WELLNESS_DAYS_7}): con menos días la tendencia 7d vs 28d no es tendencia (READ-004).`,
+        `The recovery reading rests on ${rn}/7 wellness days (gate ${FACTS_MIN_WELLNESS_DAYS_7}): with fewer days the 7d vs 28d trend is not a trend (READ-004).`,
         ['READ-004', 'READ-001']);
     }
 
@@ -2862,7 +2862,7 @@ function validatePlanVersion(plan, ctx) {
     const win = facts.progress && facts.progress.weight && facts.progress.weight.validWindow;
     if (win && win.ok === false && _vpTouchesKcal(decisions, p)) {
       add('WEIGHT-WINDOW', 'warn',
-        `Se toca la ingesta con una ventana de peso no válida: ${(win.reasons || []).join('; ')}. La pendiente de esa ventana no es señal (REC-002).`,
+        `Intake is being touched with an invalid weight window: ${(win.reasons || []).join('; ')}. The slope of that window is not signal (REC-002).`,
         ['REC-002', 'REC-008']);
     }
 
@@ -2870,7 +2870,7 @@ function validatePlanVersion(plan, ctx) {
     const budget = _vpBudget(p, tpl, c);
     if (budget != null && budget > VP_MAX_BUDGET) {
       add('HARD-BUDGET', 'warn',
-        `Presupuesto de días duros de la semana: ${_vpNum(budget, 1)} sobre un tope orientativo de ${VP_MAX_BUDGET} (BUD-001 es informativo, no una regla dura).`,
+        `Hard-day budget for the week: ${_vpNum(budget, 1)} against an indicative cap of ${VP_MAX_BUDGET} (BUD-001 is informative, not a hard rule).`,
         ['BUD-001', 'BUD-002']);
     }
 
@@ -2878,7 +2878,7 @@ function validatePlanVersion(plan, ctx) {
     const month = String(c.todayStr || (facts.meta && facts.meta.todayStr) || '').slice(5, 7);
     if (VP_SUMMER_MONTHS[month] && _vpMentionsPaceProgress(decisions, briefing)) {
       add('SUMMER-PACE', 'warn',
-        `Se lee progreso aeróbico por RITMO en ${month === '06' ? 'junio' : month === '07' ? 'julio' : month === '08' ? 'agosto' : 'septiembre'}: con calor el ritmo a FC fija empeora sin que la forma cambie (ENV-001). Mide por FC y por duración.`,
+        `Aerobic progress is being read by PACE in ${month === '06' ? 'June' : month === '07' ? 'July' : month === '08' ? 'August' : 'September'}: in the heat, pace at fixed HR gets worse without fitness changing (ENV-001). Measure by HR and by duration.`,
         ['ENV-001', 'END-002']);
     }
 
@@ -2888,7 +2888,7 @@ function validatePlanVersion(plan, ctx) {
     const zoneCeil = _n(zones && (zones.bpm != null ? zones.bpm : (zones.z && zones.z.zone2 && zones.z.zone2[1])));
     if (planCeil != null && zoneCeil != null && planCeil !== zoneCeil) {
       add('Z2-CEILING', 'warn',
-        `El plan usa un techo de Z2 de ${_vpNum(planCeil, 0)} bpm y las zonas dicen ${_vpNum(zoneCeil, 0)} bpm. Dos techos para la misma zona es cómo la app y el reloj acaban discrepando.`,
+        `The plan uses a Z2 ceiling of ${_vpNum(planCeil, 0)} bpm and the zones say ${_vpNum(zoneCeil, 0)} bpm. Two ceilings for the same zone is how the app and the watch end up disagreeing.`,
         ['END-001', 'END-002']);
     }
 
@@ -2896,7 +2896,7 @@ function validatePlanVersion(plan, ctx) {
     const priorities = (briefing && Array.isArray(briefing.priorities)) ? briefing.priorities.length : null;
     if (priorities != null && priorities > 3) {
       add('CHURN', 'warn',
-        `${priorities} prioridades en el briefing: el tope son 3. Más de tres prioridades no son prioridades.`,
+        `${priorities} priorities in the briefing: the cap is 3. More than three priorities are not priorities.`,
         ['GEN-001']);
     }
     // ---- G-S14 · WEEK-SUMMARY (GEN-001) — v11.65 ----
@@ -2914,7 +2914,7 @@ function validatePlanVersion(plan, ctx) {
       for (const [sid, s] of Object.entries(sessions)) {
         if (cubiertas && cubiertas.has(sid)) continue;
         add('WEEK-SUMMARY', 'warn',
-          `${(s && s.name) || sid}: sin fila en el resumen de la semana. Cada sesión lleva su motivo, también las que se mantienen.`,
+          `${(s && s.name) || sid}: no row in the week summary. Every session carries its reason, including the ones that hold.`,
           ['GEN-001']);
       }
     }
@@ -2930,7 +2930,7 @@ function validatePlanVersion(plan, ctx) {
         try { return diffPlanVersions(c.basedOn, p); } catch (e) { return null; }
       }())
       : null;
-    let total = changes.total, swaps = changes.swaps, fuente = '`changes[]` declarado por el coach';
+    let total = changes.total, swaps = changes.swaps, fuente = '`changes[]` as declared by the coach';
     if (diffed) {
       total = _n(diffed.structural) || 0;
       swaps = 0;
@@ -2938,23 +2938,23 @@ function validatePlanVersion(plan, ctx) {
         swaps += (s.added || []).length + (s.removed || []).length
           + (s.sessionAdded ? 1 : 0) + (s.sessionRemoved ? 1 : 0);
       }
-      fuente = 'el diff contra el plan activo';
+      fuente = 'the diff against the active plan';
     }
     if (total > VP_MAX_STRUCTURAL_CHANGES) {
       add('CHURN', 'warn',
-        `${total} cambios estructurales en una semana según ${fuente} (tope orientativo ${VP_MAX_STRUCTURAL_CHANGES}): con tanto movimiento a la vez no se puede saber qué funcionó.`,
+        `${total} structural changes in one week according to ${fuente} (indicative cap ${VP_MAX_STRUCTURAL_CHANGES}): with that much moving at once there is no telling what worked.`,
         ['GEN-001', 'STR-010']);
     }
     const blockIndex = _n((c.block && c.block.index) != null ? c.block.index : (p.block && p.block.weekIndex));
     if (swaps > 0 && blockIndex != null && blockIndex !== 1) {
       add('ROTATION', 'warn',
-        `${swaps} cambio(s) de ejercicio en la semana ${blockIndex} del bloque: los accesorios rotan en la semana 1, con motivo (STR-010, \`expert\`: es práctica, no evidencia fuerte).`,
+        `${swaps} exercise change(s) in week ${blockIndex} of the block: accessories rotate in week 1, with a reason (STR-010, \`expert\`: practice, not strong evidence).`,
         ['STR-010', 'SEL-002']);
     }
   } catch (e) {
     // Un validador que lanza convierte "aplicar el plan" en un error de JavaScript. Se avisa
     // del fallo como un aviso más y se devuelve lo que se pudo comprobar.
-    out.push({ id: 'VALIDATOR-ERROR', level: 'warn', text: `El validador falló a mitad (${e && e.message ? e.message : e}): los avisos de abajo pueden estar incompletos.`, ruleIds: [] });
+    out.push({ id: 'VALIDATOR-ERROR', level: 'warn', text: `The validator failed halfway through (${e && e.message ? e.message : e}): the warnings below may be incomplete.`, ruleIds: [] });
   }
   return out;
 }
@@ -2978,8 +2978,8 @@ function _vpSet(v) {
   return null;
 }
 
-const _VP_DOW_ES = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
-function _vpDow(dow) { return _VP_DOW_ES[((_n(dow) || 0) % 7 + 7) % 7]; }
+const _VP_DOW_LABEL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+function _vpDow(dow) { return _VP_DOW_LABEL[((_n(dow) || 0) % 7 + 7) % 7]; }
 
 function _vpCount(tpl, pred) {
   let n = 0;
@@ -3070,18 +3070,18 @@ function _vpHardCardio(plan, tpl) {
     for (let dow = 0; dow <= 6; dow++) {
       const s = tpl[dow] || tpl[String(dow)];
       if (_vpSlotIsHardCardio(s)) {
-        labels.push(`${_vpDow(dow)} ${(s.cardio && s.cardio.subtype) || s.subtype || s.label || 'duro'}`);
+        labels.push(`${_vpDow(dow)} ${(s.cardio && s.cardio.subtype) || s.subtype || s.label || 'hard'}`);
         days.delete(dow);
       }
     }
   }
   // Un día declarado en `running.hardSessions[]` que la plantilla no refleja cuenta igual: la
   // sesión existe aunque el template no la haya recibido todavía.
-  for (const dow of days) labels.push(`${_vpDow(dow)} declarado en \`running.hardSessions\``);
+  for (const dow of days) labels.push(`${_vpDow(dow)} declared in \`running.hardSessions\``);
   const declared = Array.isArray(plan && plan.running && plan.running.hardSessions)
     ? null : _n(plan && plan.running && plan.running.hardSessions);
   const count = labels.length || (declared != null ? declared : 0);
-  if (!labels.length && declared) labels.push(`${declared} declarada(s) en \`running.hardSessions\``);
+  if (!labels.length && declared) labels.push(`${declared} declared in \`running.hardSessions\``);
   return { count, labels };
 }
 

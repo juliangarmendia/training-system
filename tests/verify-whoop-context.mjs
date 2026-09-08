@@ -106,10 +106,10 @@ yes(!/recovery\[[^\]]*length - 1\]/.test(GWC_SRC), 'getWhoopContext ya no usa re
 yes(/recovery\.find\(|\.find\(r =>/.test(GWC_SRC), 'usa .find() por fecha');
 yes(!/toISOString/.test(GWC_SRC), 'y no deriva "hoy" de una fecha UTC');
 set([{ date: TODAY, score: null, hrv: 60 }],
-  { todaySource: 'missing', todayMissingReason: 'WHOOP aún no puntuó la noche' });
+  { todaySource: 'missing', todayMissingReason: "WHOOP hasn't scored the night yet" });
 c = await ctx.getWhoopContext();
 eq(c.color, 'unknown', 'una fila de hoy sin score sigue siendo unknown');
-yes(/puntu/.test(c.reason || ''), 'con el motivo "WHOOP aún no puntuó la noche"');
+yes(/scored the night/.test(c.reason || ''), 'con el motivo "WHOOP hasn\'t scored the night yet"');
 
 // ── 4. Sin conexión ni datos: no se inventa nada ───────────────────────────────────────
 console.log('');

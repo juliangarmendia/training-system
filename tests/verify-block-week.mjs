@@ -91,9 +91,9 @@ yes(bw('2026-08-23').isDeload, 'ese domingo sigue siendo deload');
 // Antes del ancla no hay bloque: no se extrapola hacia atrás.
 eq(bw('2026-07-13').index, null, 'una semana ANTES del ancla → index null');
 yes(!bw('2026-07-13').isDeload, 'y no es deload');
-eq(bw('2026-07-13').label, 'sin ancla', 'etiqueta "sin ancla"');
+eq(bw('2026-07-13').label, 'no anchor', 'etiqueta "no anchor"');
 eq(E.blockWeekFromDates('2026-09-07', null, 5).index, null, 'sin ancla → index null');
-eq(E.blockWeekFromDates('2026-09-07', undefined, 5).label, 'sin ancla', 'ancla undefined → "sin ancla"');
+eq(E.blockWeekFromDates('2026-09-07', undefined, 5).label, 'no anchor', 'ancla undefined → "no anchor"');
 
 // Fechas del bloque, para que la UI pueda decir "del lunes X al domingo Y".
 eq(bw('2026-08-03').blockStartMonday, '2026-07-20', 'blockStartMonday del primer bloque');

@@ -438,9 +438,9 @@ async function _whoopTodayMissingReason() {
     if (typeof integrationsGetStatus === 'function') st = await integrationsGetStatus();
   } catch (e) { /* sin red: se decide con lo que haya */ }
   const w = st && st.whoop;
-  if (w && w.status === 'needs_reconnect') return 'WHOOP necesita reconectarse en Ajustes';
-  if (!w || w.status !== 'active') return 'WHOOP no conectado';
-  return 'WHOOP aún no puntuó la noche';
+  if (w && w.status === 'needs_reconnect') return 'WHOOP needs reconnecting in Settings';
+  if (!w || w.status !== 'active') return 'WHOOP not connected';
+  return "WHOOP hasn't scored the night yet";
 }
 
 function _whoopMs(v) {
@@ -585,12 +585,12 @@ function getRecoveryColor(score) {
 function whoopDayLabel(dateStrIn, todayStr) {
   if (!dateStrIn) return '';
   const t = todayStr || _whoopLocalDateStr();
-  if (dateStrIn === t) return 'hoy';
+  if (dateStrIn === t) return 'today';
   const a = new Date(dateStrIn + 'T12:00:00');
   const b = new Date(t + 'T12:00:00');
   const days = Math.round((b - a) / 86400000);
-  if (days === 1) return 'ayer';
-  if (days > 1) return `hace ${days} días`;
+  if (days === 1) return 'yesterday';
+  if (days > 1) return `${days} days ago`;
   return dateStrIn;
 }
 
@@ -611,7 +611,7 @@ async function renderWhoopRecoveryCard() {
 
   const data = await whoopSyncData();
   if (!data || data.recovery.length === 0) {
-    container.innerHTML = '<div class="empty-state" style="padding:16px">WHOOP conectado pero sin datos de recuperación. Prueba "Sincronizar ahora" en Ajustes › Integraciones.</div>';
+    container.innerHTML = '<div class="empty-state" style="padding:16px">WHOOP connected but no recovery data yet. Try "Sync now" in Settings › Integrations.</div>';
     container.classList.remove('hidden');
     return;
   }
@@ -632,9 +632,9 @@ async function renderWhoopRecoveryCard() {
     const when = whoopDayLabel(latest.date, _today);
     if (latest.date !== _today) return when;
     const hhmm = latest.source === 'whoop-direct' ? whoopClock(latest.fetchedAt || data.todayFetchedAt) : '';
-    return hhmm ? `hoy · WHOOP ${hhmm}` : 'hoy';
+    return hhmm ? `today · WHOOP ${hhmm}` : 'today';
   })();
-  const missingTxt = (!todayRec && data.todayMissingReason) ? `Sin dato de hoy: ${data.todayMissingReason}` : '';
+  const missingTxt = (!todayRec && data.todayMissingReason) ? `No data for today: ${data.todayMissingReason}` : '';
 
   // Sueño del mismo día que el score que se está pintando (no "el último que haya").
   const latestSleep = (latest.date && data.sleep.find(s => s && s.date === latest.date))

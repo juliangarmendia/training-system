@@ -100,7 +100,7 @@ sec('1. Los 8 fixtures del audit (Change 7, criterios de aceptación)');
   eq(r.reps, '5-8', '(a) mantiene el rango de reps');
   eq(r.delta, 2.5, '(a) delta +2,5');
   ok(r.ruleIds.includes('STR-001'), '(a) cita STR-001');
-  ok(/al tope/i.test(r.reason) && r.reason.includes('7,0'), `(a) razón dice tope y RPE: "${r.reason}"`);
+  ok(/at the top/i.test(r.reason) && r.reason.includes('7.0'), `(a) razón dice tope y RPE: "${r.reason}"`);
   eq(r.basis.lastKg, 92.5, '(a) basis.lastKg = la última carga real');
   eq(r.basis.daysSince, 3, '(a) basis.daysSince = 3');
 }
@@ -117,11 +117,11 @@ sec('1. Los 8 fixtures del audit (Change 7, criterios de aceptación)');
 {
   const una = suggestSetTarget(ROW, [Sx('2026-09-04', 80, [8, 8, 6], 7)], T());
   eq(una.kg, 80, '(c) 8/8/6 en rango 8-10 → repite 80 kg');
-  ok(/repite/i.test(una.reason), `(c) razón de repetición: "${una.reason}"`);
+  ok(/repeat/i.test(una.reason), `(c) razón de repetición: "${una.reason}"`);
   const todas = suggestSetTarget(ROW, [S('2026-09-04', 80, 6, 7)], T());
   eq(todas.kg, 77.5, '(c) 6/6/6 en rango 8-10 → 77,5 kg (−2,5)');
   eq(todas.delta, -2.5, '(c) delta −2,5');
-  ok(/mínimo/i.test(todas.reason), `(c) razón: no llegó al mínimo — "${todas.reason}"`);
+  ok(/minimum/i.test(todas.reason), `(c) razón: no llegó al mínimo — "${todas.reason}"`);
 }
 
 // (d) El coach de ESTA semana manda sobre la regla.
@@ -139,7 +139,7 @@ sec('1. Los 8 fixtures del audit (Change 7, criterios de aceptación)');
   }));
   eq(prev.kg, 97.5, '(d) la semana ANTERIOR también vale (el coach corre el domingo)');
   eq(prev.source, 'coach', '(d) …y sigue siendo origen coach');
-  ok(/esta semana/.test(prev.reason), '(d) sin nota, razón por defecto');
+  ok(/this week/.test(prev.reason), '(d) sin nota, razón por defecto');
 }
 
 // (e) El coach de hace tres semanas NO manda: cae a la regla, y lo dice.
@@ -151,7 +151,7 @@ sec('1. Los 8 fixtures del audit (Change 7, criterios de aceptación)');
   }));
   eq(r.kg, 95, '(e) objetivo del coach de hace 3 semanas ignorado → 95 kg por la regla');
   eq(r.source, 'rule', '(e) origen = regla');
-  ok(r.reason.startsWith('Objetivo del coach de hace 21 días — aplico la regla. '),
+  ok(r.reason.startsWith('Coach target from 21 days ago — falling back to the rule. '),
     `(e) la razón declara el objetivo vencido: "${r.reason}"`);
   // Sin `weekKey`, la vigencia la da `createdAt` ≤ 14 días.
   const fresco = suggestSetTarget(BENCH, [S('2026-09-04', 92.5, 8, 7)], T({
@@ -183,7 +183,7 @@ sec('1. Los 8 fixtures del audit (Change 7, criterios de aceptación)');
   const r = suggestSetTarget(BENCH, [S('2026-08-08', 92.5, 8, 7)], T());
   eq(r.kg, 92.5, '(g) última sesión hace 30 días → repite 92,5 kg');
   eq(r.source, 'last', '(g) origen = último');
-  ok(/Pausa de 30 días/.test(r.reason), `(g) razón: "${r.reason}"`);
+  ok(/30-day break/.test(r.reason), `(g) razón: "${r.reason}"`);
   ok(r.ruleIds.includes('LOAD-004'), '(g) cita LOAD-004');
   // La pausa gana a la descarga: ya vienes detrenado, no hay que recortar más.
   const conDeload = suggestSetTarget(BENCH, [S('2026-08-08', 92.5, 8, 7)], T({ deload: true }));
@@ -200,7 +200,7 @@ sec('1. Los 8 fixtures del audit (Change 7, criterios de aceptación)');
   const r = suggestSetTarget(BENCH, [], T());
   eq(r.kg, null, '(h) sin historial → kg null');
   eq(r.source, 'none', '(h) origen = none (la tarjeta no pinta línea de objetivo)');
-  ok(/Primera vez/.test(r.reason), `(h) razón: "${r.reason}"`);
+  ok(/First time/.test(r.reason), `(h) razón: "${r.reason}"`);
   // Series sin marcar no son historial.
   const sinHacer = suggestSetTarget(BENCH, [{ date: '2026-09-04', sets: [{ weight: 90, reps: 8, rpe: 7, done: false }] }], T());
   eq(sinHacer.source, 'none', '(h) series sin marcar no cuentan como historial');
@@ -240,7 +240,7 @@ sec('3. Lo que NO se carga en kg');
   const r = suggestSetTarget(BOXJUMP, [S('2026-09-03', 50, 5, null)], T({ measureUnit: 'cm' }));
   eq(r.kg, null, 'box jump: la columna son cm → sin objetivo de kg');
   eq(r.source, 'none', 'box jump: origen none');
-  eq(r.reason, 'Se mide en cm, no en kg', 'box jump: razón explícita');
+  eq(r.reason, 'Measured in cm, not in kg', 'box jump: razón explícita');
   // Y ni en descarga ni con objetivo del coach aparece un kg.
   eq(suggestSetTarget(BOXJUMP, [S('2026-09-03', 50, 5, null)], T({ measureUnit: 'cm', deload: true })).kg, null,
     'box jump en descarga: sigue sin kg');
@@ -250,13 +250,13 @@ sec('3. Lo que NO se carga en kg');
 {
   const r = suggestSetTarget(POGO, [S('2026-09-03', 0, 20, null)], T());
   eq(r.kg, null, 'pogo hops (sin columna de medida) tampoco recibe carga');
-  ok(/Salto/.test(r.reason), `pogo hops: razón de potencia — "${r.reason}"`);
+  ok(/Jump/.test(r.reason), `pogo hops: razón de potencia — "${r.reason}"`);
 }
 {
   const r = suggestSetTarget(SLED, [S('2026-09-03', 60, 20, 8, 6)], T());
   eq(r.source, 'last', "trineo '20 m': reps no numéricas → origen último");
   eq(r.kg, 60, 'trineo: repite la última carga');
-  ok(/Sin rango de reps/.test(r.reason), `trineo: razón — "${r.reason}"`);
+  ok(/No rep range/.test(r.reason), `trineo: razón — "${r.reason}"`);
   const amrap = suggestSetTarget(AMRAP, [S('2026-09-03', 0, 25, 8)], T());
   eq(amrap.source, 'last', "'AMRAP' → origen último, sin progresión de carga");
 }
@@ -264,10 +264,10 @@ sec('3. Lo que NO se carga en kg');
   const r = suggestSetTarget(ABWHEEL, [S('2026-09-04', 0, 12, null)], T());
   eq(r.kg, null, 'ab wheel (peso corporal, RPE "-") → nunca kg');
   eq(r.source, 'rule', 'ab wheel: hay regla, pero no es carga');
-  ok(/recorrido/.test(r.reason), `ab wheel al tope: razón — "${r.reason}"`);
+  ok(/range of motion/.test(r.reason), `ab wheel al tope: razón — "${r.reason}"`);
   const corto = suggestSetTarget(ABWHEEL, [S('2026-09-04', 0, 8, null)], T());
   eq(corto.kg, null, 'ab wheel sin llegar al tope: sigue sin kg');
-  ok(/Completa el rango/.test(corto.reason), 'ab wheel: completar el rango primero');
+  ok(/Complete the range/.test(corto.reason), 'ab wheel: completar el rango primero');
 }
 
 // ════════════════════════════════════════════════════════════════════════════════════
@@ -276,7 +276,7 @@ sec('4. Peso corporal con lastre, polea y unilateral');
 {
   const r = suggestSetTarget(CHINS, [S('2026-09-04', 0, 8, 7, 4)], T());
   eq(r.kg, 2.5, 'dominadas 4×8 a peso corporal @7 → +2,5 kg de lastre');
-  ok(/lastre/.test(r.reason), `dominadas: razón — "${r.reason}"`);
+  ok(/kg of load/.test(r.reason), `dominadas: razón — "${r.reason}"`);
   const conLastre = suggestSetTarget(CHINS, DOS(5, 8, 7, 4), T());
   eq(conLastre.kg, 7.5, 'con +5 kg ya colgado y todo al tope dos veces → +7,5');
   const deload = suggestSetTarget(CHINS, [S('2026-09-04', 0, 8, 7, 4)], T({ deload: true }));
@@ -299,9 +299,9 @@ sec('4. Peso corporal con lastre, polea y unilateral');
   eq(r.reps, '8-10/side', 'unilateral: el sufijo /side se conserva en el objetivo');
   eq(r.kg, 22.5, 'unilateral: el rango se evalúa por lado (10 = tope) → siguiente par');
   const pierna = suggestSetTarget(
-    { id: 'bss', name: 'BSS', sets: 3, reps: '10-15/pierna', rpe: '8', bw: true },
+    { id: 'bss', name: 'BSS', sets: 3, reps: '10-15/leg', rpe: '8', bw: true },
     [S('2026-09-04', 0, 15, 8)], T());
-  eq(pierna.reps, '10-15/pierna', 'el sufijo en castellano también');
+  eq(pierna.reps, '10-15/leg', 'el sufijo por lado también (el que trae el PLAN)');
   eq(pierna.kg, 2.5, 'BSS a peso corporal al tope → 2,5 kg de lastre');
 }
 
@@ -314,12 +314,12 @@ sec('5. Sin RPE anotado, dos sesiones iguales, y el rango por dentro');
   // sumaba +2,5 kg. Ahora hace falta la evidencia que sí existe: cerrar el tope DOS veces.
   const una = suggestSetTarget(BENCH, [S('2026-09-04', 92.5, 8, null)], T());
   eq(una.kg, 92.5, 'al tope SIN RPE la primera vez → mismo kg, no sube');
-  ok(/sin RPE: subo sólo tras dos sesiones al tope/.test(una.reason),
+  ok(/load only goes up after two sessions at the top/.test(una.reason),
     `…y lo declara: "${una.reason}"`);
   eq(una.basis.avgRpe, null, 'basis.avgRpe = null (no se inventa)');
   const dos = suggestSetTarget(BENCH, DOS(92.5, 8, null), T());
   eq(dos.kg, 95, 'al tope SIN RPE la segunda vez consecutiva → +2,5 kg');
-  ok(/sin RPE anotado, segunda al tope/.test(dos.reason),
+  ok(/no RPE logged, second one at the top/.test(dos.reason),
     `…y la razón dice de dónde sale el permiso: "${dos.reason}"`);
   // Con RPE por debajo del objetivo basta UNA sesión: el dato está, no hace falta el sustituto.
   eq(suggestSetTarget(BENCH, [S('2026-09-04', 92.5, 8, 7)], T()).kg, 95,
@@ -328,7 +328,7 @@ sec('5. Sin RPE anotado, dos sesiones iguales, y el rango por dentro');
 {
   const r = suggestSetTarget(BENCH, [Sx('2026-09-04', 90, [5, 6, 5], 7)], T());
   eq(r.kg, 90, 'dentro del rango sin llegar al tope → mismo kg');
-  ok(/\+1 rep por serie \(5\/6\/5 → 6\/7\/6\)/.test(r.reason), `razón con las reps concretas: "${r.reason}"`);
+  ok(/\+1 rep per set \(5\/6\/5 → 6\/7\/6\)/.test(r.reason), `razón con las reps concretas: "${r.reason}"`);
 }
 {
   const r = suggestSetTarget(BENCH, [
@@ -336,13 +336,13 @@ sec('5. Sin RPE anotado, dos sesiones iguales, y el rango por dentro');
     Sx('2026-08-31', 90, [6, 6, 6], 7),
   ], T());
   eq(r.kg, 90, 'dos sesiones idénticas → mismo kg');
-  ok(/Dos sesiones iguales/.test(r.reason), `razón de estancamiento: "${r.reason}"`);
+  ok(/Two identical sessions/.test(r.reason), `razón de estancamiento: "${r.reason}"`);
 }
 {
   // Al tope pero por encima del RPE objetivo sin llegar a 8,5: tampoco sube.
   const r = suggestSetTarget(FACEPULL, [S('2026-09-04', 25, 15, 8)], T());
   eq(r.kg, 25, 'al tope con RPE 8 sobre un objetivo de 7 → mismo kg');
-  ok(/objetivo/.test(r.reason), `razón: "${r.reason}"`);
+  ok(/above target/.test(r.reason), `razón: "${r.reason}"`);
 }
 {
   // Una serie corta pero con RPE 9: se baja igual (la señal manda sobre el conteo).
@@ -453,11 +453,11 @@ sec('7. sessionReadout — qué se prescribió, qué se hizo, qué toca');
   eq(R.summary.held, 1, 'summary.held');
   eq(R.summary.regressed, 1, 'summary.regressed');
   eq(R.summary.skipped, 1, 'summary.skipped');
-  ok(/^1 subida, 1 mantenida, 1 corta, 1 saltado\./.test(R.line), `la línea resume en castellano: "${R.line}"`);
-  ok(/Bench Press sube a 97,5 kg la próxima\./.test(R.line), 'y dice qué sube la próxima vez');
+  ok(/^1 up, 1 held, 1 short, 1 skipped\./.test(R.line), `la línea resume el reparto: "${R.line}"`);
+  ok(/Bench Press goes to 97\.5 kg next time\./.test(R.line), 'y dice qué sube la próxima vez');
   // Plurales y sesión vacía.
   const vacio = sessionReadout({ exercises: [] }, {}, {}, {});
-  eq(vacio.line, 'Sin series registradas.', 'sin ejercicios: línea honesta, sin números');
+  eq(vacio.line, 'No sets logged.', 'sin ejercicios: línea honesta, sin números');
   eq(vacio.summary.progressed, 0, 'y el resumen a cero');
 }
 
@@ -466,7 +466,7 @@ sec('8. Helpers puros');
 
 eq(JSON.stringify(E._coachParseReps('5-8')), JSON.stringify({ min: 5, max: 8, suffix: '', numeric: true, raw: '5-8' }), "_coachParseReps('5-8')");
 eq(E._coachParseReps('8-10/side').suffix, '/side', "sufijo '/side'");
-eq(E._coachParseReps('10-15/pierna').max, 15, "'10-15/pierna' → max 15");
+eq(E._coachParseReps('10-15/leg').max, 15, "'10-15/leg' → max 15");
 eq(E._coachParseReps('5').min, 5, "'5' → min = max = 5");
 eq(E._coachParseReps('5').max, 5, '…');
 eq(E._coachParseReps('AMRAP').numeric, false, "'AMRAP' no es numérico");
@@ -479,10 +479,10 @@ eq(E._coachParseRpeTop(null), null, 'null → null');
 eq(E._coachRound(83.25), 83.75, '_coachRound(83,25) → 83,75');
 eq(E._coachRound(92.5 * 0.9), 83.75, 'el 92,5 × 0,9 del deload → 83,75');
 eq(E._coachRound(100 / 3, 2.5), 32.5, 'redondeo a 2,5');
-eq(E._coachFmtKg(92.5), '92,5', '_coachFmtKg: coma decimal');
+eq(E._coachFmtKg(92.5), '92.5', '_coachFmtKg: punto decimal (v11.67, UI en inglés)');
 eq(E._coachFmtKg(95), '95', 'los enteros sin decimales');
-eq(E._coachFmtKg(2.5), '2,5', '2,5');
-eq(E._coachFmtRpe(7), '7,0', '_coachFmtRpe: el RPE siempre con un decimal');
+eq(E._coachFmtKg(2.5), '2.5', '2.5');
+eq(E._coachFmtRpe(7), '7.0', '_coachFmtRpe: el RPE siempre con un decimal');
 eq(E._coachWeekKeyMonday('2026-W37'), '2026-09-07', "_coachWeekKeyMonday('2026-W37')");
 eq(E._coachWeekKeyMonday('2026-W01'), '2025-12-29', 'W01 de 2026 empieza el 29-dic-2025');
 eq(E._coachWeekKeyMonday('nada'), null, 'una clave inválida → null');
@@ -549,7 +549,7 @@ eq(E.LOAD_JUMP_MAX_PCT, 0.1, 'LOAD_JUMP_MAX_PCT = 0,10 exportado (una sola const
   const DB4 = { id: 'db-curl', name: 'DB Curl', sets: 3, reps: '8-12', rpe: '7-8', db: true };
   const una = suggestSetTarget(DB4, [S('2026-09-04', 4, 12, 7)], T());
   eq(una.kg, 4, 'mancuerna de 4 kg al tope una vez → MISMO kg (4 → 6 sería +50 %)');
-  ok(/salto grande \(>10 %\)/.test(una.reason), `…y lo dice: "${una.reason}"`);
+  ok(/big jump \(>10 %\)/.test(una.reason), `…y lo dice: "${una.reason}"`);
   ok(/\+reps/.test(una.reason), '…y pide reps, que es lo que sí se puede subir hoy');
   ok((una.ruleIds || []).includes('STR-009'), 'cita STR-009 (el método y sus magnitudes)');
   eq(una.delta, 0, 'delta 0: no se mueve la carga');
@@ -570,7 +570,7 @@ eq(E.LOAD_JUMP_MAX_PCT, 0.1, 'LOAD_JUMP_MAX_PCT = 0,10 exportado (una sola const
   // Peso corporal CON lastre: +2,5 sobre +5 kg colgados es +50 %.
   const una = suggestSetTarget(CHINS, [S('2026-09-04', 5, 8, 7, 4)], T());
   eq(una.kg, 5, 'dominadas con +5 kg al tope una vez → mismo lastre');
-  ok(/salto grande/.test(una.reason), `…y con su razón: "${una.reason}"`);
+  ok(/big jump/.test(una.reason), `…y con su razón: "${una.reason}"`);
   // Sin lastre no hay porcentaje que medir (0 kg): empezar a colgar disco sigue siendo la
   // progresión, y no se puede exigir un 10 % de cero.
   eq(suggestSetTarget(CHINS, [S('2026-09-04', 0, 8, 7, 4)], T()).kg, 2.5,
@@ -619,9 +619,9 @@ ok(typeof E._coachDedupeHistory === 'function', '_coachDedupeHistory exportado')
   eq(dedup[0].sets.length, 3, '…y se queda la de más series hechas');
 
   const r = suggestSetTarget(BENCH, dupe, T());
-  ok(!/Dos sesiones iguales/.test(r.reason),
+  ok(!/Two identical sessions/.test(r.reason),
     `no se declara estancamiento con un solo día de historial: "${r.reason}"`);
-  ok(/\+1 rep por serie/.test(r.reason), '…y se pide la rep, que es lo que toca dentro del rango');
+  ok(/\+1 rep per set/.test(r.reason), '…y se pide la rep, que es lo que toca dentro del rango');
   eq(r.basis.daysSince, 3, 'daysSince = 3 (del 4 al 7 de septiembre), no 0');
 }
 {

@@ -354,8 +354,8 @@ yes(/source !== 'none'/.test(CARD_SRC),
   "source:'none' no pinta objetivo (medida / primera vez → tarjeta idéntica a v11.56)");
 const OBJ_SRC = fnSrc('function coachObjectiveHtml(');
 yes(/coach-chip-\$\{target\.source\}/.test(OBJ_SRC), 'el chip lleva el ORIGEN del número');
-yes(/último/.test(OBJ_SRC) && /regla/.test(OBJ_SRC) && /coach/.test(OBJ_SRC),
-  'los tres chips en castellano: coach · regla · último');
+yes(/'last'/.test(OBJ_SRC) && /'rule'/.test(OBJ_SRC) && /'coach'/.test(OBJ_SRC),
+  'los tres chips (en inglés desde v11.67): coach · rule · last');
 yes(/_coachFmtKg\(/.test(OBJ_SRC), 'el kg se pinta con coma decimal');
 yes(/ex && ex\.bw \? '\+' : ''/.test(OBJ_SRC), "peso corporal → '+2,5 kg' (es lastre, no carga total)");
 
@@ -453,7 +453,7 @@ const RCR_SRC = COACHJS.slice(COACHJS.indexOf('async function renderCoachReadout
 yes(/coachReadoutSeen/.test(RCR_SRC), 'la tarjeta se descarta y no vuelve (coachReadoutSeen)');
 yes(/dbPut\('settings', \{ key: 'coachReadoutSeen'/.test(RCR_SRC),
   "el descarte es LOCAL con dbPut: 'ya la vi' es estado de este dispositivo, no dato de usuario");
-yes(/Próxima vez ya está aplicado en la tarjeta/.test(RCR_SRC), 'lleva el pie del wireframe (§B.1)');
+yes(/Next time is already applied on the card/.test(RCR_SRC), 'lleva el pie del wireframe (§B.1)');
 yes(/escapeHtml\(/.test(RCR_SRC), 'escapa el texto que pinta');
 for (const clase of ['coach-objective', 'coach-obj-label', 'coach-chip', 'coach-chip-coach',
                      'coach-chip-rule', 'coach-chip-last', 'coach-readout', 'coach-readout-row',
@@ -509,13 +509,13 @@ const render = (target) => cardCtx.buildExerciseCard(
   EX_FIXTURE, 1, null, { data: {} }, { data: {} }, false, { id: 'upperA' }, [], target).innerHTML;
 
 const conObjetivo = render({ kg: 92.5, reps: '5-8', rpe: '7-8', source: 'rule', reason: 'x' });
-yes(conObjetivo.includes('Objetivo:'), 'con objetivo: aparece "Objetivo:"');
-yes(conObjetivo.includes('92,5'), 'con objetivo: el kg va con coma decimal (92,5)');
+yes(conObjetivo.includes('Target:'), 'con objetivo: aparece "Target:"');
+yes(conObjetivo.includes('92.5'), 'con objetivo: el kg va con punto decimal (92.5)');
 yes(conObjetivo.includes('placeholder="92.5"'), 'con objetivo: el placeholder del set es 92.5');
 eq((conObjetivo.match(/placeholder="92\.5"/g) || []).length, 3,
   'con objetivo: las TRES series llevan el placeholder');
 yes(conObjetivo.includes('coach-chip coach-chip-rule'), 'con objetivo: chip "regla"');
-yes(conObjetivo.includes('>regla<'), 'con objetivo: el chip se lee en castellano');
+yes(conObjetivo.includes('>rule<'), 'con objetivo: el chip se lee');
 eq((conObjetivo.match(/coach-objective/g) || []).length, 1, 'con objetivo: UNA sola línea de objetivo');
 yes(!conObjetivo.includes('Main press. Full ROM'),
   'con objetivo: la razón sustituye a la nota estática');
@@ -596,7 +596,7 @@ const GOLDEN_V1156 = `
     </div>
   `;
 const sinObjetivo = render(null);
-yes(!sinObjetivo.includes('Objetivo:'), 'sin objetivo: NO aparece la línea "Objetivo:"');
+yes(!sinObjetivo.includes('Target:'), 'sin objetivo: NO aparece la línea "Target:"');
 yes(!sinObjetivo.includes('coach-objective'), 'sin objetivo: ni la clase');
 yes(sinObjetivo.includes('Main press. Full ROM'), 'sin objetivo: la nota estática sigue en su sitio');
 yes(sinObjetivo.includes('placeholder="-"'), 'sin objetivo y sin historial: el placeholder es "-"');
@@ -614,7 +614,7 @@ const sinKg = render({ kg: null, reps: '5', rpe: '-', source: 'none', reason: 'S
 eq(sinKg, GOLDEN_V1156, "source:'none' pinta exactamente la tarjeta de v11.56");
 // Un objetivo sin kg pero con regla (ab wheel) sí cambia la nota, pero no pinta línea ni placeholder.
 const abWheel = render({ kg: null, reps: '8-12', rpe: '-', source: 'rule', reason: 'Sube el recorrido o +1 rep' });
-yes(!abWheel.includes('Objetivo:'), 'ab wheel: sin línea de objetivo (no hay kg)');
+yes(!abWheel.includes('Target:'), 'ab wheel: sin línea de objetivo (no hay kg)');
 yes(abWheel.includes('Sube el recorrido'), 'ab wheel: pero sí su razón en las notas');
 yes(abWheel.includes('placeholder="-"'), 'ab wheel: y el placeholder no inventa un peso');
 
@@ -674,7 +674,7 @@ yes(/todaySource = 'missing'/.test(BFW_SRC) && /todayMissingReason/.test(BFW_SRC
   "si no hay fila de HOY con score: todaySource 'missing' + motivo (nunca hereda el de ayer)");
 const TMR_SRC = whoopFn('async function _whoopTodayMissingReason()');
 yes(/integrationsGetStatus\(\)/.test(TMR_SRC), 'el motivo sale de integration_status, no de una bandera local');
-yes(/no conectado/.test(TMR_SRC) && /no puntuó la noche/.test(TMR_SRC) && /reconectarse en Ajustes/.test(TMR_SRC),
+yes(/not connected/.test(TMR_SRC) && /scored the night/.test(TMR_SRC) && /reconnecting in Settings/.test(TMR_SRC),
   'los tres motivos: no conectado / hay que reconectar / WHOOP no ha puntuado');
 // Precedencia (plan A.4): intervals.icu no puede pisar lo que escribió WHOOP.
 const IFW_SRC = WHOOPJS.slice(WHOOPJS.indexOf('async function intervalsFetchWellness()'),
@@ -717,7 +717,7 @@ const RRS12 = COACHJS.slice(COACHJS.indexOf('async function renderReadinessSigna
   COACHJS.indexOf('// ==================== LÍNEA DE RECUPERACIÓN'));
 yes(/s\.reason/.test(RRS12), 'la lista de Stats pinta el motivo de cada señal sin dato');
 yes(/whoopDayLabel\(/.test(RRS12), 'y etiqueta la fecha del último dato (hoy/ayer/hace N días)');
-yes(/no cuenta como hoy/.test(RRS12), 'diciendo explícitamente que el de ayer no cuenta');
+yes(/does not count as today/.test(RRS12), 'diciendo explícitamente que el de ayer no cuenta');
 // v11.59: la fatigue card ya no puntúa nada porque ya no existe (se comprueba en §13).
 // F-7: la clasificación sale del dato.
 const TOS = fnSrc('function toSession(record, originStore)');
@@ -834,8 +834,8 @@ yes(/async function renderReadinessSignals\(\)/.test(COACHJS), 'que vive en coac
 const RRS_SRC = COACHJS.slice(COACHJS.indexOf('async function renderReadinessSignals('),
   COACHJS.indexOf('// ==================== LÍNEA DE RECUPERACIÓN'));
 yes(/computeReadiness\(\)/.test(RRS_SRC), 'y lee el MISMO computeReadiness que Home (una sola verdad)');
-yes(/confianza alta/.test(RRS_SRC), 'muestra la confianza');
-yes(/sin dato/.test(RRS_SRC) && /s\.reason/.test(RRS_SRC), 'y las señales insuficientes con su motivo');
+yes(/high confidence/.test(RRS_SRC), 'muestra la confianza');
+yes(/no data/.test(RRS_SRC) && /s\.reason/.test(RRS_SRC), 'y las señales insuficientes con su motivo');
 yes(/whoopDayLabel\(/.test(RRS_SRC), 'conserva la honestidad de v11.58: el dato de ayer, con su fecha');
 yes(!/Push hard|score|bar/i.test(RRS_SRC.replace(/whoopDayLabel|last\.score|s\.score/g, '')),
   'sin score, sin barra y sin consejo');
@@ -928,8 +928,10 @@ const RPB_SRC = fnSrc('async function renderRunPlanBanner(');
 yes(/planned\.pattern/.test(RPB_SRC), 'el banner de Cardio también lleva el patrón');
 yes(/distanceKm/.test(RPB_SRC), 'y los kilómetros');
 yes(/runningPhaseLabel\(/.test(RPB_SRC), 'y la fase');
-yes(/RW_PHASE_ES/.test(ENGINE), 'las fases tienen etiqueta en castellano, y vive en el motor');
-yes(/RW_PHASE_ES/.test(APP) && /RW_PHASE_ES/.test(COACHJS), 'la usan las dos capas de pantalla');
+yes(/RW_PHASE_LABEL/.test(ENGINE), 'las fases de la carrera tienen etiqueta, y vive en el motor');
+yes(/RW_PHASE_LABEL/.test(COACHJS), 'la usa la capa de coach.js');
+yes(/RW_PHASE_LABEL/.test(APP) && !/RW_PHASE_ES/.test(APP),
+  'y app.js también, ya sólo con el nombre nuevo (`_ES` retirado en v11.67)');
 yes(!/RUN_PHASE_ES/.test(APP_CODE), 'el mapa viejo de app.js ya no existe (una sola fuente de etiquetas)');
 
 // 14.e Una decisión por semana, y sólo cuando el fallback se usa
@@ -963,7 +965,7 @@ yes(/measured === false/.test(RGC_SRC), 'sólo pesadas medidas (los forward-fill
 yes(/weightMeasured/.test(RGC_SRC), 'incluyendo las de wellness');
 yes(/estimate1RM/.test(RGC_SRC), 'reusa estimate1RM (no reimplementa Epley)');
 yes(/getRunsDeduped/.test(RGC_SRC), 'y las carreras dedupeadas');
-yes(/Señales para el coach/.test(RGC_SRC), 'pinta la lista de señales');
+yes(/Signals for the coach/.test(RGC_SRC), 'pinta la lista de señales');
 yes(!/canvas|chart|Chart/.test(RGC_SRC), 'sin gráficos nuevos (§B.9)');
 yes(!/[A-Z]{3}-\d{3}/.test(RGC_SRC.replace(/\/\/[^\n]*/g, '')), 'y sin Rule IDs crudos en pantalla');
 yes(/renderGoalsCard/.test(fnSrc('async function renderStats(')), 'renderStats la llama');
@@ -1050,13 +1052,12 @@ yes(!/(confidence|energyState|programmingAction):/.test(RULESJS),
   'ni los campos que sólo le sirven al modelo (el prompt los lee del JSON, no de aquí)');
 yes(/module\.exports/.test(RULESJS), 'y exportado para los tests');
 // La traducción de la graduación, con los cuatro niveles del enum único del repo.
-for (const [nivel, es] of [['strong', 'fuerte'], ['moderate', 'moderada'],
-                           ['weak_extrapolated', 'débil/extrapolada'], ['expert', 'opinión experta']]) {
-  yes(new RegExp(`${nivel}: '${es.replace(/[/]/g, '\\/')}'`).test(COACHJS)
-    || COACHJS.includes(`${nivel}: '${es}'`), `COACH_EVIDENCE_ES traduce ${nivel} → ${es}`);
+for (const [nivel, en] of [['strong', 'strong'], ['moderate', 'moderate'],
+                           ['weak_extrapolated', 'weak/extrapolated'], ['expert', 'expert']]) {
+  yes(COACHJS.includes(`${nivel}: '${en}'`), `COACH_EVIDENCE_LABEL etiqueta ${nivel} → ${en}`);
 }
-yes(/function COACH_RULE_ES\(/.test(COACHJS), 'COACH_RULE_ES(ruleId) existe');
-yes(/Regla \$\{ruleId\}/.test(COACHJS), 'y arma la etiqueta "Regla <id> (evidencia …)"');
+yes(/function COACH_RULE_LABEL\(/.test(COACHJS), 'COACH_RULE_LABEL(ruleId) existe');
+yes(/Rule \$\{ruleId\}/.test(COACHJS), 'y arma la etiqueta "Rule <id> (<nivel> evidence)"');
 
 // 15.d index.html: los contenedores nuevos
 for (const id of ['view-coach', 'coach-week-card', 'coach-week', 'coach-briefing', 'coach-proposal',
@@ -1125,7 +1126,7 @@ yes(/\.from\('coach_reviews'\)[\s\S]{0,140}record_id/.test(POLL_SRC),
 yes(/maybeSingle\(\)/.test(POLL_SRC), 'con maybeSingle()');
 yes(/visibilitychange/.test(COACHJS), 'se para al ocultar la pestaña y se retoma al volver');
 yes(/status !== 'running'/.test(POLL_SRC), 'y sólo refleja cuando la fila ya no está en marcha');
-yes(/vuelve más tarde/.test(COACHJS), 'si se agota el plazo, la tarjeta lo dice (el pull la traerá)');
+yes(/come back later/.test(COACHJS), 'si se agota el plazo, la tarjeta lo dice (el pull la traerá)');
 
 // 15.h Aplicar: las propuestas NUNCA entran en `plans`
 const ACP_SRC = COACHJS.slice(COACHJS.indexOf('async function applyCoachProposal('),
@@ -1167,7 +1168,7 @@ const RBK_SRC = COACHJS.slice(COACHJS.indexOf('async function rollbackPlanVersio
   COACHJS.indexOf('async function _coachReconcileOverrides('));
 yes(/createNewPlanVersion\(/.test(RBK_SRC),
   'el rollback crea una versión NUEVA copiada (no re-activa la vieja: el invariante es max(version))');
-yes(/\(restaurada\)/.test(RBK_SRC), 'etiquetada "(restaurada)"');
+yes(/\(restored\)/.test(RBK_SRC), 'etiquetada "(restored)"');
 yes(/rolledBackFrom/.test(RBK_SRC), 'con rolledBackFrom');
 yes(/author: 'user'/.test(RBK_SRC), "y author:'user'");
 yes(/'plan-rollback'/.test(RBK_SRC), 'registra la decisión plan-rollback');
@@ -1325,7 +1326,7 @@ yes(/classList\.add\('hidden'\)/.test(RCWC_SRC), 'y sin revisión no pinta nada 
 yes(/coach-week-apply/.test(RCWC_SRC) && /coach-week-reject/.test(RCWC_SRC)
   && /coach-week-regen-note/.test(RCWC_SRC), 'con Aplicar · Rechazar · Regenerar con nota');
 yes(/rollbackPlanVersion\(/.test(RCWC_SRC), 'y "Deshacer" en el estado applied');
-yes(/COACH_GUARD_ES/.test(COACHJS), 'los ids de guardarraíl se traducen (nada de ids crudos en pantalla)');
+yes(/COACH_GUARD_LABEL/.test(COACHJS), 'los ids de guardarraíl llevan etiqueta (nada de ids crudos en pantalla)');
 
 // 15.o `allowed`: el vocabulario que se le permite al modelo
 const ALW_SRC = COACHJS.slice(COACHJS.indexOf('function _coachAllowed('),
@@ -1470,7 +1471,7 @@ yes(COACHJS.slice(COACHJS.indexOf('module.exports')).includes('renderRecoveryLin
 yes(typeof E.performanceLine === 'function', 'coach-engine exporta performanceLine()');
 eq(E.performanceLine([], [], {}), '', 'que devuelve "" sin datos');
 eq(E.PERF_OUTCOME_ARROW.progressed, '↑', 'las flechas están declaradas, no repartidas por el render');
-yes(E.COACH_LIFT_ES['bench-press'] === 'banca', 'y los nombres cortos en castellano viven en el motor');
+yes(E.COACH_LIFT_LABEL['bench-press'] === 'bench', 'y los nombres cortos viven en el motor');
 
 // 16.h Readiness: seis señales, sin subjetivo
 const seis = E.computeReadinessFrom({ today: '2026-09-07' });
@@ -1478,9 +1479,9 @@ eq(seis.signals.length, 6, 'computeReadinessFrom devuelve exactamente 6 señales
 eq(seis.signals.map(x => x.id).join(','), 'whoop,hrv7v28,rhr7v28,sleep7,rpe2,quality2', 'y son éstas');
 
 // 16.i Las etiquetas históricas se conservan, marcadas como tales
-yes(/'readiness-adjust': 'ajuste por recuperación \(histórico: ya no se escribe\)'/.test(COACHJS),
-  "COACH_DECISION_ES conserva 'readiness-adjust' marcada como histórica");
-yes(/'deload-request': 'descarga \(histórico: ya no se escribe\)'/.test(COACHJS),
+yes(/'readiness-adjust': 'recovery adjustment \(historical: no longer written\)'/.test(COACHJS),
+  "COACH_DECISION_LABEL conserva 'readiness-adjust' marcada como histórica");
+yes(/'deload-request': 'deload \(historical: no longer written\)'/.test(COACHJS),
   "y 'deload-request' igual (las decisiones viejas se siguen leyendo)");
 
 // 16.j Lo que NO se toca: ALT_LIBRARY (la lee el preview del ideal) y el presupuesto.
@@ -1549,7 +1550,8 @@ for (const k of ['visceralFat', 'bmrKcal', 'heartRateBpm', 'metabolicAge', 'musc
   yes(BW_WITHINGS16.includes(k), `la línea de Withings lee \`${k}\``);
 }
 yes(/Number\.isFinite/.test(BW_WITHINGS16), 'y sólo pinta lo que es un número finito');
-yes(/replace\('\.', ','\)/.test(BW_WITHINGS16), 'con coma decimal (formato español)');
+yes(!/replace\('\.', ','\)/.test(BW_WITHINGS16) && /toLocaleString\('en-US'\)/.test(BW_WITHINGS16),
+  'con punto decimal y millar inglés (la UI es toda en inglés desde v11.67)');
 yes((BW_WITHINGS16.match(/etaEl\.innerHTML \+=/g) || []).length === 1,
   'sigue siendo UNA sola línea: ni una tarjeta ni un gráfico nuevos');
 
@@ -1630,9 +1632,11 @@ eq(E.coachTargetWeekKey('2026-09-09'), '2026-W37', "miércoles 9-sep → '2026-W
 eq(E.coachTargetWeekKey('2026-09-07'), '2026-W37', "lunes 7-sep → '2026-W37'");
 eq(E.coachTargetWeekKey('2026-09-12'), '2026-W37', 'y el sábado todavía es la de ahora');
 eq(E.coachTargetWeekKey('basura'), null, 'con una entrada que no es fecha devuelve null');
-eq(Object.keys(E.PHASE_ES || {}).length, 5, 'PHASE_ES tiene las 5 fases del contrato v2');
-eq(E.PHASE_ES.build, 'construcción', "y las traduce ('build' → construcción)");
-eq(E.PHASE_ES.deload, 'descarga', "('deload' → descarga)");
+eq(Object.keys(E.PHASE_LABEL || {}).sort().join(','), 'base,build,deload,intensify,maintenance',
+  'PHASE_LABEL tiene las 5 fases del contrato v2, y sólo ésas');
+yes(Object.values(E.PHASE_LABEL || {}).every((v) => typeof v === 'string' && v.length > 0),
+  'y todas llevan etiqueta (nada de ids crudos en pantalla)');
+eq(E.PHASE_LABEL.intensify, 'intensify', "la etiqueta es inglesa ('intensify', no 'intensificación')");
 yes(typeof E.blockLabel === 'function', 'coach-engine exporta blockLabel()');
 eq(E.blockLabel('2026-09-07', '2026-09-07'), 'B1', 'el bloque que empieza en el ancla es B1');
 eq(E.blockLabel('2026-10-05', '2026-09-07'), 'B1', 'la semana de descarga sigue siendo B1 (5 semanas)');
@@ -1670,7 +1674,7 @@ for (const k of ['reviewId', 'weekKey', 'appliedAt', 'focus', 'phase', 'whyChang
 yes(/diff/.test(CBR17), 'y el fallback v1 se deriva del diff');
 
 // 17.e El validador: una sesión sin fila avisa, y sólo con brief
-yes(/'WEEK-SUMMARY': '[^']+'/.test(COACHJS), "COACH_GUARD_ES traduce 'WEEK-SUMMARY' (nada de ids crudos)");
+yes(/'WEEK-SUMMARY': '[^']+'/.test(COACHJS), "COACH_GUARD_LABEL etiqueta 'WEEK-SUMMARY' (nada de ids crudos)");
 yes(/'WEEK-SUMMARY'/.test(FACTSJS), 'coach-facts.js emite el aviso WEEK-SUMMARY');
 {
   const planSinResumen = {
@@ -1711,12 +1715,12 @@ yes(/if \(mine\.length\) return/.test(MRW17),
 
 // 17.g El botón "Cerrar semana y pedir la próxima"
 yes(/coach-close-week/.test(COACHJS), 'existe el botón #coach-close-week');
-yes(/const COACH_CLOSE_WEEK_ES = 'Cerrar semana y pedir la próxima'/.test(COACHJS),
-  'con el texto que pidió Julian');
+yes(/const COACH_CLOSE_WEEK_LABEL = 'Close the week and ask for the next'/.test(COACHJS),
+  'con el texto que pidió Julian, en inglés (V-1)');
 const CBW17 = COACHJS.slice(COACHJS.indexOf('function _coachBindCloseWeek('),
   COACHJS.indexOf('// ==================== TARJETA DE HOME'));
 yes(/_cTargetWeek\(today\(\)\)/.test(CBW17), 'pide la revisión PARA la semana objetivo (domingo → la siguiente)');
-yes(/b\.disabled = true/.test(CBW17) && /Cerrando la semana…/.test(CBW17),
+yes(/b\.disabled = true/.test(CBW17) && /Closing the week…/.test(CBW17),
   'y se marca en marcha en el propio botón (60-180 s sin marca = doble pulsación)');
 yes(/coach-close-week-view/.test(COACHJS),
   'la vista Coach usa un id propio (dos elementos con el mismo id: getElementById sólo ve uno)');
@@ -1731,10 +1735,10 @@ const CGL17 = COACHJS.slice(COACHJS.indexOf('async function renderCoachGoalLine(
   COACHJS.indexOf('// ============================================================\n// COACH SEMANAL'));
 yes(/_coachGoalProgressFromStores\(\)/.test(CGL17), 'la línea reusa ese cálculo (no reimplementa la pendiente)');
 yes(!/goalProgress\(/.test(CGL17), 'y no vuelve a llamar a goalProgress por su cuenta');
-yes(/sin señal/.test(CGL17), 'con el fallback honesto "sin señal (N pesadas en 14 d)"');
+yes(/no signal/.test(CGL17), 'con el fallback honesto "no signal (N weigh-ins in 14 d)"');
 yes(/openCoachView\(\)/.test(CGL17), 'un toque abre la vista Coach');
 yes(!/<button/.test(CGL17), 'y no hay más botones que ese toque');
-yes(/_cNum\(/.test(CGL17), 'los números salen con coma decimal (helper _cNum)');
+yes(/_cNum\(/.test(CGL17), 'los números salen por el helper _cNum (punto decimal, un solo sitio)');
 const HOME17 = fnSrc('async function renderHomeView(');
 yes(/renderCoachGoalLine\(\)/.test(HOME17), 'renderHomeView llama renderCoachGoalLine()');
 yes(/typeof renderCoachGoalLine === 'function'/.test(HOME17), 'con guarda typeof');
@@ -1748,7 +1752,7 @@ for (const fn of ['renderCoachGoalLine', 'coachBriefFromReview']) {
 // 17.i La vista Coach y el teaser de Stats hablan el contrato v2
 const RBRIEF17 = COACHJS.slice(COACHJS.indexOf('async function _coachRenderBriefing('),
   COACHJS.indexOf('async function _coachRenderProposal('));
-for (const t of ['Foco', 'Fase', 'Por qué cambia', 'Por qué se mantiene']) {
+for (const t of ['Focus', 'Phase', 'What changes and why', 'Why it holds']) {
   yes(RBRIEF17.includes(t), `la vista Coach pinta "${t}"`);
 }
 yes(/_coachWsRowHtml\(/.test(RBRIEF17), 'y la tabla de sesiones fila a fila');
@@ -1818,8 +1822,8 @@ yes(!/@keyframes cwc-|animation:[^;]*cwc-/.test(CSS), 'y cero animaciones nuevas
   new vm.Script(COACHJS).runInContext(ctx);
   const C = ctx.module.exports;
   yes(typeof C.renderCoachWeekCard === 'function', 'coach.js carga en vm y exporta renderCoachWeekCard');
-  yes(!!(C.COACH_GUARD_ES || {})['WEEK-SUMMARY'], "y COACH_GUARD_ES['WEEK-SUMMARY'] tiene etiqueta");
-  eq(Object.keys(C.COACH_WS_STATUS_ES || {}).sort().join(','), 'changed,kept,new,removed',
+  yes(!!(C.COACH_GUARD_LABEL || {})['WEEK-SUMMARY'], "y COACH_GUARD_LABEL['WEEK-SUMMARY'] tiene etiqueta");
+  eq(Object.keys(C.COACH_WS_STATUS_LABEL || {}).sort().join(','), 'changed,kept,new,removed',
     'los cuatro estados de una sesión tienen su chip');
 
   // --- Estado `none`: no hay ninguna revisión todavía ---
@@ -1827,9 +1831,9 @@ yes(!/@keyframes cwc-|animation:[^;]*cwc-/.test(CSS), 'y cero animaciones nuevas
   ctx.activePlan = null;
   await C.renderCoachWeekCard();
   const NONE = nodes['coach-week-card'].innerHTML;
-  yes(NONE.includes('Primera semana con el coach'), 'estado `none`: "Primera semana con el coach"');
+  yes(NONE.includes('First week with the coach'), 'estado `none`: "First week with the coach"');
   yes(NONE.includes('coach-close-week'), 'estado `none`: con el botón para cerrar la semana');
-  yes(NONE.includes('Cerrar semana ahora'), 'y su texto');
+  yes(NONE.includes('Close the week now'), 'y su texto');
   yes(NONE.includes('Coach · W37'), 'con la semana objetivo en la cabecera (lunes 7-sep → W37)');
   yes(NONE.length > 0, 'la tarjeta ya NO se queda vacía sin revisión');
 
@@ -1864,25 +1868,25 @@ yes(!/@keyframes cwc-|animation:[^;]*cwc-/.test(CSS), 'y cero animaciones nuevas
   }];
   await C.renderCoachWeekCard();
   const APPL = nodes['coach-week-card'].innerHTML;
-  yes(APPL.includes('SEMANA PASADA'), 'estado `applied`: bloque SEMANA PASADA');
+  yes(APPL.includes('LAST WEEK'), 'estado `applied`: bloque LAST WEEK');
   yes(APPL.includes('3 de 4 sesiones'), 'con los bullets de la semana pasada');
-  yes(APPL.includes('ESTA SEMANA'), 'bloque ESTA SEMANA');
-  yes(APPL.includes('Semana 2/5'), 'con la semana del bloque');
+  yes(APPL.includes('THIS WEEK'), 'bloque THIS WEEK');
+  yes(APPL.includes('Week 2/5'), 'con la semana del bloque');
   yes(APPL.includes('B1'), 'la etiqueta del bloque');
-  yes(APPL.includes('fase construcción'), 'la fase EN CASTELLANO (build → construcción)');
-  yes(APPL.includes('Foco: mantener los 6 anclas'), 'y el foco de la semana');
-  yes(APPL.includes('POR QUÉ SE MANTIENE'), 'bloque POR QUÉ SE MANTIENE');
-  yes(!APPL.includes('POR QUÉ CAMBIA'), 'y sin POR QUÉ CAMBIA cuando whyChanged viene vacío');
-  yes(/<div class="cwc-block"><div class="cwc-label">POR QUÉ SE MANTIENE/.test(APPL),
+  yes(APPL.includes('build phase'), 'la fase con su etiqueta inglesa (build → build phase)');
+  yes(APPL.includes('Focus: mantener los 6 anclas'), 'y el foco de la semana');
+  yes(APPL.includes('WHY IT HOLDS'), 'bloque WHY IT HOLDS');
+  yes(!APPL.includes('WHAT CHANGES AND WHY'), 'y sin WHAT CHANGES AND WHY cuando whyChanged viene vacío');
+  yes(/<div class="cwc-block"><div class="cwc-label">WHY IT HOLDS/.test(APPL),
     'que va ABIERTO (no plegado) cuando es lo único que hay que leer');
-  yes(APPL.includes('Qué cambia (2 sesiones)'), 'desplegable "Qué cambia" con las 2 que no son `kept`');
-  yes(APPL.includes('Todas las sesiones (4)'), 'y "Todas las sesiones" con las 4');
+  yes(APPL.includes('What changes (2 sessions)'), 'desplegable "What changes" con las 2 que no son `kept`');
+  yes(APPL.includes('All sessions (4)'), 'y "All sessions" con las 4');
   for (const w of WS) {
     yes(APPL.includes(ctx.escapeHtml(w.line)), `la fila de ${w.sessionId} lleva su motivo`);
   }
   yes(APPL.includes('Upper A') && APPL.includes('Lower B'), 'con los nombres de sesión del plan');
   yes(APPL.includes('plan v15'), 'la cabecera dice la versión del plan');
-  yes(APPL.includes('Ver todo'), 'y ofrece "Ver todo ›"');
+  yes(APPL.includes('See all'), 'y ofrece "See all ›"');
   yes(APPL.includes('coach-week-undo'), 'con el Deshacer en su sitio');
   yes(!/undefined|\[object Object\]/.test(APPL), 'y sin "undefined" ni objetos en pantalla');
 
@@ -1902,9 +1906,9 @@ yes(!/@keyframes cwc-|animation:[^;]*cwc-/.test(CSS), 'y cero animaciones nuevas
   await C.renderCoachWeekCard();
   const V1 = nodes['coach-week-card'].innerHTML;
   yes(V1.length > 0, 'una revisión v1 sigue pintando la tarjeta (fallback, no excepción)');
-  yes(V1.includes('Foco: Sostener la banca'), 'el foco v1 sale de la primera prioridad');
-  yes(V1.includes('Todas las sesiones (2)'), 'y las filas se derivan del plan');
-  yes(V1.includes('sin cambios'), 'las sesiones que no toca la propuesta salen como "sin cambios"');
+  yes(V1.includes('Focus: Sostener la banca'), 'el foco v1 sale de la primera prioridad');
+  yes(V1.includes('All sessions (2)'), 'y las filas se derivan del plan');
+  yes(V1.includes('no changes'), 'las sesiones que no toca la propuesta salen como "no changes"');
   yes(!V1.includes('POR QUÉ SE MANTIENE'), 'sin whyKept no se inventa un motivo');
 
   // El brief puro, sin DOM: la forma que se estampa en el plan.
@@ -1980,8 +1984,8 @@ yes(/saveWeekSchedule\(JSON\.parse\(JSON\.stringify\(snap\.weekSchedule\)\)\)/.t
   'y restaura los cambios de día con saveWeekSchedule()');
 yes(/for \(const k of Object\.keys\(exerciseOverrides\)\) delete exerciseOverrides\[k\];/.test(RBK18),
   'limpia antes de asignar (si no, quedarían mezclados los de después con los de antes)');
-yes(/overridesRestaurados/.test(RBK18), 'y la decisión registrada dice cuántos se restauraron');
-yes(/sin instantánea previa/.test(RBK18),
+yes(/overridesRestored/.test(RBK18), 'y la decisión registrada dice cuántos se restauraron');
+yes(/no prior snapshot/.test(RBK18),
   '…o que no había instantánea (las versiones anteriores a v11.67 no la llevan)');
 
 // 18.c E-18 · el reloj del piloto de kcal

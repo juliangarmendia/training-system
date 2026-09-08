@@ -88,7 +88,7 @@ sec('2. La rampa: +10 % sobre la mediana, con el techo sobre la BASE');
   const r = progressCardioMin(40, blk(4), O(H([['2026-W37', 40], ['2026-W36', 40]])));
   eq(r.min, 45, '40′ hechos dos semanas → 44 redondeado al paso de 5 = 45′');
   eq(r.source, 'rule', 'la fuente es la regla');
-  ok(/mediana/.test(r.note), `y la nota dice de dónde sale: "${r.note}"`);
+  ok(/median/.test(r.note), `y la nota dice de dónde sale: "${r.note}"`);
   ok(/40/.test(r.note), '…con el número de referencia dentro');
 }
 {
@@ -97,7 +97,7 @@ sec('2. La rampa: +10 % sobre la mediana, con el techo sobre la BASE');
   const r = progressCardioMin(40, blk(4), O(H([['2026-W33', 40]]), { lastCardioDaysAgo: 30 }));
   eq(r.min, 40, 'semana 4 del bloque con 30 días sin usar este hueco → base, no 53′');
   eq(r.source, 'base', 'y la fuente lo dice');
-  ok(/30 d sin cardio/.test(r.note), `con su motivo: "${r.note}"`);
+  ok(/30 d without cardio/.test(r.note), `con su motivo: "${r.note}"`);
   // Contraste: la MISMA semana de bloque por el camino legacy (sin historial) sí rampaba.
   const legacy = progressCardioMin(40, blk(4), { variant: 6, lastCardioDaysAgo: 3 });
   eq(legacy.min, 55, 'el camino legacy (sin history) sigue dando 40 × 1,1³ ≈ 53 → 55');
@@ -106,7 +106,7 @@ sec('2. La rampa: +10 % sobre la mediana, con el techo sobre la BASE');
   const r = progressCardioMin(40, blk(4), O([]));
   eq(r.min, 40, 'historial vacío (nunca se hizo cardio en este hueco) → base');
   eq(r.source, 'base', '…y la fuente es base');
-  ok(/sin minutos registrados en este hueco/.test(r.note), `con su motivo: "${r.note}"`);
+  ok(/no minutes logged in this slot/.test(r.note), `con su motivo: "${r.note}"`);
 }
 {
   // El techo sigue siendo relativo a la BASE del slot: 40 × 1,35 = 54.
@@ -138,7 +138,7 @@ sec('3. Las puertas que siguen mandando sobre el historial');
 {
   const r = progressCardioMin(40, blk(3), O(H([['2026-W37', 40]]), { variant: 0 }));
   eq(r.min, 40, 'variante de viaje (0): repite base, con historial o sin él');
-  ok(/viaje/.test(r.note), `con su motivo: "${r.note}"`);
+  ok(/travel/.test(r.note), `con su motivo: "${r.note}"`);
 }
 {
   const r = progressCardioMin(40, blk(3), O(H([['2026-W37', 40]]), { coachMin: 45 }));

@@ -455,7 +455,7 @@ sec('cardio · dedupe, Z2 con tolerancia, deriva no disponible');
 eq(facts.cardio.runs.length, 4, 'de 5 filas quedan 4: la carrera de COROS duplicada (Strava + intervals.icu) se fue');
 ok(!facts.cardio.runs.some(r => r.source === 'strava'), 'la que sobrevive es la de intervals.icu (canónica)');
 eq(facts.cardio.z2Ceiling.bpm, 143, 'techo Z2 = 143 bpm');
-eq(facts.cardio.z2Ceiling.source, 'declarado', 'y se declara que es DECLARADO, no medido (no hay icuZones)');
+eq(facts.cardio.z2Ceiling.source, 'declared', 'y se declara que es DECLARADO, no medido (no hay icuZones)');
 eq(facts.cardio.z2Tolerance, 2, 'la tolerancia del semáforo es +2 bpm');
 const r141 = facts.cardio.runs.find(r => r.date === '2026-09-06');
 const r145 = facts.cardio.runs.find(r => r.date === '2026-09-02');
@@ -487,7 +487,7 @@ eq(al.ctl, 3.2, 'ctl del último día');
 eq(al.atl, 5.1, 'atl del último día');
 eq(al.form, -1.9, 'form = ctl − atl = 3,2 − 5,1 = −1,9 (F-2: NO es rampRate)');
 eq(al.rampRate, -0.21, 'rampRate viaja aparte, como lo que es: ΔCTL/semana');
-ok(/sólo cardio/.test(al.note), 'la nota dice "sólo cardio" (F-3)');
+ok(/cardio only/.test(al.note), 'la nota dice "cardio only" (F-3)');
 ok(/form = ctl − atl/.test(al.note), 'y deja escrita la definición de form');
 eq(facts.readiness.score.green7, 3, '3 días verdes en 7 (≥67)');
 eq(facts.readiness.score.yellow7, 3, '3 amarillos (34-66)');
@@ -543,7 +543,7 @@ ok(w.validWindow.reasons.length > 0, 'y dice por qué');
 
 eq(facts.progress.waist.last3[0].cm, 95, 'cintura: la última medida es la primera de la lista');
 eq(facts.progress.running.longRun4wKm, 6, 'largo de 4 semanas: 6,0 km');
-eq(facts.progress.running.tenKReadiness.verdict, 'lejos', '10k: "lejos" con un largo de 6 km');
+eq(facts.progress.running.tenKReadiness.verdict, 'far off', '10k: "far off" con un largo de 6 km');
 eq(facts.progress.running.tenKReadiness.driftBpm, null, 'y la deriva, que no se puede medir, va a null');
 
 // ════════════════════════════════════════════════════════════════════════════════════
@@ -553,11 +553,11 @@ eq(facts.nutrition.daysLogged28, 12, '12 días registrados en 28');
 eq(facts.nutrition.ea.closedDays, 11, 'la EA se calcula sobre 11 días: HOY no cuenta');
 eq(facts.nutrition.ea.mean28, 31, 'media de EA = 31 (con el 5 intradía de hoy saldría 28,6)');
 eq(facts.nutrition.ea.daysUnder30, 0, 'y 0 días por debajo de 30 (con hoy dentro habría 1 falso)');
-ok(/días CERRADOS/.test(facts.nutrition.ea.note), 'la nota lo dice explícitamente');
+ok(/CLOSED days/.test(facts.nutrition.ea.note), 'la nota lo dice explícitamente');
 eq(facts.nutrition.protein.floorG, 185, 'el suelo de proteína viene de goals.constraints');
 eq(facts.nutrition.pilot, 'tracker', '12/14 días registrados → pilota el tracker, no la báscula');
 eq(facts.nutrition.maintenance.modelMean7, 2900, 'mantenimiento MODELADO, y se dice que es modelo');
-ok(/no medido/.test(facts.nutrition.maintenance.source), '');
+ok(/not measured/.test(facts.nutrition.maintenance.source), 'y el `source` dice que es modelo, no medida');
 
 // ════════════════════════════════════════════════════════════════════════════════════
 sec('adherence · planificado exacto vs aproximado');
@@ -578,12 +578,12 @@ eq(adh['2026-W36'].avgDurationMin, 70, 'duración media de W36: (74 + 66)/2 = 70
 sec('dataGaps · lo que el modelo tiene que repetir');
 // ════════════════════════════════════════════════════════════════════════════════════
 const gaps = facts.dataGaps.join(' | ');
-ok(/NO inferir ingesta/.test(gaps), 'con 12/28 días de nutrición: "NO inferir ingesta"');
+ok(/do NOT infer intake/.test(gaps), 'con 12/28 días de nutrición: "do NOT infer intake"');
 ok(/icuZones/.test(gaps), 'sin zonas de FC: el techo de Z2 se declara');
-ok(/sesiones de fuerza registradas/.test(gaps), `<${F.FACTS_MIN_WORKOUTS} sesiones en la ventana: señal débil`);
-ok(/APROXIMADO/.test(gaps), 'lo planificado de alguna semana es aproximado');
-ok(/[Dd]eriva de FC/.test(gaps), 'la deriva de FC no está disponible y se dice');
-ok(/pesadas MEDIDAS|pesadas medidas/.test(gaps), 'faltan pesadas medidas para la pendiente');
+ok(/strength sessions logged/.test(gaps), `<${F.FACTS_MIN_WORKOUTS} sesiones en la ventana: señal débil`);
+ok(/APPROXIMATE/.test(gaps), 'lo planificado de alguna semana es aproximado');
+ok(/HR drift/.test(gaps), 'la deriva de FC no está disponible y se dice');
+ok(/MEASURED weigh-ins|measured weigh-ins/.test(gaps), 'faltan pesadas medidas para la pendiente');
 eq(new Set(facts.dataGaps).size, facts.dataGaps.length, 'ningún hueco se repite (repetirlo le baja peso a los demás)');
 ok(['low', 'medium', 'high', 'none'].indexOf(facts.confidence.overall) !== -1, `confidence.overall = ${facts.confidence.overall}`);
 ok(!!facts.confidence.bySection.weight, 'y hay confianza por sección');
@@ -702,7 +702,7 @@ const factsPocas = buildCoachFacts(mkInput({
 }), DEPS);
 eq(factsPocas.trajectory.weight.nMeasuredSinceStart, 3, 'con 4 filas (3 medidas) desde el inicio');
 eq(factsPocas.trajectory.weight.slopeSinceStartKgPerWeek, null, 'la pendiente del recorrido va a null (gate de 6 puntos)');
-ok(/pendiente del recorrido va a null/.test(factsPocas.trajectory.weight.note || ''), 'y la nota lo dice');
+ok(/trajectory slope goes to null/.test(factsPocas.trajectory.weight.note || ''), 'y la nota lo dice');
 
 // ---- weight.scale · lo que sabe la báscula (Withings Body Smart, v11.65) ----
 // El fallo que impide: que el modelo cite composición corporal cuando no hay báscula (inventada),
@@ -769,8 +769,8 @@ const aSumo = anchorsById['sumo-dl'];
 eq(aSumo.exposures, 0, 'sumo-dl no tiene ninguna exposición registrada');
 eq(aSumo.first, null, 'sin primera');
 eq(aSumo.latest, null, 'sin última');
-ok(facts.dataGaps.some(g => /sumo-dl/.test(g) && /0 exposiciones/.test(g)),
-  'y el hueco se declara en dataGaps ("ancla con 0 exposiciones")');
+ok(facts.dataGaps.some(g => /sumo-dl/.test(g) && /0 logged exposures/.test(g)),
+  'y el hueco se declara en dataGaps ("anchor with 0 logged exposures")');
 
 // ---- running · 12 semanas, el largo de siempre, Z2 por semana y las fases ----
 const trr = tr.running;
@@ -849,14 +849,14 @@ ok(factsDuras.readiness.firedSignals.indexOf('rpe2') !== -1, 'y `rpe2` aparece e
 
 // ---- dataGaps de la trayectoria ----
 const gapsTr = facts.dataGaps.join(' | ');
-ok(/[Uu]n solo bloque desde el ancla/.test(gapsTr), 'con sólo B1 desde el ancla, el hueco se declara');
-ok(!/[Tt]rayectoria corta/.test(gapsTr), 'con 11 semanas NO se declara trayectoria corta');
+ok(/[Oo]nly one block since the anchor/.test(gapsTr), 'con sólo B1 desde el ancla, el hueco se declara');
+ok(!/[Ss]hort trajectory/.test(gapsTr), 'con 11 semanas NO se declara trayectoria corta');
 const factsCorto = buildCoachFacts(mkInput({
   stores: Object.assign({}, mkInput().stores, { workouts: WORKOUTS.slice(2) }),
 }), DEPS);
 eq(factsCorto.trajectory.program.weeksSince, 3, 'sin las dos sesiones viejas el programa tiene 3 semanas');
-ok(factsCorto.dataGaps.some(g => /[Tt]rayectoria corta/.test(g) && /orientativas/.test(g)),
-  'y entonces sí: "trayectoria corta (<8 semanas): pendientes orientativas"');
+ok(factsCorto.dataGaps.some(g => /[Ss]hort trajectory/.test(g) && /indicative/.test(g)),
+  'y entonces sí: "short trajectory (<8 weeks): slopes are indicative"');
 
 // ---- tamaño de la sección ----
 const trChars = stableStringify(tr).length;

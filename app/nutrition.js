@@ -955,7 +955,7 @@ async function seedFoods() {
 // lea bien siendo densísimo: TODO UMBRAL SE IMPRIME JUNTO A SU COLOR. Nunca un semáforo
 // cuyo criterio haya que adivinar.
 
-const NUT_MEAL_LABELS = { desayuno: 'Desayuno', comida: 'Comida', cena: 'Cena', snack: 'Snack' };
+const NUT_MEAL_LABELS = { desayuno: 'Breakfast', comida: 'Lunch', cena: 'Dinner', snack: 'Snack' };
 
 // Qué decidió el modelo sobre la foto, y qué implica para lo que tienes que corregir.
 // Un plato compuesto de 500 g y un ingrediente de 500 g se leen igual en pantalla pero se
@@ -963,18 +963,18 @@ const NUT_MEAL_LABELS = { desayuno: 'Desayuno', comida: 'Comida', cena: 'Cena', 
 // de ese alimento concreto.
 const NUT_KIND_INFO = {
   etiqueta: {
-    label: 'Macros publicados', cls: 'nut-kind-ok',
-    hint: 'leídos de la etiqueta o la carta, no estimados. Ajusta solo cuánto te comes.',
+    label: 'Published macros', cls: 'nut-kind-ok',
+    hint: 'read off the label or the menu, not estimated. Only adjust how much you ate.',
   },
   plato: {
-    label: 'Plato compuesto', cls: 'nut-kind-warn',
-    hint: 'va como un solo alimento porque sus partes no se pueden pesar por separado. ' +
-          'Ajusta el peso TOTAL del plato; si corriges los macros una vez, queda en tu ' +
-          'biblioteca y la próxima vez es exacto.',
+    label: 'Composite dish', cls: 'nut-kind-warn',
+    hint: 'it goes in as a single food because its parts cannot be weighed separately. ' +
+          'Adjust the TOTAL weight of the dish; if you fix the macros once, it stays in your ' +
+          'library and next time it is exact.',
   },
   componentes: {
-    label: 'Componentes', cls: 'nut-kind-ok',
-    hint: 'alimentos separables. Los macros salen de tu biblioteca; ajusta los gramos.',
+    label: 'Components', cls: 'nut-kind-ok',
+    hint: 'separable foods. The macros come from your library; adjust the grams.',
   },
 };
 
@@ -983,7 +983,7 @@ function nutSupa() {
 }
 
 function nutFmt(n) {
-  return (Number(n) || 0).toLocaleString('es-ES');
+  return (Number(n) || 0).toLocaleString('en-US');
 }
 
 // Clase de color según la desviación respecto al objetivo de kcal, con los mismos cortes
@@ -999,7 +999,7 @@ function nutKcalClass(kcal, target) {
 async function renderNutricionV2() {
   const date = today();
   const label = document.getElementById('nutrition-date-label');
-  if (label) label.textContent = 'Hoy — ' + formatDate(date);
+  if (label) label.textContent = 'Today — ' + formatDate(date);
 
   // PINTAR NO ESCRIBE (E-11). Los objetivos dependen de si hoy hay sesión y el EEE de lo que
   // se haya registrado desde la última visita, así que el número se CALCULA al entrar — pero en
@@ -1045,35 +1045,35 @@ function renderNutContract(day, adh) {
   const deficit = day.kcalTarget - (day.maintenance || day.kcalTarget);
   const pilotoTracker = adh.pilot === 'tracker';
   const badge = pilotoTracker
-    ? `<span class="nut-pill nut-pill-ok">piloto: registro</span>`
-    : `<span class="nut-pill nut-pill-warn">piloto: peso · ${adh.perWeek}/7 días</span>`;
+    ? `<span class="nut-pill nut-pill-ok">pilot: log</span>`
+    : `<span class="nut-pill nut-pill-warn">pilot: weight · ${adh.perWeek}/7 days</span>`;
 
   el.innerHTML = `
     <div class="nut-contract-top">
-      <span class="nut-contract-day">hoy · ${day.trainingDay ? 'entreno' : 'descanso'}</span>
+      <span class="nut-contract-day">today · ${day.trainingDay ? 'training' : 'rest'}</span>
       ${badge}
     </div>
     <div class="nut-contract-grid">
       <div class="nut-contract-cell">
         <span class="ncc-val">${nutFmt(day.kcalTarget)}</span>
-        <span class="ncc-lbl">kcal objetivo</span>
+        <span class="ncc-lbl">kcal target</span>
       </div>
       <div class="nut-contract-cell">
         <span class="ncc-val">${day.proteinFloor}</span>
-        <span class="ncc-lbl">g proteína suelo</span>
+        <span class="ncc-lbl">g protein floor</span>
       </div>
       <div class="nut-contract-cell">
         <span class="ncc-val">${NUT_EA_FLOOR}</span>
-        <span class="ncc-lbl">EA mínima</span>
+        <span class="ncc-lbl">min EA</span>
       </div>
       <div class="nut-contract-cell">
         <span class="ncc-val">${day.eee ? '−' + nutFmt(day.eee) : '—'}</span>
-        <span class="ncc-lbl">kcal de sesión</span>
+        <span class="ncc-lbl">session kcal</span>
       </div>
     </div>
     ${pilotoTracker ? '' : `<div class="nut-contract-note">
-      Con menos de 5 de 7 días registrados las calorías las decide la pendiente del peso
-      (regla de nutrition-notes.md), no este registro.
+      With fewer than 5 of 7 days logged, calories are decided by the weight trend
+      (nutrition-notes.md rule), not by this log.
     </div>`}
   `;
 }
@@ -1112,14 +1112,14 @@ function renderNutToday(day) {
       <span class="nut-hero-sep">/ ${nutFmt(day.kcalTarget)} kcal</span>
     </div>
     <div class="nut-hero-sub">
-      ${kcal === 0 ? 'Sin registrar todavía'
-        : restan > 0 ? `quedan ${nutFmt(restan)} kcal` : `${nutFmt(-restan)} kcal por encima`}
-      <span class="nut-legend">verde ±${NUT_BANDS.kcal.verde} · ámbar ±${NUT_BANDS.kcal.ambar}</span>
+      ${kcal === 0 ? 'Nothing logged yet'
+        : restan > 0 ? `${nutFmt(restan)} kcal left` : `${nutFmt(-restan)} kcal over`}
+      <span class="nut-legend">green ±${NUT_BANDS.kcal.verde} · amber ±${NUT_BANDS.kcal.ambar}</span>
     </div>
 
     <div class="nut-metric">
       <div class="nut-metric-head">
-        <span class="nut-metric-name">Proteína</span>
+        <span class="nut-metric-name">Protein</span>
         <span class="nut-metric-val ${protClass}">${Math.round(day.protein || 0)} / ${day.proteinFloor} g</span>
       </div>
       <div class="nut-bar"><div class="nut-bar-fill ${protClass}" style="width:${Math.round(protPct * 100)}%"></div></div>
@@ -1127,29 +1127,29 @@ function renderNutToday(day) {
 
     <div class="nut-metric">
       <div class="nut-metric-head">
-        <span class="nut-metric-name">Disponibilidad energética</span>
+        <span class="nut-metric-name">Energy availability</span>
         <span class="nut-metric-val ${eaCls}">${ea == null ? '—' : ea.toFixed(1)} kcal/kg FFM</span>
       </div>
       <div class="nut-metric-note">
         ${eaClosed
-          ? `suelo ${NUT_EA_FLOOR} (REC-008) · FFM ${day.ffm || NUT_FFM_KG_FALLBACK} kg`
+          ? `floor ${NUT_EA_FLOOR} (REC-008) · FFM ${day.ffm || NUT_FFM_KG_FALLBACK} kg`
           : `in progress — a daily figure (REC-008); judged when the day closes · FFM ${day.ffm || NUT_FFM_KG_FALLBACK} kg`}
-        ${eaFaltan > 0 ? ` · <strong>faltan ${nutFmt(eaFaltan)} kcal</strong>` : ''}
+        ${eaFaltan > 0 ? ` · <strong>${nutFmt(eaFaltan)} kcal short</strong>` : ''}
       </div>
     </div>
 
     <div class="nut-metric">
       <div class="nut-metric-head">
-        <span class="nut-metric-name">Sin procesar (NOVA 1-2)</span>
+        <span class="nut-metric-name">Unprocessed (NOVA 1-2)</span>
         <span class="nut-metric-val ${novaCls}">${nova == null ? '—' : nova + '%'}</span>
       </div>
-      <div class="nut-metric-note">de las kcal del día · verde ≥${NUT_BANDS.nova.verde}% · ámbar ≥${NUT_BANDS.nova.ambar}%</div>
+      <div class="nut-metric-note">of the day's kcal · green ≥${NUT_BANDS.nova.verde}% · amber ≥${NUT_BANDS.nova.ambar}%</div>
     </div>
 
     <div class="nut-macros">
-      <span>carbos <strong>${Math.round(day.carbs || 0)} g</strong></span>
-      <span>grasa <strong>${Math.round(day.fat || 0)} g</strong></span>
-      <span>fibra <strong>${Math.round(day.fiber || 0)} g</strong> / ${NUT_FIBER_TARGET}</span>
+      <span>carbs <strong>${Math.round(day.carbs || 0)} g</strong></span>
+      <span>fat <strong>${Math.round(day.fat || 0)} g</strong></span>
+      <span>fiber <strong>${Math.round(day.fiber || 0)} g</strong> / ${NUT_FIBER_TARGET}</span>
       ${day.alcoholG ? `<span>alcohol <strong>${Math.round(day.alcoholG)} g</strong></span>` : ''}
     </div>
   `;
@@ -1162,8 +1162,8 @@ async function renderNutMeals(date) {
   const meals = await nutMealsForDate(date);
 
   if (!meals.length) {
-    showEmptyState(container, '📷', 'Sin comidas hoy',
-      'Haz una foto del plato y corrige los gramos si hace falta.');
+    showEmptyState(container, '📷', 'No meals today',
+      'Take a photo of the plate and fix the grams if needed.');
     return;
   }
 
@@ -1177,7 +1177,7 @@ async function renderNutMeals(date) {
     return `
       <div class="history-item nut-meal-row">
         <div class="hi-left">
-          <div class="hi-title">${NUT_MEAL_LABELS[m.type] || 'Comida'} · ${m.time || ''}</div>
+          <div class="hi-title">${NUT_MEAL_LABELS[m.type] || 'Meal'} · ${m.time || ''}</div>
           <div class="nut-item-chips">${items}</div>
         </div>
         <div class="hi-right" style="display:flex;align-items:center;gap:6px">
@@ -1196,8 +1196,8 @@ async function renderNutMeals(date) {
       const removed = meals.find(m => m.id === id);
       await deleteMeal(id, date);
       renderNutricionV2();
-      toast('Comida borrada', {
-        label: 'Deshacer',
+      toast('Meal deleted', {
+        label: 'Undo',
         callback: async () => { if (removed) { await saveMeal(removed); renderNutricionV2(); } },
       });
     });
@@ -1257,10 +1257,10 @@ async function nutAddFiles(fileList) {
   if (!files.length) return;
 
   const hueco = NUT_MAX_FOTOS - _nutStaged.length;
-  if (hueco <= 0) { toast(`Máximo ${NUT_MAX_FOTOS} fotos`); return; }
-  if (files.length > hueco) toast(`Sólo caben ${hueco} más`);
+  if (hueco <= 0) { toast(`Maximum ${NUT_MAX_FOTOS} photos`); return; }
+  if (files.length > hueco) toast(`Only ${hueco} more fit`);
 
-  nutStatus('Preparando la foto…', 'info');
+  nutStatus('Preparing the photo…', 'info');
   for (const file of files.slice(0, hueco)) {
     const blob = await nutResizeImage(file);
     _nutStaged.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, blob, url: URL.createObjectURL(blob) });
@@ -1291,15 +1291,15 @@ function renderNutStaged() {
   const cont = document.getElementById('nut-composer-thumbs');
   if (!cont) return;
   if (!_nutStaged.length) {
-    cont.innerHTML = `<div class="nut-thumbs-empty">Sin fotos — se registrará sólo con lo que escribas.</div>`;
+    cont.innerHTML = `<div class="nut-thumbs-empty">No photos — it will log from what you write only.</div>`;
   } else {
     cont.innerHTML = _nutStaged.map((s, i) => `
       <div class="nut-thumb">
-        <img src="${s.url}" alt="Foto ${i + 1}">
-        <button class="nut-thumb-del" data-del-foto="${s.id}" aria-label="Quitar">&times;</button>
+        <img src="${s.url}" alt="Photo ${i + 1}">
+        <button class="nut-thumb-del" data-del-foto="${s.id}" aria-label="Remove">&times;</button>
       </div>`).join('') +
       (_nutStaged.length < NUT_MAX_FOTOS
-        ? `<button class="nut-thumb-add" id="nut-thumb-add" aria-label="Añadir otra">+</button>` : '');
+        ? `<button class="nut-thumb-add" id="nut-thumb-add" aria-label="Add another">+</button>` : '');
 
     cont.querySelectorAll('[data-del-foto]').forEach(b => {
       b.addEventListener('click', () => {
@@ -1318,7 +1318,7 @@ function renderNutStaged() {
   const btn = document.getElementById('btn-nut-analyze');
   if (btn) {
     const n = _nutStaged.length;
-    btn.textContent = n === 0 ? 'Analizar la nota' : n === 1 ? 'Analizar la foto' : `Analizar ${n} fotos`;
+    btn.textContent = n === 0 ? 'Analyze the note' : n === 1 ? 'Analyze the photo' : `Analyze ${n} photos`;
   }
 }
 
@@ -1328,7 +1328,7 @@ async function nutAnalyze() {
   const notaEl = document.getElementById('nut-composer-note');
   const note = (notaEl && notaEl.value.trim()) || '';
 
-  if (!_nutStaged.length && !note) { toast('Añade una foto o escribe qué comiste'); return; }
+  if (!_nutStaged.length && !note) { toast('Add a photo or write what you ate'); return; }
 
   const supa = nutSupa();
   const user = (typeof window !== 'undefined' && window.getSupaUser) ? await window.getSupaUser() : null;
@@ -1337,7 +1337,7 @@ async function nutAnalyze() {
   // a mano desde la biblioteca: así el registro sigue funcionando sin cobertura, que es la
   // mitad del valor de que esto sea una PWA.
   if (!supa || !user || !navigator.onLine) {
-    nutStatus('Sin conexión o sin sesión: añade los alimentos a mano desde tu biblioteca.', 'warn');
+    nutStatus('Offline or not signed in: add the foods by hand from your library.', 'warn');
     nutCloseComposer();
     openNutConfirm({ items: [], mealType: nutGuessMealType(), notes: '' });
     return;
@@ -1349,33 +1349,33 @@ async function nutAnalyze() {
   try {
     const photoPaths = [];
     for (let i = 0; i < _nutStaged.length; i++) {
-      nutStatus(`Subiendo ${i + 1} de ${_nutStaged.length}…`, 'info');
+      nutStatus(`Uploading ${i + 1} of ${_nutStaged.length}…`, 'info');
       const path = `${user.id}/${today()}_${Date.now()}_${i}.jpg`;
       const { error } = await supa.storage.from('meal-photos')
         .upload(path, _nutStaged[i].blob, { contentType: 'image/jpeg', upsert: false });
-      if (error) throw new Error('No se pudo subir la foto: ' + error.message);
+      if (error) throw new Error('Could not upload the photo: ' + error.message);
       photoPaths.push(path);
     }
 
-    nutStatus(photoPaths.length ? 'Analizando…' : 'Interpretando la nota…', 'info');
+    nutStatus(photoPaths.length ? 'Analyzing…' : 'Reading the note…', 'info');
     const { data, error } = await supa.functions.invoke('parse-meal-photo', {
       body: { photoPaths, note },
     });
-    if (error) throw new Error(error.message || 'La función de análisis falló');
+    if (error) throw new Error(error.message || 'The analysis function failed');
     if (data && data.error) throw new Error(data.error);
-    if (!data || !data.ok) throw new Error('Respuesta inesperada del análisis');
+    if (!data || !data.ok) throw new Error('Unexpected response from the analysis');
 
     nutStatus(null);
     nutCloseComposer();
     if (!data.items || !data.items.length) {
-      toast('No se reconoció comida');
+      toast('No food recognized');
       openNutConfirm({ ...data, items: [] });
       return;
     }
     openNutConfirm(data);
   } catch (e) {
     console.error('[Nutrición] analizar:', e);
-    nutStatus(`${e.message}. Puedes añadirlo a mano.`, 'error');
+    nutStatus(`${e.message}. You can add it by hand.`, 'error');
     nutCloseComposer();
     openNutConfirm({ items: [], mealType: nutGuessMealType(), notes: '' });
   } finally {
@@ -1448,7 +1448,7 @@ function renderNutConfirmItems() {
   const items = _nutPending.items;
 
   if (!items.length) {
-    cont.innerHTML = '<div class="nut-empty-items">Añade los alimentos con el botón de abajo.</div>';
+    cont.innerHTML = '<div class="nut-empty-items">Add the foods with the button below.</div>';
   } else {
     cont.innerHTML = items.map((it, i) => {
       const dudoso = it.confidence != null && it.confidence < 0.5;
@@ -1458,8 +1458,8 @@ function renderNutConfirmItems() {
           <div class="nut-item-main">
             <div class="nut-item-name">
               ${escapeHtml(it.name)}
-              ${nuevo ? '<span class="nut-tag nut-tag-nuevo">nuevo</span>' : ''}
-              ${dudoso ? '<span class="nut-tag nut-tag-dudoso">poco fiable</span>' : ''}
+              ${nuevo ? '<span class="nut-tag nut-tag-nuevo">new</span>' : ''}
+              ${dudoso ? '<span class="nut-tag nut-tag-dudoso">low confidence</span>' : ''}
             </div>
             <div class="nut-item-macros" data-macros="${i}">
               ${nutFmt(it.kcal)} kcal · ${Math.round(it.protein)} g P
@@ -1528,15 +1528,15 @@ function renderNutConfirmTotals() {
   const agg = aggregateMeals([{ items: _nutPending.items }]);
   el.innerHTML = `
     <span><strong>${nutFmt(agg.calories)}</strong> kcal</span>
-    <span><strong>${Math.round(agg.protein)}</strong> g proteína</span>
-    <span>${_nutPending.items.length} ${_nutPending.items.length === 1 ? 'alimento' : 'alimentos'}</span>
+    <span><strong>${Math.round(agg.protein)}</strong> g protein</span>
+    <span>${_nutPending.items.length} ${_nutPending.items.length === 1 ? 'food' : 'foods'}</span>
   `;
 }
 
 // Añadir a mano desde la biblioteca: también es la vía cuando no hay red.
 async function nutAddItemManual() {
   const foods = (await dbGetAll('foods').catch(() => [])) || [];
-  if (!foods.length) { toast('La biblioteca está vacía'); return; }
+  if (!foods.length) { toast('Your library is empty'); return; }
 
   // Los mejores por score primero: es la lista que uno quiere ver en un selector corto.
   const ordenados = foods
@@ -1544,7 +1544,7 @@ async function nutAddItemManual() {
     .sort((a, b) => b.score - a.score)
     .slice(0, 40);
 
-  const elegido = await showActionSheet('Añadir alimento', ordenados.map(o => ({
+  const elegido = await showActionSheet('Add food', ordenados.map(o => ({
     label: `${o.f.name} · ${o.f.kcal100} kcal/100 g · ${o.score}`,
     value: o.f.id,
   })));
@@ -1565,7 +1565,7 @@ async function nutAddItemManual() {
 
 async function nutSaveConfirmed() {
   if (!_nutPending) return;
-  if (!_nutPending.items.length) { toast('Añade al menos un alimento'); return; }
+  if (!_nutPending.items.length) { toast('Add at least one food'); return; }
 
   const sel = document.getElementById('nut-confirm-type');
   const type = (sel && sel.value) || _nutPending.type;
@@ -1607,7 +1607,7 @@ async function nutSaveConfirmed() {
   const agg = aggregateMeals([{ items: _nutPending.items }]);
   closeNutConfirm();
   nutStatus(null);
-  toast(`${NUT_MEAL_LABELS[type]} guardada · ${nutFmt(agg.calories)} kcal · ${Math.round(agg.protein)} g P`);
+  toast(`${NUT_MEAL_LABELS[type]} saved · ${nutFmt(agg.calories)} kcal · ${Math.round(agg.protein)} g P`);
   renderNutricionV2();
 }
 
@@ -1618,7 +1618,7 @@ async function nutSaveEnergy() {
   const row = (await dbGet('nutrition', date).catch(() => null)) || { date };
   row.energy = typeof getStarValue === 'function' ? getStarValue('nut-energy') : 3;
   await smartPut('nutrition', row);
-  toast('Energía guardada');
+  toast('Energy saved');
 }
 
 // ==================== SUB-VISTAS ====================
@@ -1657,7 +1657,7 @@ function renderNutBars(serie, opts) {
   const vals = serie.map(p => p.v);
   const conDato = vals.filter(v => v != null && v > 0);
   if (conDato.length < 2) {
-    return `<div class="nut-bars-empty">Aún no hay suficientes días con datos</div>`;
+    return `<div class="nut-bars-empty">Not enough days with data yet</div>`;
   }
 
   const refs = (o.refs || []).filter(r => r.value != null);
@@ -1667,7 +1667,7 @@ function renderNutBars(serie, opts) {
   const barras = serie.map(p => {
     if (p.v == null || p.v <= 0) {
       // Un día sin dato NO es un cero: se marca como hueco. Pintarlo a cero mentiría.
-      return `<div class="nut-tbar nut-tbar-hueco" title="${p.label}: sin registrar"></div>`;
+      return `<div class="nut-tbar nut-tbar-hueco" title="${p.label}: not logged"></div>`;
     }
     const cls = o.colorFor ? o.colorFor(p.v, p) : 'nut-neutral';
     return `<div class="nut-tbar ${cls}" style="height:${pct(p.v)}%"
@@ -1720,16 +1720,16 @@ function renderNutStreak(days, date) {
       <div class="nut-streak-main">
         <span class="nut-streak-ico">🔥</span>
         <div>
-          <div class="nut-streak-val">${r.current} ${r.current === 1 ? 'día' : 'días'} en déficit</div>
+          <div class="nut-streak-val">${r.current} ${r.current === 1 ? 'day' : 'days'} in a deficit</div>
           <div class="nut-streak-sub">
-            mejor racha ${r.best}
-            ${ultima ? ` · esta semana ${ultima.avgDeficit > 0 ? '+' : ''}${nutFmt(ultima.avgDeficit)} kcal/día` : ''}
+            best streak ${r.best}
+            ${ultima ? ` · this week ${ultima.avgDeficit > 0 ? '+' : ''}${nutFmt(ultima.avgDeficit)} kcal/day` : ''}
           </div>
         </div>
       </div>
       <div class="nut-streak-note">
-        Un día sin registrar corta la racha: si no lo mediste, no cuenta.
-        Registro ${adh.perWeek}/7 · pilota ${adh.pilot === 'tracker' ? 'el registro' : 'el peso'}.
+        A day without a log breaks the streak: if you did not measure it, it does not count.
+        Logged ${adh.perWeek}/7 · piloted by ${adh.pilot === 'tracker' ? 'the log' : 'the weight'}.
       </div>
     </div>`;
 }
@@ -1745,11 +1745,11 @@ function renderNutTrends(days, date) {
 
   const bloques = [
     {
-      titulo: 'Calorías',
+      titulo: 'Calories',
       serie: nutSerie(days, 'calories', date),
       unit: ' kcal',
-      refs: [{ value: objetivoKcal, label: `objetivo ${nutFmt(objetivoKcal)}` }],
-      legend: `verde ±${NUT_BANDS.kcal.verde} · ámbar ±${NUT_BANDS.kcal.ambar}`,
+      refs: [{ value: objetivoKcal, label: `target ${nutFmt(objetivoKcal)}` }],
+      legend: `green ±${NUT_BANDS.kcal.verde} · amber ±${NUT_BANDS.kcal.ambar}`,
       colorFor: (v, p) => {
         const byDate = new Map(days.map(d => [d.date, d]));
         const t = (byDate.get(p.date) || {}).kcalTarget || objetivoKcal;
@@ -1757,37 +1757,37 @@ function renderNutTrends(days, date) {
       },
     },
     {
-      titulo: 'Proteína',
+      titulo: 'Protein',
       serie: nutSerie(days, 'protein', date),
       unit: ' g',
-      refs: [{ value: sueloProt, label: `suelo ${sueloProt} g` }],
-      legend: `verde ≥ suelo · ámbar ≥ ${Math.round(NUT_BANDS.proteina.ambar * 100)}%`,
+      refs: [{ value: sueloProt, label: `floor ${sueloProt} g` }],
+      legend: `green ≥ floor · amber ≥ ${Math.round(NUT_BANDS.proteina.ambar * 100)}%`,
       colorFor: (v) => v >= sueloProt ? 'nut-verde'
         : v >= sueloProt * NUT_BANDS.proteina.ambar ? 'nut-ambar' : 'nut-rojo',
     },
     {
-      titulo: 'Disponibilidad energética',
+      titulo: 'Energy availability',
       serie: nutSerie(days, 'ea', date),
       unit: ' kcal/kg',
-      refs: [{ value: NUT_EA_FLOOR, label: `suelo ${NUT_EA_FLOOR}` }],
-      legend: `REC-008 · verde ≥${NUT_BANDS.ea.verde} · ámbar ≥${NUT_BANDS.ea.ambar}`,
+      refs: [{ value: NUT_EA_FLOOR, label: `floor ${NUT_EA_FLOOR}` }],
+      legend: `REC-008 · green ≥${NUT_BANDS.ea.verde} · amber ≥${NUT_BANDS.ea.ambar}`,
       colorFor: (v) => ({ ok: 'nut-verde', bajo: 'nut-ambar', critico: 'nut-rojo' }[eaStatus(v)] || 'nut-neutral'),
     },
     {
-      titulo: 'Sin procesar (NOVA 1-2)',
+      titulo: 'Unprocessed (NOVA 1-2)',
       serie: nutSerie(days, 'nova12Pct', date),
       unit: '%',
       refs: [{ value: NUT_BANDS.nova.verde, label: `${NUT_BANDS.nova.verde}%` }],
-      legend: `% de las kcal · verde ≥${NUT_BANDS.nova.verde}% · ámbar ≥${NUT_BANDS.nova.ambar}%`,
+      legend: `% of kcal · green ≥${NUT_BANDS.nova.verde}% · amber ≥${NUT_BANDS.nova.ambar}%`,
       colorFor: (v) => v >= NUT_BANDS.nova.verde ? 'nut-verde'
         : v >= NUT_BANDS.nova.ambar ? 'nut-ambar' : 'nut-rojo',
     },
     {
-      titulo: 'Fibra',
+      titulo: 'Fiber',
       serie: nutSerie(days, 'fiber', date),
       unit: ' g',
       refs: [{ value: NUT_FIBER_TARGET, label: `${NUT_FIBER_TARGET} g` }],
-      legend: `objetivo ${NUT_FIBER_TARGET} g/día`,
+      legend: `target ${NUT_FIBER_TARGET} g/day`,
       colorFor: (v) => v >= NUT_FIBER_TARGET ? 'nut-verde'
         : v >= NUT_FIBER_TARGET * 0.7 ? 'nut-ambar' : 'nut-rojo',
     },
@@ -1809,7 +1809,7 @@ function renderNutWeekly(days) {
   if (!el) return;
   const semanas = weeklyDeficits(days).slice(-8).reverse();
   if (!semanas.length) {
-    showEmptyState(el, '📉', 'Sin semanas completas', 'Aparecerá cuando haya días registrados.');
+    showEmptyState(el, '📉', 'No complete weeks', 'It will appear once there are logged days.');
     return;
   }
   el.innerHTML = `<div class="recent-list">${semanas.map(w => {
@@ -1817,12 +1817,12 @@ function renderNutWeekly(days) {
     return `
       <div class="history-item">
         <div class="hi-left">
-          <div class="hi-title">Semana del ${formatDate(w.weekStart)}</div>
-          <div class="hi-sub">${nutFmt(w.avgKcal)} kcal/día · objetivo ${nutFmt(w.avgTarget)} · ${w.days} ${w.days === 1 ? 'día' : 'días'}</div>
+          <div class="hi-title">Week of ${formatDate(w.weekStart)}</div>
+          <div class="hi-sub">${nutFmt(w.avgKcal)} kcal/day · target ${nutFmt(w.avgTarget)} · ${w.days} ${w.days === 1 ? 'day' : 'days'}</div>
         </div>
         <div class="hi-right">
           <div class="hi-stat ${bueno ? 'nut-verde' : 'nut-rojo'}">${w.avgDeficit > 0 ? '+' : ''}${nutFmt(w.avgDeficit)}</div>
-          <div class="hi-stat-sub">kcal/día</div>
+          <div class="hi-stat-sub">kcal/day</div>
         </div>
       </div>`;
   }).join('')}</div>`;
@@ -1843,13 +1843,13 @@ async function renderNutCalibration(days, date) {
 
   if (!cal.ok) {
     const motivo = cal.reason === 'pocos-datos'
-      ? `Hacen falta 10 días registrados en los últimos 14; hay ${cal.have}.`
-      : 'Hacen falta pesadas al principio y al final de la ventana de 14 días.';
+      ? `10 logged days out of the last 14 are needed; there are ${cal.have}.`
+      : 'Weigh-ins are needed at the start and the end of the 14-day window.';
     el.innerHTML = `<div class="card nut-calib-card">
       <div class="nut-calib-none">${motivo}</div>
       <div class="nut-calib-note">
-        Sin señal no se emite veredicto. Un número aquí sin datos suficientes sería
-        aritmética sobre ruido.
+        With no signal there is no verdict. A number here without enough data would be
+        arithmetic on noise.
       </div>
     </div>` + coste;
     return;
@@ -1859,15 +1859,15 @@ async function renderNutCalibration(days, date) {
   const veredictos = {
     calibrado: {
       cls: 'nut-verde',
-      txt: 'El mantenimiento modelado cuadra con la báscula. Sin corrección.',
+      txt: 'Modelled maintenance matches the scale. No correction.',
     },
     sobreestima: {
       cls: 'nut-ambar',
-      txt: `Perdiste menos de lo predicho: tu mantenimiento real es <strong>~${nutFmt(Math.abs(correccion || 0))} kcal/día más bajo</strong> de lo que estima el modelo.`,
+      txt: `You lost less than predicted: your real maintenance is <strong>~${nutFmt(Math.abs(correccion || 0))} kcal/day lower</strong> than the model estimates.`,
     },
     subestima: {
       cls: 'nut-teal',
-      txt: `Perdiste más de lo predicho: tu mantenimiento real es <strong>~${nutFmt(Math.abs(correccion || 0))} kcal/día más alto</strong> de lo que estima el modelo.`,
+      txt: `You lost more than predicted: your real maintenance is <strong>~${nutFmt(Math.abs(correccion || 0))} kcal/day higher</strong> than the model estimates.`,
     },
   };
   const v = veredictos[cal.veredicto];
@@ -1876,20 +1876,20 @@ async function renderNutCalibration(days, date) {
     <div class="card nut-calib-card">
       <div class="nut-calib-verdict ${v.cls}">${v.txt}</div>
       <div class="nut-calib-grid">
-        <div><span class="ncg-val">${cal.predichoKg > 0 ? '+' : ''}${cal.predichoKg} kg</span><span class="ncg-lbl">predicho por el balance</span></div>
-        <div><span class="ncg-val">${cal.realKg > 0 ? '+' : ''}${cal.realKg} kg</span><span class="ncg-lbl">real (media 3 d)</span></div>
-        <div><span class="ncg-val">${cal.days}</span><span class="ncg-lbl">días con dato</span></div>
+        <div><span class="ncg-val">${cal.predichoKg > 0 ? '+' : ''}${cal.predichoKg} kg</span><span class="ncg-lbl">predicted by the balance</span></div>
+        <div><span class="ncg-val">${cal.realKg > 0 ? '+' : ''}${cal.realKg} kg</span><span class="ncg-lbl">actual (3-day avg)</span></div>
+        <div><span class="ncg-val">${cal.days}</span><span class="ncg-lbl">days with data</span></div>
       </div>
       <div class="nut-calib-note">
-        Ventana ${formatDate(cal.start)} – ${formatDate(cal.end)}. Los dos extremos usan medias
-        móviles de 3 días: con pesadas puntuales, 400 g de agua contaminan el veredicto.
-        Por debajo de ${NUT_CALIB_MIN_SIGNAL} kcal/día no se emite corrección — es el suelo de
-        ruido de la ventana.
+        Window ${formatDate(cal.start)} – ${formatDate(cal.end)}. Both ends use 3-day rolling
+        averages: with single weigh-ins, 400 g of water contaminates the verdict.
+        Below ${NUT_CALIB_MIN_SIGNAL} kcal/day no correction is issued — that is the noise
+        floor of the window.
         <br><br>
-        El gasto que se compara es <strong>modelado, no medido</strong>: no hay dato de gasto
-        energético en el pipeline (122 filas de wellness, cero campos de energía). Se compone de
-        BMR Katch-McArdle sobre la FFM medida, NEAT de los pasos, gasto de sesión y efecto
-        térmico. Es una tendencia, no una medición.
+        The expenditure being compared is <strong>modelled, not measured</strong>: there is no
+        energy-expenditure field in the pipeline (122 wellness rows, zero energy fields). It is
+        built from Katch-McArdle BMR over measured FFM, NEAT from steps, session expenditure and
+        the thermic effect. It is a trend, not a measurement.
       </div>
     </div>` + coste;
 }
@@ -1901,23 +1901,23 @@ async function renderNutCostLine(date) {
   const meals = (await dbGetAll('meals').catch(() => [])) || [];
   const c = photoCostSummary(meals, date);
   if (!c.fotos) return '';
-  const eur = (usd) => usd.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const eur = (usd) => usd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   // Proyección a mes completo desde el ritmo del mes en curso.
   const dia = Number(String(date).slice(8, 10)) || 1;
   const proyeccion = (c.totalUsd / dia) * 30;
   return `
     <div class="card nut-cost-card">
-      <div class="nut-trend-title">Coste del parseo</div>
+      <div class="nut-trend-title">Parsing cost</div>
       <div class="nut-cost-grid">
-        <div><span class="ncg-val">$${eur(c.totalUsd)}</span><span class="ncg-lbl">este mes (${c.fotos} ${c.fotos === 1 ? 'foto' : 'fotos'})</span></div>
-        <div><span class="ncg-val">$${c.mediaUsd.toFixed(3)}</span><span class="ncg-lbl">por foto</span></div>
-        <div><span class="ncg-val">$${eur(proyeccion)}</span><span class="ncg-lbl">proyección a 30 d</span></div>
+        <div><span class="ncg-val">$${eur(c.totalUsd)}</span><span class="ncg-lbl">this month (${c.fotos} ${c.fotos === 1 ? 'photo' : 'photos'})</span></div>
+        <div><span class="ncg-val">$${c.mediaUsd.toFixed(3)}</span><span class="ncg-lbl">per photo</span></div>
+        <div><span class="ncg-val">$${eur(proyeccion)}</span><span class="ncg-lbl">30-day projection</span></div>
       </div>
       <div class="nut-calib-note">
-        Tokens reales devueltos por la función, a los precios de <code>${NUT_AI_MODEL}</code>
-        ($5 / $25 por millón). Si la proyección se te va, bajar a Haiku 4.5 es cambiar una
-        constante en la edge function: ~5× más barato, y la parte difícil ya no la hace el
-        modelo — los macros salen de la biblioteca.
+        Real tokens returned by the function, at <code>${NUT_AI_MODEL}</code> prices
+        ($5 / $25 per million). If the projection runs away, dropping to Haiku 4.5 is one
+        constant in the edge function: ~5× cheaper, and the hard part is no longer done by the
+        model — the macros come from the library.
       </div>
     </div>`;
 }
@@ -1939,7 +1939,7 @@ async function renderNutFoods() {
     dbGetAll('meals').catch(() => []),
   ]);
   if (!foods || !foods.length) {
-    showEmptyState(el, '🥩', 'Biblioteca vacía', 'Se siembra al iniciar sesión.');
+    showEmptyState(el, '🥩', 'Empty library', 'It is seeded when you sign in.');
     return;
   }
 
@@ -1986,7 +1986,7 @@ async function renderNutFoods() {
     <tr>
       <td class="nut-food-name">
         ${escapeHtml(r.f.name)}
-        ${r.f.verified === false ? '<span class="nut-tag nut-tag-nuevo">sin verificar</span>' : ''}
+        ${r.f.verified === false ? '<span class="nut-tag nut-tag-nuevo">unverified</span>' : ''}
       </td>
       <td class="nut-food-score"><span class="nut-score-pill ${r.score >= 70 ? 'nut-verde' : r.score >= 40 ? 'nut-ambar' : 'nut-rojo'}">${r.score}</span></td>
       <td>${r.pd.toFixed(1)}</td>
@@ -1998,35 +1998,35 @@ async function renderNutFoods() {
   el.innerHTML = `
     <div class="card">
       <div class="nut-foods-head">
-        <span class="nut-trend-title">Tus alimentos</span>
-        <span class="nut-trend-legend">${filas.length} · toca una columna para ordenar</span>
+        <span class="nut-trend-title">Your foods</span>
+        <span class="nut-trend-legend">${filas.length} · tap a column to sort</span>
       </div>
       <div class="nut-table-wrap">
         <table class="nut-table" id="nut-foods-table">
           <thead><tr>
-            <th>Alimento</th>${th('score', 'Score')}${th('pd', 'g P/100kcal')}${th('nova', 'NOVA')}${th('veces', '×')}${th('kcal', 'kcal tot.')}
+            <th>Food</th>${th('score', 'Score')}${th('pd', 'g P/100kcal')}${th('nova', 'NOVA')}${th('veces', '×')}${th('kcal', 'kcal tot.')}
           </tr></thead>
           <tbody>${ordenadas.map(fila).join('')}</tbody>
         </table>
       </div>
       <div class="nut-formula">
-        <strong>score</strong> = min(densidad/${NUT_PD_CAP}, 1)×100 − penalización NOVA
-        (1:0 · 2:10 · 3:25 · 4:45) + min(fibra/${NUT_FIBER_CAP}, 1)×10, acotado a 0-100.
-        Reproducible a mano y fijado en los tests: skyr 87 · pechuga 94 · lentejas 49 ·
-        refresco 0. La whey sale 55 pese a sus 80 g de proteína porque es NOVA 4 — eso no es
-        un fallo, es el eje de calidad haciendo su trabajo.
+        <strong>score</strong> = min(density/${NUT_PD_CAP}, 1)×100 − NOVA penalty
+        (1:0 · 2:10 · 3:25 · 4:45) + min(fiber/${NUT_FIBER_CAP}, 1)×10, clamped to 0-100.
+        Reproducible by hand and pinned in the tests: skyr 87 · chicken breast 94 · lentils 49 ·
+        soda 0. Whey comes out at 55 despite its 80 g of protein because it is NOVA 4 — that is
+        not a bug, it is the quality axis doing its job.
       </div>
     </div>
 
     ${aEvitar.length ? `
-    <div class="section-label" style="margin-top:20px">A evitar</div>
+    <div class="section-label" style="margin-top:20px">To avoid</div>
     <div class="card">
       <div class="nut-trend-legend" style="margin-bottom:10px">
-        Score bajo y mucha energía por gramo — se cuelan sin llenar. Ordenados por kcal/g.
+        Low score and a lot of energy per gram — they slip in without filling you. Sorted by kcal/g.
       </div>
       <div class="nut-table-wrap">
         <table class="nut-table">
-          <thead><tr><th>Alimento</th><th>kcal/g</th><th>Score</th><th>NOVA</th></tr></thead>
+          <thead><tr><th>Food</th><th>kcal/g</th><th>Score</th><th>NOVA</th></tr></thead>
           <tbody>${aEvitar.map(r => `
             <tr>
               <td class="nut-food-name">${escapeHtml(r.f.name)}</td>
@@ -2059,11 +2059,11 @@ async function renderNutCoach(day) {
 
   if (r.done) {
     el.innerHTML = `<div class="card nut-coach-card">
-      <div class="nut-coach-head"><span>🤖</span> Resto del día</div>
+      <div class="nut-coach-head"><span>🤖</span> Rest of the day</div>
       <div class="nut-coach-ok">
-        Suelo de proteína cubierto (${Math.round(day.protein)} de ${day.proteinFloor} g).
-        ${r.huecoKcal > 0 ? `Te quedan ${nutFmt(r.huecoKcal)} kcal de margen.`
-                          : `Vas ${nutFmt(-r.huecoKcal)} kcal por encima del objetivo.`}
+        Protein floor covered (${Math.round(day.protein)} of ${day.proteinFloor} g).
+        ${r.huecoKcal > 0 ? `You have ${nutFmt(r.huecoKcal)} kcal of room left.`
+                          : `You are ${nutFmt(-r.huecoKcal)} kcal over target.`}
       </div>
     </div>`;
     return;
@@ -2071,19 +2071,19 @@ async function renderNutCoach(day) {
 
   if (!r.sugerencias.length) {
     el.innerHTML = `<div class="card nut-coach-card">
-      <div class="nut-coach-head"><span>🤖</span> Resto del día</div>
+      <div class="nut-coach-head"><span>🤖</span> Rest of the day</div>
       <div class="nut-coach-ok">
-        Faltan ${r.huecoProt} g de proteína y ${r.huecoKcal > 0 ? `solo ${nutFmt(r.huecoKcal)} kcal` : 'no queda margen'} de presupuesto.
-        Nada de tu biblioteca lo cierra sin pasarse: hoy toca aceptar el hueco o pasarte un poco.
+        ${r.huecoProt} g of protein short and ${r.huecoKcal > 0 ? `only ${nutFmt(r.huecoKcal)} kcal` : 'no room'} of budget left.
+        Nothing in your library closes it without going over: today it is accept the gap or go slightly over.
       </div>
     </div>`;
     return;
   }
 
   el.innerHTML = `<div class="card nut-coach-card">
-    <div class="nut-coach-head"><span>🤖</span> Resto del día</div>
+    <div class="nut-coach-head"><span>🤖</span> Rest of the day</div>
     <div class="nut-coach-gap">
-      Faltan <strong>${r.huecoProt} g</strong> de proteína · margen <strong>${nutFmt(r.huecoKcal)} kcal</strong>
+      <strong>${r.huecoProt} g</strong> of protein short · room <strong>${nutFmt(r.huecoKcal)} kcal</strong>
     </div>
     <div class="nut-coach-list">
       ${r.sugerencias.map(s => `
@@ -2092,12 +2092,12 @@ async function renderNutCoach(day) {
             <div class="nut-coach-food">${s.name}</div>
             <div class="nut-coach-macros">${s.grams} g · ${nutFmt(s.kcal)} kcal · ${s.protein} g P</div>
           </div>
-          <button class="btn-secondary nut-coach-add" data-coach-food="${s.foodId}" data-coach-g="${s.grams}">Añadir</button>
+          <button class="btn-secondary nut-coach-add" data-coach-food="${s.foodId}" data-coach-g="${s.grams}">Add</button>
         </div>`).join('')}
     </div>
     <div class="nut-coach-note">
-      Solo alimentos verificados de tu biblioteca: proponer un gramaje sobre macros que
-      estimó una foto sería una estimación al cuadrado.
+      Verified foods from your library only: proposing a gram amount on macros a photo
+      estimated would be an estimate squared.
     </div>
   </div>`;
 

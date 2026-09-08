@@ -15,8 +15,8 @@
 //
 // Retirada aparte: la linea de lowerB pedia 85% x 1. Un single pesado calentando, con dos
 // contracturas lumbares en el historial, es la prescripcion equivocada. La automatica topa en 80% x 2.
-const RAMP_NOTE = 'Aproximacion al primer compuesto: la app la calcula abajo con kg y discos reales. '
-  + 'Si no aparece (primera vez con esta sesion), sube en 3-4 series hasta ~80% del peso de trabajo.';
+const RAMP_NOTE = 'Warm-up ramp for the first compound: the app computes it below with real kg and plates. '
+  + 'If it does not show (first time with this session), ramp in 3-4 sets up to ~80% of the working weight.';
 
 const PLAN = {
   sessions: {
@@ -27,7 +27,7 @@ const PLAN = {
         'Band pull-aparts — 2 × 15 (scapular activation)',
         // v11.48: los pull-aparts cubren retraccion escapular, NO rotacion del manguito, y
         // detras vienen 4 series de banca a RPE 7-8. Son 60 segundos.
-        'Rotacion externa con banda — 2 × 12/lado (manguito, antes de la banca pesada)',
+        'Banded external rotation — 2 × 12/side (cuff, before heavy bench)',
         'Arm circles forward/back — 1 × 10 each direction',
         'Cat-cow — 1 × 8',
         'Thoracic rotations — 2 × 8/side (T-spine prep)',
@@ -40,7 +40,7 @@ const PLAN = {
         // v11.35 (D2): Pec Deck moved to Upper B and Lat Pulldown takes its place, so
         // horizontal press and vertical pull are both trained 2x/week (STR-002). Chest
         // stays at 10 weekly sets — redistributed, not increased.
-        { id: 'lat-pulldown', name: 'Lat Pulldown', muscle: 'Back', sets: 3, reps: '10-12', rpe: '7', defaultRest: 90, notes: '2º estímulo de tirón vertical. Control, sin balanceo.', superset: 'A' },
+        { id: 'lat-pulldown', name: 'Lat Pulldown', muscle: 'Back', sets: 3, reps: '10-12', rpe: '7', defaultRest: 90, notes: '2nd vertical-pull stimulus. Controlled, no swinging.', superset: 'A' },
         { id: 'face-pull', name: 'Cable Face Pull', muscle: 'Rear Delt', sets: 3, reps: '12-15', rpe: '7', defaultRest: 60, notes: 'Shoulder health. Non-negotiable.', superset: 'B' },
         { id: 'lateral-raise', name: 'DB Lateral Raise', muscle: 'Shoulders', sets: 3, reps: '12-15', rpe: '7', defaultRest: 60, notes: 'Light, controlled, full ROM.', superset: 'B', db: true },
         { id: 'tricep-pushdown', name: 'Tricep Pushdown', muscle: 'Triceps', sets: 2, reps: '10-15', rpe: '7', defaultRest: 60, notes: 'Optional — skip if short on time.' },
@@ -54,14 +54,14 @@ const PLAN = {
         'Leg swings lateral — 1 × 10/side',
         'Hip circles — 1 × 10/side',
         // v11.48: no habia NADA de dorsiflexion antes de sentadilla profunda.
-        'Tobillo contra la pared — 2 × 10/lado (dorsiflexion antes de la sentadilla)',
+        'Ankle to wall — 2 × 10/side (dorsiflexion before squatting)',
         'Bodyweight squats — 1 × 10',
         'Glute bridges — 2 × 10 (glute activation pre-squat)',
         // v11.48: los pogos LLEGAN de `exercises`. Su proposito declarado siempre fue "prepara el
         // tendon para el salto al cajon" — es preparacion, no entrenamiento: baja amplitud, sin
         // variable de progresion, y la columna de carga que tenian no significaba nada.
         // El box jump SI se queda como ejercicio (ATH-002: potencia fresca y con intencion maxima).
-        'Pogo hops — 2 × 20 (solo tobillo, rodilla casi recta, contacto corto y rigido; prepara el tendon para el box jump)',
+        'Pogo hops — 2 × 20 (ankle only, knee nearly straight, short stiff contact; primes the tendon for the box jump)',
         RAMP_NOTE,
       ],
       exercises: [
@@ -86,7 +86,7 @@ const PLAN = {
         // como "+kg" con placeholder 0 (el 3-sep quedo registrado como 0x5@6, donde el 0 es
         // ruido). Ahora esa columna mide la ALTURA DEL CAJON en cm, que es su variable de
         // progresion real. Ver `_MEASURE_EXERCISES`.
-        { id: 'box-jump', name: 'Box Jump', muscle: 'Quads', sets: 3, reps: '5', rpe: '-', defaultRest: 90, notes: 'Apunta la ALTURA del cajon en cm en la columna de carga. Salta con intención máxima y **BAJA CAMINANDO**, nunca saltando: la caída es donde se lesiona. Si la técnica se ensucia, para la serie.' },
+        { id: 'box-jump', name: 'Box Jump', muscle: 'Quads', sets: 3, reps: '5', rpe: '-', defaultRest: 90, notes: 'Log the BOX HEIGHT in cm in the load column. Jump with maximal intent and **STEP DOWN**, never jump down: the landing is where injuries happen. If technique degrades, end the set.' },
         { id: 'back-squat', name: 'Barbell Back Squat', muscle: 'Quads', sets: 4, reps: '5-8', rpe: '7-8', defaultRest: 180, notes: 'Priority #1. Use rack safeties.', compound: true },
         { id: 'rdl', name: 'Barbell RDL', muscle: 'Hamstrings', sets: 3, reps: '8-10', rpe: '7', defaultRest: 150, notes: '3 sec eccentric. Stop at mid-shin.' },
         { id: 'hack-squat', name: 'Hack Squat', muscle: 'Quads', sets: 3, reps: '10-12', rpe: '7-8', defaultRest: 120, notes: 'Quad volume, no spinal load. Controlled depth.' },
@@ -97,7 +97,7 @@ const PLAN = {
         // solo el Pallof de lowerB como trabajo de la regla, y las otras dos sesiones de core eran
         // flexión. Cero anti-extensión en la semana, con dos contracturas lumbares en el historial.
         // El Ab Wheel estaba aquí hasta que v6.0 lo cambió por el Cable Crunch.
-        { id: 'ab-wheel', name: 'Ab Wheel Rollout', muscle: 'Core', sets: 3, reps: '8-12', rpe: '-', defaultRest: 60, notes: 'Anti-extensión. De rodillas; que la lumbar no se arquee. Escala el recorrido, no el número.', bw: true },
+        { id: 'ab-wheel', name: 'Ab Wheel Rollout', muscle: 'Core', sets: 3, reps: '8-12', rpe: '-', defaultRest: 60, notes: 'Anti-extension. From the knees; do not let the low back arch. Scale the range, not the reps.', bw: true },
       ]
     },
     upperB: {
@@ -109,8 +109,8 @@ const PLAN = {
         // 4 × 5-8 @RPE 7-8 y no habia NADA de posicion overhead: ni wall slides, ni dislocates,
         // ni alcance. Es el movimiento con mas demanda de movilidad de la sesion y entraba en frio.
         // Los arm circles salen: los dislocates cubren lo mismo y mas.
-        'Wall slides — 2 × 10 (posicion overhead antes del OHP)',
-        'Dislocates con banda — 2 × 10 (movilidad de hombro en overhead)',
+        'Wall slides — 2 × 10 (overhead position before the OHP)',
+        'Banded dislocates — 2 × 10 (overhead shoulder mobility)',
         'Thoracic rotations — 2 × 8/side',
         'Scapular pull-ups — 2 × 8 (lat activation pre-chinup)',
         // Se MANTIENE: la rampa automatica salta las dominadas, porque su carga es lastre y cae
@@ -134,12 +134,12 @@ const PLAN = {
       // Lower A y Upper A NO se recortan: la sesion del 3-sep (74 min, 8 de 8 ejercicios,
       // cero saltos) demuestra que ahi el problema era el tiempo disponible, no el plan.
       exercises: [
-        { id: 'hanging-leg-raise', name: 'Hanging Leg Raise', muscle: 'Core', sets: 3, reps: '8-12', rpe: '-', defaultRest: 60, notes: 'Primero, no al final: por ir el ultimo salio 0 de 9 series en agosto. Escala a rodillas si hace falta.', bw: true },
+        { id: 'hanging-leg-raise', name: 'Hanging Leg Raise', muscle: 'Core', sets: 3, reps: '8-12', rpe: '-', defaultRest: 60, notes: 'First, not last: going last it scored 0 of 9 sets in August. Scale to bent knees if needed.', bw: true },
         { id: 'chinups', name: 'Chin-ups', muscle: 'Back', sets: 4, reps: '5-8', rpe: '7-8', defaultRest: 150, notes: 'Add weight at 4×8. Assisted pull-up machine if <5 reps.', bw: true, compound: true },
         { id: 'ohp', name: 'Overhead Press', muscle: 'Shoulders', sets: 4, reps: '5-8', rpe: '7-8', defaultRest: 150, notes: 'Standing. Strict form, no leg drive.', compound: true },
         // v11.35 (D2): arrives from Upper A — the week's 2nd horizontal-press stimulus.
-        { id: 'pec-deck', name: 'Pec Deck', muscle: 'Chest', sets: 3, reps: '10-12', rpe: '7', defaultRest: 90, notes: '2º estímulo de pecho de la semana. Tensión constante, squeeze 1s.' },
-        { id: 'chest-supported-row', name: 'Chest-Supported Row', muscle: 'Back', sets: 3, reps: '10-12', rpe: '7', defaultRest: 90, notes: 'Strict, no lower-back fatigue. Squeeze at the top. Cable Row vale igual (esta en el swap): son maquinas distintas, no compares las cargas entre ellas.' },
+        { id: 'pec-deck', name: 'Pec Deck', muscle: 'Chest', sets: 3, reps: '10-12', rpe: '7', defaultRest: 90, notes: '2nd chest stimulus of the week. Constant tension, squeeze 1s.' },
+        { id: 'chest-supported-row', name: 'Chest-Supported Row', muscle: 'Back', sets: 3, reps: '10-12', rpe: '7', defaultRest: 90, notes: 'Strict, no lower-back fatigue. Squeeze at the top. Cable Row works just as well (it is in the swap list): they are different machines, do not compare loads between them.' },
       ]
     },
     lowerB: {
@@ -153,7 +153,7 @@ const PLAN = {
         'Cat-cow — 1 × 8',
         // v11.48: habia cat-cow (movilidad) pero CERO anti-extension ni bracing antes de la
         // bisagra pesada, con dos contracturas lumbares en el historial.
-        'Dead bug — 2 × 8/lado (anti-extension y bracing antes de la bisagra pesada)',
+        'Dead bug — 2 × 8/side (anti-extension and bracing before the heavy hinge)',
         'Glute bridges — 2 × 10 (glute activation pre-hinge)',
         'Good mornings (bodyweight) — 2 × 8 (hinge pattern prep)',
         RAMP_NOTE,
@@ -181,20 +181,20 @@ const PLAN = {
         RAMP_NOTE,
       ],
       exercises: [
-        { id: 'back-squat', name: 'Barbell Back Squat', muscle: 'Quads', sets: 4, reps: '5-8', rpe: '7-8', defaultRest: 180, notes: 'Objetivo ~97.5 kg. Prioridad #1, usa safeties. Rampa lumbar conservadora.', compound: true },
-        { id: 'bench-press', name: 'Barbell Bench Press', muscle: 'Chest', sets: 3, reps: '6-8', rpe: '7-8', defaultRest: 150, notes: 'Objetivo ~92.5 kg. Full ROM, control eccentric.', compound: true },
-        { id: 'barbell-row', name: 'Barbell Row', muscle: 'Back', sets: 3, reps: '8-10', rpe: '7-8', defaultRest: 120, notes: 'Objetivo ~67.5 kg. Strict, no heaving.', compound: true },
+        { id: 'back-squat', name: 'Barbell Back Squat', muscle: 'Quads', sets: 4, reps: '5-8', rpe: '7-8', defaultRest: 180, notes: 'Target ~97.5 kg. Priority #1, use rack safeties. Conservative ramp, lumbar history.', compound: true },
+        { id: 'bench-press', name: 'Barbell Bench Press', muscle: 'Chest', sets: 3, reps: '6-8', rpe: '7-8', defaultRest: 150, notes: 'Target ~92.5 kg. Full ROM, control the eccentric.', compound: true },
+        { id: 'barbell-row', name: 'Barbell Row', muscle: 'Back', sets: 3, reps: '8-10', rpe: '7-8', defaultRest: 120, notes: 'Target ~67.5 kg. Strict, no heaving.', compound: true },
         // Isquios. v11.37 puso aquí un RDL y fue un error: dejaba CUATRO compuestos de barra
         // seguidos y metía una bisagra justo después de 4 series de sentadilla pesada, apilando
         // carga axial sobre un historial de dos contracturas lumbares. El hueco que arreglaba
         // (cero isquios directos en la semana de 3/4 días) era real; la solución, no.
         // v11.38: leg curl en máquina — mismo estímulo de isquios, CERO carga axial. La extensión
         // de cadera ya la cubre el sumo de fullB, así que lo que falta aquí es flexión de rodilla.
-        { id: 'seated-leg-curl', name: 'Seated Leg Curl', muscle: 'Hamstrings', sets: 3, reps: '10-12', rpe: '7', defaultRest: 90, notes: 'Isquios sin cargar la columna. 3s excéntrico, aprieta 1s arriba.' },
+        { id: 'seated-leg-curl', name: 'Seated Leg Curl', muscle: 'Hamstrings', sets: 3, reps: '10-12', rpe: '7', defaultRest: 90, notes: 'Hamstrings with no spinal load. 3s eccentric, squeeze 1s at the top.' },
         // Cable Crunch (flexión espinal cargada) -> Pallof (anti-rotación). ATH-003 es `strong` y
         // pide explícitamente anti-rotación/anti-extensión POR el historial lumbar; la sesión
         // hacía justo lo contrario. fullB cubre la anti-extensión con el Ab Wheel.
-        { id: 'pallof-press', name: 'Cable Pallof Press', muscle: 'Core', sets: 3, reps: '10-15', rpe: '-', defaultRest: 60, notes: 'Anti-rotación. Lento y controlado, sin girar el tronco.' },
+        { id: 'pallof-press', name: 'Cable Pallof Press', muscle: 'Core', sets: 3, reps: '10-15', rpe: '-', defaultRest: 60, notes: 'Anti-rotation. Slow and controlled, no torso rotation.' },
       ]
     },
     fullB: {
@@ -204,23 +204,23 @@ const PLAN = {
         'Hip circles — 1 × 10/side',
         'Glute bridges — 2 × 10',
         // v11.48: fullB tambien tiene OHP como lift principal, mismo hueco que upperB.
-        'Wall slides — 2 × 10 (posicion overhead antes del OHP)',
+        'Wall slides — 2 × 10 (overhead position before the OHP)',
         'Scapular pull-ups — 2 × 8',
         RAMP_NOTE,
       ],
       exercises: [
-        { id: 'sumo-dl', name: 'Sumo Deadlift', muscle: 'Posterior', sets: 3, reps: '3-6', rpe: '7-8', defaultRest: 210, notes: 'Objetivo ~110 kg. Reset cada rep. Primer set decide: si sale ≥RPE 8, no subir. Historial lumbar.', compound: true },
-        { id: 'ohp', name: 'Overhead Press', muscle: 'Shoulders', sets: 3, reps: '5-8', rpe: '7-8', defaultRest: 150, notes: 'Objetivo ~52.5 kg. De pie, estricto, sin leg drive.', compound: true },
-        { id: 'chinups', name: 'Chin-ups', muscle: 'Back', sets: 3, reps: '6-8', rpe: '7-8', defaultRest: 150, notes: 'Objetivo BW +10 kg. Assisted machine si <5 reps.', bw: true, compound: true },
+        { id: 'sumo-dl', name: 'Sumo Deadlift', muscle: 'Posterior', sets: 3, reps: '3-6', rpe: '7-8', defaultRest: 210, notes: 'Target ~110 kg. Reset every rep. The first set gates it: if it comes in ≥RPE 8, do not add load. Lumbar history.', compound: true },
+        { id: 'ohp', name: 'Overhead Press', muscle: 'Shoulders', sets: 3, reps: '5-8', rpe: '7-8', defaultRest: 150, notes: 'Target ~52.5 kg. Standing, strict, no leg drive.', compound: true },
+        { id: 'chinups', name: 'Chin-ups', muscle: 'Back', sets: 3, reps: '6-8', rpe: '7-8', defaultRest: 150, notes: 'Target BW +10 kg. Assisted machine if <5 reps.', bw: true, compound: true },
         // v11.38: fullB no tenía NADA de cuádriceps. En la semana de 3/4 días el cuádriceps
         // dependía enteramente de las 4 series de sentadilla de fullA, un solo día. La extensión
         // da volumen de cuádriceps sin carga espinal, justo después del sumo — y pone el
         // cuádriceps a 2 días/semana (STR-002).
-        { id: 'leg-extension', name: 'Leg Extension', muscle: 'Quads', sets: 3, reps: '10-15', rpe: '7-8', defaultRest: 90, notes: 'Cuádriceps sin cargar la columna. Excéntrico controlado 2-3s, aprieta arriba.' },
+        { id: 'leg-extension', name: 'Leg Extension', muscle: 'Quads', sets: 3, reps: '10-15', rpe: '7-8', defaultRest: 90, notes: 'Quads with no spinal load. Controlled 2-3s eccentric, squeeze at the top.' },
         // v11.37: Hanging Leg Raise (flexión de cadera) -> Ab Wheel (anti-extensión). Con el
         // Pallof de fullA, las dos cualidades que pide ATH-003 quedan cubiertas en la semana,
         // ambas con ejercicios que la propia regla nombra.
-        { id: 'ab-wheel', name: 'Ab Wheel Rollout', muscle: 'Core', sets: 3, reps: '8-12', rpe: '-', defaultRest: 60, notes: 'Anti-extensión. De rodillas; no dejes que la lumbar se arquee. Escala el recorrido, no el número.', bw: true },
+        { id: 'ab-wheel', name: 'Ab Wheel Rollout', muscle: 'Core', sets: 3, reps: '8-12', rpe: '-', defaultRest: 60, notes: 'Anti-extension. From the knees; do not let the low back arch. Scale the range, not the reps.', bw: true },
       ]
     },
 
@@ -241,17 +241,17 @@ const PLAN = {
     // Honestidad sobre la evidencia: la programación híbrida es lo más débil del corpus
     // (`weak_extrapolated`, no hay ensayos de HYROX). La dosis es conservadora por eso.
     hybrid1: {
-      id: 'hybrid1', name: 'Híbrido · Trineo + SkiErg', subtitle: 'Acondicionamiento', icon: '🛷',
+      id: 'hybrid1', name: 'Hybrid · Sled + SkiErg', subtitle: 'Conditioning', icon: '🛷',
       warmup: [
-        '5 min bici o remo suave',
-        'Movilidad de cadera y tobillo — 2 min',
-        'Trineo vacío o muy ligero — 2 × 20 m para coger el patrón',
-        'SkiErg 1 min suave',
+        '5 min easy bike or row',
+        'Hip and ankle mobility — 2 min',
+        'Empty or very light sled — 2 × 20 m to find the pattern',
+        'SkiErg 1 min easy',
       ],
       exercises: [
-        { id: 'sled-push', name: 'Sled Push', muscle: 'Quads', sets: 6, reps: '20 m', rpe: '8', defaultRest: 90, notes: 'Empuje continuo, tronco inclinado, pasos cortos y potentes. Concéntrico puro: casi no deja agujetas, así que no interfiere con la pierna ni con correr. Descanso = volver caminando.', compound: true },
-        { id: 'ski-erg', name: 'SkiErg', muscle: 'Back', sets: 5, reps: '250 m', rpe: '7-8', defaultRest: 60, notes: 'Tira desde el core y la cadera, no sólo con los brazos. Impacto cero: es lo que puedes hacer duro con las piernas cargadas.', compound: true },
-        { id: 'farmer-carry', name: 'Farmer Carry', muscle: 'Core', sets: 4, reps: '40 m', rpe: '8', defaultRest: 90, notes: 'Pesado, tronco firme, sin inclinarse a un lado. Es anti-lateral: core y agarre. Si la lumbar protesta, baja el peso — no la distancia.' },
+        { id: 'sled-push', name: 'Sled Push', muscle: 'Quads', sets: 6, reps: '20 m', rpe: '8', defaultRest: 90, notes: 'Continuous push, torso leaning in, short powerful steps. Purely concentric: almost no soreness, so it does not interfere with legs or running. Rest = walk back.', compound: true },
+        { id: 'ski-erg', name: 'SkiErg', muscle: 'Back', sets: 5, reps: '250 m', rpe: '7-8', defaultRest: 60, notes: 'Pull from the core and hips, not just the arms. Zero impact: this is what you can do hard on tired legs.', compound: true },
+        { id: 'farmer-carry', name: 'Farmer Carry', muscle: 'Core', sets: 4, reps: '40 m', rpe: '8', defaultRest: 90, notes: 'Heavy, torso solid, no leaning to one side. It is anti-lateral: core and grip. If the low back complains, drop the weight — not the distance.' },
       ]
     },
 
@@ -268,35 +268,35 @@ const PLAN = {
     // La intensidad se consigue con progresión de dificultad y proximidad al fallo, no con carga:
     // sin peso externo, RPE 8 en rangos altos es lo que da estímulo real (STR-004 sigue aplicando).
     travelA: {
-      id: 'travelA', name: 'Viaje A', subtitle: 'Sentadilla · Empuje · Tirón vertical', icon: '🧳',
+      id: 'travelA', name: 'Travel A', subtitle: 'Squat · Push · Vertical pull', icon: '🧳',
       warmup: [
-        '3-5 min: saltar en el sitio, círculos de brazos, rodillas al pecho',
-        'Sentadillas sin peso — 1 × 15',
-        'Band pull-aparts (o brazos en cruz) — 2 × 15',
-        'Plancha 20 s + puente de glúteo 10 reps',
+        '3-5 min: jumping in place, arm circles, knees to chest',
+        'Bodyweight squats — 1 × 15',
+        'Band pull-aparts (or arm crosses) — 2 × 15',
+        'Plank 20 s + glute bridge 10 reps',
       ],
       exercises: [
-        { id: 'bss', name: 'Bulgarian Split Squat', muscle: 'Quads', sets: 3, reps: '10-15/pierna', rpe: '8', defaultRest: 90, notes: 'Pie trasero en una silla o el borde de la cama. Sin peso ya es duro: baja lento (3s) y llega cerca del fallo. Si sobran reps, pausa 2s abajo.', bw: true },
-        { id: 'pushup', name: 'Push-ups', muscle: 'Chest', sets: 3, reps: '10-20', rpe: '8', defaultRest: 90, notes: 'Si haces >20, sube los pies a la cama (declinadas) o baja 3s. Progresión antes que repeticiones infinitas.', bw: true, compound: true },
-        { id: 'pullups', name: 'Pull-ups', muscle: 'Back', sets: 3, reps: 'AMRAP', rpe: '8-9', defaultRest: 120, notes: 'Si no hay barra: Band Row anclada a una puerta, 3×15-20. Es el patrón más difícil de replicar en viaje — busca barra si puedes (parque, puerta con barra).', bw: true, compound: true },
-        { id: 'sl-glute-bridge', name: 'Single-Leg Glute Bridge', muscle: 'Glutes', sets: 3, reps: '12-15/pierna', rpe: '8', defaultRest: 60, notes: 'Extensión de cadera. Talón apoyado, sube empujando con el glúteo, pausa 1s arriba. Hombros en el suelo o en la cama para más recorrido.', bw: true },
-        { id: 'bird-dog', name: 'Bird Dog', muscle: 'Core', sets: 3, reps: '8-10/lado', rpe: '-', defaultRest: 45, notes: 'Anti-rotación: brazo y pierna opuestos, sin que la cadera se abra ni la lumbar se arquee. Uno de los Big 3 de McGill — la fuente de la que sale la regla del core en este sistema. Lento, 2s arriba.', bw: true },
+        { id: 'bss', name: 'Bulgarian Split Squat', muscle: 'Quads', sets: 3, reps: '10-15/leg', rpe: '8', defaultRest: 90, notes: 'Rear foot on a chair or the edge of the bed. Bodyweight alone is already hard: lower slowly (3s) and get close to failure. If reps are left over, pause 2s at the bottom.', bw: true },
+        { id: 'pushup', name: 'Push-ups', muscle: 'Chest', sets: 3, reps: '10-20', rpe: '8', defaultRest: 90, notes: 'If you do >20, put your feet on the bed (decline) or lower for 3s. Progression before endless reps.', bw: true, compound: true },
+        { id: 'pullups', name: 'Pull-ups', muscle: 'Back', sets: 3, reps: 'AMRAP', rpe: '8-9', defaultRest: 120, notes: 'No bar available: Band Row anchored to a door, 3×15-20. It is the hardest pattern to replicate while travelling — find a bar if you can (a park, a doorway bar).', bw: true, compound: true },
+        { id: 'sl-glute-bridge', name: 'Single-Leg Glute Bridge', muscle: 'Glutes', sets: 3, reps: '12-15/leg', rpe: '8', defaultRest: 60, notes: 'Hip extension. Heel planted, drive up through the glute, pause 1s at the top. Shoulders on the floor or on the bed for more range.', bw: true },
+        { id: 'bird-dog', name: 'Bird Dog', muscle: 'Core', sets: 3, reps: '8-10/side', rpe: '-', defaultRest: 45, notes: 'Anti-rotation: opposite arm and leg, without the hip opening or the low back arching. One of McGill\'s Big 3 — the source the core rule in this system comes from. Slow, 2s at the top.', bw: true },
       ]
     },
     travelB: {
-      id: 'travelB', name: 'Viaje B', subtitle: 'Bisagra · Press vertical · Tirón horizontal', icon: '🧳',
+      id: 'travelB', name: 'Travel B', subtitle: 'Hinge · Vertical press · Horizontal pull', icon: '🧳',
       warmup: [
-        '3-5 min: saltar en el sitio, círculos de cadera, zancadas caminando',
-        'Puente de glúteo — 2 × 12',
-        'Peso muerto rumano sin peso — 1 × 12 lento',
-        'Band pull-aparts (o brazos en cruz) — 2 × 15',
+        '3-5 min: jumping in place, hip circles, walking lunges',
+        'Glute bridge — 2 × 12',
+        'Bodyweight Romanian deadlift — 1 × 12 slow',
+        'Band pull-aparts (or arm crosses) — 2 × 15',
       ],
       exercises: [
-        { id: 'sl-rdl', name: 'Single-Leg RDL', muscle: 'Hamstrings', sets: 3, reps: '10-12/pierna', rpe: '8', defaultRest: 90, notes: 'Bisagra de cadera, no de rodilla. Baja lento hasta notar el isquio, espalda recta. Con una mochila cargada si la tienes. El equilibrio es parte del ejercicio.', bw: true, compound: true },
-        { id: 'pike-pushup', name: 'Pike Push-up', muscle: 'Shoulders', sets: 3, reps: '6-12', rpe: '8', defaultRest: 90, notes: 'Empuje vertical: cadera alta en V, cabeza hacia el suelo entre las manos. Cuanto más verticales las caderas, más difícil. Pies en la cama para progresar.', bw: true, compound: true },
-        { id: 'band-row', name: 'Band Row', muscle: 'Back', sets: 3, reps: '15-20', rpe: '8', defaultRest: 90, notes: 'Banda anclada a una puerta o pilar. Aprieta las escápulas, sin encoger los hombros. Sin banda: Inverted Row bajo una mesa firme.', compound: true },
-        { id: 'nordic-curl', name: 'Nordic Curl', muscle: 'Hamstrings', sets: 3, reps: '5-8', rpe: '8', defaultRest: 90, notes: 'Flexión de rodilla, lo que el rumano NO cubre. Pies enganchados bajo un sofá o cama pesada; baja lo más lento que puedas y empuja con las manos para volver. Muy exigente: 3-5 reps ya valen.', bw: true },
-        { id: 'dead-bug', name: 'Dead Bug', muscle: 'Core', sets: 3, reps: '8-10/lado', rpe: '-', defaultRest: 45, notes: 'Anti-extensión. Lumbar pegada al suelo todo el rato — si se despega, acorta el recorrido. Lento, exhalando al extender.', bw: true },
+        { id: 'sl-rdl', name: 'Single-Leg RDL', muscle: 'Hamstrings', sets: 3, reps: '10-12/leg', rpe: '8', defaultRest: 90, notes: 'Hinge at the hip, not the knee. Lower slowly until you feel the hamstring, back flat. With a loaded backpack if you have one. Balance is part of the exercise.', bw: true, compound: true },
+        { id: 'pike-pushup', name: 'Pike Push-up', muscle: 'Shoulders', sets: 3, reps: '6-12', rpe: '8', defaultRest: 90, notes: 'Vertical push: hips high in a V, head toward the floor between your hands. The more vertical the hips, the harder. Feet on the bed to progress.', bw: true, compound: true },
+        { id: 'band-row', name: 'Band Row', muscle: 'Back', sets: 3, reps: '15-20', rpe: '8', defaultRest: 90, notes: 'Band anchored to a door or post. Squeeze the shoulder blades, no shrugging. No band: Inverted Row under a solid table.', compound: true },
+        { id: 'nordic-curl', name: 'Nordic Curl', muscle: 'Hamstrings', sets: 3, reps: '5-8', rpe: '8', defaultRest: 90, notes: 'Knee flexion, which the Romanian deadlift does NOT cover. Feet hooked under a sofa or a heavy bed; lower as slowly as you can and push with your hands to come back up. Very demanding: 3-5 reps already count.', bw: true },
+        { id: 'dead-bug', name: 'Dead Bug', muscle: 'Core', sets: 3, reps: '8-10/side', rpe: '-', defaultRest: 45, notes: 'Anti-extension. Low back pinned to the floor the whole time — if it lifts, shorten the range. Slow, exhaling as you extend.', bw: true },
       ]
     }
   }
@@ -1574,7 +1574,7 @@ function deloadAnchorWeek() {
 function blockWeek(date = new Date()) {
   const anchor = (state.settings && state.settings.deloadAnchorDate) || null;
   if (typeof blockWeekFromDates !== 'function') {      // coach-engine.js no cargó
-    return { index: null, isDeload: false, weeksIntoBlock: null, label: 'sin ancla', blockStartMonday: null, deloadMonday: null };
+    return { index: null, isDeload: false, weeksIntoBlock: null, label: 'no anchor', blockStartMonday: null, deloadMonday: null };
   }
   return blockWeekFromDates(dateStr(date), anchor, DELOAD_BLOCK_WEEKS);
 }
@@ -2063,11 +2063,11 @@ async function showWelcomeScreen() {
       <div class="wh-meta">${plan.durationMin ? `${plan.durationMin} min · ` : ''}Conversational pace · easy effort</div>
     `;
   } else if (plan.type === 'recovery') {
-    todayText = 'Recuperación activa';
+    todayText = 'Active recovery';
     headsUpHTML = `
       <div class="wh-title">Today</div>
-      <div class="wh-session">🧘 ${plan.label || 'Recuperación activa'}</div>
-      <div class="wh-meta">Movilidad + core${plan.z2FinisherMin ? ` · ${plan.z2FinisherMin} min Z2 suave` : ''}</div>
+      <div class="wh-session">🧘 ${plan.label || 'Active recovery'}</div>
+      <div class="wh-meta">Mobility + core${plan.z2FinisherMin ? ` · ${plan.z2FinisherMin} min easy Z2` : ''}</div>
     `;
   } else {
     todayText = 'Rest day — recover well.';
@@ -2215,10 +2215,10 @@ function updateHeader(tab) {
     sub.textContent = `Week ${wk}${dayChip} · ${deload ? 'Deload' : 'Cut'}`;
   } else if (tab === 'cardio') {
     title.textContent = 'Cardio';
-    sub.textContent = `Week ${wk}${dayChip} · Zona 2`;
+    sub.textContent = `Week ${wk}${dayChip} · Zone 2`;
   } else if (tab === 'nutrition') {
     title.textContent = 'Nutrition';
-    sub.textContent = `${state.settings.proteinTarget} g proteína · foto para registrar`;
+    sub.textContent = `${state.settings.proteinTarget} g protein · photo to log`;
   } else if (tab === 'stats') {
     title.textContent = 'Stats';
     sub.textContent = `Week ${wk}${dayChip} · ${deload ? 'Deload' : 'Cut Phase'}`;
@@ -2231,7 +2231,7 @@ function updateHeader(tab) {
     title.textContent = 'Coach';
     const blk = (typeof blockWeek === 'function') ? blockWeek() : null;
     sub.textContent = (blk && blk.index)
-      ? `Semana ${blk.index}/${DELOAD_BLOCK_WEEKS} · ${blk.label}`
+      ? `Week ${blk.index}/${DELOAD_BLOCK_WEEKS} · ${blk.label}`
       : `Week ${wk}${dayChip}`;
   } else if (tab === 'ideal-preview') {
     // B-4: las tres vistas secundarias que no tenían rama aquí. Con `enterSecondaryView` la
@@ -2936,7 +2936,7 @@ async function showSessionPicker(defaultSession, dateOverride) {
     value: id, label: s.name + ' — ' + s.subtitle, icon: s.icon, selected: id === defaultSession
   }));
   // La sesión libre no vive en el plan, así que se añade a mano al final.
-  options.push({ value: FREE_SESSION_ID, label: 'Sesión libre — vas eligiendo sobre la marcha', icon: '🎛️' });
+  options.push({ value: FREE_SESSION_ID, label: 'Free session — pick as you go', icon: '🎛️' });
 
   const choice = await showActionSheet('Start workout', options);
   if (choice === null) return;
@@ -3083,12 +3083,12 @@ const FREE_SESSION_ID = 'free';
 
 function makeFreeSession() {
   return {
-    id: FREE_SESSION_ID, name: 'Sesión libre', subtitle: 'Vas eligiendo sobre la marcha',
+    id: FREE_SESSION_ID, name: 'Free session', subtitle: 'Pick as you go',
     icon: '🎛️', adHoc: true,
     warmup: [
-      '5-10 min de cardio suave',
-      'Movilidad de lo que vayas a entrenar',
-      'Series de aproximación en el primer ejercicio pesado',
+      '5-10 min easy cardio',
+      'Mobility for whatever you are about to train',
+      'Warm-up ramp sets on the first heavy exercise',
     ],
     exercises: [],
   };
@@ -3182,7 +3182,7 @@ async function startFreeWorkout() {
   if (pending && pending.sessionId) {
     const def = getSessionDef(pending.sessionId);
     const label = (pending.adHoc && pending.adHoc.name) || (def && def.name) || pending.sessionId;
-    if (!confirm(`Tenés "${label}" sin terminar. ¿Descartarlo y empezar una sesión libre?`)) return;
+    if (!confirm(`You have "${label}" unfinished. Discard it and start a free session?`)) return;
     await clearActiveWorkout();
   }
   state.adHocSession = makeFreeSession();
@@ -3213,7 +3213,7 @@ async function addAdHocExercise() {
   const muscles = Object.keys(catalog)
     .filter(m => [...catalog[m].keys()].some(id => !already.has(id)))
     .sort();
-  if (!muscles.length) { toast('No quedan ejercicios por añadir'); return; }
+  if (!muscles.length) { toast('No exercises left to add'); return; }
 
   // Grupos musculares EN INGLÉS, igual que la insignia de músculo de cada tarjeta de ejercicio en
   // el resto de la app. Dos pasos y ya: músculo → ejercicio. El número de series no se pregunta —
@@ -3314,7 +3314,7 @@ async function startWorkout(sessionId, opts = {}) {
     // Antes fallaba en silencio. Este proyecto ya ha pagado cuatro veces el precio de no dejar
     // rastro al fallar, así que aquí se avisa.
     console.warn('[startWorkout] sesión desconocida:', sessionId);
-    toast(`No encuentro la sesión "${sessionId}"`);
+    toast(`Cannot find session "${sessionId}"`);
     return;
   }
   // Una sesión libre es de un solo uso: no lee ni escribe `exerciseOverrides`.
@@ -3968,9 +3968,9 @@ function coachObjectiveHtml(target, ex) {
   if (!target || target.kg == null) return '';
   const kgDisp = convertWeight(target.kg, 'kg', state.settings.unit);
   const label = (ex && ex.bw ? '+' : '') + _coachFmtKg(kgDisp) + ' ' + state.settings.unit;
-  const chipTxt = target.source === 'coach' ? 'coach' : (target.source === 'last' ? 'último' : 'regla');
+  const chipTxt = target.source === 'coach' ? 'coach' : (target.source === 'last' ? 'last' : 'rule');
   const rpeBit = target.rpe && target.rpe !== '-' ? ` @${escapeHtml(target.rpe)}` : '';
-  return `<div class="exercise-objective coach-objective"><span class="coach-obj-label">Objetivo:</span> <b>${label}</b> × ${escapeHtml(target.reps)}${rpeBit} <span class="coach-chip coach-chip-${target.source}">${chipTxt}</span></div>`;
+  return `<div class="exercise-objective coach-objective"><span class="coach-obj-label">Target:</span> <b>${label}</b> × ${escapeHtml(target.reps)}${rpeBit} <span class="coach-chip coach-chip-${target.source}">${chipTxt}</span></div>`;
 }
 
 function buildExerciseCard(ex, exIdx, previous, restSettings, exerciseNotes, deload, session, allWorkouts, target = null) {
@@ -4088,8 +4088,8 @@ function buildExerciseCard(ex, exIdx, previous, restSettings, exerciseNotes, del
         <div class="exercise-notes">${coachNote}</div>
         <textarea class="ex-note" data-ex-note="${ex.id}" placeholder="Notes for this exercise..." rows="1"></textarea>
         <button class="btn-swap" data-swap-muscle="${ex.muscle}" data-swap-ex-id="${ex.id}">↔ Swap exercise</button>
-        ${session && session.adHoc ? `<button class="btn-swap btn-add-set" data-add-set-ex-id="${ex.id}">+ Serie</button>
-        <button class="btn-swap btn-remove-ex" data-remove-ex-id="${ex.id}">✕ Quitar de la sesión</button>` : ''}
+        ${session && session.adHoc ? `<button class="btn-swap btn-add-set" data-add-set-ex-id="${ex.id}">+ Set</button>
+        <button class="btn-swap btn-remove-ex" data-remove-ex-id="${ex.id}">✕ Remove from session</button>` : ''}
       </div>
     </div>
   `;
@@ -4539,7 +4539,7 @@ async function finishWorkout() {
         source: 'rule',
         type: 'session-readout',
         what: workout.readout.line,
-        why: 'Doble progresión sobre la sesión registrada',
+        why: 'Double progression over the logged session',
         ruleIds: ['STR-001'],
         evidence: {
           perExercise: workout.readout.items.map(it => ({
@@ -5083,15 +5083,15 @@ async function loadAndRenderWeeklyCoach() {
           <span class="wcc-source">semanal</span>
         </div>
         <div class="wcc-empty">
-          <p>Todavía no hay revisión.</p>
-          <p class="muted">El coach revisa la semana la primera vez que abres la app cada lunes. Necesita al menos una semana de datos.</p>
+          <p>No review yet.</p>
+          <p class="muted">The coach reviews the week the first time you open the app each Monday. It needs at least one week of data.</p>
         </div>`;
       return;
     }
 
-    const ES = (typeof COACH_STATUS_ES !== 'undefined' && COACH_STATUS_ES) || {};
+    const ESTADO = (typeof COACH_STATUS_LABEL !== 'undefined' && COACH_STATUS_LABEL) || {};
     const wk = (review && review.weekKey) || (legacy && legacy.weekKey) || '';
-    const estado = review ? (ES[review.status] || review.status || '') : 'revisión antigua';
+    const estado = review ? (ESTADO[review.status] || review.status || '') : 'old review';
     const rBrief = review ? (((review.output || {}).briefing) || {}) : {};
     const prios = rBrief.priorities || [];
     const primeraLinea = (md) => String(md || '').split('\n').map(l => l.replace(/^[#*\-\s]+/, '').trim()).find(l => l) || '—';
@@ -5102,10 +5102,10 @@ async function loadAndRenderWeeklyCoach() {
       : prios.length
       ? prios[0]
       : (review && review.status === 'running'
-        ? 'El coach está revisando la semana…'
+        ? 'The coach is reviewing the week…'
         : (legacy
           ? primeraLinea((legacy.coachVoice && legacy.coachVoice.lastWeek) || legacy.observed)
-          : 'Sin prioridades esta semana.'));
+          : 'No priorities this week.'));
 
     card.classList.remove('hidden');
     card.innerHTML = `
@@ -5192,7 +5192,7 @@ function renderRunningPlanCard(runningPlan) {
   }).join('');
   const pushBtn = hasApiKey
     ? `<button id="btn-push-coros" class="btn-secondary btn-full" style="margin-top:10px">Push to COROS via intervals.icu</button>`
-    : `<p class="muted" style="font-size:11px;margin-top:8px">Configura intervals.icu en Settings para push directo al PACE 4.</p>`;
+    : `<p class="muted" style="font-size:11px;margin-top:8px">Set up intervals.icu in Settings to push straight to the PACE 4.</p>`;
   return `
     <div class="wcc-rp">
       <div class="wcc-rp-header">Running plan — programmed runs</div>
@@ -5335,10 +5335,10 @@ async function renderSyncCard() {
   const imp = await dbGet('settings', 'lastImportSummary').then(r => r && r.data).catch(() => null);
   let importLine = '';
   if (imp) {
-    const keptStr = Object.entries(imp.kept || {}).map(([k, v]) => `${k} ${v}`).join(', ') || 'nada';
+    const keptStr = Object.entries(imp.kept || {}).map(([k, v]) => `${k} ${v}`).join(', ') || 'nothing';
     const skipStr = Object.entries(imp.skipped || {}).map(([k, v]) => `${k} ${v}`).join(', ');
-    importLine = `Última importación (${escapeHtml(imp.window || '')}): ${escapeHtml(String(imp.total || 0))} actividades → importadas: ${escapeHtml(keptStr)}`
-      + (skipStr ? `<br><span style="color:var(--text2)">Descartadas: ${escapeHtml(skipStr)}</span>` : '')
+    importLine = `Last import (${escapeHtml(imp.window || '')}): ${escapeHtml(String(imp.total || 0))} activities → imported: ${escapeHtml(keptStr)}`
+      + (skipStr ? `<br><span style="color:var(--text2)">Skipped: ${escapeHtml(skipStr)}</span>` : '')
       + '<br>';
   }
 
@@ -5351,8 +5351,8 @@ async function renderSyncCard() {
       Athlete <code>${escapeHtml(athleteId)}</code> · Key ${escapeHtml(_maskApiKey(apiKey))}
     </div>
     <div class="muted" style="font-size:11px;margin-bottom:12px;line-height:1.6">
-      Syncing: <strong>wellness</strong> (recovery, HRV, RHR, sleep, SpO2) · <strong>training load</strong> (CTL/ATL/Form) · <strong>body</strong> (weight, steps) · <strong>nutrition</strong> (kcal + macros) · <strong>actividades</strong> (todo el cardio: correr, cinta, bici, remo, ski, elíptica, caminata, natación)<br>
-      Local cache: ${wellnessRowCount} wellness rows · ${runRowCount} runs · ${sessRowCount} sesiones de cardio<br>
+      Syncing: <strong>wellness</strong> (recovery, HRV, RHR, sleep, SpO2) · <strong>training load</strong> (CTL/ATL/Form) · <strong>body</strong> (weight, steps) · <strong>nutrition</strong> (kcal + macros) · <strong>activities</strong> (all cardio: running, treadmill, bike, row, ski, elliptical, walking, swimming)<br>
+      Local cache: ${wellnessRowCount} wellness rows · ${runRowCount} runs · ${sessRowCount} cardio sessions<br>
       ${importLine}Last runs sync: ${escapeHtml(lastRunsDate)}
     </div>
     <button id="sync-now" class="btn-primary btn-full">Sync now</button>
@@ -5564,7 +5564,7 @@ async function intervalsIcuSync(opts = {}) {
       const recordId = `icu_${stravaOrIcuId}`;
       const startLocal = String(a.start_date_local || a.start_date || '');
       const date = startLocal.split('T')[0];
-      if (!date) { skipped['sin fecha'] = (skipped['sin fecha'] || 0) + 1; continue; }
+      if (!date) { skipped['no date'] = (skipped['no date'] || 0) + 1; continue; }
       const distanceKm = Number(a.distance || 0) / 1000;
       const movingSec = Number(a.moving_time || a.elapsed_time || 0);
       const durationMin = Math.round(movingSec / 60);
@@ -5719,7 +5719,7 @@ async function backfillCardioFromIntervals({ force = false } = {}) {
   // recuperó y qué descartó sin pedir capturas de pantalla.
   await smartPut('settings', { key: 'cardioBackfillDone', data: { at: Date.now(), rev: CARDIO_BACKFILL_REV, from: CARDIO_BACKFILL_FROM, ...totals } });
   if (typeof toast === 'function' && (totals.runs + totals.sessions) > 0) {
-    toast(`Recuperadas ${totals.sessions} sesiones de cardio`);
+    toast(`Recovered ${totals.sessions} cardio sessions`);
   }
   return totals;
 }
@@ -6073,7 +6073,7 @@ async function pushRunningPlanToIntervalsIcu() {
     const latest = (all || []).slice().sort((a, b) => (b.generatedAt || 0) - (a.generatedAt || 0))[0];
     const legacy = latest && latest.nextWeekPlan && latest.nextWeekPlan.runningPlan;
     if (!legacy || !legacy.length) {
-      if (typeof toast === 'function') toast('El plan activo no trae carrera programada');
+      if (typeof toast === 'function') toast('The active plan has no running scheduled');
       return;
     }
     weekKey = latest.weekKey;
@@ -6096,10 +6096,10 @@ async function pushRunningPlanToIntervalsIcu() {
   if (!events.length) { if (typeof toast === 'function') toast('No dated runs to push'); return; }
   try {
     await _icuUpsertEvents(events);
-    if (typeof toast === 'function') toast(`Pushed ${events.length} run${events.length === 1 ? '' : 's'}${skipped ? ` · ${skipped} sin fecha` : ''}`);
+    if (typeof toast === 'function') toast(`Pushed ${events.length} run${events.length === 1 ? '' : 's'}${skipped ? ` · ${skipped} with no date` : ''}`);
   } catch (e) {
     console.warn('[intervals.icu] push failed:', e);
-    if (typeof toast === 'function') toast(`Falló el envío (${e.message || 'error'})`);
+    if (typeof toast === 'function') toast(`Push failed (${e.message || 'error'})`);
   }
 }
 
@@ -6127,7 +6127,7 @@ function _generateCardioDsl(planned) {
 async function pushCardioToIntervalsIcu() {
   const apiKey = state.settings && state.settings.intervalsIcuApiKey;
   const athleteId = state.settings && state.settings.intervalsIcuAthleteId;
-  if (!apiKey || !athleteId) { toast('Configurá intervals.icu en Settings primero'); return; }
+  if (!apiKey || !athleteId) { toast('Set up intervals.icu in Settings first'); return; }
 
   const date = today();
   let planned = null;
@@ -6138,11 +6138,11 @@ async function pushCardioToIntervalsIcu() {
   }
 
   // Ask which modality so intervals.icu maps to the right COROS activity type.
-  const modality = await showActionSheet('¿Qué vas a hacer?', [
-    { value: 'bike', label: 'Bici', icon: '🚴' },
-    { value: 'run_outdoor', label: 'Correr', icon: '🏃' },
-    { value: 'treadmill', label: 'Cinta', icon: '🏃' },
-    { value: 'row', label: 'Remo', icon: '🚣' },
+  const modality = await showActionSheet('What are you going to do?', [
+    { value: 'bike', label: 'Bike', icon: '🚴' },
+    { value: 'run_outdoor', label: 'Run', icon: '🏃' },
+    { value: 'treadmill', label: 'Treadmill', icon: '🏃' },
+    { value: 'row', label: 'Row', icon: '🚣' },
     { value: 'ski', label: 'SkiErg', icon: '⛷️' },
   ]);
   if (!modality) return;
@@ -6158,10 +6158,10 @@ async function pushCardioToIntervalsIcu() {
   };
   try {
     await _icuUpsertEvents([body]);
-    toast('Enviado a intervals.icu → COROS');
+    toast('Sent to intervals.icu → COROS');
   } catch (e) {
     console.warn('[intervals.icu] cardio push failed:', e);
-    toast(`Falló el envío (${e.message || 'error'})`);
+    toast(`Push failed (${e.message || 'error'})`);
   }
 }
 
@@ -6179,8 +6179,8 @@ async function pushCardioToIntervalsIcu() {
 // counts in the hard-day budget like any other Z2, tagged `origin: 'z2_finisher'` so it
 // can be told apart from a standalone cardio day.
 const _Z2F_MODALITIES = [
-  { value: 'bike', label: 'Bici', icon: '🚴' },
-  { value: 'treadmill', label: 'Cinta', icon: '🏃' },
+  { value: 'bike', label: 'Bike', icon: '🚴' },
+  { value: 'treadmill', label: 'Treadmill', icon: '🏃' },
   { value: 'row', label: 'Remo', icon: '🚣' },
   { value: 'ski', label: 'SkiErg', icon: '⛷️' },
   { value: 'run_outdoor', label: 'Correr', icon: '🏃' },
@@ -6188,28 +6188,28 @@ const _Z2F_MODALITIES = [
 
 async function logZ2Finisher(minutes) {
   const mins = parseInt(minutes, 10) || 20;
-  const modality = await showActionSheet('¿Con qué lo hiciste?', _Z2F_MODALITIES);
+  const modality = await showActionSheet('What did you do it on?', _Z2F_MODALITIES);
   if (!modality) return;
   const meta = (typeof sessionSubtypeMeta === 'function' && sessionSubtypeMeta('cardio', 'zone2')) || {};
-  const MOD = { run_outdoor: 'Carrera', treadmill: 'Cinta', bike: 'Bici', row: 'Remo', ski: 'SkiErg' };
+  const MOD = { run_outdoor: 'Run', treadmill: 'Treadmill', bike: 'Bike', row: 'Row', ski: 'SkiErg' };
   await smartPut('sessions', {
     id: uid(), date: today(), ts: Date.now(),
     family: 'cardio', subtype: 'zone2', sessionType: 'cardio.zone2',
-    modality, title: `${MOD[modality] || 'Cardio'} · Z2 post-fuerza`,
+    modality, title: `${MOD[modality] || 'Cardio'} · post-strength Z2`,
     durationMin: mins, distance: null, avgHR: null, perceivedEffort: null,
     evidenceTags: meta.evidenceTags || ['END-001'],
     budgetWeight: meta.budgetWeight != null ? meta.budgetWeight : 0.5,
     notes: '', source: 'manual', origin: 'z2_finisher', week: getWeekNumber(),
   });
   state._lastCardioDate = null; state._runningWeek = null;   // v11.56: el finisher cuenta como cardio para la progresión
-  toast(`Z2 ${mins}' registrado`);
+  toast(`Z2 ${mins}' logged`);
   try { renderTodaysPlan(); } catch (e) {}
   try { renderSessionHistory(); } catch (e) {}
 }
 
 async function pushZ2FinisherToIntervalsIcu(minutes) {
   const mins = parseInt(minutes, 10) || 20;
-  const modality = await showActionSheet('¿Con qué lo vas a hacer?', _Z2F_MODALITIES);
+  const modality = await showActionSheet('What will you do it on?', _Z2F_MODALITIES);
   if (!modality) return;
   const date = today();
   try {
@@ -6221,10 +6221,10 @@ async function pushZ2FinisherToIntervalsIcu(minutes) {
       type: _ICU_TYPE_BY_MODALITY[modality] || 'Workout',
       description: _generateCardioDsl({ subtype: 'zone2', durationMin: mins }),
     }]);
-    toast('Enviado a intervals.icu → COROS');
+    toast('Sent to intervals.icu → COROS');
   } catch (e) {
     console.warn('[intervals.icu] Z2 finisher push failed:', e);
-    toast(`Falló el envío (${e.message || 'error'})`);
+    toast(`Push failed (${e.message || 'error'})`);
   }
 }
 
@@ -6256,27 +6256,27 @@ const _icuRepeat = (n, ...steps) => ['', `${n}x`, ...steps, ''];
 const _icuDsl = (...parts) => parts.flat().join('\n');
 
 const CARDIO_LIBRARY = [
-  { group: 'Base aeróbica (Z2)', id: 'run_z2_5k',  modality: 'run_outdoor', label: 'Carrera Z2 · 5 km',  note: 'Fácil, conversacional', dsl: () => `- 5km ${_icuZoneToken('z2')}` },
-  { group: 'Base aeróbica (Z2)', id: 'run_z2_8k',  modality: 'run_outdoor', label: 'Carrera Z2 · 8 km',  note: 'Base media', dsl: () => `- 8km ${_icuZoneToken('z2')}` },
-  { group: 'Base aeróbica (Z2)', id: 'run_z2_10k', modality: 'run_outdoor', label: 'Carrera Z2 · 10 km (largo)', note: 'Largo del fin de semana', dsl: () => `- 10km ${_icuZoneToken('z2')}` },
-  { group: 'Base aeróbica (Z2)', id: 'bike_z2_40', modality: 'bike', label: 'Bici Z2 · 40 min', note: 'Bajo impacto', dsl: () => `- 40m ${_icuZoneToken('z2')}` },
-  { group: 'Base aeróbica (Z2)', id: 'bike_z2_60', modality: 'bike', label: 'Bici Z2 · 60 min', note: 'Volumen aeróbico barato', dsl: () => `- 60m ${_icuZoneToken('z2')}` },
-  { group: 'Base aeróbica (Z2)', id: 'row_z2_30',  modality: 'row',  label: 'Remo Z2 · 30 min', note: 'Cuerpo completo, suave', dsl: () => `- 30m ${_icuZoneToken('z2')}` },
+  { group: 'Aerobic base (Z2)', id: 'run_z2_5k',  modality: 'run_outdoor', label: 'Z2 run · 5 km',  note: 'Easy, conversational', dsl: () => `- 5km ${_icuZoneToken('z2')}` },
+  { group: 'Aerobic base (Z2)', id: 'run_z2_8k',  modality: 'run_outdoor', label: 'Z2 run · 8 km',  note: 'Mid-range base', dsl: () => `- 8km ${_icuZoneToken('z2')}` },
+  { group: 'Aerobic base (Z2)', id: 'run_z2_10k', modality: 'run_outdoor', label: 'Z2 run · 10 km (long)', note: 'Weekend long run', dsl: () => `- 10km ${_icuZoneToken('z2')}` },
+  { group: 'Aerobic base (Z2)', id: 'bike_z2_40', modality: 'bike', label: 'Z2 bike · 40 min', note: 'Low impact', dsl: () => `- 40m ${_icuZoneToken('z2')}` },
+  { group: 'Aerobic base (Z2)', id: 'bike_z2_60', modality: 'bike', label: 'Z2 bike · 60 min', note: 'Cheap aerobic volume', dsl: () => `- 60m ${_icuZoneToken('z2')}` },
+  { group: 'Aerobic base (Z2)', id: 'row_z2_30',  modality: 'row',  label: 'Z2 row · 30 min', note: 'Full body, easy', dsl: () => `- 30m ${_icuZoneToken('z2')}` },
   // v11.39: el catálogo tenía 13 workouts y CERO de ski, pese a que `ski` es una modalidad
   // declarada, hay un SkiErg en el gimnasio y la integración Concept2 ya trae "Virtual Ski".
   // El SkiErg es la mejor opción cuando las piernas están cargadas: tren superior y core,
   // impacto nulo (HYB-005, INT-002).
-  { group: 'Base aeróbica (Z2)', id: 'ski_z2_25',  modality: 'ski',  label: 'SkiErg Z2 · 25 min', note: 'Piernas cargadas, impacto cero', dsl: () => `- 25m ${_icuZoneToken('z2')}` },
+  { group: 'Aerobic base (Z2)', id: 'ski_z2_25',  modality: 'ski',  label: 'Z2 SkiErg · 25 min', note: 'Tired legs, zero impact', dsl: () => `- 25m ${_icuZoneToken('z2')}` },
 
-  { group: 'Calidad (1×/sem)', id: 'run_prog', modality: 'run_outdoor', label: 'Progresivo Z2→Z3 · 35 min', note: 'Termina algo más rápido', dsl: () => _icuDsl(`- 15m ${_icuZoneToken('z2')}`, `- 15m ${_icuZoneToken('z3')}`, `- 5m ${_icuZoneToken('z2')}`) },
-  { group: 'Calidad (1×/sem)', id: 'run_tempo', modality: 'run_outdoor', label: 'Umbral · 3×8 min Z4', note: 'Tempo sostenido', dsl: () => _icuDsl(`- 10m ${_icuZoneToken('z2')}`, _icuRepeat(3, `- 8m ${_icuZoneToken('z4')}`, `- 2m ${_icuZoneToken('z1')}`), `- 5m ${_icuZoneToken('z2')}`) },
-  { group: 'Calidad (1×/sem)', id: 'run_vo2', modality: 'run_outdoor', label: 'VO2 · 5×3 min Z5', note: 'Intervalos duros', dsl: () => _icuDsl(`- 12m ${_icuZoneToken('z2')}`, _icuRepeat(5, `- 3m ${_icuZoneToken('z5')}`, `- 3m ${_icuZoneToken('z1')}`), `- 8m ${_icuZoneToken('z2')}`) },
-  { group: 'Calidad (1×/sem)', id: 'bike_intervals', modality: 'bike', label: 'Bici · 4×4 min Z4', note: 'Intervalos bajo impacto', dsl: () => _icuDsl(`- 10m ${_icuZoneToken('z2')}`, _icuRepeat(4, `- 4m ${_icuZoneToken('z4')}`, `- 3m ${_icuZoneToken('z1')}`), `- 5m ${_icuZoneToken('z2')}`) },
-  { group: 'Calidad (1×/sem)', id: 'row_intervals', modality: 'row', label: 'Remo · 6×2 min Z4', note: 'Potencia aeróbica', dsl: () => _icuDsl(`- 8m ${_icuZoneToken('z2')}`, _icuRepeat(6, `- 2m ${_icuZoneToken('z4')}`, `- 2m ${_icuZoneToken('z1')}`), `- 5m ${_icuZoneToken('z2')}`) },
-  { group: 'Calidad (1×/sem)', id: 'ski_intervals', modality: 'ski', label: 'SkiErg · 8×1 min Z4', note: 'Duro sin castigar las piernas', dsl: () => _icuDsl(`- 8m ${_icuZoneToken('z2')}`, _icuRepeat(8, `- 1m ${_icuZoneToken('z4')}`, `- 1m ${_icuZoneToken('z1')}`), `- 5m ${_icuZoneToken('z2')}`) },
+  { group: 'Quality (1×/wk)', id: 'run_prog', modality: 'run_outdoor', label: 'Progression Z2→Z3 · 35 min', note: 'Finish a little faster', dsl: () => _icuDsl(`- 15m ${_icuZoneToken('z2')}`, `- 15m ${_icuZoneToken('z3')}`, `- 5m ${_icuZoneToken('z2')}`) },
+  { group: 'Quality (1×/wk)', id: 'run_tempo', modality: 'run_outdoor', label: 'Threshold · 3×8 min Z4', note: 'Sustained tempo', dsl: () => _icuDsl(`- 10m ${_icuZoneToken('z2')}`, _icuRepeat(3, `- 8m ${_icuZoneToken('z4')}`, `- 2m ${_icuZoneToken('z1')}`), `- 5m ${_icuZoneToken('z2')}`) },
+  { group: 'Quality (1×/wk)', id: 'run_vo2', modality: 'run_outdoor', label: 'VO2 · 5×3 min Z5', note: 'Hard intervals', dsl: () => _icuDsl(`- 12m ${_icuZoneToken('z2')}`, _icuRepeat(5, `- 3m ${_icuZoneToken('z5')}`, `- 3m ${_icuZoneToken('z1')}`), `- 8m ${_icuZoneToken('z2')}`) },
+  { group: 'Quality (1×/wk)', id: 'bike_intervals', modality: 'bike', label: 'Bike · 4×4 min Z4', note: 'Low-impact intervals', dsl: () => _icuDsl(`- 10m ${_icuZoneToken('z2')}`, _icuRepeat(4, `- 4m ${_icuZoneToken('z4')}`, `- 3m ${_icuZoneToken('z1')}`), `- 5m ${_icuZoneToken('z2')}`) },
+  { group: 'Quality (1×/wk)', id: 'row_intervals', modality: 'row', label: 'Row · 6×2 min Z4', note: 'Aerobic power', dsl: () => _icuDsl(`- 8m ${_icuZoneToken('z2')}`, _icuRepeat(6, `- 2m ${_icuZoneToken('z4')}`, `- 2m ${_icuZoneToken('z1')}`), `- 5m ${_icuZoneToken('z2')}`) },
+  { group: 'Quality (1×/wk)', id: 'ski_intervals', modality: 'ski', label: 'SkiErg · 8×1 min Z4', note: 'Hard without punishing the legs', dsl: () => _icuDsl(`- 8m ${_icuZoneToken('z2')}`, _icuRepeat(8, `- 1m ${_icuZoneToken('z4')}`, `- 1m ${_icuZoneToken('z1')}`), `- 5m ${_icuZoneToken('z2')}`) },
 
-  { group: 'Recuperación', id: 'walk_30', modality: 'walk', label: 'Caminata Z1 · 30 min', note: 'Recuperación activa', dsl: () => `- 30m ${_icuZoneToken('z1')}` },
-  { group: 'Recuperación', id: 'bike_recov', modality: 'bike', label: 'Bici recuperación Z1 · 30 min', note: 'Piernas cargadas', dsl: () => `- 30m ${_icuZoneToken('z1')}` },
+  { group: 'Recovery', id: 'walk_30', modality: 'walk', label: 'Z1 walk · 30 min', note: 'Active recovery', dsl: () => `- 30m ${_icuZoneToken('z1')}` },
+  { group: 'Recovery', id: 'bike_recov', modality: 'bike', label: 'Z1 recovery bike · 30 min', note: 'Tired legs', dsl: () => `- 30m ${_icuZoneToken('z1')}` },
 ];
 
 // Render the "Enviar a COROS" catalog inside the Cardio tab (always visible).
@@ -6314,7 +6314,7 @@ async function renderCardioLibrary() {
   // against your own zones before it reaches the COROS. The cached bpm is shown
   // here purely as a reference for you.
   const z2 = cardioHrTarget('zone2');
-  const zNote = z2 ? `Objetivo por zona · tu Z2 = ${z2}` : 'Objetivo por zona (Z1-Z5), según tus zonas de intervals.icu';
+  const zNote = z2 ? `Zone-based target · your Z2 = ${z2}` : 'Zone-based target (Z1-Z5), from your intervals.icu zones';
 
   let planned = null;
   try { planned = await getPlannedSessionForDate(new Date()); } catch (e) { /* context is optional */ }
@@ -6322,18 +6322,18 @@ async function renderCardioLibrary() {
   try { const wc = await getWhoopContext(); whoopRed = !!(wc && wc.color === 'red'); } catch (e) {}
   // A hard cardio session is discouraged when the day already carries heavy legs
   // (INT-001), the week is over its hard-day cap (BUD-001), or recovery is red.
-  const legsToday = planned && planned.type === 'gym' && /lower|pierna|squat|bisagra/i.test(`${planned.sessionId} ${planned.subtitle || ''}`);
+  const legsToday = planned && planned.type === 'gym' && /lower|leg|pierna|squat|hinge|bisagra/i.test(`${planned.sessionId} ${planned.subtitle || ''}`);
   // v11.41: el aviso se apoya solo en razones físicas reales —pierna hoy (interferencia) y
   // recuperación en rojo—, no en la carga acumulada, que ya no condiciona nada.
   const hardDiscouraged = legsToday || whoopRed;
-  const hardWhy = legsToday ? 'hoy toca pierna' : whoopRed ? 'recuperación en rojo' : '';
+  const hardWhy = legsToday ? 'legs today' : whoopRed ? 'recovery in the red' : '';
   const wantSubtype = planned && planned.type === 'run' ? (planned.subtype || 'zone2') : null;
 
   let header = '';
   if (planned && planned.type === 'run') {
-    header = `<div class="clib-today">Hoy toca <b>${planned.name || cardioSubtypeLabel(planned.subtype)}</b>${planned.durationMin ? ` · ${planned.durationMin}'` : ''}. Podés enviar cualquier otro igual.</div>`;
+    header = `<div class="clib-today">Today: <b>${planned.name || cardioSubtypeLabel(planned.subtype)}</b>${planned.durationMin ? ` · ${planned.durationMin}'` : ''}. You can still send any other one.</div>`;
   } else if (planned && planned.type === 'gym') {
-    header = `<div class="clib-today">Hoy toca <b>${planned.name || 'fuerza'}</b>. Si además querés cardio, mejor fácil${hardDiscouraged ? ` — ${hardWhy}` : ''}.</div>`;
+    header = `<div class="clib-today">Today: <b>${planned.name || 'strength'}</b>. If you also want cardio, keep it easy${hardDiscouraged ? ` — ${hardWhy}` : ''}.</div>`;
   }
 
   host.innerHTML = `
@@ -6341,10 +6341,10 @@ async function renderCardioLibrary() {
       <div class="section-head-icon" style="background:var(--tint-blue);color:var(--blue)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4Z"/></svg>
       </div>
-      <span class="section-head-title">Enviar a COROS</span>
+      <span class="section-head-title">Send to COROS</span>
     </div>
     ${header}
-    ${hasCreds ? '' : `<div class="clib-warn">Configurá intervals.icu en Settings para enviar a tu COROS.</div>`}
+    ${hasCreds ? '' : `<div class="clib-warn">Set up intervals.icu in Settings to send to your COROS.</div>`}
     ${groups.map(g => `
       <div class="clib-group">${g}</div>
       ${CARDIO_LIBRARY.filter(w => w.group === g).map(w => {
@@ -6354,14 +6354,14 @@ async function renderCardioLibrary() {
         const warn = isHard && hardDiscouraged;
         return `<button class="clib-row${rec ? ' clib-rec' : ''}" data-clib="${w.id}" ${hasCreds ? '' : 'disabled'}>
           <span class="clib-body">
-            <span class="clib-label">${w.label}${rec ? '<span class="clib-badge">Recomendado hoy</span>' : ''}</span>
-            <span class="clib-note">${warn ? `⚠ Exigente — ${hardWhy}` : w.note}</span>
+            <span class="clib-label">${w.label}${rec ? '<span class="clib-badge">Recommended today</span>' : ''}</span>
+            <span class="clib-note">${warn ? `⚠ Demanding — ${hardWhy}` : w.note}</span>
           </span>
           <span class="clib-send">→ COROS</span>
         </button>`;
       }).join('')}
     `).join('')}
-    <div class="clib-foot">${zNote} · se programa para hoy en tu calendario intervals.icu → COROS. Los avisos son orientativos: podés enviar cualquiera.</div>
+    <div class="clib-foot">${zNote} · it is scheduled for today in your intervals.icu calendar → COROS. The warnings are advisory: you can send any of them.</div>
   `;
   host.querySelectorAll('[data-clib]').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -6377,7 +6377,7 @@ async function renderCardioLibrary() {
 async function pushCardioWorkout(item) {
   const apiKey = state.settings && state.settings.intervalsIcuApiKey;
   const athleteId = state.settings && state.settings.intervalsIcuAthleteId;
-  if (!apiKey || !athleteId) { toast('Configurá intervals.icu en Settings primero'); return; }
+  if (!apiKey || !athleteId) { toast('Set up intervals.icu in Settings first'); return; }
   const date = today();
   const body = {
     external_id: `pwa-cardio-${date}-${item.id}`,
@@ -6392,7 +6392,7 @@ async function pushCardioWorkout(item) {
     toast(`${item.label} → COROS ✓`);
   } catch (e) {
     console.warn('[intervals.icu] catalog push failed:', e);
-    toast(`Falló el envío (${e.message || 'error'})`);
+    toast(`Push failed (${e.message || 'error'})`);
   }
 }
 
@@ -6666,16 +6666,16 @@ async function renderBodyCompEstimator() {
   const inputCss = 'width:100%;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:14px;padding:8px 10px';
 
   container.innerHTML = `
-    <div class="section-label" style="margin-bottom:8px">Cintura y composicion</div>
+    <div class="section-label" style="margin-bottom:8px">Waist and composition</div>
     <div style="display:flex;gap:8px;margin-bottom:10px">
-      <div style="flex:1"><label class="muted" style="font-size:11px">Peso (kg)</label><input type="number" id="bc-weight" inputmode="decimal" step="0.1" value="${pfWeight}" placeholder="87" style="${inputCss}"></div>
-      <div style="flex:1"><label class="muted" style="font-size:11px">Cintura (cm)</label><input type="number" id="bc-waist" inputmode="decimal" step="0.5" value="${pfWaist}" placeholder="92" style="${inputCss}"></div>
-      <div style="flex:1"><label class="muted" style="font-size:11px">Cuello (cm)</label><input type="number" id="bc-neck" inputmode="decimal" step="0.5" value="${pfNeck}" placeholder="39" style="${inputCss}"></div>
-      <div style="flex:1"><label class="muted" style="font-size:11px">Altura (cm)</label><input type="number" id="bc-height" inputmode="decimal" step="1" value="${pfHeight}" placeholder="182" style="${inputCss}"></div>
+      <div style="flex:1"><label class="muted" style="font-size:11px">Weight (kg)</label><input type="number" id="bc-weight" inputmode="decimal" step="0.1" value="${pfWeight}" placeholder="87" style="${inputCss}"></div>
+      <div style="flex:1"><label class="muted" style="font-size:11px">Waist (cm)</label><input type="number" id="bc-waist" inputmode="decimal" step="0.5" value="${pfWaist}" placeholder="92" style="${inputCss}"></div>
+      <div style="flex:1"><label class="muted" style="font-size:11px">Neck (cm)</label><input type="number" id="bc-neck" inputmode="decimal" step="0.5" value="${pfNeck}" placeholder="39" style="${inputCss}"></div>
+      <div style="flex:1"><label class="muted" style="font-size:11px">Height (cm)</label><input type="number" id="bc-height" inputmode="decimal" step="1" value="${pfHeight}" placeholder="182" style="${inputCss}"></div>
     </div>
-    <button id="btn-calc-bf" class="btn-secondary" style="width:100%;text-align:center">Calcular y guardar</button>
+    <button id="btn-calc-bf" class="btn-secondary" style="width:100%;text-align:center">Calculate and save</button>
     <div id="bc-result" style="margin-top:10px">${renderWaistSummary(waistLog)}</div>
-    <p class="muted" style="margin:10px 0 0;font-size:11px;line-height:1.5">Domingo por la manana, en ayunas. De pie y relajado, cinta a la altura del ombligo, al final de una exhalacion normal, ajustada sin comprimir. Dos medidas y promedia.</p>
+    <p class="muted" style="margin:10px 0 0;font-size:11px;line-height:1.5">Sunday morning, fasted. Standing and relaxed, tape at navel height, at the end of a normal exhale, snug without compressing. Take two measurements and average them.</p>
   `;
 
   document.getElementById('btn-calc-bf').addEventListener('click', async () => {
@@ -6686,12 +6686,12 @@ async function renderBodyCompEstimator() {
     const resultEl = document.getElementById('bc-result');
 
     if (!weight || !waist || !neck || !height) {
-      resultEl.innerHTML = '<span class="muted">Rellena los cuatro campos</span>';
+      resultEl.innerHTML = '<span class="muted">Fill in all four fields</span>';
       return;
     }
     // El logaritmo de Navy explota si la cintura no supera al cuello.
     if (waist <= neck) {
-      resultEl.innerHTML = '<span class="muted">La cintura debe ser mayor que el cuello</span>';
+      resultEl.innerHTML = '<span class="muted">The waist must be larger than the neck</span>';
       return;
     }
 
@@ -6734,7 +6734,7 @@ async function renderBodyCompEstimator() {
         <div class="bc-stat"><span class="bc-val">${category}</span><span class="bc-label">Category</span></div>
       </div>
     `;
-    toast(`Cintura ${waist} cm guardada`);
+    toast(`Waist ${waist} cm saved`);
     try { await renderBodyWeightChart(); } catch (e) {}
   });
 }
@@ -6743,7 +6743,7 @@ async function renderBodyCompEstimator() {
 // este al menos WAIST_MIN_DELTA_DAYS antes, y las ultimas mediciones. Devuelve HTML.
 function renderWaistSummary(waistLog) {
   if (!waistLog || !waistLog.length) {
-    return '<span class="muted" style="font-size:12px">Sin mediciones. La primera fija la linea base.</span>';
+    return '<span class="muted" style="font-size:12px">No measurements yet. The first one sets the baseline.</span>';
   }
   const last = waistLog[waistLog.length - 1];
   const lastMs = new Date(last.date + 'T00:00:00').getTime();
@@ -6754,12 +6754,12 @@ function renderWaistSummary(waistLog) {
     if (days >= WAIST_MIN_DELTA_DAYS) { ref = Object.assign({}, waistLog[k], { days }); break; }
   }
 
-  let deltaHtml = '<span class="muted" style="font-size:12px">Delta disponible tras ~2 semanas</span>';
+  let deltaHtml = '<span class="muted" style="font-size:12px">Delta available after ~2 weeks</span>';
   if (ref) {
     const delta = Math.round((Number(last.waist) - Number(ref.waist)) * 10) / 10;
     const color = delta < -0.05 ? 'var(--accent)' : (delta > 0.05 ? 'var(--red)' : 'var(--text2)');
     const sign = delta > 0 ? '+' : '';
-    deltaHtml = `<span style="color:${color};font-size:12px"><b>${sign}${delta.toFixed(1)} cm</b> en ${ref.days} dias</span>`;
+    deltaHtml = `<span style="color:${color};font-size:12px"><b>${sign}${delta.toFixed(1)} cm</b> in ${ref.days} days</span>`;
   }
 
   const recent = waistLog.slice(-6).reverse().map(e => {
@@ -7181,21 +7181,21 @@ async function renderRunPlanBanner() {
     // salen. `_cardioDurLabel` mete un <span>, y el badge es texto plano, así que se compone aparte.
     const durTxt = planned.durationMin
       ? `${planned.durationMin} min` + ((planned.durationSource === 'rule' && planned.baseMin && planned.baseMin !== planned.durationMin && planned.block && planned.block.index)
-          ? ` (${planned.baseMin}' base · semana ${planned.block.index})`
+          ? ` (${planned.baseMin}' base · week ${planned.block.index})`
           : (planned.durationSource === 'coach' ? ' (coach)' : ''))
       : '';
     // v11.60: la dosis de la fase manda en el badge. Con kilómetros se dicen los kilómetros;
     // en trote/caminata, el patrón — que es lo único que se puede ejecutar sin pensar.
-    const kmTxt = planned.distanceKm ? `${String(planned.distanceKm).replace('.', ',')} km` : '';
+    const kmTxt = planned.distanceKm ? `${String(planned.distanceKm)} km` : '';
     const badge = [kmTxt || durTxt, planned.pattern, planned.subtitle, hr].filter(Boolean).join(' · ');
     const fase = (typeof runningPhaseLabel === 'function') ? runningPhaseLabel(planned) : '';
     banner.innerHTML = `
-      <div class="rpb-title">Hoy: ${planned.name}</div>
+      <div class="rpb-title">Today: ${planned.name}</div>
       <div class="rpb-detail">${escapeHtml(planned.summary || planned.subtitle || '')}</div>
       ${_blockEyebrowHtml(planned.block)}
       ${fase ? `<div class="plan-block-eyebrow">${fase}</div>` : ''}
       <span class="rpb-badge">${badge}</span>
-      <button class="btn-secondary btn-full" id="rpb-push-icu" style="margin-top:10px;text-align:center">Enviar a intervals.icu</button>
+      <button class="btn-secondary btn-full" id="rpb-push-icu" style="margin-top:10px;text-align:center">Send to intervals.icu</button>
     `;
     const b = banner.querySelector('#rpb-push-icu');
     if (b) b.addEventListener('click', () => pushCardioToIntervalsIcu());
@@ -7203,8 +7203,8 @@ async function renderRunPlanBanner() {
     const wk = getWeekNumber();
     banner.innerHTML = `
       <div class="rpb-title">Cardio</div>
-      <div class="rpb-detail">Hoy no hay cardio planificado — podés registrar una sesión igual (bici/remo/cinta/caminata).</div>
-      <span class="rpb-badge">Semana ${wk} · Zona 2 la mayoría de los días</span>
+      <div class="rpb-detail">No cardio planned today — you can still log a session (bike/row/treadmill/walk).</div>
+      <span class="rpb-badge">Week ${wk} · Zone 2 most days</span>
     `;
   }
 }
@@ -7219,15 +7219,15 @@ async function logCardio() {
   const hr = parseInt(document.getElementById('cardio-hr').value) || null;
   const feel = getStarValue('cardio-feel');
   const notes = document.getElementById('cardio-notes').value.trim();
-  if (!duration && !distance) { toast('Poné duración o distancia'); return; }
+  if (!duration && !distance) { toast('Enter a duration or a distance'); return; }
 
   const isWalk = modality === 'walk';
   const family = isWalk ? 'recovery' : 'cardio';
   const subtype = isWalk ? 'walk' : intensity;
   const meta = (typeof sessionSubtypeMeta === 'function' && sessionSubtypeMeta(family, subtype)) || {};
-  const MOD = { run_outdoor: 'Carrera', treadmill: 'Cinta', bike: 'Bici', row: 'Remo', ski: 'SkiErg', walk: 'Caminata' };
-  const INT = { zone2: 'Z2', long_easy: 'Largo Z2', zone3: 'Z3', threshold: 'Umbral', intervals: 'Intervalos' };
-  const title = isWalk ? 'Caminata (recuperación)' : `${MOD[modality] || 'Cardio'} · ${INT[subtype] || 'Z2'}`;
+  const MOD = { run_outdoor: 'Run', treadmill: 'Treadmill', bike: 'Bike', row: 'Row', ski: 'SkiErg', walk: 'Walk' };
+  const INT = { zone2: 'Z2', long_easy: 'Long Z2', zone3: 'Z3', threshold: 'Threshold', intervals: 'Intervals' };
+  const title = isWalk ? 'Walk (recovery)' : `${MOD[modality] || 'Cardio'} · ${INT[subtype] || 'Z2'}`;
 
   const rec = {
     id: uid(), date: today(), ts: Date.now(),
@@ -7909,26 +7909,26 @@ const ICON_ACTIVITY = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor
 // without modality (strength modifications) stay as text guidance only.
 const ALT_LIBRARY = {
   strength_lower: [
-    { label: 'Bike Zone 2 35-45 min', family: 'cardio', subtype: 'zone2', modality: 'bike', durationMin: 40, intensity: 'Z2', reason: 'Aeróbico sin coste de piernas', ruleIds: ['INT-002', 'HYB-005'] },
-    { label: 'Upper light accessories', family: 'strength', subtype: 'upper', durationMin: 35, intensity: 'RPE 6-7', reason: 'Estímulo bajo, evita tren inferior', ruleIds: ['STR-001'] },
-    { label: 'Mobility + core', family: 'recovery', subtype: 'mobility', modality: 'mobility', durationMin: 25, intensity: 'easy', reason: 'Recuperación activa', ruleIds: ['ATH-003'] },
-    { label: 'Recovery walk 30-40 min', family: 'recovery', subtype: 'walk', modality: 'walk', durationMin: 35, intensity: 'easy', reason: 'Bajo impacto / NEAT', ruleIds: ['READ-007'] },
+    { label: 'Bike Zone 2 35-45 min', family: 'cardio', subtype: 'zone2', modality: 'bike', durationMin: 40, intensity: 'Z2', reason: 'Aerobic work with no leg cost', ruleIds: ['INT-002', 'HYB-005'] },
+    { label: 'Upper light accessories', family: 'strength', subtype: 'upper', durationMin: 35, intensity: 'RPE 6-7', reason: 'Low stimulus, avoids the lower body', ruleIds: ['STR-001'] },
+    { label: 'Mobility + core', family: 'recovery', subtype: 'mobility', modality: 'mobility', durationMin: 25, intensity: 'easy', reason: 'Active recovery', ruleIds: ['ATH-003'] },
+    { label: 'Recovery walk 30-40 min', family: 'recovery', subtype: 'walk', modality: 'walk', durationMin: 35, intensity: 'easy', reason: 'Low impact / NEAT', ruleIds: ['READ-007'] },
   ],
   hard_cardio: [
     // v11.42: el híbrido de trineo + SkiErg entra AQUÍ, como alternativa del cardio del sábado —
     // no como un día extra. HYB-001 lo dice literal: "0-1/sem, en lugar de un cardio, no además".
-    { label: 'Híbrido: trineo + SkiErg (~40 min)', family: 'hybrid', subtype: 'strength_endurance', planRef: 'hybrid1', durationMin: 40, intensity: 'RPE 8', reason: 'Trineo concéntrico puro: mucho estímulo, pocas agujetas, casi no interfiere con pierna ni con correr', ruleIds: ['HYB-001', 'HYB-003', 'HYB-005'] },
-    { label: 'Bike Zone 2 35-45 min', family: 'cardio', subtype: 'zone2', modality: 'bike', durationMin: 40, intensity: 'Z2', reason: 'Bajo impacto, baja interferencia', ruleIds: ['INT-002'] },
-    { label: 'Row moderado 25-30 min', family: 'cardio', subtype: 'zone2', modality: 'row', durationMin: 28, intensity: 'Z2', reason: 'Bajo impacto', ruleIds: ['INT-002'] },
-    { label: 'Easy run/walk 30 min', family: 'cardio', subtype: 'zone2', modality: 'run', durationMin: 30, intensity: 'easy', reason: 'Reduce carga de piernas', ruleIds: ['END-006'] },
+    { label: 'Hybrid: sled + SkiErg (~40 min)', family: 'hybrid', subtype: 'strength_endurance', planRef: 'hybrid1', durationMin: 40, intensity: 'RPE 8', reason: 'Purely concentric sled: plenty of stimulus, little soreness, barely interferes with legs or running', ruleIds: ['HYB-001', 'HYB-003', 'HYB-005'] },
+    { label: 'Bike Zone 2 35-45 min', family: 'cardio', subtype: 'zone2', modality: 'bike', durationMin: 40, intensity: 'Z2', reason: 'Low impact, low interference', ruleIds: ['INT-002'] },
+    { label: 'Moderate row 25-30 min', family: 'cardio', subtype: 'zone2', modality: 'row', durationMin: 28, intensity: 'Z2', reason: 'Low impact', ruleIds: ['INT-002'] },
+    { label: 'Easy run/walk 30 min', family: 'cardio', subtype: 'zone2', modality: 'run', durationMin: 30, intensity: 'easy', reason: 'Cuts the load on the legs', ruleIds: ['END-006'] },
   ],
   hybrid: [
-    { label: 'Bike Zone 2 35 min', family: 'cardio', subtype: 'zone2', modality: 'bike', durationMin: 35, intensity: 'Z2', reason: 'Conserva aeróbico, baja fatiga', ruleIds: ['HYB-005'] },
-    { label: 'Easy SkiErg 25 min', family: 'cardio', subtype: 'zone2', modality: 'ski', durationMin: 25, intensity: 'easy', reason: 'Bajo impacto', ruleIds: ['HYB-005'] },
-    { label: 'Mobility / recovery', family: 'recovery', subtype: 'mobility', modality: 'mobility', durationMin: 25, intensity: 'easy', reason: 'Recuperación', ruleIds: ['ATH-003'] },
+    { label: 'Bike Zone 2 35 min', family: 'cardio', subtype: 'zone2', modality: 'bike', durationMin: 35, intensity: 'Z2', reason: 'Keeps the aerobic work, cuts fatigue', ruleIds: ['HYB-005'] },
+    { label: 'Easy SkiErg 25 min', family: 'cardio', subtype: 'zone2', modality: 'ski', durationMin: 25, intensity: 'easy', reason: 'Low impact', ruleIds: ['HYB-005'] },
+    { label: 'Mobility / recovery', family: 'recovery', subtype: 'mobility', modality: 'mobility', durationMin: 25, intensity: 'easy', reason: 'Recovery', ruleIds: ['ATH-003'] },
   ],
   strength_upper: [
-    { label: 'Upper, sin fallo, −1-2 accesorios', family: 'strength', subtype: 'upper', durationMin: 40, intensity: 'RPE 7', reason: 'Mantener estímulo, recortar fatiga', ruleIds: ['STR-001', 'STR-004'] },
+    { label: 'Upper, no failure, −1-2 accessories', family: 'strength', subtype: 'upper', durationMin: 40, intensity: 'RPE 7', reason: 'Keep the stimulus, trim the fatigue', ruleIds: ['STR-001', 'STR-004'] },
   ],
 };
 
@@ -8231,7 +8231,7 @@ async function _applyRunningWeekFallback(out, date, jsDay, durInfo) {
         out.durationMin = s.min;
         if (s.baseMin != null) out.baseMin = s.baseMin;
         out.durationSource = 'rule';
-        out.durationNote = s.pattern ? 'trote/caminata por tiempo' : out.durationNote;
+        out.durationNote = s.pattern ? 'jog/walk by time' : out.durationNote;
       }
     }
     await _logRunningWeekOnce(rw, out.date);
@@ -8263,7 +8263,7 @@ async function _logRunningWeekOnce(rw, ds) {
     source: 'rule',
     type: 'running-week',
     what: rw.reason,
-    why: 'Fallback determinista sin plan de carrera del coach',
+    why: 'Deterministic fallback with no coach running plan',
     ruleIds: rw.ruleIds || [],
     evidence: {
       phase: rw.phase,
@@ -8277,13 +8277,13 @@ async function _logRunningWeekOnce(rw, ds) {
 
 /**
  * Fase de carrera en castellano. Cadena vacía sin fase: no se inventa una etiqueta.
- * El mapa (`RW_PHASE_ES`) vive en coach-engine.js, que es quien define los ids de fase.
+ * El mapa (`RW_PHASE_LABEL`) vive en coach-engine.js, que es quien define los ids de fase.
  */
 function runningPhaseLabel(planned) {
   const p = planned && planned.runningPhase;
   if (!p) return '';
-  const es = (typeof RW_PHASE_ES !== 'undefined' && RW_PHASE_ES[p]) || p;
-  return `Carrera · fase ${es}`;
+  const lbl = (typeof RW_PHASE_LABEL !== 'undefined' && RW_PHASE_LABEL[p]) || p;
+  return `Running · ${lbl} phase`;
 }
 
 async function getPlannedSessionForDate(date) {
@@ -8336,7 +8336,7 @@ async function getPlannedSessionForDate(date) {
     if (slot.type === 'recovery') {
       const rBase = slot.z2FinisherMin || null;
       const r = await prog(rBase, rBase ? _coachCardioMin(jsDay, 'z2FinisherMin') : null, 'finisher');
-      return { type: 'recovery', date: ds, name: slot.label || 'Recuperación activa', subtitle: 'Movilidad + Z2 suave', z2FinisherMin: r.min, z2BaseMin: rBase, z2Source: r.source, z2Note: r.note, block: blk };
+      return { type: 'recovery', date: ds, name: slot.label || 'Active recovery', subtitle: 'Mobility + easy Z2', z2FinisherMin: r.min, z2BaseMin: rBase, z2Source: r.source, z2Note: r.note, block: blk };
     }
   }
   return { type: 'rest', date: ds, name: 'Rest', block: blk };
@@ -8351,7 +8351,7 @@ function _cardioDurLabel(min, baseMin, source, blk) {
   if (min == null) return '—';
   if (source === 'coach') return `${min} min <span class="rx-dur-src">(coach)</span>`;
   if (source === 'rule' && baseMin && baseMin !== min && blk && blk.index) {
-    return `${min} min <span class="rx-dur-src">(${baseMin}' base · semana ${blk.index}/${DELOAD_BLOCK_WEEKS})</span>`;
+    return `${min} min <span class="rx-dur-src">(${baseMin}' base · week ${blk.index}/${DELOAD_BLOCK_WEEKS})</span>`;
   }
   return `${min} min`;
 }
@@ -8359,7 +8359,7 @@ function _cardioDurLabel(min, baseMin, source, blk) {
 // "Semana 3/5 · build" — cadena vacía si no hay ancla (no se inventa una semana de bloque).
 function _blockEyebrow(blk) {
   if (!blk || !blk.index) return '';
-  return `Semana ${blk.index}/${DELOAD_BLOCK_WEEKS} · ${blk.label}`;
+  return `Week ${blk.index}/${DELOAD_BLOCK_WEEKS} · ${blk.label}`;
 }
 
 function _blockEyebrowHtml(blk) {
@@ -8369,19 +8369,19 @@ function _blockEyebrowHtml(blk) {
 
 // Spanish label for a cardio subtype (used in planned-session cards).
 function cardioSubtypeLabel(subtype) {
-  const map = { zone2: 'Zona 2 · fácil', zone3: 'Zona 3', threshold: 'Umbral', intervals: 'Intervalos', long_easy: 'Largo Z2 · calidad', recovery: 'Recuperación' };
-  return map[subtype] || 'Zona 2 · fácil';
+  const map = { zone2: 'Zone 2 · easy', zone3: 'Zone 3', threshold: 'Threshold', intervals: 'Intervals', long_easy: 'Long Z2 · quality', recovery: 'Recovery' };
+  return map[subtype] || 'Zone 2 · easy';
 }
 
 // Fallback intensity cue (RPE / conversational) when no bpm zones are cached.
 function cardioIntensityGuide(subtype) {
   const map = {
-    zone2: 'Conversacional · podés hablar · RPE 3-4',
-    long_easy: 'Conversacional · podés hablar · RPE 3-4',
-    zone3: 'Cómodo-duro · frases cortas · RPE 5-6',
-    threshold: 'Duro sostenido · RPE 7-8',
-    intervals: 'Muy duro por tramos · RPE 9',
-    recovery: 'Muy suave · RPE 2',
+    zone2: 'Conversational · you can talk · RPE 3-4',
+    long_easy: 'Conversational · you can talk · RPE 3-4',
+    zone3: 'Comfortably hard · short sentences · RPE 5-6',
+    threshold: 'Sustained hard · RPE 7-8',
+    intervals: 'Very hard in blocks · RPE 9',
+    recovery: 'Very easy · RPE 2',
   };
   return map[subtype] || map.zone2;
 }
@@ -8429,7 +8429,7 @@ async function getWhoopContext() {
   const sleepHrs = sleepToday ? sleepToday.durationHrs : null;
   if (!rec || rec.score == null) {
     const reason = (data && data.todayMissingReason)
-      || (data ? 'Sin dato de recuperación de hoy' : 'Sin datos de recuperación');
+      || (data ? 'No recovery data for today' : 'No recovery data');
     return { color: 'unknown', score: null, hrv: null, rhr: null, sleepHrs, source: 'none', date: t, fetchedAt: null, reason, lastAvailable };
   }
   const source = (rec.source === 'whoop-direct' || (data && data.todaySource === 'whoop-direct')) ? 'whoop-direct' : 'intervals';
@@ -8563,31 +8563,31 @@ async function computeHardDayBudget() {
 // `classifySessionStress` se conserva (la usa el clasificador de sesiones y su test) y
 // `_t3SessionLabel` también (la etiqueta descriptiva del día, que sigue en el calendario).
 
-function _t3WeightWord(w) { return w >= 2 ? 'exigente' : w >= 1 ? 'moderado' : w > 0 ? 'suave' : 'recuperación'; }
+function _t3WeightWord(w) { return w >= 2 ? 'demanding' : w >= 1 ? 'moderate' : w > 0 ? 'easy' : 'recovery'; }
 // Descriptive session label from its actual main lifts (movement patterns), in
 // Spanish — e.g. "Sentadilla · Peso muerto" instead of the internal "Lower B".
-const _PATTERN_ES = {
-  'squat': 'Sentadilla', 'hinge': 'Peso muerto', 'horizontal-press': 'Press banca',
-  'vertical-press': 'Press militar', 'horizontal-pull': 'Remo', 'vertical-pull': 'Dominadas',
+const _PATTERN_LABEL = {
+  'squat': 'Squat', 'hinge': 'Deadlift', 'horizontal-press': 'Bench press',
+  'vertical-press': 'Overhead press', 'horizontal-pull': 'Row', 'vertical-pull': 'Pull-ups',
 };
-const _MUSCLE_ES = {
-  Chest: 'Pecho', Back: 'Espalda', Shoulders: 'Hombro', Quads: 'Cuádriceps', Hamstrings: 'Isquios',
-  Posterior: 'Posterior', Glutes: 'Glúteos', Triceps: 'Tríceps', Biceps: 'Bíceps', Core: 'Core',
-  Calves: 'Gemelos', 'Rear Delt': 'Deltoide post.',
+const _MUSCLE_LABEL = {
+  Chest: 'Chest', Back: 'Back', Shoulders: 'Shoulders', Quads: 'Quads', Hamstrings: 'Hamstrings',
+  Posterior: 'Posterior', Glutes: 'Glutes', Triceps: 'Triceps', Biceps: 'Biceps', Core: 'Core',
+  Calves: 'Calves', 'Rear Delt': 'Rear delt',
 };
 function _t3SessionLabel(planned) {
-  if (!planned) return 'Sesión';
-  if (planned.type === 'run') return 'Carrera Z2';
-  if (planned.type === 'rest') return 'Descanso';
+  if (!planned) return 'Session';
+  if (planned.type === 'run') return 'Z2 run';
+  if (planned.type === 'rest') return 'Rest';
   const exs = planned.exercises || [];
   const major = [], minor = [];
   for (const ex of exs) {
     const pat = (typeof MOVEMENT_PATTERNS !== 'undefined' && MOVEMENT_PATTERNS[ex.id]) || null;
-    if (pat && _PATTERN_ES[pat]) { if (!major.includes(_PATTERN_ES[pat])) major.push(_PATTERN_ES[pat]); }
-    else { const mu = _MUSCLE_ES[ex.muscle]; if (mu && !minor.includes(mu)) minor.push(mu); }
+    if (pat && _PATTERN_LABEL[pat]) { if (!major.includes(_PATTERN_LABEL[pat])) major.push(_PATTERN_LABEL[pat]); }
+    else { const mu = _MUSCLE_LABEL[ex.muscle]; if (mu && !minor.includes(mu)) minor.push(mu); }
   }
   const out = major.concat(minor).slice(0, 2);
-  return out.length ? out.join(' · ') : (planned.name || 'Fuerza');
+  return out.length ? out.join(' · ') : (planned.name || 'Strength');
 }
 
 // RETIRADO en v11.62 — LA TARJETA DE CONSEJO DIARIO.
@@ -8629,10 +8629,10 @@ async function renderHardDayBudget() {
   const top = (b.items || []).slice(0, 3).map(it => `${it.label} (${_t3WeightWord(it.weight)})`).join(' · ');
   container.innerHTML = `
     <section class="card t3-card">
-      <div class="t3-head"><span class="t3-eyebrow">Carga de la semana</span><span class="t3-budget-num">${b.used}</span></div>
+      <div class="t3-head"><span class="t3-eyebrow">Week load</span><span class="t3-budget-num">${b.used}</span></div>
       <div class="t3-bar"><div class="t3-bar-fill" style="width:${pct}%;background:var(--accent)"></div></div>
-      <div class="t3-context">Cuánto esfuerzo exigente acumulaste esta semana, para que lo veas. <b>No es un límite</b>: si una sesión es mucho, baja el peso o las reps, o descansa.</div>
-      ${top ? `<div class="t3-context">Lo que más sumó: ${top}</div>` : '<div class="t3-context">Sin entrenamientos esta semana aún.</div>'}
+      <div class="t3-context">How much hard effort you piled up this week, just so you see it. <b>It is not a limit</b>: if a session is too much, drop the weight or the reps, or rest.</div>
+      ${top ? `<div class="t3-context">Biggest contributors: ${top}</div>` : '<div class="t3-context">No workouts this week yet.</div>'}
     </section>`;
 }
 
@@ -8649,29 +8649,29 @@ async function renderHardDayBudget() {
 // compresses them to ~40-45 min (it is the time-saver, NOT a permanently light day).
 // Variants flex DOWN from the ideal for busy/travel weeks. dow: 1=Mon..6=Sat, 0=Sun.
 const IDEAL_BLOCK_V1 = {
-  goal: 'Recomposición (bajar grasa + tonificar) + base aeróbica + fuerza',
+  goal: 'Recomposition (lose fat + add tone) + aerobic base + strength',
   weeks: 5, // 4 build + 1 deload
-  progressing: ['Fuerza/hipertrofia (Upper/Lower 2×)', 'Base aeróbica (Z2 diario)'],
-  maintaining: ['Movilidad / athleticism'],
-  runningArc: 'Z2 fácil casi todos los días + 1 sesión de calidad/sem (largo o progresivo Z2/Z3).',
+  progressing: ['Strength/hypertrophy (Upper/Lower 2×)', 'Aerobic base (daily Z2)'],
+  maintaining: ['Mobility / athleticism'],
+  runningArc: 'Easy Z2 almost every day + 1 quality session/wk (long run or Z2/Z3 progression).',
   cautions: [
-    'No hacer cardio fuerte <24 h antes de pierna pesada (INT-001) — la calidad va el sábado.',
-    'Z2 finisher SIEMPRE fácil/conversacional: no interfiere con la fuerza (END-001).',
-    'Mayoría del cardio fácil — ~80/20 en la semana (END-001).',
-    'En déficit: mantener intensidad, no subir volumen agresivo; quick-mode si hay fatiga (LOAD).',
+    'No hard cardio <24 h before heavy legs (INT-001) — the quality session goes on Saturday.',
+    'The Z2 finisher is ALWAYS easy/conversational: it does not interfere with strength (END-001).',
+    'Most cardio easy — roughly 80/20 across the week (END-001).',
+    'In a deficit: keep the intensity, do not push volume up aggressively; quick-mode if fatigued (LOAD).',
   ],
   variants: {
     // v11.42 — VIAJE. La causa real de la adherencia baja (11 sesiones en 9 semanas) era que
     // estaba de viaje y NINGUNA variante funcionaba sin rack y barra. Cero equipo, banda opcional.
     // Dos sesiones de fuerza completas + caminata/carrera libre; sin días duros que exijan gimnasio.
     0: {
-      label: 'Viaje · sin gimnasio',
-      note: 'Peso corporal (banda si hay). Cada sesión es completa: pierna + empuje + tirón + core.',
+      label: 'Travel · no gym',
+      note: 'Bodyweight (band if you have one). Every session is complete: legs + push + pull + core.',
       days: [
-        { dow: 1, kind: 'strength', subtype: 'full', bw: 1.5, planRef: 'travelA', title: 'Viaje A', summary: 'Búlgaras + flexiones + dominadas + glúteo + plancha', why: 'Sesión completa sin equipo; mantiene los patrones.', ruleIds: ['STR-002', 'STR-004'], alt: 'strength_upper' },
-        { dow: 3, kind: 'cardio', subtype: 'zone2', bw: 0.5, durationMin: 30, title: 'Cardio Z2 libre', summary: '30 min fácil: correr, caminar rápido, o el gimnasio del hotel', why: 'Mínimo aeróbico sin depender de material.', ruleIds: ['END-001'], alt: 'hard_cardio' },
-        { dow: 5, kind: 'strength', subtype: 'full', bw: 1.5, planRef: 'travelB', title: 'Viaje B', summary: 'Rumano a 1 pierna + pike + remo banda + nordic + dead bug', why: 'Bisagra y patrón vertical, lo que A no cubre.', ruleIds: ['STR-002', 'STR-007'], alt: 'strength_upper' },
-        { dow: 0, kind: 'recovery', subtype: 'mobility', bw: 0, z2Finisher: 20, title: 'Recuperación activa', summary: 'Movilidad + caminata', why: 'Viajar acumula horas sentado; movilidad importa más, no menos.', ruleIds: ['ATH-003', 'ATH-006'], alt: null },
+        { dow: 1, kind: 'strength', subtype: 'full', bw: 1.5, planRef: 'travelA', title: 'Travel A', summary: 'Bulgarians + push-ups + pull-ups + glute + plank', why: 'A complete session with no equipment; keeps the patterns.', ruleIds: ['STR-002', 'STR-004'], alt: 'strength_upper' },
+        { dow: 3, kind: 'cardio', subtype: 'zone2', bw: 0.5, durationMin: 30, title: 'Free Z2 cardio', summary: '30 min easy: run, brisk walk, or the hotel gym', why: 'The aerobic minimum without depending on kit.', ruleIds: ['END-001'], alt: 'hard_cardio' },
+        { dow: 5, kind: 'strength', subtype: 'full', bw: 1.5, planRef: 'travelB', title: 'Travel B', summary: 'Single-leg RDL + pike + band row + nordic + dead bug', why: 'Hinge and vertical pattern, what A does not cover.', ruleIds: ['STR-002', 'STR-007'], alt: 'strength_upper' },
+        { dow: 0, kind: 'recovery', subtype: 'mobility', bw: 0, z2Finisher: 20, title: 'Active recovery', summary: 'Mobility + walk', why: 'Travelling piles up sitting hours; mobility matters more, not less.', ruleIds: ['ATH-003', 'ATH-006'], alt: null },
       ],
     },
     3: {
@@ -8679,12 +8679,12 @@ const IDEAL_BLOCK_V1 = {
       // máquina de cables — 4 de 4 ejercicios necesitan gimnasio completo. Corregida a lo que
       // realmente es. NO existe una variante sin gimnasio de verdad; es un hueco abierto, no algo
       // que se arregle con una frase. Ver assessments/2026-08-16_system-audit.md (A11).
-      label: 'Mínima · 3 días',
-      note: 'Semana comprimida, con gimnasio: 2 full-body + 1 cardio. Mantiene, no progresa.',
+      label: 'Minimal · 3 days',
+      note: 'Compressed week, with a gym: 2 full-body + 1 cardio. Maintains, does not progress.',
       days: [
-        { dow: 1, kind: 'strength', subtype: 'full', bw: 2, planRef: 'fullA', title: 'Full Body A', summary: 'Sentadilla + press banca + remo + core', why: 'Cubre piernas/empuje/tirón en una sesión.', ruleIds: ['STR-002', 'STR-005'], alt: 'strength_lower' },
-        { dow: 3, kind: 'strength', subtype: 'full', bw: 2, planRef: 'fullB', title: 'Full Body B', summary: 'Peso muerto + press militar + dominadas + core', why: 'Bisagra + patrón vertical.', ruleIds: ['STR-002', 'STR-007'], alt: 'strength_lower' },
-        { dow: 6, kind: 'cardio', subtype: 'zone2', bw: 0.5, durationMin: 35, title: 'Cardio Z2', summary: '30-40 min fácil (bici/remo/cinta o correr)', why: 'Mínimo estímulo aeróbico.', ruleIds: ['END-001', 'INT-002'], alt: 'hard_cardio' },
+        { dow: 1, kind: 'strength', subtype: 'full', bw: 2, planRef: 'fullA', title: 'Full Body A', summary: 'Squat + bench press + row + core', why: 'Covers legs/push/pull in one session.', ruleIds: ['STR-002', 'STR-005'], alt: 'strength_lower' },
+        { dow: 3, kind: 'strength', subtype: 'full', bw: 2, planRef: 'fullB', title: 'Full Body B', summary: 'Deadlift + overhead press + pull-ups + core', why: 'Hinge + vertical pattern.', ruleIds: ['STR-002', 'STR-007'], alt: 'strength_lower' },
+        { dow: 6, kind: 'cardio', subtype: 'zone2', bw: 0.5, durationMin: 35, title: 'Cardio Z2', summary: '30-40 min easy (bike/row/treadmill or run)', why: 'The aerobic minimum.', ruleIds: ['END-001', 'INT-002'], alt: 'hard_cardio' },
       ],
     },
     4: {
@@ -8693,13 +8693,13 @@ const IDEAL_BLOCK_V1 = {
       // Añadir un 3er día de fuerza subiría el budget a 7 sobre un tope de 6 (BUD-001), y esta
       // variante existe precisamente para semanas con MENOS margen: meterle otra sesión dura
       // contradice su propósito. Queda como decisión D5, con carga real medida.
-      label: 'Reducida · 4 días',
-      note: 'Añade un día aeróbico sobre la de 3 días; la fuerza es la misma (2 full-body). Mantiene.',
+      label: 'Reduced · 4 days',
+      note: 'Adds one aerobic day over the 3-day one; strength is identical (2 full-body). Maintains.',
       days: [
-        { dow: 1, kind: 'strength', subtype: 'full', bw: 2, planRef: 'fullA', z2Finisher: 15, title: 'Full Body A', summary: 'Sentadilla + press + remo + core', why: 'Full-body cubre todo; +Z2 corto al final.', ruleIds: ['STR-002', 'STR-005'], alt: 'strength_lower' },
-        { dow: 2, kind: 'cardio', subtype: 'zone2', bw: 0.5, durationMin: 35, title: 'Cardio Z2', summary: '30-40 min fácil', why: 'Aeróbico de bajo impacto.', ruleIds: ['END-001', 'INT-002'], alt: 'hard_cardio' },
-        { dow: 4, kind: 'strength', subtype: 'full', bw: 2, planRef: 'fullB', z2Finisher: 15, title: 'Full Body B', summary: 'Peso muerto + OHP + dominadas + core', why: 'Bisagra + patrón vertical; +Z2 corto.', ruleIds: ['STR-002', 'STR-007'], alt: 'strength_upper' },
-        { dow: 6, kind: 'cardio', subtype: 'long_easy', bw: 1, durationMin: 45, title: 'Cardio largo Z2', summary: 'Largo fácil, subiendo ~10%/sem', why: 'Progresar base aeróbica lejos de pierna.', ruleIds: ['END-003', 'END-001'], alt: 'hard_cardio' },
+        { dow: 1, kind: 'strength', subtype: 'full', bw: 2, planRef: 'fullA', z2Finisher: 15, title: 'Full Body A', summary: 'Squat + press + row + core', why: 'Full-body covers everything; + a short Z2 at the end.', ruleIds: ['STR-002', 'STR-005'], alt: 'strength_lower' },
+        { dow: 2, kind: 'cardio', subtype: 'zone2', bw: 0.5, durationMin: 35, title: 'Cardio Z2', summary: '30-40 min easy', why: 'Low-impact aerobic work.', ruleIds: ['END-001', 'INT-002'], alt: 'hard_cardio' },
+        { dow: 4, kind: 'strength', subtype: 'full', bw: 2, planRef: 'fullB', z2Finisher: 15, title: 'Full Body B', summary: 'Deadlift + OHP + pull-ups + core', why: 'Hinge + vertical pattern; + a short Z2.', ruleIds: ['STR-002', 'STR-007'], alt: 'strength_upper' },
+        { dow: 6, kind: 'cardio', subtype: 'long_easy', bw: 1, durationMin: 45, title: 'Long Z2 cardio', summary: 'Easy long session, building ~10%/wk', why: 'Progress the aerobic base away from legs.', ruleIds: ['END-003', 'END-001'], alt: 'hard_cardio' },
       ],
     },
     5: {
@@ -8709,28 +8709,28 @@ const IDEAL_BLOCK_V1 = {
       // instead, leaving lower/upper/lower. Cost: no OHP (vertical press) in this variant —
       // acceptable, and cheaper than losing the hinge. Vertical PULL survives because D2 put
       // Lat Pulldown into upperA. See assessments/2026-08-16_system-audit.md, A2/D3.
-      label: 'Alta · 5 días',
-      note: '3 fuerza (lower/upper/lower) + 2 cardio + recuperación. Conserva sentadilla y peso muerto.',
+      label: 'High · 5 days',
+      note: '3 strength (lower/upper/lower) + 2 cardio + recovery. Keeps the squat and the deadlift.',
       days: [
-        { dow: 1, kind: 'strength', subtype: 'lower', bw: 2, planRef: 'lowerA', z2Finisher: 15, title: 'Lower A · Sentadilla', why: 'Pierna pesada al inicio, en fresco.', ruleIds: ['STR-005', 'INT-001'], alt: 'strength_lower' },
-        { dow: 2, kind: 'strength', subtype: 'upper', bw: 1, planRef: 'upperA', z2Finisher: 15, title: 'Upper A · Press/Remo/Dominada', why: 'Cubre empuje y tirón, horizontal y vertical; +Z2 corto.', ruleIds: ['STR-002'], alt: 'strength_upper' },
-        { dow: 3, kind: 'cardio', subtype: 'zone2', bw: 0.5, durationMin: 35, title: 'Cardio Z2', summary: '30-40 min fácil + movilidad', why: 'Aeróbico de bajo impacto.', ruleIds: ['END-001', 'INT-002'], alt: 'hard_cardio' },
-        { dow: 5, kind: 'strength', subtype: 'lower', bw: 2, planRef: 'lowerB', z2Finisher: 15, title: 'Lower B · Bisagra', why: 'Peso muerto: el ancla de bisagra no se pierde al bajar de días.', ruleIds: ['STR-005', 'STR-007'], alt: 'strength_lower' },
-        { dow: 6, kind: 'cardio', subtype: 'long_easy', bw: 1, durationMin: 45, title: 'Cardio calidad Z2', summary: 'Largo / progresivo Z2/Z3', why: 'Única sesión de calidad de la semana.', ruleIds: ['END-003', 'END-004'], alt: 'hard_cardio' },
-        { dow: 0, kind: 'recovery', subtype: 'mobility', bw: 0, z2Finisher: 20, title: 'Recuperación activa', summary: 'Movilidad + core + Z2 suave 20 min', why: 'Recuperación activa con estímulo aeróbico.', ruleIds: ['ATH-003', 'READ-007'], alt: null },
+        { dow: 1, kind: 'strength', subtype: 'lower', bw: 2, planRef: 'lowerA', z2Finisher: 15, title: 'Lower A · Squat', why: 'Heavy legs at the start, while fresh.', ruleIds: ['STR-005', 'INT-001'], alt: 'strength_lower' },
+        { dow: 2, kind: 'strength', subtype: 'upper', bw: 1, planRef: 'upperA', z2Finisher: 15, title: 'Upper A · Press/Row/Pull-up', why: 'Covers push and pull, horizontal and vertical; + a short Z2.', ruleIds: ['STR-002'], alt: 'strength_upper' },
+        { dow: 3, kind: 'cardio', subtype: 'zone2', bw: 0.5, durationMin: 35, title: 'Cardio Z2', summary: '30-40 min easy + mobility', why: 'Low-impact aerobic work.', ruleIds: ['END-001', 'INT-002'], alt: 'hard_cardio' },
+        { dow: 5, kind: 'strength', subtype: 'lower', bw: 2, planRef: 'lowerB', z2Finisher: 15, title: 'Lower B · Hinge', why: 'Deadlift: the hinge anchor is not lost when days drop.', ruleIds: ['STR-005', 'STR-007'], alt: 'strength_lower' },
+        { dow: 6, kind: 'cardio', subtype: 'long_easy', bw: 1, durationMin: 45, title: 'Z2 quality cardio', summary: 'Long / Z2-Z3 progression', why: 'The only quality session of the week.', ruleIds: ['END-003', 'END-004'], alt: 'hard_cardio' },
+        { dow: 0, kind: 'recovery', subtype: 'mobility', bw: 0, z2Finisher: 20, title: 'Active recovery', summary: 'Mobility + core + 20 min easy Z2', why: 'Active recovery with an aerobic stimulus.', ruleIds: ['ATH-003', 'READ-007'], alt: null },
       ],
     },
     6: {
-      label: 'Completa · ideal',
-      note: 'EL IDEAL: 4 fuerza (Upper/Lower 2×, los 6 patrones) + Z2 diario + 1 calidad + recuperación. Estímulo los 7 días. Quick-mode si falta tiempo.',
+      label: 'Full · ideal',
+      note: 'THE IDEAL: 4 strength (Upper/Lower 2×, all 6 patterns) + daily Z2 + 1 quality + recovery. A stimulus all 7 days. Quick-mode when time is short.',
       days: [
-        { dow: 1, kind: 'strength', subtype: 'lower', bw: 2, planRef: 'lowerA', z2Finisher: 20, title: 'Lower A · Sentadilla', why: 'Pierna pesada al inicio, en fresco. +20 min Z2 fácil al final.', ruleIds: ['STR-005', 'INT-001'], alt: 'strength_lower' },
-        { dow: 2, kind: 'strength', subtype: 'upper', bw: 1, planRef: 'upperA', z2Finisher: 20, title: 'Upper A · Press/Remo', why: 'Empuje/tirón horizontal. +20 min Z2 fácil.', ruleIds: ['STR-002'], alt: 'strength_upper' },
-        { dow: 3, kind: 'cardio', subtype: 'zone2', bw: 0.5, durationMin: 40, title: 'Cardio Z2 + movilidad', summary: '35-45 min fácil (bici/remo/cinta) + movilidad/core', why: 'Día aeróbico dedicado entre estímulos de fuerza.', ruleIds: ['END-001', 'END-003'], alt: 'hard_cardio' },
-        { dow: 4, kind: 'strength', subtype: 'lower', bw: 2, planRef: 'lowerB', z2Finisher: 20, title: 'Lower B · Bisagra', why: 'Bisagra (peso muerto) — 2º estímulo de pierna. +20 min Z2.', ruleIds: ['STR-005', 'STR-007'], alt: 'strength_lower' },
-        { dow: 5, kind: 'strength', subtype: 'upper', bw: 1, planRef: 'upperB', z2Finisher: 20, title: 'Upper B · Dominadas/OHP', why: 'Patrón vertical (dominadas + press militar). +20 min Z2.', ruleIds: ['STR-002', 'STR-007'], alt: 'strength_upper' },
-        { dow: 6, kind: 'cardio', subtype: 'long_easy', bw: 1, durationMin: 50, title: 'Cardio calidad Z2', summary: 'Largo fácil, o cámbialo por el híbrido de trineo + SkiErg', why: 'Construye el motor aeróbico; lejos de pierna. El híbrido está como alternativa, no como día extra.', ruleIds: ['END-003', 'END-005'], alt: 'hard_cardio' },
-        { dow: 0, kind: 'recovery', subtype: 'mobility', bw: 0, z2Finisher: 20, title: 'Recuperación activa', summary: 'Movilidad + core + caminata/Z2 suave 20 min', why: 'Recuperación activa; estímulo suave los 7 días.', ruleIds: ['ATH-003', 'READ-007'], alt: null },
+        { dow: 1, kind: 'strength', subtype: 'lower', bw: 2, planRef: 'lowerA', z2Finisher: 20, title: 'Lower A · Squat', why: 'Heavy legs at the start, while fresh. +20 min easy Z2 at the end.', ruleIds: ['STR-005', 'INT-001'], alt: 'strength_lower' },
+        { dow: 2, kind: 'strength', subtype: 'upper', bw: 1, planRef: 'upperA', z2Finisher: 20, title: 'Upper A · Press/Row', why: 'Horizontal push/pull. +20 min easy Z2.', ruleIds: ['STR-002'], alt: 'strength_upper' },
+        { dow: 3, kind: 'cardio', subtype: 'zone2', bw: 0.5, durationMin: 40, title: 'Cardio Z2 + mobility', summary: '35-45 min easy (bike/row/treadmill) + mobility/core', why: 'A dedicated aerobic day between strength stimuli.', ruleIds: ['END-001', 'END-003'], alt: 'hard_cardio' },
+        { dow: 4, kind: 'strength', subtype: 'lower', bw: 2, planRef: 'lowerB', z2Finisher: 20, title: 'Lower B · Hinge', why: 'Hinge (deadlift) — 2nd leg stimulus. +20 min Z2.', ruleIds: ['STR-005', 'STR-007'], alt: 'strength_lower' },
+        { dow: 5, kind: 'strength', subtype: 'upper', bw: 1, planRef: 'upperB', z2Finisher: 20, title: 'Upper B · Pull-ups/OHP', why: 'Vertical pattern (pull-ups + overhead press). +20 min Z2.', ruleIds: ['STR-002', 'STR-007'], alt: 'strength_upper' },
+        { dow: 6, kind: 'cardio', subtype: 'long_easy', bw: 1, durationMin: 50, title: 'Z2 quality cardio', summary: 'Easy long session, or swap it for the sled + SkiErg hybrid', why: 'Builds the aerobic engine; away from legs. The hybrid is an alternative, not an extra day.', ruleIds: ['END-003', 'END-005'], alt: 'hard_cardio' },
+        { dow: 0, kind: 'recovery', subtype: 'mobility', bw: 0, z2Finisher: 20, title: 'Active recovery', summary: 'Mobility + core + walk/easy Z2 20 min', why: 'Active recovery; a gentle stimulus all 7 days.', ruleIds: ['ATH-003', 'READ-007'], alt: null },
       ],
     },
   },
@@ -8765,7 +8765,7 @@ function buildWeekTemplateFromIdeal(variantNum) {
     } else if (day.kind === 'cardio') {
       tpl[day.dow] = { type: 'run', label: day.title, subtype: day.subtype || 'zone2', durationMin: day.durationMin || null, summary: day.summary || null };
     } else if (day.kind === 'recovery') {
-      tpl[day.dow] = { type: 'recovery', label: day.title || 'Recuperación activa', subtype: day.subtype || 'mobility' };
+      tpl[day.dow] = { type: 'recovery', label: day.title || 'Active recovery', subtype: day.subtype || 'mobility' };
       if (day.z2Finisher) tpl[day.dow].z2FinisherMin = day.z2Finisher;
     }
   }
@@ -8811,8 +8811,8 @@ async function applyIdealPlan({ force = false } = {}) {
       try {
         await logDecision({
           source: 'rule', type: 'other',
-          what: `Semilla del plan al día en PLAN_REV ${PLAN_REV}; el plan activo (${author}) se conserva`,
-          why: 'PLAN_REV gobierna sólo los planes semilla; en los del coach viaja como seedRev',
+          what: `Plan seed up to date at PLAN_REV ${PLAN_REV}; the active plan (${author}) is kept`,
+          why: 'PLAN_REV governs seed plans only; in coach plans it travels as seedRev',
           ruleIds: [],
           evidence: { desde: antes, hasta: PLAN_REV, plan: (activePlan && activePlan.id) || null },
           ref: { planVersion: (activePlan && activePlan.version) != null ? activePlan.version : null },
@@ -8825,7 +8825,7 @@ async function applyIdealPlan({ force = false } = {}) {
 
   const managed = /^Ideal/.test(lbl) || lbl === 'Upper/Lower 4-Day Split' || lbl === 'Fallback' || /^Re-Entry/.test(lbl);
   if (!managed && !force) return; // respect a custom plan the user set themselves
-  const targetLabel = `Ideal · ${n} días`;
+  const targetLabel = `Ideal · ${n} days`;
   const revStale = (state.settings && state.settings.planRev) !== PLAN_REV;
   if (lbl === targetLabel && !force && !revStale) return; // already current → no version churn
   if (revStale) {
@@ -8879,8 +8879,8 @@ async function setIdealVariant(n) {
   try { await renderHomeView(); } catch (e) {}
   try { await renderIdealPreview(); } catch (e) {}
   if (changed) {
-    const lbl = (IDEAL_BLOCK_V1.variants[n] && IDEAL_BLOCK_V1.variants[n].label) || `${n} días`;
-    toast(`Plan: ${lbl} — días pasados intactos`);
+    const lbl = (IDEAL_BLOCK_V1.variants[n] && IDEAL_BLOCK_V1.variants[n].label) || `${n} days`;
+    toast(`Plan: ${lbl} — past days untouched`);
   }
 }
 
@@ -8895,7 +8895,7 @@ async function setIdealVariant(n) {
 async function _applyVariantOverCoachPlan(n) {
   const prev = activePlan;
   const wkShort = prev && prev.weekKey ? String(prev.weekKey).replace(/^\d{4}-/, '') : null;
-  const lblVar = (IDEAL_BLOCK_V1.variants[n] && IDEAL_BLOCK_V1.variants[n].label) || `${n} días`;
+  const lblVar = (IDEAL_BLOCK_V1.variants[n] && IDEAL_BLOCK_V1.variants[n].label) || `${n} days`;
   const nuevo = await createNewPlanVersion({
     label: `Coach${wkShort ? ` · ${wkShort}` : ''} · ${lblVar}`,
     weekNumber: getWeekNumber(),
@@ -8921,8 +8921,8 @@ async function _applyVariantOverCoachPlan(n) {
   try {
     await logDecision({
       source: 'user', type: 'plan-adjust',
-      what: `Calendario a ${lblVar}; el contenido del coach se conserva`,
-      why: 'Variante = calendario, coach = contenido',
+      what: `Calendar switched to ${lblVar}; the coach's content is kept`,
+      why: 'Variant = calendar, coach = content',
       ruleIds: [],
       evidence: { variante: n, desde: (prev && prev.label) || null, plan: nuevo.id },
       ref: { planVersion: nuevo.version },
@@ -8931,16 +8931,16 @@ async function _applyVariantOverCoachPlan(n) {
   } catch (e) {}
   return nuevo;
 }
-const _DOW_ES = { 1: 'Lun', 2: 'Mar', 3: 'Mié', 4: 'Jue', 5: 'Vie', 6: 'Sáb', 0: 'Dom' };
+const _DOW_LABEL = { 1: 'Mon', 2: 'Tue', 3: 'Wed', 4: 'Thu', 5: 'Fri', 6: 'Sat', 0: 'Sun' };
 const _DOW_ORDER = [1, 2, 3, 4, 5, 6, 0];
 function _idealKindFamily(kind) {
   return kind === 'cardio' ? 'cardio' : kind === 'hybrid' ? 'hybrid' : kind === 'recovery' ? 'recovery' : 'strength';
 }
 function _idealDurGuide(kind, dur) {
-  if (kind === 'strength') return dur <= 45 ? 'Compuestos + 1-2 accesorios clave' : dur >= 75 ? 'Completa + accesorios + movilidad' : 'Sesión completa';
-  if (kind === 'cardio') return `${dur} min fácil`;
-  if (kind === 'hybrid') return `${Math.min(dur, 30)} min · baja skill`;
-  if (kind === 'recovery') return `${Math.min(dur, 40)} min suave`;
+  if (kind === 'strength') return dur <= 45 ? 'Compounds + 1-2 key accessories' : dur >= 75 ? 'Full + accessories + mobility' : 'Full session';
+  if (kind === 'cardio') return `${dur} min easy`;
+  if (kind === 'hybrid') return `${Math.min(dur, 30)} min · low skill`;
+  if (kind === 'recovery') return `${Math.min(dur, 40)} min easy`;
   return `${dur} min`;
 }
 function _currentWeekLabel(dow) {
@@ -8949,8 +8949,8 @@ function _currentWeekLabel(dow) {
     const s = (activePlan && activePlan.sessions) ? activePlan.sessions[slot.session] : null;
     return s ? _t3SessionLabel({ type: 'gym', sessionId: slot.session, name: s.name, exercises: s.exercises }) : slot.session;
   }
-  if (slot.type === 'run') return slot.label || 'Carrera Z2';
-  return (slot.label && slot.label !== 'Rest') ? slot.label : 'Descanso';
+  if (slot.type === 'run') return slot.label || 'Z2 run';
+  return (slot.label && slot.label !== 'Rest') ? slot.label : 'Rest';
 }
 
 // Per-day guidance text for the ideal week (full session + quick-mode + Z2 finisher).
@@ -8958,10 +8958,10 @@ function _currentWeekLabel(dow) {
 // base. La base se sigue mostrando: el plan es el dato, la progresión es una función sobre él, y
 // esconder la base haría creer que alguien editó `IDEAL_BLOCK_V1`.
 function _idealDayGuide(d, prog) {
-  const upd = (base) => (prog != null && base && prog !== base) ? ` → <b>${prog}'</b> esta semana` : '';
-  if (d.kind === 'strength') return `Sesión completa 60-75' (quick-mode 40-45')${d.z2Finisher ? ` · +${d.z2Finisher}' Z2 al final${upd(d.z2Finisher)}` : ''}`;
-  if (d.kind === 'cardio') return `${d.durationMin || 35}' ${d.subtype === 'long_easy' ? 'calidad' : 'fácil'}${upd(d.durationMin)}`;
-  if (d.kind === 'recovery') return `Movilidad + core${d.z2Finisher ? ` · Z2 suave ${d.z2Finisher}'${upd(d.z2Finisher)}` : ''}`;
+  const upd = (base) => (prog != null && base && prog !== base) ? ` → <b>${prog}'</b> this week` : '';
+  if (d.kind === 'strength') return `Full session 60-75' (quick-mode 40-45')${d.z2Finisher ? ` · +${d.z2Finisher}' Z2 at the end${upd(d.z2Finisher)}` : ''}`;
+  if (d.kind === 'cardio') return `${d.durationMin || 35}' ${d.subtype === 'long_easy' ? 'quality' : 'easy'}${upd(d.durationMin)}`;
+  if (d.kind === 'recovery') return `Mobility + core${d.z2Finisher ? ` · easy Z2 ${d.z2Finisher}'${upd(d.z2Finisher)}` : ''}`;
   return '';
 }
 
@@ -8973,12 +8973,12 @@ function _plusDaysStr(ds, n) {
   return new Date(t + n * 86400000).toISOString().slice(0, 10);
 }
 
-// dd-mmm en español, para las fechas del bloque ("del 7-sep al 13-sep").
-function _shortEsDate(ds) {
+// "Sep 7", para las fechas del bloque ("block from Sep 7 to Sep 13"). En inglés desde v11.67.
+function _shortDate(ds) {
   if (!ds) return '—';
-  const M = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+  const M = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const d = new Date(ds + 'T12:00:00');
-  return `${d.getDate()}-${M[d.getMonth()]}`;
+  return `${M[d.getMonth()]} ${d.getDate()}`;
 }
 
 // Render the Ideal Plan view (the LIVE plan). Day-count selector regenerates it.
@@ -9002,21 +9002,21 @@ async function renderIdealPreview() {
     return progressCardioMin(base, blk, { variant: v, lastCardioDaysAgo: daysAgo, coachMin: null }).min;
   };
   const blockLine = blk.index
-    ? `Semana <b>${blk.index}/${DELOAD_BLOCK_WEEKS}</b> · ${blk.label} · bloque del ${_shortEsDate(blk.blockStartMonday)} al ${_shortEsDate(_plusDaysStr(blk.blockStartMonday, 6))} · deload la semana del ${_shortEsDate(blk.deloadMonday)}`
-    : 'Sin ancla de bloque todavía — el cardio repite la duración base.';
+    ? `Week <b>${blk.index}/${DELOAD_BLOCK_WEEKS}</b> · ${blk.label} · block from ${_shortDate(blk.blockStartMonday)} to ${_shortDate(_plusDaysStr(blk.blockStartMonday, 6))} · deload the week of ${_shortDate(blk.deloadMonday)}`
+    : 'No block anchor yet — cardio repeats the base duration.';
 
   const variantToggle = [0, 3, 4, 5, 6].map(n => {
-    const lab = n === 0 ? 'Viaje' : n === 6 ? 'Ideal' : `${n}d`;
+    const lab = n === 0 ? 'Travel' : n === 6 ? 'Ideal' : `${n}d`;
     return `<button class="ip-tog ${n === v ? 'active' : ''}" data-ip-variant="${n}">${lab}</button>`;
   }).join('');
 
   const idealRows = _DOW_ORDER.map(dow => {
     const d = byDow[dow];
-    if (!d) return `<div class="ip-day ip-rest"><div class="ip-dow">${_DOW_ES[dow]}</div><div class="ip-day-main"><div class="ip-day-title">Descanso</div></div></div>`;
+    if (!d) return `<div class="ip-day ip-rest"><div class="ip-dow">${_DOW_LABEL[dow]}</div><div class="ip-day-main"><div class="ip-day-title">Rest</div></div></div>`;
     const tone = typeTone(_idealKindFamily(d.kind));
     const lvl = _t3WeightWord(d.bw);
     const altArr = (d.alt && ALT_LIBRARY[d.alt]) ? ALT_LIBRARY[d.alt].slice(0, 2).map(o => o.label) : [];
-    return `<div class="ip-day"><div class="ip-dow">${_DOW_ES[dow]}</div>
+    return `<div class="ip-day"><div class="ip-dow">${_DOW_LABEL[dow]}</div>
       <div class="ip-day-main">
         <div class="ip-day-title">${d.title} <span class="ip-level" style="color:${tone};background:${tone}1a">${lvl}</span></div>
         <div class="ip-day-why">${d.why}${d.summary ? ` · ${d.summary}` : ''}</div>
@@ -9025,27 +9025,27 @@ async function renderIdealPreview() {
       </div></div>`;
   }).join('');
 
-  const currentRows = _DOW_ORDER.map(dow => `<div class="ip-cur-row"><span class="ip-dow">${_DOW_ES[dow]}</span><span>${_currentWeekLabel(dow)}</span></div>`).join('');
+  const currentRows = _DOW_ORDER.map(dow => `<div class="ip-cur-row"><span class="ip-dow">${_DOW_LABEL[dow]}</span><span>${_currentWeekLabel(dow)}</span></div>`).join('');
 
   host.innerHTML = `
     <div class="ip-goal card">
-      <div class="t3-eyebrow">Tu plan</div>
+      <div class="t3-eyebrow">Your plan</div>
       <div class="ip-goal-title">${IDEAL_BLOCK_V1.goal}</div>
-      <div class="ip-goal-sub"><b>Progresa:</b> ${IDEAL_BLOCK_V1.progressing.join(', ')}</div>
-      <div class="ip-goal-sub"><b>Mantiene:</b> ${IDEAL_BLOCK_V1.maintaining.join(', ')}</div>
+      <div class="ip-goal-sub"><b>Progressing:</b> ${IDEAL_BLOCK_V1.progressing.join(', ')}</div>
+      <div class="ip-goal-sub"><b>Maintaining:</b> ${IDEAL_BLOCK_V1.maintaining.join(', ')}</div>
       <div class="ip-goal-sub"><b>Cardio:</b> ${IDEAL_BLOCK_V1.runningArc}</div>
     </div>
     <div class="ip-toggles"><div class="ip-tog-group">${variantToggle}</div></div>
-    <div class="ip-block card"><div class="plan-block-eyebrow">Bloque</div><div class="ip-block-line">${blockLine}</div></div>
+    <div class="ip-block card"><div class="plan-block-eyebrow">Block</div><div class="ip-block-line">${blockLine}</div></div>
     <div class="ip-note">${variant.note}</div>
-    <div class="section-label" style="margin-top:10px">Semana</div>
+    <div class="section-label" style="margin-top:10px">Week</div>
     <div class="ip-week">${idealRows}</div>
-    <div class="section-label" style="margin-top:16px">Esta semana en tu calendario</div>
+    <div class="section-label" style="margin-top:16px">This week in your calendar</div>
     <div class="ip-current card">${currentRows}</div>
-    <div class="section-label" style="margin-top:16px">Cuidados que respeta</div>
+    <div class="section-label" style="margin-top:16px">Cautions it respects</div>
     <ul class="ip-cautions">${IDEAL_BLOCK_V1.cautions.map(c => `<li>${c}</li>`).join('')}</ul>
-    <div class="ip-equip">¿Máquina ocupada o te falta equipo? Toca el ejercicio dentro de la sesión y elegí un sustituto: el cambio se guarda y se mantiene, y podés volver al original cuando quieras.</div>
-    <div class="t3-foot">Este es tu plan vivo. <b>Ideal</b> = semana completa (estímulo los 7 días). Bajá los días en semanas de viaje — solo cambia hacia adelante; tus sesiones registradas quedan intactas.</div>
+    <div class="ip-equip">Machine taken or missing kit? Tap the exercise inside the session and pick a substitute: the swap is saved and stays, and you can go back to the original whenever you want.</div>
+    <div class="t3-foot">This is your live plan. <b>Ideal</b> = the full week (a stimulus all 7 days). Drop days on travel weeks — it only changes going forward; your logged sessions stay untouched.</div>
   `;
   host.querySelectorAll('[data-ip-variant]').forEach(b => b.addEventListener('click', () => { setIdealVariant(parseInt(b.dataset.ipVariant, 10)); }));
 }
@@ -9068,20 +9068,20 @@ function openIdealPreview() {
 // LONG-003: nada de esto dispara ninguna regla de programación. Es lectura.
 
 function _anScoreDots(score) {
-  if (score == null) return '<span class="an-noscore">no se puntúa</span>';
+  if (score == null) return '<span class="an-noscore">not scored</span>';
   const dots = [1, 2, 3, 4, 5].map(i => `<span class="an-dot${i <= score ? ' on' : ''}"></span>`).join('');
   return `<span class="an-score s${score}">${dots}<b>${score}/5</b></span>`;
 }
 
 function _anFmt(v, unit) {
   if (v == null) return '—';
-  // Coma decimal: el resto de la app y los informes del laboratorio están en español.
-  const s = (Math.round(v * 100) / 100).toString().replace('.', ',');
+  // Punto decimal: la UI es toda en inglés desde v11.67.
+  const s = (Math.round(v * 100) / 100).toString();
   return unit ? `${s} ${unit}` : s;
 }
 
 function _anMonthYear(iso) {
-  const M = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+  const M = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const d = new Date(iso + 'T00:00:00');
   return `${M[d.getMonth()]}-${d.getFullYear()}`;
 }
@@ -9108,16 +9108,16 @@ function _anMarkerRow(latest) {
   const state = d.states ? bloodMarkerState(d.key, latest.value) : null;
 
   const detalle = [];
-  if (d.what) detalle.push(`<div class="an-block"><span class="an-block-h">Qué es</span>${d.what}</div>`);
-  if (d.action) detalle.push(`<div class="an-block an-block-do"><span class="an-block-h">Qué hacer</span>${d.action}</div>`);
-  if (d.confounder) detalle.push(`<div class="an-warn">⚠️ Ojo: ${d.confounder}</div>`);
+  if (d.what) detalle.push(`<div class="an-block"><span class="an-block-h">What it is</span>${d.what}</div>`);
+  if (d.action) detalle.push(`<div class="an-block an-block-do"><span class="an-block-h">What to do</span>${d.action}</div>`);
+  if (d.confounder) detalle.push(`<div class="an-warn">⚠️ Watch out: ${d.confounder}</div>`);
   if (d.caution) detalle.push(`<div class="an-warn">⚠️ ${d.caution}</div>`);
 
   // Metodología, plegada aparte para que no compita con lo anterior.
   const metodo = [];
-  if (d.labRange) metodo.push(`<div class="an-meta"><span>Laboratorio</span> ${d.labRange}</div>`);
-  if (d.target) metodo.push(`<div class="an-meta"><span>Guías</span> ${d.target}</div>`);
-  if (d.source) metodo.push(`<div class="an-meta"><span>Fuente</span> ${d.source}</div>`);
+  if (d.labRange) metodo.push(`<div class="an-meta"><span>Lab</span> ${d.labRange}</div>`);
+  if (d.target) metodo.push(`<div class="an-meta"><span>Guidelines</span> ${d.target}</div>`);
+  if (d.source) metodo.push(`<div class="an-meta"><span>Source</span> ${d.source}</div>`);
   if (d.noScore) metodo.push(`<div class="an-why">${d.noScore}</div>`);
   if (d.note) metodo.push(`<div class="an-why">${d.note}</div>`);
 
@@ -9125,7 +9125,7 @@ function _anMarkerRow(latest) {
     <details class="an-marker">
       <summary>
         <div class="an-head">
-          <div class="an-name">${d.label}${d.uncertain ? ' <span class="an-unc">no legible</span>' : ''}</div>
+          <div class="an-name">${d.label}${d.uncertain ? ' <span class="an-unc">not legible</span>' : ''}</div>
           ${_anScoreDots(latest.score)}
         </div>
         <div class="an-sub">
@@ -9139,7 +9139,7 @@ function _anMarkerRow(latest) {
       <div class="an-detail">
         ${_anSeriesLine(latest.series, d.unit)}
         ${detalle.join('')}
-        ${metodo.length ? `<details class="an-method"><summary>Rangos y fuentes</summary>${metodo.join('')}</details>` : ''}
+        ${metodo.length ? `<details class="an-method"><summary>Ranges and sources</summary>${metodo.join('')}</details>` : ''}
       </div>
     </details>`;
 }
@@ -9158,9 +9158,9 @@ function _anSummary() {
     <div class="an-summary">
       ${s.titular ? `<div class="an-sum-lead">${s.titular}</div>` : ''}
       ${s.queEstaPasando ? `<div class="an-sum-body">${s.queEstaPasando}</div>` : ''}
-      ${lista(s.loQueVaBien, 'good', 'Lo que va bien', '✓')}
-      ${lista(s.loQueVigilar, 'watch', 'Lo que hay que vigilar', '!')}
-      ${lista(s.loQueLoMejoraria, 'improve', 'Lo que lo mejoraría', '→')}
+      ${lista(s.loQueVaBien, 'good', 'What is going well', '✓')}
+      ${lista(s.loQueVigilar, 'watch', 'What to watch', '!')}
+      ${lista(s.loQueLoMejoraria, 'improve', 'What would improve it', '→')}
       ${s.laLimitacion ? `<div class="an-sum-limit">${s.laLimitacion}</div>` : ''}
     </div>`;
 }
@@ -9169,7 +9169,7 @@ function renderAnalytics() {
   const host = document.getElementById('analytics-body');
   if (!host) return;
   if (typeof BLOOD_MARKERS === 'undefined') {
-    host.innerHTML = '<p class="muted">bloodwork.js no cargó.</p>';
+    host.innerHTML = '<p class="muted">bloodwork.js did not load.</p>';
     return;
   }
 
@@ -9192,56 +9192,56 @@ function renderAnalytics() {
         <div class="an-sub"><b>${s.dose}</b></div>
       </summary>
       <div class="an-detail">
-        <div class="an-meta"><span>Efecto</span> ${s.effect}</div>
-        <div class="an-meta"><span>Fuente</span> ${s.source}</div>
+        <div class="an-meta"><span>Effect</span> ${s.effect}</div>
+        <div class="an-meta"><span>Source</span> ${s.source}</div>
         <div class="an-warn">⚠️ ${s.caveat}</div>
       </div>
     </details>`).join('');
 
   host.innerHTML = `
     <div class="ip-goal">
-      <div class="ip-goal-title">Analítica</div>
-      <div class="ip-goal-sub">6 paneles · 2021-2025 · ${fresh.total} marcadores medidos, ${fresh.scored} puntuados</div>
+      <div class="ip-goal-title">Bloodwork</div>
+      <div class="ip-goal-sub">6 panels · 2021-2025 · ${fresh.total} markers measured, ${fresh.scored} scored</div>
     </div>
 
     ${_anSummary()}
 
     <div class="an-disclaimer">
-      <b>Esto es contexto histórico, no un diagnóstico.</b> El puntaje describe dónde cae tu valor
-      frente a objetivos <i>publicados</i> — no frente al rango del laboratorio, que es otra cosa.
-      No sustituye a un médico y <b>no cambia ningún entrenamiento</b>.
+      <b>This is historical context, not a diagnosis.</b> The score describes where your value falls
+      against <i>published</i> targets — not against the lab's range, which is a different thing.
+      It does not replace a doctor and <b>it does not change any training</b>.
     </div>
 
     ${fresh.overdue ? `
     <div class="an-overdue">
-      <b>Toca repetir la analítica.</b> El panel más nuevo es de ${_anMonthYear(fresh.newestDate)}:
-      hace <b>${fresh.newestMonths} meses</b>. ${fresh.historic} marcadores pasan de 24 meses y
-      ${fresh.neverMeasured} nunca se midieron. <b>Ningún valor de aquí describe tu estado de hoy.</b>
+      <b>Time to repeat the bloodwork.</b> The newest panel is from ${_anMonthYear(fresh.newestDate)}:
+      <b>${fresh.newestMonths} months</b> ago. ${fresh.historic} markers are older than 24 months and
+      ${fresh.neverMeasured} were never measured. <b>No value here describes your state today.</b>
     </div>` : ''}
 
     ${groups}
 
-    <div class="clib-group">Nunca medido</div>
+    <div class="clib-group">Never measured</div>
     ${BLOOD_NEVER_MEASURED.map(n => `
       <details class="an-marker an-never">
         <summary>
-          <div class="an-head"><div class="an-name">${n.label}</div><span class="an-noscore">sin dato</span></div>
+          <div class="an-head"><div class="an-name">${n.label}</div><span class="an-noscore">no data</span></div>
         </summary>
         <div class="an-detail"><div class="an-why">${n.why}</div></div>
       </details>`).join('')}
 
-    <div class="clib-group">Qué pedir en la próxima</div>
+    <div class="clib-group">What to ask for next time</div>
     <div class="card" style="padding:14px 16px">
       <ul class="an-list">${BLOOD_REQUEST_LIST.map(r => `<li>${r}</li>`).join('')}</ul>
       <div class="an-cond">${BLOOD_REQUEST_CONDITIONS}</div>
-      <button id="an-copy" class="btn-secondary btn-full" style="text-align:center;margin-top:12px">Copiar la lista</button>
+      <button id="an-copy" class="btn-secondary btn-full" style="text-align:center;margin-top:12px">Copy the list</button>
     </div>
 
-    <div class="clib-group">Suplementación con evidencia</div>
+    <div class="clib-group">Evidence-based supplementation</div>
     ${supps}
     <details class="an-marker">
       <summary>
-        <div class="an-head"><div class="an-name">Lo que no vale la pena</div><span class="an-noscore">${BLOOD_SUPPLEMENTS.notWorth.length}</span></div>
+        <div class="an-head"><div class="an-name">Not worth it</div><span class="an-noscore">${BLOOD_SUPPLEMENTS.notWorth.length}</span></div>
       </summary>
       <div class="an-detail">
         ${BLOOD_SUPPLEMENTS.notWorth.map(s => `<div class="an-meta"><span>${s.name}</span> ${s.why}</div>`).join('')}
@@ -9250,24 +9250,24 @@ function renderAnalytics() {
     </details>
 
     <div class="t3-foot">
-      Nada de esta sección corrige una deficiencia: eso lleva pauta, duración y control posterior, y
-      es de tu médico. El análisis completo, con la rúbrica y las fuentes, está en
+      Nothing in this section corrects a deficiency: that takes a protocol, a duration and follow-up
+      testing, and it belongs to your doctor. The full analysis, with the rubric and the sources, is in
       <b>data/processed/2026-08-20_analitica-puntuada.md</b>.
     </div>
   `;
 
   const copy = document.getElementById('an-copy');
   if (copy) copy.addEventListener('click', async () => {
-    const txt = 'Analítica a pedir:\n' + BLOOD_REQUEST_LIST.map(r => `- ${r}`).join('\n')
-      + `\n\nCondiciones: ${BLOOD_REQUEST_CONDITIONS}`;
+    const txt = 'Bloodwork to request:\n' + BLOOD_REQUEST_LIST.map(r => `- ${r}`).join('\n')
+      + `\n\nConditions: ${BLOOD_REQUEST_CONDITIONS}`;
     try {
       await navigator.clipboard.writeText(txt);
-      copy.textContent = '✓ Copiada';
-      setTimeout(() => { copy.textContent = 'Copiar la lista'; }, 1800);
+      copy.textContent = '✓ Copied';
+      setTimeout(() => { copy.textContent = 'Copy the list'; }, 1800);
     } catch (e) {
       // iOS niega el portapapeles fuera de un gesto directo en algunos casos. Mostrar el
       // texto es mejor que un fallo silencioso: se puede seleccionar a mano.
-      copy.textContent = 'No se pudo copiar — mantené pulsado el texto';
+      copy.textContent = 'Could not copy — long-press the text instead';
     }
   });
 }
@@ -9293,13 +9293,13 @@ async function renderPlanSelector() {
   }).join('');
   container.innerHTML = `
     <div class="home-sec-row" style="margin-top:24px">
-      <h2 class="home-h2">Tu plan</h2>
-      <span class="home-link-mono" id="plan-detail">Ver ›</span>
+      <h2 class="home-h2">Your plan</h2>
+      <span class="home-link-mono" id="plan-detail">View ›</span>
     </div>
     <div class="card" style="padding:14px 16px">
       <div class="ip-tog-group" style="display:flex;gap:6px;margin-bottom:10px">${toggles}</div>
       <div class="muted" style="font-size:12.5px;line-height:1.5">
-        <b>${variant.label}</b> · ${strengthN} fuerza + ${cardioN} cardio${z2N ? ` · Z2 en ${z2N} días` : ''}
+        <b>${variant.label}</b> · ${strengthN} strength + ${cardioN} cardio${z2N ? ` · Z2 on ${z2N} days` : ''}
       </div>
     </div>`;
   container.querySelectorAll('[data-ps-variant]').forEach(b => b.addEventListener('click', () => setIdealVariant(parseInt(b.dataset.psVariant, 10))));
@@ -9468,7 +9468,7 @@ async function renderWeekCalendar() {
     <div class="home-sec-row">
       <h2 class="home-h2">This week</h2>
       <span class="home-link-mono">
-        <span class="wc-leg"><span class="wc-leg-dot" style="background:${typeTone('strength')}"></span>Fuerza</span>
+        <span class="wc-leg"><span class="wc-leg-dot" style="background:${typeTone('strength')}"></span>Strength</span>
         <span class="wc-leg"><span class="wc-leg-dot" style="background:${typeTone('cardio')}"></span>Cardio</span>
       </span>
     </div>
@@ -9483,7 +9483,7 @@ async function renderWeekCalendar() {
     <button class="historial-btn" id="historial-btn">
       <span class="historial-left">
         <span class="historial-icon">${ICON_ACTIVITY}</span>
-        <span class="historial-title">Historial</span>
+        <span class="historial-title">History</span>
       </span>
       <span class="historial-right"><span class="home-link-mono">All workouts</span><span class="historial-chev">›</span></span>
     </button>`;
@@ -9504,9 +9504,9 @@ async function renderWeekCalendar() {
 async function pickDayActivity(ds, jsDay) {
   const dayLabel = new Date(ds + 'T12:00:00').toLocaleDateString('en', { weekday: 'long', month: 'short', day: 'numeric' });
   const choice = await showActionSheet(dayLabel, [
-    { value: 'gym', label: 'Gym — fuerza', icon: '🏋️' },
+    { value: 'gym', label: 'Gym — strength', icon: '🏋️' },
     { value: 'run', label: 'Cardio', icon: '🏃' },
-    { value: 'mobility', label: 'Movilidad', icon: '🧘' },
+    { value: 'mobility', label: 'Mobility', icon: '🧘' },
   ]);
   if (!choice) return;
   if (choice === 'gym') {
@@ -9542,10 +9542,10 @@ async function renderHomeQueue() {
       const focus = (p.subtitle || 'Strength') + (p.z2FinisherMin ? ` · +${p.z2FinisherMin}' Z2` : '');
       rows.push({ ds, label: dayNames[i], name: p.name, focus, kind: 'gym', key: p.sessionId, img: _homeCover(p.name, p.subtitle), tone: typeTone('strength') });
     } else if (p.type === 'run') {
-      const focus = (p.subtitle || 'Zona 2') + (p.durationMin ? ` · ${p.durationMin}'` : '');
+      const focus = (p.subtitle || 'Zone 2') + (p.durationMin ? ` · ${p.durationMin}'` : '');
       rows.push({ ds, label: dayNames[i], name: p.name, focus, kind: 'cardio', img: 'img/session-rest.jpg', tone: typeTone('cardio') });
     } else if (p.type === 'recovery') {
-      rows.push({ ds, label: dayNames[i], name: p.name, focus: p.subtitle || 'Movilidad + Z2 suave', kind: 'recovery', img: 'img/session-rest.jpg', tone: typeTone('recovery') });
+      rows.push({ ds, label: dayNames[i], name: p.name, focus: p.subtitle || 'Mobility + easy Z2', kind: 'recovery', img: 'img/session-rest.jpg', tone: typeTone('recovery') });
     }
   });
 
@@ -9597,8 +9597,8 @@ async function renderTodaysPlan() {
   // --- Cardio day → cardio hero (links to the Cardio logger) ---
   if (planned.type === 'run') {
     const done = !!doneCardio;
-    const sub = (planned.subtitle || 'Zona 2 · fácil') + (planned.durationMin ? ` · ${planned.durationMin}'` : '');
-    const hrLine = planned.hrTarget ? `FC objetivo: <b>${planned.hrTarget}</b>` : cardioIntensityGuide(planned.subtype);
+    const sub = (planned.subtitle || 'Zone 2 · easy') + (planned.durationMin ? ` · ${planned.durationMin}'` : '');
+    const hrLine = planned.hrTarget ? `Target HR: <b>${planned.hrTarget}</b>` : cardioIntensityGuide(planned.subtype);
     // v11.60: la fase de carrera y su dosis. El patrón de trote/caminata y los km son la
     // prescripción real de la semana; sin ellos la tarjeta decía sólo "40 min Zona 2".
     const fase = (typeof runningPhaseLabel === 'function') ? runningPhaseLabel(planned) : '';
@@ -9609,11 +9609,11 @@ async function renderTodaysPlan() {
       // hueco reservado, no la prescripción, y pintar los dos es el problema de "tres números
       // para una decisión" que el audit (F-0/F-4) ya cerró en la tarjeta de ejercicio.
       planned.distanceKm
-        ? `<div class="cardio-rx-row"><span>Distancia</span><b>${String(planned.distanceKm).replace('.', ',')} km</b></div>`
-        : (planned.durationMin ? `<div class="cardio-rx-row"><span>Duración</span><b>${_cardioDurLabel(planned.durationMin, planned.baseMin, planned.durationSource, planned.block)}</b></div>` : ''),
-      planned.pattern ? `<div class="cardio-rx-row"><span>Patrón</span><b>${escapeHtml(planned.pattern)}</b></div>` : '',
-      `<div class="cardio-rx-row"><span>Intensidad</span><b>${hrLine}</b></div>`,
-      planned.summary ? `<div class="cardio-rx-row"><span>Qué hacer</span><b>${escapeHtml(planned.summary)}</b></div>` : '',
+        ? `<div class="cardio-rx-row"><span>Distance</span><b>${String(planned.distanceKm)} km</b></div>`
+        : (planned.durationMin ? `<div class="cardio-rx-row"><span>Duration</span><b>${_cardioDurLabel(planned.durationMin, planned.baseMin, planned.durationSource, planned.block)}</b></div>` : ''),
+      planned.pattern ? `<div class="cardio-rx-row"><span>Pattern</span><b>${escapeHtml(planned.pattern)}</b></div>` : '',
+      `<div class="cardio-rx-row"><span>Intensity</span><b>${hrLine}</b></div>`,
+      planned.summary ? `<div class="cardio-rx-row"><span>What to do</span><b>${escapeHtml(planned.summary)}</b></div>` : '',
       planned.runningNote ? `<div class="cardio-rx-note">${escapeHtml(planned.runningNote)}</div>` : '',
     ].join('');
     container.innerHTML = `
@@ -9622,15 +9622,15 @@ async function renderTodaysPlan() {
         <div class="sh-scrim"></div>
         <div class="sh-top"><span class="sh-chip">Cardio</span>${done ? `<span class="sh-chip sh-chip-done">✓ Done</span>` : `<span class="sh-chip sh-chip-today">● Today</span>`}</div>
         <div class="sh-bottom">
-          <div class="sh-eyebrow">${done ? 'Completado' : sub}</div>
-          <h3 class="sh-title">${planned.name}<br><span class="sh-title-sub">${planned.subtitle || 'Zona 2'}</span></h3>
+          <div class="sh-eyebrow">${done ? 'Completed' : sub}</div>
+          <h3 class="sh-title">${planned.name}<br><span class="sh-title-sub">${planned.subtitle || 'Zone 2'}</span></h3>
         </div>
       </section>
       <div class="cardio-rx card">
         ${rxRows}
         <div class="cardio-rx-actions">
-          <button class="btn-primary" id="rx-log-cardio">${done ? 'Ver cardio' : 'Registrar cardio'}</button>
-          <button class="btn-secondary" id="rx-push-icu">Enviar a intervals.icu</button>
+          <button class="btn-primary" id="rx-log-cardio">${done ? 'View cardio' : 'Log cardio'}</button>
+          <button class="btn-secondary" id="rx-push-icu">Send to intervals.icu</button>
         </div>
       </div>`;
     container.querySelector('[data-sh]').addEventListener('click', () => switchTab('cardio'));
@@ -9650,25 +9650,25 @@ async function renderTodaysPlan() {
     const rHr = cardioHrTarget('zone2');
     const rBlock = rMin ? `
       <div class="cardio-rx card">
-        <div class="rx-sub">Z2 suave ${rDone ? '<span class="rx-done">✓ hecho</span>' : ''}</div>
+        <div class="rx-sub">Easy Z2 ${rDone ? '<span class="rx-done">✓ done</span>' : ''}</div>
         ${_blockEyebrowHtml(planned.block)}
-        <div class="cardio-rx-row"><span>Duración</span><b>${_cardioDurLabel(rMin, planned.z2BaseMin, planned.z2Source, planned.block)}</b></div>
-        <div class="cardio-rx-row"><span>Intensidad</span><b>${rHr ? `FC ${rHr}` : cardioIntensityGuide('zone2')}</b></div>
-        <div class="cardio-rx-row"><span>Qué hacer</span><b>Caminata, bici suave o remo fácil</b></div>
+        <div class="cardio-rx-row"><span>Duration</span><b>${_cardioDurLabel(rMin, planned.z2BaseMin, planned.z2Source, planned.block)}</b></div>
+        <div class="cardio-rx-row"><span>Intensity</span><b>${rHr ? `HR ${rHr}` : cardioIntensityGuide('zone2')}</b></div>
+        <div class="cardio-rx-row"><span>What to do</span><b>Walk, easy bike or easy row</b></div>
         <div class="cardio-rx-actions">
-          <button class="btn-secondary" id="rx-log-z2">${rDone ? 'Registrar otro' : 'Registrar Z2'}</button>
-          <button class="btn-secondary" id="rx-push-z2">Enviar a COROS</button>
+          <button class="btn-secondary" id="rx-log-z2">${rDone ? 'Log another' : 'Log Z2'}</button>
+          <button class="btn-secondary" id="rx-push-z2">Send to COROS</button>
         </div>
       </div>` : '';
     container.innerHTML = `
       <section class="session-hero" data-sh>
         <img class="sh-img" src="img/session-rest.jpg" alt="" loading="lazy">
         <div class="sh-scrim"></div>
-        <div class="sh-top"><span class="sh-chip">Recuperación</span>${done ? `<span class="sh-chip sh-chip-done">✓ Done</span>` : `<span class="sh-chip sh-chip-today">● Today</span>`}</div>
+        <div class="sh-top"><span class="sh-chip">Recovery</span>${done ? `<span class="sh-chip sh-chip-done">✓ Done</span>` : `<span class="sh-chip sh-chip-today">● Today</span>`}</div>
         <div class="sh-bottom">
-          <div class="sh-eyebrow">${planned.subtitle || 'Movilidad + Z2 suave'}</div>
-          <h3 class="sh-title">${planned.name}<br><span class="sh-title-sub">Recuperación activa</span></h3>
-          <button class="sh-cta sh-cta-ghost"><span class="sh-cta-label">Movilidad</span></button>
+          <div class="sh-eyebrow">${planned.subtitle || 'Mobility + easy Z2'}</div>
+          <h3 class="sh-title">${planned.name}<br><span class="sh-title-sub">Active recovery</span></h3>
+          <button class="sh-cta sh-cta-ghost"><span class="sh-cta-label">Mobility</span></button>
         </div>
       </section>${rBlock}`;
     container.querySelector('[data-sh]').addEventListener('click', () => { switchTab('gym'); if (typeof openMobilityView === 'function') openMobilityView(); });
@@ -9760,7 +9760,7 @@ async function renderTodaysPlan() {
     const scheme = `${sets}×${ex.reps || '—'}${ex.rpe ? ` @RPE ${ex.rpe}` : ''}`;
     const tgt = rxTargets[ex.id];
     const kgBit = (tgt && tgt.kg != null)
-      ? ` · <b>${(ex.bw ? '+' : '') + _coachFmtKg(convertWeight(tgt.kg, 'kg', state.settings.unit))} ${state.settings.unit}</b> <span class="coach-chip coach-chip-${tgt.source}">${tgt.source === 'coach' ? 'coach' : (tgt.source === 'last' ? 'último' : 'regla')}</span>`
+      ? ` · <b>${(ex.bw ? '+' : '') + _coachFmtKg(convertWeight(tgt.kg, 'kg', state.settings.unit))} ${state.settings.unit}</b> <span class="coach-chip coach-chip-${tgt.source}">${tgt.source === 'coach' ? 'coach' : (tgt.source === 'last' ? 'last' : 'rule')}</span>`
       : '';
     // El kg va DENTRO del <b> de la derecha: `.cardio-rx-row` es un flex con space-between y un
     // tercer hijo rompería la alineación de todas las filas.
@@ -9773,16 +9773,16 @@ async function renderTodaysPlan() {
   if (z2Min) {
     const z2Done = (sessions || []).some(x => x.date === ds && x.origin === 'z2_finisher');
     const hr = cardioHrTarget('zone2');
-    const intensity = hr ? `FC ${hr}` : cardioIntensityGuide('zone2');
+    const intensity = hr ? `HR ${hr}` : cardioIntensityGuide('zone2');
     z2Block = `
-      <div class="rx-sub">Al terminar · Z2 fácil ${z2Done ? '<span class="rx-done">✓ hecho</span>' : ''}</div>
+      <div class="rx-sub">When you finish · easy Z2 ${z2Done ? '<span class="rx-done">✓ done</span>' : ''}</div>
       ${_blockEyebrowHtml(planned.block)}
-      <div class="cardio-rx-row"><span>Duración</span><b>${_cardioDurLabel(z2Min, planned.z2BaseMin, planned.z2Source, planned.block)}</b></div>
-      <div class="cardio-rx-row"><span>Intensidad</span><b>${intensity}</b></div>
-      <div class="cardio-rx-row"><span>Qué hacer</span><b>Bici, remo o cinta — conversacional</b></div>
+      <div class="cardio-rx-row"><span>Duration</span><b>${_cardioDurLabel(z2Min, planned.z2BaseMin, planned.z2Source, planned.block)}</b></div>
+      <div class="cardio-rx-row"><span>Intensity</span><b>${intensity}</b></div>
+      <div class="cardio-rx-row"><span>What to do</span><b>Bike, row or treadmill — conversational</b></div>
       <div class="cardio-rx-actions">
-        <button class="btn-secondary" id="rx-log-z2">${z2Done ? 'Registrar otro' : 'Registrar Z2'}</button>
-        <button class="btn-secondary" id="rx-push-z2">Enviar a COROS</button>
+        <button class="btn-secondary" id="rx-log-z2">${z2Done ? 'Log another' : 'Log Z2'}</button>
+        <button class="btn-secondary" id="rx-push-z2">Send to COROS</button>
       </div>`;
   }
 
@@ -9958,7 +9958,7 @@ async function renderNutritionHistory() {
   const entries = (await dbGetAll('nutrition')).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 7);
 
   if (!entries.length) {
-    showEmptyState(container, '📊', 'Sin historial', 'Aquí aparecerán los totales de cada día.');
+    showEmptyState(container, '📊', 'No history', "Each day's totals will show up here.");
     return;
   }
 
@@ -9972,11 +9972,11 @@ async function renderNutritionHistory() {
       <div class="history-item">
         <div class="hi-left">
           <div class="hi-title">${formatDate(e.date)}</div>
-          <div class="hi-sub">${e.calories ? `${e.calories} kcal · ` : ''}${totalProtein} g proteína · ${mealCount} ${mealCount === 1 ? 'comida' : 'comidas'}${e.ea != null ? ` · EA ${e.ea}` : ''}</div>
+          <div class="hi-sub">${e.calories ? `${e.calories} kcal · ` : ''}${totalProtein} g protein · ${mealCount} ${mealCount === 1 ? 'meal' : 'meals'}${e.ea != null ? ` · EA ${e.ea}` : ''}</div>
         </div>
         <div class="hi-right">
           <div class="hi-stat" style="color:${hitTarget ? 'var(--accent)' : 'var(--orange)'}">${hitTarget ? '✓' : '✗'}</div>
-          <div class="hi-stat-sub">proteína</div>
+          <div class="hi-stat-sub">protein</div>
         </div>
       </div>
     `;
@@ -10052,18 +10052,18 @@ function showSwapUI(card, ex, session) {
   byId.set(origId, origName); // ensure the original is always offered
   byId.delete(currentId);
   const opts = [...byId.entries()].map(([id, name]) => ({ id, name }));
-  if (opts.length === 0) { toast('No hay alternativas'); return; }
+  if (opts.length === 0) { toast('No alternatives available'); return; }
 
   const panel = document.createElement('div');
   panel.className = 'swap-panel';
   const revertBtn = isOverridden
-    ? `<button class="swap-option swap-revert" data-swap-id="${escapeHtml(origId)}" data-swap-name="${escapeHtml(origName)}">↩ Volver al original (${escapeHtml(origName)})</button>`
+    ? `<button class="swap-option swap-revert" data-swap-id="${escapeHtml(origId)}" data-swap-name="${escapeHtml(origName)}">↩ Back to the original (${escapeHtml(origName)})</button>`
     : '';
   panel.innerHTML = `
-    <div class="swap-title">Cambiar ${escapeHtml(ex.name)} por:</div>
+    <div class="swap-title">Swap ${escapeHtml(ex.name)} for:</div>
     ${revertBtn}
     ${opts.map(a => `<button class="swap-option" data-swap-id="${escapeHtml(a.id)}" data-swap-name="${escapeHtml(a.name)}">${escapeHtml(a.name)}</button>`).join('')}
-    <button class="swap-cancel">Cancelar</button>
+    <button class="swap-cancel">Cancel</button>
   `;
 
   panel.querySelector('.swap-cancel').addEventListener('click', () => panel.remove());
@@ -10081,7 +10081,7 @@ function showSwapUI(card, ex, session) {
       const nameEl = card.querySelector('.exercise-name');
       if (nameEl) { nameEl.childNodes[0].textContent = newName + ' '; nameEl.dataset.exId = newId; }
       const notesEl = card.querySelector('.exercise-notes');
-      if (notesEl) notesEl.textContent = newId === origId ? '' : `Cambiado de ${origName}`;
+      if (notesEl) notesEl.textContent = newId === origId ? '' : `Swapped from ${origName}`;
       // El objetivo en kg era del movimiento ANTERIOR: dejarlo bajo el nombre nuevo prescribiría
       // el peso de otro ejercicio, que es justo el fallo que v11.57 viene a cerrar. Se quita, y
       // se borra también del snapshot para que `finishWorkout` no lo sella contra el sustituto.
@@ -10395,7 +10395,7 @@ function renderBodyWeightMetrics(entries, host) {
 function _bwSourcePill(e) {
   if (!e || e.source !== 'withings') return '';
   const fat = (typeof e.fatPct === 'number' && e.fatPct > 0)
-    ? ` · ${e.fatPct.toFixed(1).replace('.', ',')} % grasa` : '';
+    ? ` · ${e.fatPct.toFixed(1)} % fat` : '';
   return `<span class="bw-source-pill">Withings</span>${fat}`;
 }
 
@@ -10477,20 +10477,20 @@ function renderBodyWeightInsights(entries, nudgeEl, etaEl, plateauEl) {
         const losing = slopePerWeek < -0.05;
         const gaining = slopePerWeek > 0.05;
         const shouldLose = remaining > 0;
-        const trendLabel = '<span class="bw-line-label">Tendencia 30d (regresión):</span>';
+        const trendLabel = '<span class="bw-line-label">30d trend (regression):</span>';
         if (shouldLose && losing) {
           const weeksToGoal = Math.ceil(remaining / Math.abs(slopePerWeek));
-          etaEl.innerHTML = `🎯 ${trendLabel} <strong>${slopePerWeek.toFixed(2)} kg/wk</strong> → goal <strong>${goal} kg</strong> en ~${weeksToGoal} sem (${remaining.toFixed(1)} kg restantes).`;
+          etaEl.innerHTML = `🎯 ${trendLabel} <strong>${slopePerWeek.toFixed(2)} kg/wk</strong> → goal <strong>${goal} kg</strong> in ~${weeksToGoal} wks (${remaining.toFixed(1)} kg to go).`;
         } else if (shouldLose && !losing) {
-          etaEl.innerHTML = `🎯 ${trendLabel} <strong>${slopePerWeek >= 0 ? '+' : ''}${slopePerWeek.toFixed(2)} kg/wk</strong> · ${remaining.toFixed(1)} kg a <strong>${goal} kg</strong>. Trend ${gaining ? 'va en dirección opuesta' : 'plana'} — ETA en pausa hasta que reanude la baja.`;
+          etaEl.innerHTML = `🎯 ${trendLabel} <strong>${slopePerWeek >= 0 ? '+' : ''}${slopePerWeek.toFixed(2)} kg/wk</strong> · ${remaining.toFixed(1)} kg to <strong>${goal} kg</strong>. Trend ${gaining ? 'is going the other way' : 'is flat'} — ETA on hold until the loss resumes.`;
         } else if (!shouldLose && gaining) {
           const weeksToGoal = Math.ceil(Math.abs(remaining) / slopePerWeek);
-          etaEl.innerHTML = `🎯 ${trendLabel} <strong>+${slopePerWeek.toFixed(2)} kg/wk</strong> → goal <strong>${goal} kg</strong> en ~${weeksToGoal} sem.`;
+          etaEl.innerHTML = `🎯 ${trendLabel} <strong>+${slopePerWeek.toFixed(2)} kg/wk</strong> → goal <strong>${goal} kg</strong> in ~${weeksToGoal} wks.`;
         } else {
-          etaEl.innerHTML = `🎯 ${trendLabel} <strong>${slopePerWeek >= 0 ? '+' : ''}${slopePerWeek.toFixed(2)} kg/wk</strong> · goal <strong>${goal} kg</strong> (${Math.abs(remaining).toFixed(1)} kg a ${remaining > 0 ? 'bajar' : 'subir'}).`;
+          etaEl.innerHTML = `🎯 ${trendLabel} <strong>${slopePerWeek >= 0 ? '+' : ''}${slopePerWeek.toFixed(2)} kg/wk</strong> · goal <strong>${goal} kg</strong> (${Math.abs(remaining).toFixed(1)} kg to ${remaining > 0 ? 'lose' : 'gain'}).`;
         }
       } else {
-        etaEl.innerHTML = `🎯 <span class="bw-line-label">Tendencia 30d:</span> need 4+ logs · goal <strong>${goal} kg</strong> (${Math.abs(remaining).toFixed(1)} kg a ${remaining > 0 ? 'bajar' : 'subir'}).`;
+        etaEl.innerHTML = `🎯 <span class="bw-line-label">30d trend:</span> need 4+ logs · goal <strong>${goal} kg</strong> (${Math.abs(remaining).toFixed(1)} kg to ${remaining > 0 ? 'lose' : 'gain'}).`;
       }
     }
   }
@@ -10503,21 +10503,21 @@ function renderBodyWeightInsights(entries, nudgeEl, etaEl, plateauEl) {
   // contexto de la pesada, no tres tarjetas más ni un gráfico que nadie pidió.
   if (etaEl && latest && latest.source === 'withings') {
     const _fin = (v) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : null);
-    const _es = (v, d) => v.toFixed(d).replace('.', ',');
+    const _num = (v, d) => v.toFixed(d);
     const extras = [];
     const musculo = _fin(latest.muscleKg);
-    if (musculo != null) extras.push(`músculo ${_es(musculo, 1)} kg`);
+    if (musculo != null) extras.push(`muscle ${_num(musculo, 1)} kg`);
     const visceral = _fin(latest.visceralFat);
-    if (visceral != null) extras.push(`visceral ${Number.isInteger(visceral) ? visceral : _es(visceral, 1)}`);
+    if (visceral != null) extras.push(`visceral ${Number.isInteger(visceral) ? visceral : _num(visceral, 1)}`);
     const bmr = _fin(latest.bmrKcal);
-    // Punto de millar a mano: `toLocaleString('es-ES')` NO agrupa los números de 4 cifras
-    // (minimumGroupingDigits = 2 en el CLDR español), así que devolvería "1812".
-    if (bmr != null) extras.push(`BMR ${String(Math.round(bmr)).replace(/\B(?=(\d{3})+(?!\d))/g, '.')} kcal`);
+    // Millar en inglés: `toLocaleString('en-US')` SÍ agrupa los números de 4 cifras
+    // (minimumGroupingDigits = 1 en el CLDR inglés), así que da "1,812".
+    if (bmr != null) extras.push(`BMR ${Math.round(bmr).toLocaleString('en-US')} kcal`);
     const pulso = _fin(latest.heartRateBpm);
-    if (pulso != null) extras.push(`pulso ${Math.round(pulso)}`);
+    if (pulso != null) extras.push(`pulse ${Math.round(pulso)}`);
     const edadMet = _fin(latest.metabolicAge);
-    if (edadMet != null) extras.push(`edad metab. ${Math.round(edadMet)}`);
-    etaEl.innerHTML += `<div style="margin-top:4px">Última pesada: ${_bwSourcePill(latest)}${extras.length ? ' · ' + extras.join(' · ') : ''}</div>`;
+    if (edadMet != null) extras.push(`metabolic age ${Math.round(edadMet)}`);
+    etaEl.innerHTML += `<div style="margin-top:4px">Last weigh-in: ${_bwSourcePill(latest)}${extras.length ? ' · ' + extras.join(' · ') : ''}</div>`;
   }
 
   // Plateau: 7-day avg now vs 7-day avg from 14d ago. If |delta| < 0.3 kg over
@@ -10596,9 +10596,9 @@ async function renderBodyWeightChart() {
       else if (pctChange < -1.0) { color = 'var(--orange)'; label = 'too fast'; }
       else if (pctChange < 0) { color = 'var(--yellow)'; label = 'slow'; }
       else { color = 'var(--red)'; label = 'gaining'; }
-      rateEl.innerHTML = `<span class="bw-line-label">Últimos 7d vs 7d previos:</span> <span style="color:${color}">${sign}${weeklyChange.toFixed(1)} kg/wk (${sign}${pctChange.toFixed(1)}%) — ${label}</span> <span style="color:var(--text3)">target: -0.5 a -1%/sem</span>`;
+      rateEl.innerHTML = `<span class="bw-line-label">Last 7d vs previous 7d:</span> <span style="color:${color}">${sign}${weeklyChange.toFixed(1)} kg/wk (${sign}${pctChange.toFixed(1)}%) — ${label}</span> <span style="color:var(--text3)">target: -0.5 to -1%/wk</span>`;
     } else {
-      rateEl.innerHTML = '<span class="bw-line-label">Últimos 7d vs 7d previos:</span> <span class="muted">need 2+ weeks of data</span>';
+      rateEl.innerHTML = '<span class="bw-line-label">Last 7d vs previous 7d:</span> <span class="muted">need 2+ weeks of data</span>';
     }
   } else {
     rateEl.textContent = '';
@@ -10763,7 +10763,7 @@ function closePlateSheet() {
 // ajuste diario. El dato no se pierde: `deloadHint` viaja en el facts pack a la revisión
 // semanal, que es quien puede mover el ancla del bloque con aprobación, y el deload
 // PROGRAMADO ya se ve en el calendario y en el eyebrow de la semana. La etiqueta
-// `deload-request` sigue en `COACH_DECISION_ES` para leer las decisiones históricas.
+// `deload-request` sigue en `COACH_DECISION_LABEL` para leer las decisiones históricas.
 
 // v11.35: a sync failure must be visible the same day, not seven weeks later.
 // The queue silently froze on 2026-06-30 and nothing in the UI said a word — Settings
@@ -10782,16 +10782,16 @@ async function renderSyncWarning() {
   // Quiet unless it actually matters: something stuck, or a backlog older than a day.
   if (quarantined === 0 && !(pending > 0 && ageH >= 24)) { container.classList.add('hidden'); return; }
 
-  const age = ageH >= 48 ? `${Math.floor(ageH / 24)} días` : `${ageH} h`;
+  const age = ageH >= 48 ? `${Math.floor(ageH / 24)} days` : `${ageH} h`;
   const msg = quarantined > 0
-    ? `${quarantined} registro${quarantined === 1 ? '' : 's'} no se pudo subir. Tus datos siguen en el teléfono.`
-    : `${pending} cambio${pending === 1 ? '' : 's'} sin subir desde hace ${age}.`;
+    ? `${quarantined} record${quarantined === 1 ? '' : 's'} could not be uploaded. Your data is still on the phone.`
+    : `${pending} change${pending === 1 ? '' : 's'} not uploaded for ${age}.`;
   container.innerHTML = `
     <div class="deload-banner" style="border-color:var(--red)">
       <span class="deload-icon">☁️</span>
       <div>
-        <div class="deload-text" style="font-weight:700">Copia en la nube pendiente</div>
-        <div style="font-size:11px;color:var(--text2);margin-top:2px">${msg} Tocá para reintentar.</div>
+        <div class="deload-text" style="font-weight:700">Cloud backup pending</div>
+        <div style="font-size:11px;color:var(--text2);margin-top:2px">${msg} Tap to retry.</div>
       </div>
     </div>`;
   container.classList.remove('hidden');
@@ -10799,7 +10799,7 @@ async function renderSyncWarning() {
     if (typeof syncAll === 'function') await syncAll();
     await renderSyncWarning();
     const after = await getSyncStatus();
-    toast(after.total > 0 ? `Quedan ${after.total} sin subir` : 'Sincronizado');
+    toast(after.total > 0 ? `${after.total} still not uploaded` : 'Synced');
   };
 }
 
@@ -11518,7 +11518,7 @@ function bindEvents() {
     // sin contenido que luego ensucia el historial y el volumen. Mejor ofrecer descartarla.
     const anyDone = !!document.querySelector('#workout-exercises .set-check.checked');
     if (isAdHocSession(state.activeSession) && !anyDone) {
-      if (confirm('No registraste ninguna serie. ¿Descartar la sesión?')) {
+      if (confirm('You did not log a single set. Discard the session?')) {
         if (state.workoutTimerInterval) clearInterval(state.workoutTimerInterval);
         state.activeSession = null;
         await clearActiveWorkout();
@@ -11891,7 +11891,7 @@ const AUG20_WORKOUT_ID = 'mt1mjjrhqlx740';
 // MISMA referencia, que es lo que el llamador usa para decidir si escribe.
 function fixAug20Mislabeled(w) {
   if (w.exercises.some(e => e.exerciseId === 'incline-press')) return w;
-  const origen = (hueco) => `Reasignado el 2026-08-21 · registrado en el hueco "${hueco}"`;
+  const origen = (hueco) => `Reassigned on 2026-08-21 · logged in the "${hueco}" slot`;
   const out = { ...w, exercises: [] };
 
   for (const ex of w.exercises) {
@@ -11901,10 +11901,10 @@ function fixAug20Mislabeled(w) {
         // El remo sí era remo. Pero su nota decía "Combine con press de hombro con barra (40kg)
         // 4x10": eso es un ejercicio propio y merece su entrada. Los números salen literalmente de
         // la nota; el RPE va null porque ése no lo registró.
-        out.exercises.push({ ...ex, sets, note: 'Superserie con press de hombro con barra.' });
+        out.exercises.push({ ...ex, sets, note: 'Superset with barbell shoulder press.' });
         out.exercises.push({
           exerciseId: 'ohp', compound: true,
-          note: 'Superserie con el remo. Pesos y repeticiones tomados de la nota original.',
+          note: 'Superset with the row. Weights and reps taken from the original note.',
           sets: [0, 1, 2, 3].map(() => ({ weight: 40, reps: 10, rpe: null, done: true })),
         });
         break;
@@ -11922,8 +11922,8 @@ function fixAug20Mislabeled(w) {
       case 'lateral-raise':
         // Eran laterales + frontales encadenadas, anotadas como una serie de 16 (8+8). Se parten en
         // dos ejercicios de 8, que es lo que ocurrió.
-        out.exercises.push({ ...ex, db: true, sets: sets.map(s => ({ ...s, reps: 8 })), note: 'Encadenado con elevación frontal (8+8).' });
-        out.exercises.push({ ...ex, exerciseId: 'front-raise', db: true, sets: sets.map(s => ({ ...s, reps: 8 })), note: 'Encadenado con la elevación lateral (8+8).' });
+        out.exercises.push({ ...ex, db: true, sets: sets.map(s => ({ ...s, reps: 8 })), note: 'Chained with the front raise (8+8).' });
+        out.exercises.push({ ...ex, exerciseId: 'front-raise', db: true, sets: sets.map(s => ({ ...s, reps: 8 })), note: 'Chained with the lateral raise (8+8).' });
         break;
       default:
         out.exercises.push({ ...ex, sets });
@@ -11949,9 +11949,9 @@ async function runMigrations() {
   if (!done.data.includes('nutricion-v2-targets')) {
     const st = state.settings;
     let cambios = [];
-    if (st.proteinTarget === 170) { st.proteinTarget = NUT_PROTEIN_FLOOR; cambios.push('proteina 170 -> ' + NUT_PROTEIN_FLOOR); }
-    if (st.calorieTargetTraining == null) { st.calorieTargetTraining = NUT_KCAL_TRAINING; cambios.push('kcal entreno ' + NUT_KCAL_TRAINING); }
-    if (st.calorieTargetRest == null) { st.calorieTargetRest = NUT_KCAL_REST; cambios.push('kcal descanso ' + NUT_KCAL_REST); }
+    if (st.proteinTarget === 170) { st.proteinTarget = NUT_PROTEIN_FLOOR; cambios.push('protein 170 -> ' + NUT_PROTEIN_FLOOR); }
+    if (st.calorieTargetTraining == null) { st.calorieTargetTraining = NUT_KCAL_TRAINING; cambios.push('kcal training ' + NUT_KCAL_TRAINING); }
+    if (st.calorieTargetRest == null) { st.calorieTargetRest = NUT_KCAL_REST; cambios.push('kcal rest ' + NUT_KCAL_REST); }
     if (cambios.length) {
       await smartPut('settings', { key: 'userSettings', data: st });
       applySettingsToUI();

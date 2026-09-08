@@ -40,7 +40,7 @@ function stravaMarkReconnect(reason) {
 // ==================== OAUTH ====================
 function stravaConnect() {
   if (STRAVA_CLIENT_ID === 'TODO_PASTE_CLIENT_ID_HERE') {
-    if (typeof toast === 'function') toast('Strava client_id no configurado — editar app/strava.js');
+    if (typeof toast === 'function') toast('Strava client_id not configured — edit app/strava.js');
     return;
   }
   const params = new URLSearchParams({

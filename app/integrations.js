@@ -24,8 +24,8 @@
 // ANTES de `whoop.js` (que usa `integrationsIsActive` y `integrationsSync`).
 
 const INTEG_PROVIDERS = [
-  { id: 'whoop', label: 'WHOOP', hint: 'Recuperación, HRV, FC en reposo y sueño.' },
-  { id: 'withings', label: 'Withings', hint: 'Peso y composición corporal de la báscula.' },
+  { id: 'whoop', label: 'WHOOP', hint: 'Recovery, HRV, resting HR and sleep.' },
+  { id: 'withings', label: 'Withings', hint: 'Weight and body composition from the scale.' },
 ];
 
 // Caché en memoria de 60 s. La lee `integrationsIsActive()`, que es SÍNCRONA a propósito:
@@ -109,16 +109,16 @@ function integrationsStatusOf(provider) {
 // ==================== CONECTAR / DESCONECTAR ====================
 async function integrationsConnect(provider) {
   const supa = _integSupa();
-  if (!supa) { _integToast('Inicia sesión para conectar'); return { ok: false, status: 'offline' }; }
+  if (!supa) { _integToast('Sign in to connect'); return { ok: false, status: 'offline' }; }
   try {
     const user = await _integUser();
-    if (!user) { _integToast('Inicia sesión para conectar'); return { ok: false, status: 'offline' }; }
+    if (!user) { _integToast('Sign in to connect'); return { ok: false, status: 'offline' }; }
     const { data, error } = await supa.functions.invoke('integrations-oauth', {
       body: { action: 'authorize', provider },
     });
-    if (error) throw new Error(error.message || 'El servidor no pudo iniciar la conexión');
+    if (error) throw new Error(error.message || 'The server could not start the connection');
     if (data && data.error) throw new Error(data.error);
-    if (!data || !data.url) throw new Error('El servidor no devolvió la URL de autorización');
+    if (!data || !data.url) throw new Error('The server did not return an authorization URL');
     // El proveedor redirige a la edge function `integrations-callback`, no a esta página: en
     // iOS la vuelta cae en Safari y allí no hay sesión de Supabase. El servidor canjea, guarda
     // y redirige a `#settings?connected=<provider>`; la PWA relee el estado al volver a primer
@@ -127,7 +127,7 @@ async function integrationsConnect(provider) {
     return { ok: true, status: 'redirecting' };
   } catch (e) {
     console.warn('[integraciones] connect:', e);
-    _integToast('No se pudo abrir la conexión: ' + ((e && e.message) || e));
+    _integToast('Could not open the connection: ' + ((e && e.message) || e));
     return { ok: false, status: 'error', error: String((e && e.message) || e) };
   }
 }
@@ -135,25 +135,25 @@ async function integrationsConnect(provider) {
 async function integrationsDisconnect(provider) {
   const label = provider === 'withings' ? 'Withings' : 'WHOOP';
   try {
-    if (typeof confirm === 'function' && !confirm(`¿Desconectar ${label}? Dejarán de entrar datos nuevos.`)) {
+    if (typeof confirm === 'function' && !confirm(`Disconnect ${label}? New data will stop coming in.`)) {
       return { ok: false, status: 'cancelled' };
     }
   } catch (e) { /* sin confirm (tests): se sigue */ }
   const supa = _integSupa();
-  if (!supa) { _integToast('Inicia sesión para conectar'); return { ok: false, status: 'offline' }; }
+  if (!supa) { _integToast('Sign in to connect'); return { ok: false, status: 'offline' }; }
   try {
     const { data, error } = await supa.functions.invoke('integrations-oauth', {
       body: { action: 'disconnect', provider },
     });
-    if (error) throw new Error(error.message || 'No se pudo desconectar');
+    if (error) throw new Error(error.message || 'Could not disconnect');
     if (data && data.error) throw new Error(data.error);
     await integrationsGetStatus({ force: true });
     try { await renderIntegrationsCard(); } catch (e) { /* la tarjeta no bloquea */ }
-    _integToast(`${label} desconectado`);
+    _integToast(`${label} disconnected`);
     return data || { ok: true, status: 'disconnected' };
   } catch (e) {
     console.warn('[integraciones] disconnect:', e);
-    _integToast('No se pudo desconectar: ' + ((e && e.message) || e));
+    _integToast('Could not disconnect: ' + ((e && e.message) || e));
     return { ok: false, status: 'error', error: String((e && e.message) || e) };
   }
 }
@@ -205,22 +205,22 @@ async function integrationsSync(provider, { days = 2 } = {}) {
 }
 
 // ==================== TARJETA DE AJUSTES ====================
-const INTEG_PILL_ES = {
-  active: { txt: 'Conectado', cls: 'ok' },
-  needs_reconnect: { txt: 'Reconectar', cls: 'warn' },
-  disconnected: { txt: 'No conectado', cls: 'off' },
+const INTEG_PILL_EN = {
+  active: { txt: 'Connected', cls: 'ok' },
+  needs_reconnect: { txt: 'Reconnect', cls: 'warn' },
+  disconnected: { txt: 'Not connected', cls: 'off' },
 };
 
 // "07:42" si es de hoy; "6 sep 07:42" si no. Un "07:42" a secas de hace tres días miente.
 function _integWhen(iso) {
-  if (!iso) return 'nunca';
+  if (!iso) return 'never';
   const d = new Date(iso);
-  if (isNaN(d.getTime())) return 'nunca';
+  if (isNaN(d.getTime())) return 'never';
   const hhmm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   const same = (a, b) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
   if (same(d, new Date())) return hhmm;
-  const mes = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'][d.getMonth()];
-  return `${d.getDate()} ${mes} ${hhmm}`;
+  const mes = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][d.getMonth()];
+  return `${mes} ${d.getDate()} ${hhmm}`;
 }
 
 async function renderIntegrationsCard() {
@@ -229,25 +229,25 @@ async function renderIntegrationsCard() {
 
   const st = await integrationsGetStatus();
   if (!st || st.offline) {
-    host.innerHTML = '<p class="muted" style="font-size:13px;margin:0">Inicia sesión para conectar</p>';
+    host.innerHTML = '<p class="muted" style="font-size:13px;margin:0">Sign in to connect</p>';
     return;
   }
 
   const rows = INTEG_PROVIDERS.map(({ id, label, hint }) => {
     const row = st[id];
     const status = (row && row.status) || 'disconnected';
-    const pill = INTEG_PILL_ES[status] || INTEG_PILL_ES.disconnected;
-    const meta = `último sync ${_integWhen(row && row.last_sync_at)} · evento ${_integWhen(row && row.last_event_at)}`;
+    const pill = INTEG_PILL_EN[status] || INTEG_PILL_EN.disconnected;
+    const meta = `last sync ${_integWhen(row && row.last_sync_at)} · event ${_integWhen(row && row.last_event_at)}`;
     const err = (row && row.last_error)
       ? `<div class="integ-err">${_integEsc(String(row.last_error).slice(0, 160))}</div>` : '';
     let botones;
     if (status === 'active') {
-      botones = `<button class="btn-secondary integ-btn" data-integ-act="sync" data-integ="${id}">Sincronizar ahora</button>`
-        + `<button class="btn-secondary integ-btn" data-integ-act="disconnect" data-integ="${id}">Desconectar</button>`;
+      botones = `<button class="btn-secondary integ-btn" data-integ-act="sync" data-integ="${id}">Sync now</button>`
+        + `<button class="btn-secondary integ-btn" data-integ-act="disconnect" data-integ="${id}">Disconnect</button>`;
     } else if (status === 'needs_reconnect') {
-      botones = `<button class="btn-secondary integ-btn" data-integ-act="connect" data-integ="${id}">Reconectar</button>`;
+      botones = `<button class="btn-secondary integ-btn" data-integ-act="connect" data-integ="${id}">Reconnect</button>`;
     } else {
-      botones = `<button class="btn-secondary integ-btn" data-integ-act="connect" data-integ="${id}">Conectar</button>`;
+      botones = `<button class="btn-secondary integ-btn" data-integ-act="connect" data-integ="${id}">Connect</button>`;
     }
     return `<div class="integ-row">
       <div class="integ-head">
@@ -271,25 +271,25 @@ async function renderIntegrationsCard() {
       btn.disabled = true;
       try {
         if (act === 'connect') {
-          btn.textContent = 'Abriendo…';
+          btn.textContent = 'Opening…';
           await integrationsConnect(provider);
         } else if (act === 'disconnect') {
           await integrationsDisconnect(provider);
         } else if (act === 'sync') {
-          btn.textContent = 'Sincronizando…';
+          btn.textContent = 'Syncing…';
           const r = await integrationsSync(provider, { days: 2 });
           if (r && r.ok) {
             const n = Array.isArray(r.dates) ? r.dates.length : null;
-            _integToast(n != null ? `Sincronizado: ${n} día${n === 1 ? '' : 's'}` : 'Sincronizado');
+            _integToast(n != null ? `Synced: ${n} day${n === 1 ? '' : 's'}` : 'Synced');
             if (provider === 'whoop' && typeof renderWhoopRecoveryCard === 'function') {
               try { await renderWhoopRecoveryCard(); } catch (e) {}
             }
           } else if (r && r.status === 'needs_reconnect') {
-            _integToast('WHOOP necesita reconectarse');
+            _integToast('WHOOP needs reconnecting');
           } else if (r && r.status === 'offline') {
-            _integToast('Inicia sesión para conectar');
+            _integToast('Sign in to connect');
           } else {
-            _integToast('La sincronización falló');
+            _integToast('Sync failed');
           }
           await renderIntegrationsCard();
           return;   // la tarjeta se ha repintado entera
@@ -306,16 +306,16 @@ async function renderIntegrationsCard() {
 // `#settings?connect_error=<código>`. En iPhone esa vuelta cae en **Safari**, no en la PWA: el
 // usuario cierra Safari y vuelve a la app, y el estado se relee en `visibilitychange`. Este
 // parseo cubre el caso escritorio (misma pestaña) y el de quien abre el enlace en la PWA.
-const INTEG_CONNECT_ERROR_ES = {
-  state: 'La conexión caducó, vuelve a intentarlo',
-  no_refresh_token: 'WHOOP no concedió acceso persistente (offline)',
-  denied: 'Cancelaste la autorización en el proveedor',
-  provider: 'Proveedor no reconocido en la vuelta de la autorización',
-  code: 'El proveedor no devolvió el código de autorización',
-  exchange: 'El canje del código falló en el servidor',
-  config: 'Falta configuración en el servidor (secretos)',
-  method: 'El proveedor volvió con un método inesperado',
-  server: 'Error del servidor al conectar',
+const INTEG_CONNECT_ERROR_EN = {
+  state: 'The connection expired, try again',
+  no_refresh_token: 'WHOOP did not grant persistent access (offline)',
+  denied: 'You cancelled the authorization at the provider',
+  provider: 'Provider not recognized on the authorization return',
+  code: 'The provider did not return an authorization code',
+  exchange: 'The code exchange failed on the server',
+  config: 'Missing server configuration (secrets)',
+  method: 'The provider came back with an unexpected method',
+  server: 'Server error while connecting',
 };
 
 function _integCleanHash() {
@@ -345,9 +345,9 @@ async function integrationsHandleReturn() {
 
   if (connected) {
     const label = connected === 'withings' ? 'Withings' : 'WHOOP';
-    _integToast(`${label} conectado`);
+    _integToast(`${label} connected`);
   } else {
-    _integToast(INTEG_CONNECT_ERROR_ES[err] || `No se pudo conectar (${err})`);
+    _integToast(INTEG_CONNECT_ERROR_EN[err] || `Could not connect (${err})`);
   }
   try { if (typeof switchTab === 'function') switchTab('settings'); } catch (e) {}
   await integrationsGetStatus({ force: true });
@@ -391,6 +391,6 @@ if (typeof module !== 'undefined' && module.exports) {
     integrationsGetStatus, integrationsIsActive, integrationsStatusOf,
     integrationsConnect, integrationsDisconnect, integrationsSync,
     renderIntegrationsCard, integrationsHandleReturn,
-    INTEG_PROVIDERS, INTEG_PILL_ES, INTEG_CONNECT_ERROR_ES, _integWhen,
+    INTEG_PROVIDERS, INTEG_PILL_EN, INTEG_CONNECT_ERROR_EN, _integWhen,
   };
 }

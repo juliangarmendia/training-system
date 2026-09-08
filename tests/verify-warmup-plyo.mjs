@@ -121,7 +121,7 @@ eq(SESSIONS.length, 9, 'las 9 sesiones del plan se cargan');
     ? ok('lowerB: ya tiene swings laterales, como lowerA')
     : bad('lowerB: sigue siendo el único día de pierna sin swings laterales');
 
-  has('upperA', /[Rr]otacion externa|[Rr]otación externa/)
+  has('upperA', /external rotation/i)
     ? ok('upperA: hay rotación externa de manguito antes de 4 series de banca')
     : bad('upperA: sigue sin prep de manguito');
 }

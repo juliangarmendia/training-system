@@ -180,7 +180,7 @@ sec('El plan limpio sólo dispara HARD-BUDGET (7,5 sobre 6, informativo)');
 const base = run();
 eq(ids(base).sort().join(','), 'HARD-BUDGET', 'el ideal real produce exactamente un aviso, y es el del presupuesto');
 eq(base[0].level, 'warn', 'y es BLANDO: BUD-001 es informativo');
-ok(/7,5/.test(base[0].text), `el texto lleva el número (${base[0].text})`);
+ok(/7\.5/.test(base[0].text), `el texto lleva el número (${base[0].text})`);
 // Un template ligero baja el presupuesto: el aviso desaparece.
 const light = run({
   weekTemplate: {
@@ -202,7 +202,7 @@ fires(jump, 'LOAD-JUMP', 'hard', ['95', '110'], 'banca 95 → 110 (+15,8 %)');
 const noHist = run({ sessions: Object.assign(clone(PLAN_OK.sessions), {
   lowerA: { id: 'lowerA', name: 'Lower A', mobilityMin: 8, exercises: [EX.boxJump, EX.squat, Object.assign({}, EX.legCurl, { target: { kg: 40, reps: '10-12', rpe: '7', source: 'coach', evidence: ['STR-001'] } })] },
 }) });
-fires(noHist, 'LOAD-JUMP', 'hard', ['40', 'sin ningún top set previo'], 'objetivo sobre un ejercicio sin histórico');
+fires(noHist, 'LOAD-JUMP', 'hard', ['40', 'no previous top set'], 'objetivo sobre un ejercicio sin histórico');
 const drop = run({ sessions: Object.assign(clone(PLAN_OK.sessions), {
   upperA: { id: 'upperA', name: 'Upper A', exercises: [Object.assign({}, EX.bench, { target: { kg: 75, reps: '5-8', rpe: '7-8', source: 'coach', evidence: ['STR-001'] } }), EX.row, EX.facePull, EX.pallof] },
 }) });
@@ -218,7 +218,7 @@ sec('G-H2 · NO-SOURCE-KG (hard) — GEN-002');
 const noSrc = run({ sessions: Object.assign(clone(PLAN_OK.sessions), {
   upperA: { id: 'upperA', name: 'Upper A', exercises: [Object.assign({}, EX.bench, { target: { kg: 95, reps: '5-8', rpe: '7-8' } }), EX.row, EX.facePull, EX.pallof] },
 }) });
-fires(noSrc, 'NO-SOURCE-KG', 'hard', ['95', 'ajustar por RPE'], 'kg sin origen ni marca porRPE');
+fires(noSrc, 'NO-SOURCE-KG', 'hard', ['95', 'adjust by RPE'], 'kg sin origen ni marca porRPE');
 const byRpe = run({ sessions: Object.assign(clone(PLAN_OK.sessions), {
   upperA: { id: 'upperA', name: 'Upper A', exercises: [Object.assign({}, EX.bench, { target: { kg: 95, reps: '5-8', rpe: '7-8', note: 'ajustar por RPE, sin dato' } }), EX.row, EX.facePull, EX.pallof] },
 }) });
@@ -245,7 +245,7 @@ fires(volMuscle, 'VOL-CAP', 'hard', ['Chest', '16', '14'], 'pecho a 16 series/se
 const volTotal = run({ sessions: Object.assign(clone(PLAN_OK.sessions), {
   upperA: { id: 'upperA', name: 'Upper A', exercises: [Object.assign({}, EX.bench, { sets: 8 }), Object.assign({}, EX.row, { sets: 8 }), Object.assign({}, EX.facePull, { sets: 6 }), EX.pallof] },
 }), }, { facts: Object.assign({}, FACTS_OK, { readiness: { score: { n7: 7, red7: 2, yellow7: 3 } } }) });
-fires(volTotal, 'VOL-CAP', 'hard', ['adherencia ≥75 %'], 'volumen total +10 % con una semana en rojo');
+fires(volTotal, 'VOL-CAP', 'hard', ['adherence ≥75 %'], 'volumen total +10 % con una semana en rojo');
 const volTotalGated = run({ sessions: Object.assign(clone(PLAN_OK.sessions), {
   upperA: { id: 'upperA', name: 'Upper A', exercises: [Object.assign({}, EX.bench, { sets: 8 }), Object.assign({}, EX.row, { sets: 8 }), Object.assign({}, EX.facePull, { sets: 6 }), EX.pallof] },
 }) });
@@ -257,8 +257,8 @@ sec('G-H3 · DELOAD-VOLUME (hard) — LOAD-004');
 // ════════════════════════════════════════════════════════════════════════════════════
 const CTX_DELOAD = { isDeload: true, block: { index: 5, weeksTotal: 5, isDeload: true } };
 const deloadFull = run({ block: { weekIndex: 5, weeksTotal: 5, phase: 'deload' } }, CTX_DELOAD);
-fires(deloadFull, 'DELOAD-VOLUME', 'hard', ['DESCARGA'], 'descarga con el volumen de la semana de carga');
-const deloadPlyo = pick(deloadFull, 'DELOAD-VOLUME').find(x => /pliometría/.test(x.text));
+fires(deloadFull, 'DELOAD-VOLUME', 'hard', ['DELOAD week'], 'descarga con el volumen de la semana de carga');
+const deloadPlyo = pick(deloadFull, 'DELOAD-VOLUME').find(x => /plyometrics/.test(x.text));
 ok(!!deloadPlyo, '   y otro aviso por el box jump en descarga');
 const deloadOk = run({
   block: { weekIndex: 5, weeksTotal: 5, phase: 'deload' },
@@ -290,11 +290,11 @@ sec('G-H5 · RUN-BEFORE-LEGS (hard) — INT-001, HYB-002 · la vuelta DOMINGO �
 const sunHard = run({ weekTemplate: Object.assign(clone(PLAN_OK.weekTemplate), {
   0: { type: 'run', label: 'Umbral', subtype: 'threshold', durationMin: 35 },
 }) });
-fires(sunHard, 'RUN-BEFORE-LEGS', 'hard', ['domingo', 'lunes', 'lowerA'], 'dura el domingo, pierna el lunes');
+fires(sunHard, 'RUN-BEFORE-LEGS', 'hard', ['Sunday', 'Monday', 'lowerA'], 'dura el domingo, pierna el lunes');
 const midHard = run({ weekTemplate: Object.assign(clone(PLAN_OK.weekTemplate), {
   3: { type: 'run', label: 'Umbral', subtype: 'threshold', durationMin: 35 },
 }) });
-fires(midHard, 'RUN-BEFORE-LEGS', 'hard', ['miércoles', 'jueves'], 'dura el miércoles, pierna el jueves');
+fires(midHard, 'RUN-BEFORE-LEGS', 'hard', ['Wednesday', 'Thursday'], 'dura el miércoles, pierna el jueves');
 const satHard = run({ weekTemplate: Object.assign(clone(PLAN_OK.weekTemplate), {
   6: { type: 'run', label: 'Umbral', subtype: 'threshold', durationMin: 40 },
 }) });
@@ -316,17 +316,17 @@ silent(anchorAllowed, 'ANCHOR-SWAP', 'trap bar ↔ sumo (el par permitido)');
 sec('G-H8/G-S1 · KM-JUMP — END-003, LOAD-001');
 // ════════════════════════════════════════════════════════════════════════════════════
 fires(run({ running: { weeklyKmTarget: 14, longRunKm: 7, hardSessions: 0 } }), 'KM-JUMP', 'hard', ['14', '11'], '14 km sobre un máximo de 11 (×1,2 = 13,2)');
-fires(run({ running: { weeklyKmTarget: 12.5, longRunKm: 7, hardSessions: 0 } }), 'KM-JUMP', 'warn', ['12,5', '11'], '12,5 km: por encima del 10 % orientativo');
-ok(/heurística prudente NO validada/.test(pick(run({ running: { weeklyKmTarget: 12.5, longRunKm: 7, hardSessions: 0 } }), 'KM-JUMP')[0].text),
+fires(run({ running: { weeklyKmTarget: 12.5, longRunKm: 7, hardSessions: 0 } }), 'KM-JUMP', 'warn', ['12.5', '11'], '12,5 km: por encima del 10 % orientativo');
+ok(/prudent heuristic and NOT validated/.test(pick(run({ running: { weeklyKmTarget: 12.5, longRunKm: 7, hardSessions: 0 } }), 'KM-JUMP')[0].text),
   '   y el texto dice que el 10 % es heurística, no evidencia (Buist 2008)');
 silent(run({ running: { weeklyKmTarget: 12, longRunKm: 6, hardSessions: 0 } }), 'KM-JUMP', '12 km sobre 11 (dentro del tope)');
 // Suelo de +1 km: con 8 km la semana pasada (máximo 10), 8,9 km NO avisa aunque sea +11 %.
 const FLOOR = { facts: Object.assign({}, FACTS_OK, { cardio: { weeks: [{ km: 10 }, { km: 10 }, { km: 10 }, { km: 8 }], daysSinceLastRun: 2, z2Ceiling: { bpm: 143 } } }) };
 silent(run({ running: { weeklyKmTarget: 8.9, longRunKm: 5, hardSessions: 0 } }, FLOOR), 'KM-JUMP', '8 → 8,9 km (el suelo de +1 km absorbe los 900 m)');
-fires(run({ running: { weeklyKmTarget: 9.5, longRunKm: 5, hardSessions: 0 } }, FLOOR), 'KM-JUMP', 'warn', ['9,5', '8'], '8 → 9,5 km (por encima de prev + 1 km)');
+fires(run({ running: { weeklyKmTarget: 9.5, longRunKm: 5, hardSessions: 0 } }, FLOOR), 'KM-JUMP', 'warn', ['9.5', '8'], '8 → 9,5 km (por encima de prev + 1 km)');
 // Reentrada: 14 días sin correr → tope 8 km, no un porcentaje.
 const REENTRY = { facts: Object.assign({}, FACTS_OK, { cardio: { weeks: [{ km: 12 }, { km: 10 }, { km: 0 }, { km: 0 }], daysSinceLastRun: 20, z2Ceiling: { bpm: 143 } } }) };
-fires(run({ running: { weeklyKmTarget: 9, longRunKm: 5, hardSessions: 0 } }, REENTRY), 'KM-JUMP', 'hard', ['20 días sin correr', '8 km'], '9 km tras 20 días sin correr');
+fires(run({ running: { weeklyKmTarget: 9, longRunKm: 5, hardSessions: 0 } }, REENTRY), 'KM-JUMP', 'hard', ['20 days without running', '8 km'], '9 km tras 20 días sin correr');
 silent(run({ running: { weeklyKmTarget: 7, longRunKm: 4, hardSessions: 0 } }, REENTRY), 'KM-JUMP', '7 km tras 20 días (dentro del tope de reentrada)');
 
 // ════════════════════════════════════════════════════════════════════════════════════
@@ -354,8 +354,8 @@ sec('G-S15 · DELOAD-DIETBREAK (warn desde 2026-09-08) — REC-005');
 // R-7: era DURO sobre REC-005, `weak_extrapolated`, cuyo propio texto dice que el diet break
 // alineado con el deload mejora la EFICIENCIA de la pérdida y NO preserva más masa magra. Una
 // regla dura sobre esa base es certeza prestada, que es el patrón que la auditoría fue a buscar.
-fires(run({ block: { weekIndex: 5, weeksTotal: 5, phase: 'deload' } }, CTX_DELOAD), 'DELOAD-DIETBREAK', 'warn', ['sin diet break', 'weak_extrapolated'], 'descarga sin subir a mantenimiento');
-fires(run({ nutrition: { proteinG: 190, kcalTraining: 3000, kcalRest: 2700, dietBreak: true } }), 'DELOAD-DIETBREAK', 'warn', ['Diet break en una semana de carga'], 'diet break en semana de carga');
+fires(run({ block: { weekIndex: 5, weeksTotal: 5, phase: 'deload' } }, CTX_DELOAD), 'DELOAD-DIETBREAK', 'warn', ['without a diet break', 'weak_extrapolated'], 'descarga sin subir a mantenimiento');
+fires(run({ nutrition: { proteinG: 190, kcalTraining: 3000, kcalRest: 2700, dietBreak: true } }), 'DELOAD-DIETBREAK', 'warn', ['Diet break in a loading week'], 'diet break en semana de carga');
 silent(deloadOk, 'DELOAD-DIETBREAK', 'descarga + diet break juntos');
 silent(base, 'DELOAD-DIETBREAK', 'carga + déficit');
 
@@ -365,7 +365,7 @@ sec('G-H10 · PLYO-PLACEMENT (hard, INT-004) / G-S16 · PLYO-CONTACTS (warn, ATH
 const plyoLate = run({ sessions: Object.assign(clone(PLAN_OK.sessions), {
   lowerA: { id: 'lowerA', name: 'Lower A', mobilityMin: 8, exercises: [EX.squat, EX.legCurl, EX.boxJump] },
 }) });
-fires(plyoLate, 'PLYO-PLACEMENT', 'hard', ['posición 3'], 'box jump al final de Lower A');
+fires(plyoLate, 'PLYO-PLACEMENT', 'hard', ['position 3'], 'box jump al final de Lower A');
 const plyoWrongSession = run({ sessions: Object.assign(clone(PLAN_OK.sessions), {
   upperA: { id: 'upperA', name: 'Upper A', exercises: [EX.boxJump, EX.bench, EX.row, EX.pallof] },
   lowerA: { id: 'lowerA', name: 'Lower A', mobilityMin: 8, exercises: [EX.squat, EX.legCurl] },
@@ -378,13 +378,13 @@ const plyoVolume = run({ sessions: Object.assign(clone(PLAN_OK.sessions), {
 // fatiga previa). El NÚMERO 80 baja a blando y a su propio id: el caveat de ATH-001 dice que "la
 // dosis baja es óptima" NO está soportado — la dosis-respuesta favorece MÁS volumen — y aquí la
 // dosis baja es mantenimiento de potencia en déficit y prudencia lumbar, no un óptimo.
-fires(plyoVolume, 'PLYO-CONTACTS', 'warn', ['90', '80', 'NO está soportado'], '90 contactos');
+fires(plyoVolume, 'PLYO-CONTACTS', 'warn', ['90', '80', 'is NOT supported'], '90 contactos');
 silent(plyoVolume, 'PLYO-PLACEMENT', 'y el box jump sigue primero en Lower A: la colocación no se toca');
 silent(base, 'PLYO-CONTACTS', '15 contactos');
 const plyoAfterHard = run({ weekTemplate: Object.assign(clone(PLAN_OK.weekTemplate), {
   0: { type: 'run', label: 'Umbral', subtype: 'threshold', durationMin: 35 },
 }) });
-ok(pick(plyoAfterHard, 'PLYO-PLACEMENT').some(x => /después del cardio duro/.test(x.text)), 'plyo el lunes tras la dura del domingo → dispara');
+ok(pick(plyoAfterHard, 'PLYO-PLACEMENT').some(x => /right after the hard cardio/.test(x.text)), 'plyo el lunes tras la dura del domingo → dispara');
 silent(base, 'PLYO-PLACEMENT', 'box jump primero en Lower A, 15 contactos');
 
 // ════════════════════════════════════════════════════════════════════════════════════
@@ -396,14 +396,14 @@ const noAR = run({ sessions: {
   lowerA: { id: 'lowerA', name: 'Lower A', mobilityMin: 8, exercises: [EX.boxJump, EX.squat, EX.legCurl] },
   lowerB: { id: 'lowerB', name: 'Lower B', mobilityMin: 8, exercises: [EX.trap, EX.legExt] },
 } });
-fires(noAR, 'CORE-PATTERNS', 'hard', ['anti-rotación'], 'semana sin anti-rotación');
+fires(noAR, 'CORE-PATTERNS', 'hard', ['anti-rotation'], 'semana sin anti-rotación');
 const noAE = run({ sessions: {
   upperA: { id: 'upperA', name: 'Upper A', exercises: [EX.bench, EX.row, EX.pallof] },
   upperB: { id: 'upperB', name: 'Upper B', exercises: [EX.ohp, EX.chins] },
   lowerA: { id: 'lowerA', name: 'Lower A', mobilityMin: 8, exercises: [EX.boxJump, EX.squat, EX.legCurl] },
   lowerB: { id: 'lowerB', name: 'Lower B', mobilityMin: 8, exercises: [EX.trap, EX.legExt] },
 } });
-fires(noAE, 'CORE-PATTERNS', 'hard', ['anti-extensión'], 'semana sin anti-extensión');
+fires(noAE, 'CORE-PATTERNS', 'hard', ['anti-extension'], 'semana sin anti-extensión');
 silent(base, 'CORE-PATTERNS', 'Pallof + ab wheel en la semana');
 
 // ════════════════════════════════════════════════════════════════════════════════════
@@ -421,9 +421,9 @@ silent(base, 'MIN-STRENGTH', '4 sesiones de fuerza');
 sec('G-H14 · DECISION-EVIDENCE (hard) — ethos');
 // ════════════════════════════════════════════════════════════════════════════════════
 fires(run(null, { decisions: [{ id: 'x', type: 'structure', what: 'Quitar el curl', why: 'porque sí', ruleIds: [], evidence: { numbers: { n: 3 } } }] }),
-  'DECISION-EVIDENCE', 'hard', ['sin Rule IDs'], 'decisión sin Rule IDs');
+  'DECISION-EVIDENCE', 'hard', ['with no Rule IDs'], 'decisión sin Rule IDs');
 fires(run(null, { decisions: [{ id: 'x', type: 'structure', what: 'Quitar el curl', why: 'porque sí', ruleIds: ['STR-010'], evidence: {} }] }),
-  'DECISION-EVIDENCE', 'hard', ['sin números'], 'decisión sin números en la evidencia');
+  'DECISION-EVIDENCE', 'hard', ['with no numbers'], 'decisión sin números en la evidencia');
 silent(base, 'DECISION-EVIDENCE', 'decisión con Rule IDs y números');
 
 // ════════════════════════════════════════════════════════════════════════════════════
@@ -458,7 +458,7 @@ sec('G-H5 · el largo de ≥10 km y `running.hardSessions[]` cuentan como dura (
 const longSun = run({ weekTemplate: Object.assign(clone(PLAN_OK.weekTemplate), {
   0: { type: 'run', label: 'Largo fácil', subtype: 'long_easy', durationMin: 80, cardio: { subtype: 'long_easy', durationMin: 80, distanceKm: 12 } },
 }) });
-fires(longSun, 'RUN-BEFORE-LEGS', 'hard', ['domingo', 'lunes', '12'], 'largo de 12 km el domingo, pierna el lunes');
+fires(longSun, 'RUN-BEFORE-LEGS', 'hard', ['Sunday', 'Monday', '12'], 'largo de 12 km el domingo, pierna el lunes');
 const longShort = run({ weekTemplate: Object.assign(clone(PLAN_OK.weekTemplate), {
   0: { type: 'run', label: 'Largo fácil', subtype: 'long_easy', durationMin: 55, cardio: { subtype: 'long_easy', durationMin: 55, distanceKm: 8 } },
 }) });
@@ -466,7 +466,7 @@ silent(longShort, 'RUN-BEFORE-LEGS', 'largo de 8 km el domingo (por debajo de lo
 // `running.hardSessions` como array de días: el día viaja en la propuesta aunque la plantilla no
 // lo refleje todavía.
 fires(run({ running: { weeklyKmTarget: 12, longRunKm: 6, hardSessions: [{ day: 0, subtype: 'threshold' }] } }),
-  'RUN-BEFORE-LEGS', 'hard', ['domingo', 'lunes'], '`running.hardSessions[{day:0}]` con pierna el lunes');
+  'RUN-BEFORE-LEGS', 'hard', ['Sunday', 'Monday'], '`running.hardSessions[{day:0}]` con pierna el lunes');
 fires(run({ running: { weeklyKmTarget: 12, longRunKm: 6, hardSessions: [{ day: 0 }, { day: 3 }] } }),
   'HARD-CARDIO', 'hard', ['2'], 'dos días declarados en `running.hardSessions[]`');
 eq(F.VP_LONG_RUN_HARD_KM, 10, 'VP_LONG_RUN_HARD_KM = 10');
@@ -481,11 +481,11 @@ sec('G-S17 · ORDER-SAME-DAY (warn) — INT-003');
 const cardioFirst = run({ weekTemplate: Object.assign(clone(PLAN_OK.weekTemplate), {
   1: { type: 'gym', session: 'lowerA', cardio: { subtype: 'zone2', durationMin: 30, order: 'before', note: 'Z2 30 min ≤143 bpm' } },
 }) });
-fires(cardioFirst, 'ORDER-SAME-DAY', 'warn', ['lunes', 'Lower A'], 'cardio declarado ANTES de Lower A (`order: before`)');
+fires(cardioFirst, 'ORDER-SAME-DAY', 'warn', ['Monday', 'Lower A'], 'cardio declarado ANTES de Lower A (`order: before`)');
 const cardioNote = run({ weekTemplate: Object.assign(clone(PLAN_OK.weekTemplate), {
   2: { type: 'gym', session: 'upperA', cardio: { subtype: 'zone2', durationMin: 25, note: '25 min de Z2 antes de levantar, ≤143 bpm' } },
 }) });
-fires(cardioNote, 'ORDER-SAME-DAY', 'warn', ['martes'], 'y también cuando lo dice la nota ("antes de levantar")');
+fires(cardioNote, 'ORDER-SAME-DAY', 'warn', ['Tuesday'], 'y también cuando lo dice la nota ("antes de levantar")');
 const cardioAfter = run({ weekTemplate: Object.assign(clone(PLAN_OK.weekTemplate), {
   1: { type: 'gym', session: 'lowerA', cardio: { subtype: 'zone2', durationMin: 20, note: 'finisher de 20 min ≤143 bpm' } },
 }) });
@@ -502,11 +502,11 @@ silent(base, 'FREQ-FLOOR', 'el ideal cubre las 4 familias 2× (rodilla, bisagra,
 const noPull = run({ sessions: Object.assign(clone(PLAN_OK.sessions), {
   upperB: { id: 'upperB', name: 'Upper B', exercises: [EX.ohp, EX.abWheel, EX.facePull] },
 }) });
-fires(noPull, 'FREQ-FLOOR', 'warn', ['tirón', '1', '2'], 'sin dominadas en Upper B: el tirón baja a 1 exposición');
+fires(noPull, 'FREQ-FLOOR', 'warn', ['pull', '1', '2'], 'sin dominadas en Upper B: el tirón baja a 1 exposición');
 const noHinge = run({ sessions: Object.assign(clone(PLAN_OK.sessions), {
   lowerB: { id: 'lowerB', name: 'Lower B', mobilityMin: 8, exercises: [EX.legExt, EX.abWheel] },
 }) });
-ok(pick(noHinge, 'FREQ-FLOOR').some(x => /bisagra/.test(x.text)), 'sin peso muerto en Lower B → avisa por la bisagra');
+ok(pick(noHinge, 'FREQ-FLOOR').some(x => /hinge/.test(x.text)), 'sin peso muerto en Lower B → avisa por la bisagra');
 // Variantes de 3 días: la frecuencia 2× es aritméticamente imposible, así que el aviso se calla.
 silent(run(null, { variant: 3 }), 'FREQ-FLOOR', 'variante de 3 días: el chequeo no aplica');
 silent(validatePlanVersion(Object.assign(clone(PLAN_OK), {
@@ -540,7 +540,7 @@ sec('G-S19 · RECOVERY-ONLY (warn) — READ-005, READ-002');
 const readOnly = [{ id: 'r1', type: 'progression', what: 'Bajar 2 series en accesorios',
   why: 'HRV −12 % y RHR +6 bpm en 7 días', ruleIds: ['READ-001', 'READ-004'],
   evidence: { numbers: { hrvDelta: '-12%', rhrDelta: '+6' } } }];
-fires(run(null, { decisions: readOnly }), 'RECOVERY-ONLY', 'warn', ['READ-001', 'recuperación es contexto'],
+fires(run(null, { decisions: readOnly }), 'RECOVERY-ONLY', 'warn', ['READ-001', 'Recovery is context'],
   'baja series citando sólo READ-*, sin dato de rendimiento');
 const readPlusPerf = [{ id: 'r2', type: 'progression', what: 'Bajar 2 series en accesorios',
   why: 'HRV −12 % Y el top set de banca cayó a 95×6 desde 95×8', ruleIds: ['READ-001', 'STR-001'],
@@ -581,7 +581,7 @@ eq(F.VP_KCAL_ADJUST_DAYS, 14, 'VP_KCAL_ADJUST_DAYS = 14');
 sec('EA-GATE (warn) — REC-008');
 // ════════════════════════════════════════════════════════════════════════════════════
 const lowEa = { facts: Object.assign({}, FACTS_OK, { nutrition: { daysLogged14: 12, ea: { daysUnder30: 5 } } }) };
-fires(run({ running: { weeklyKmTarget: 12.5, longRunKm: 7, hardSessions: 0 } }, lowEa), 'EA-GATE', 'warn', ['5 días', 'km'], '5 días con EA <30 y los km suben');
+fires(run({ running: { weeklyKmTarget: 12.5, longRunKm: 7, hardSessions: 0 } }, lowEa), 'EA-GATE', 'warn', ['5 days', 'km'], '5 días con EA <30 y los km suben');
 silent(base, 'EA-GATE', 'EA por encima de 30');
 
 // ════════════════════════════════════════════════════════════════════════════════════
@@ -626,7 +626,7 @@ const hybLong = run({
   }),
   running: { weeklyKmTarget: 12.5, longRunKm: 7, hardSessions: 0 },
 });
-fires(hybLong, 'HYBRID-PLUS-LONG', 'warn', ['11', '12,5'], 'híbrido el sábado y el largo subiendo');
+fires(hybLong, 'HYBRID-PLUS-LONG', 'warn', ['11', '12.5'], 'híbrido el sábado y el largo subiendo');
 silent(base, 'HYBRID-PLUS-LONG', 'sin híbrido');
 
 // ════════════════════════════════════════════════════════════════════════════════════
@@ -635,11 +635,11 @@ sec('G-S6 · TARGET-N1 (warn)');
 const n1 = run({ sessions: Object.assign(clone(PLAN_OK.sessions), {
   upperB: { id: 'upperB', name: 'Upper B', exercises: [Object.assign({}, EX.ohp, { target: { kg: 55, reps: '5-8', rpe: '7-8', source: 'coach', evidence: ['STR-001'] } }), EX.chins, EX.abWheel] },
 }) });
-fires(n1, 'TARGET-N1', 'warn', ['UNA sola sesión'], 'objetivo de OHP con n=1');
+fires(n1, 'TARGET-N1', 'warn', ['a SINGLE session'], 'objetivo de OHP con n=1');
 const stale = run({ sessions: Object.assign(clone(PLAN_OK.sessions), {
   lowerB: { id: 'lowerB', name: 'Lower B', mobilityMin: 8, exercises: [Object.assign({}, EX.trap, { target: { kg: 100, reps: '5-8', rpe: '7-8', source: 'coach', evidence: ['STR-001'] } }), EX.legExt, EX.abWheel] },
 }) });
-fires(stale, 'TARGET-N1', 'warn', ['30 días', 'reentrada'], 'objetivo de trap bar con el último dato de hace 30 días');
+fires(stale, 'TARGET-N1', 'warn', ['30 days old', 're-entry'], 'objetivo de trap bar con el último dato de hace 30 días');
 silent(inRange, 'TARGET-N1', 'objetivo de banca con 3 sesiones y 6 días');
 
 // ════════════════════════════════════════════════════════════════════════════════════
@@ -654,18 +654,18 @@ sec('G-S8 · WEIGHT-WINDOW (warn) — REC-002');
 // ════════════════════════════════════════════════════════════════════════════════════
 const badWindow = {
   facts: Object.assign({}, FACTS_OK, {
-    progress: { weight: { validWindow: { ok: false, reasons: ['sólo 6 pesadas medidas en 14 días (gate: 10)', 'la ventana contiene 1 semana(s) de descarga / diet break + 5 días'] } } },
+    progress: { weight: { validWindow: { ok: false, reasons: ['only 6 measured weigh-ins in 14 days (gate: 10)', 'the window contains 1 deload / diet break week(s) + 5 days'] } } },
   }),
 };
 fires(run({ nutrition: { proteinG: 190, kcalTraining: 2600, kcalRest: 2400, dietBreak: false } }, badWindow),
-  'WEIGHT-WINDOW', 'warn', ['6 pesadas', 'descarga'], 'se toca la ingesta con la ventana de peso inválida');
+  'WEIGHT-WINDOW', 'warn', ['6 measured weigh-ins', 'deload'], 'se toca la ingesta con la ventana de peso inválida');
 silent(base, 'WEIGHT-WINDOW', 'ventana válida');
 
 // ════════════════════════════════════════════════════════════════════════════════════
 sec('G-S10 · SUMMER-PACE (warn) — ENV-001');
 // ════════════════════════════════════════════════════════════════════════════════════
 const paceDec = [{ id: 'p1', type: 'running', what: 'Subir el largo', why: 'El ritmo mejora a la misma FC', ruleIds: ['END-003'], evidence: { numbers: { pace: 400 } } }];
-fires(run(null, { decisions: paceDec }), 'SUMMER-PACE', 'warn', ['septiembre'], 'progreso por ritmo leído en septiembre');
+fires(run(null, { decisions: paceDec }), 'SUMMER-PACE', 'warn', ['September'], 'progreso por ritmo leído en septiembre');
 silent(run(null, { decisions: paceDec, todayStr: '2027-01-11', facts: Object.assign({}, FACTS_OK, { meta: { todayStr: '2027-01-11' } }) }),
   'SUMMER-PACE', 'el mismo texto en enero');
 silent(base, 'SUMMER-PACE', 'ninguna decisión habla de ritmo');
@@ -691,9 +691,9 @@ const churn = run({ sessions: Object.assign(clone(PLAN_OK.sessions), {
   lowerB: { id: 'lowerB', name: 'Lower B', mobilityMin: 8, exercises: [EX.trap, EX.legExt, EX.abWheel, EX.legCurl] }, // +1
   lowerA: { id: 'lowerA', name: 'Lower A', mobilityMin: 8, exercises: [EX.boxJump, EX.squat, EX.legExt] },            // swap
 }) }, { block: { index: 3, weeksTotal: 5, isDeload: false } });
-ok(pick(churn, 'CHURN').some(x => /cambios estructurales/.test(x.text) && /diff contra el plan activo/.test(x.text)),
+ok(pick(churn, 'CHURN').some(x => /structural changes/.test(x.text) && /the diff against the active plan/.test(x.text)),
   '5 cambios reales SIN `changes[]` declarado → CHURN sobre el diff');
-fires(churn, 'ROTATION', 'warn', ['semana 1'], 'swaps fuera de la semana 1 del bloque');
+fires(churn, 'ROTATION', 'warn', ['week 1'], 'swaps fuera de la semana 1 del bloque');
 // Un solo swap real en la semana 1 del bloque: ROTATION calla.
 silent(run({ sessions: Object.assign(clone(PLAN_OK.sessions), {
   upperA: { id: 'upperA', name: 'Upper A', exercises: [EX.bench, EX.row, EX.pallof, EX.abWheel] },
@@ -716,7 +716,7 @@ silent(run({ sessions: Object.assign(clone(PLAN_OK.sessions), {
       ] }),
     }),
   }), Object.assign({}, CTX_OK, { basedOn: null }));
-  ok(pick(sinBase, 'CHURN').some(x => /declarado por el coach/.test(x.text)),
+  ok(pick(sinBase, 'CHURN').some(x => /as declared by the coach/.test(x.text)),
     'sin `basedOn`, `changes[]` sigue siendo el respaldo y se dice en el texto');
 }
 silent(base, 'CHURN', '3 prioridades y ningún cambio');
@@ -725,9 +725,9 @@ silent(base, 'CHURN', '3 prioridades y ningún cambio');
 sec('G-S13 · CTL-FOR-STRENGTH (warn) — F-3 / F-2');
 // ════════════════════════════════════════════════════════════════════════════════════
 fires(run(null, { decisions: [{ id: 'c1', type: 'progression', what: 'Bajar series de banca', why: 'El CTL cayó a 2,4 esta semana', ruleIds: ['STR-003'], evidence: { numbers: { ctl: 2.4 } } }] }),
-  'CTL-FOR-STRENGTH', 'warn', ['sólo ve el cardio'], 'decisión de fuerza justificada por CTL');
+  'CTL-FOR-STRENGTH', 'warn', ['only sees cardio'], 'decisión de fuerza justificada por CTL');
 fires(run(null, { decisions: [{ id: 'c2', type: 'recovery', what: 'Deload reactivo', why: 'rampRate por debajo de −20', ruleIds: ['LOAD-004'], evidence: { numbers: { rampRate: -0.3 } } }] }),
-  'CTL-FOR-STRENGTH', 'warn', ['rampRate` no es la forma'], 'descarga justificada por rampRate');
+  'CTL-FOR-STRENGTH', 'warn', ['rampRate` is not form'], 'descarga justificada por rampRate');
 silent(base, 'CTL-FOR-STRENGTH', 'la decisión se apoya en RPE y top set');
 
 // ════════════════════════════════════════════════════════════════════════════════════
@@ -757,7 +757,7 @@ sec('G-S14 · WEEK-SUMMARY (warn) — el contrato v2, v11.65');
 sec('El catálogo de ids: 39 y ni uno suelto');
 // ════════════════════════════════════════════════════════════════════════════════════
 // Cuenta los ids que el validador puede emitir, leyendo su propio fuente. Sirve para dos
-// cosas: que añadir un aviso obligue a mirar esta línea (y a traducirlo en `COACH_GUARD_ES`),
+// cosas: que añadir un aviso obligue a mirar esta línea (y a etiquetarlo en `COACH_GUARD_LABEL`),
 // y que borrar uno no pase inadvertido. Eran 32 hasta v11.64; WEEK-SUMMARY hizo 33; la auditoría
 // del 2026-09-08 añade 6 y hace 39 (E-14: ORDER-SAME-DAY, FREQ-FLOOR, SESSION-COUNT ya existía
 // · E-17: RECOVERY-ONLY · E-18: KCAL-STEP · R-5: MVPA-FLOOR · R-7: PLYO-CONTACTS).
@@ -786,7 +786,7 @@ sec('El catálogo de ids: 39 y ni uno suelto');
   // Todos traducidos en la pantalla: un id crudo en un chip no se entiende.
   const coachjs = readFileSync('app/coach.js', 'utf8');
   const sinTraducir = [...emitidos].filter(id => !new RegExp(`'${id}':|\\b${id}:`).test(coachjs));
-  eq(sinTraducir.join(', ') || 'ninguno', 'ninguno', 'y todos tienen etiqueta en COACH_GUARD_ES');
+  eq(sinTraducir.join(', ') || 'ninguno', 'ninguno', 'y todos tienen etiqueta en COACH_GUARD_LABEL');
 }
 
 // ════════════════════════════════════════════════════════════════════════════════════

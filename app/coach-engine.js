@@ -154,7 +154,7 @@ function ffmKg(input) {
     const age = _coachDaysBetween(r.date, todayStr);
     if (age != null && age > FFM_FRESH_DAYS) continue;
     return { kg: r1(kg), source: 'withings', date: String(r.date).slice(0, 10), ageDays: age,
-      note: `Withings, hace ${age == null ? '?' : age} d` };
+      note: `Withings, ${age == null ? '?' : age} d ago` };
   }
 
   // 2. Derivada de la última fila con %grasa.
@@ -164,12 +164,12 @@ function ffmKg(input) {
     if (!isFinite(w) || w <= 0 || !isFinite(bf) || bf <= 0 || bf >= 100) continue;
     const age = _coachDaysBetween(r.date, todayStr);
     return { kg: r1(w * (1 - bf / 100)), source: 'derived', date: String(r.date).slice(0, 10),
-      ageDays: age, note: `derivada de ${r1(w)} kg y ${r1(bf)} % de grasa` };
+      ageDays: age, note: `derived from ${r1(w)} kg and ${r1(bf)} % body fat` };
   }
 
   // 3. Declarada.
   return { kg: r1(declared), source: 'declared', date: null, ageDays: null,
-    note: 'FFM declarada (docs/profile.md): estimación, no medida' };
+    note: 'Declared FFM (docs/profile.md): an estimate, not a measurement' };
 }
 
 // ==================== SEMANA ISO ====================
@@ -228,16 +228,20 @@ function coachTargetWeekKey(dateStr) {
 }
 
 /**
- * Las cinco fases del contrato v2 del coach, en castellano (plan v2.1 §B.3).
+ * Las cinco fases del contrato v2 del coach, etiquetadas para pantalla (plan v2.1 §B.3).
  * Vive en el motor y no en el renderer: la usan la tarjeta de Home, la vista Coach y el
  * teaser de Stats, y tres traducciones del mismo enum se desincronizan.
+ *
+ * v11.67: la UI es toda en inglés (V-1), así que la etiqueta coincide con el id salvo en
+ * `intensify`. El mapa se conserva porque es el único sitio donde se decide cómo se NOMBRA
+ * una fase, y mañana puede volver a divergir.
  */
-const PHASE_ES = {
+const PHASE_LABEL = {
   base: 'base',
-  build: 'construcción',
-  intensify: 'intensificación',
-  deload: 'descarga',
-  maintenance: 'mantenimiento',
+  build: 'build',
+  intensify: 'intensify',
+  deload: 'deload',
+  maintenance: 'maintenance',
 };
 
 // ==================== SEMANA DEL BLOQUE ====================
@@ -296,7 +300,7 @@ function mondayOf(dateStr) {
  *                                  Se normaliza también: `settings` es editable a mano.
  * @param {number} [blockWeeks=5]   Longitud del bloque (`DELOAD_BLOCK_WEEKS`).
  * @returns {{index: number|null, isDeload: boolean, weeksIntoBlock: number|null,
- *            label: 'build'|'deload'|'sin ancla', blockStartMonday: string|null,
+ *            label: 'build'|'deload'|'no anchor', blockStartMonday: string|null,
  *            deloadMonday: string|null}}
  *
  * `index` va de 1 a `blockWeeks`; la ÚLTIMA es la descarga (4 build + 1 deload). Antes del
@@ -309,7 +313,7 @@ function blockWeekFromDates(dateStr, anchorMondayStr, blockWeeks = 5) {
   const anchor = mondayOf(anchorMondayStr);
   const none = {
     index: null, isDeload: false, weeksIntoBlock: null,
-    label: 'sin ancla', blockStartMonday: null, deloadMonday: null,
+    label: 'no anchor', blockStartMonday: null, deloadMonday: null,
   };
   if (!monday || !anchor) return none;
   // Los dos extremos son lunes, así que la división es exacta (sin redondeos que arrastren).
@@ -419,21 +423,21 @@ function progressCardioMin(baseMin, block, opts = {}) {
   // 1. El coach manda (plan §Principios 3). Incluso en deload, viaje o tras una pausa: si el
   //    coach fijó minutos para este día, ya conocía el contexto al fijarlos.
   if (o.coachMin != null && isFinite(Number(o.coachMin))) {
-    return { min: Math.round(Number(o.coachMin)), source: 'coach', note: 'objetivo del coach' };
+    return { min: Math.round(Number(o.coachMin)), source: 'coach', note: 'coach target' };
   }
   const base = Number(baseMin);
   if (!isFinite(base) || base <= 0) return { min: null, source: 'base', note: null };
   const step = base >= 30 ? 5 : 2;   // 2' en el finisher: a paso de 5 la progresión desaparece
   // 2. Las cuatro puertas que devuelven la base tal cual.
   if (o.variant === 0) {
-    return { min: base, source: 'base', note: 'viaje: repite base' };
+    return { min: base, source: 'base', note: 'travel: repeat base' };
   }
   if (o.lastCardioDaysAgo == null) {
     // Sin historial no se inventa una rampa: progresar sobre la nada es prescribir a ciegas.
-    return { min: base, source: 'base', note: 'sin cardio registrado: repite base' };
+    return { min: base, source: 'base', note: 'no cardio logged: repeat base' };
   }
   if (Number(o.lastCardioDaysAgo) > 14) {
-    return { min: base, source: 'base', note: `${o.lastCardioDaysAgo} d sin cardio: repite base` };
+    return { min: base, source: 'base', note: `${o.lastCardioDaysAgo} d without cardio: repeat base` };
   }
 
   // 3. LA RAMPA SALE DE LO HECHO, NO DEL CALENDARIO (E-6, auditoría 2026-09-08).
@@ -450,38 +454,38 @@ function progressCardioMin(baseMin, block, opts = {}) {
   if (Array.isArray(o.history)) {
     const ref = _cardioRefMin(o.history);
     if (ref == null) {
-      return { min: base, source: 'base', note: 'sin minutos registrados en este hueco: repite base' };
+      return { min: base, source: 'base', note: 'no minutes logged in this slot: repeat base' };
     }
     if (b.isDeload) {
-      return { min: roundStep(ref * 0.7, step), source: 'rule', note: `deload: −30 % sobre ${_cardioFmtMin(ref)}′` };
+      return { min: roundStep(ref * 0.7, step), source: 'rule', note: `deload: −30 % on ${_cardioFmtMin(ref)}′` };
     }
     const rawH = Math.min(ref * 1.1, base * 1.35);
     return {
       min: roundStep(rawH, step),
       source: 'rule',
-      note: `+10 % sobre ${_cardioFmtMin(ref)}′ (mediana de las 2 últimas semanas con dato)`,
+      note: `+10 % on ${_cardioFmtMin(ref)}′ (median of the last 2 weeks with data)`,
     };
   }
 
   if (b.index == null) {
-    return { min: base, source: 'base', note: 'sin ancla de bloque: repite base' };
+    return { min: base, source: 'base', note: 'no block anchor: repeat base' };
   }
   // 4. Descarga: −30 %. Es el punto entero del bloque; progresar aquí sería lo peor de los dos
   //    mundos (series de fuerza al 50 % Y pico de cardio en la misma semana).
   if (b.isDeload) {
-    return { min: roundStep(base * 0.7, step), source: 'rule', note: 'deload: −30 %' };
+    return { min: roundStep(base * 0.7, step), source: 'rule', note: 'deload: −30 % on base' };
   }
   // 5. Sin historial del hueco: +10 % por semana desde la 1 (la semana 1 ES la base), con techo.
   //    Es el camino LEGACY, para los llamadores que todavía no pasan `history`.
   const raw = Math.min(base * Math.pow(1.1, b.index - 1), base * 1.35);
-  return { min: roundStep(raw, step), source: 'rule', note: `semana ${b.index} del bloque` };
+  return { min: roundStep(raw, step), source: 'rule', note: `week ${b.index} of the block` };
 }
 
-/** Minutos con coma decimal y sin ceros de relleno: 42,5 → '42,5' · 45 → '45'. */
+/** Minutos con punto decimal y sin ceros de relleno: 42,5 → '42.5' · 45 → '45'. */
 function _cardioFmtMin(v) {
   const n = Number(v);
   if (!isFinite(n)) return '';
-  return (Math.round(n * 10) / 10).toFixed(1).replace(/[,.]0$/, '').replace('.', ',');
+  return (Math.round(n * 10) / 10).toFixed(1).replace(/\.0$/, '');
 }
 
 /**
@@ -694,24 +698,26 @@ function _coachIncrement(ex, kg, dir, measureUnit) {
 }
 
 /**
- * Número → texto español: coma decimal, y los enteros sin decimales ('95', no '95,0').
- * La app se lee en castellano; un '92.5' en la línea del objetivo canta.
+ * Número → texto de pantalla: punto decimal, y los enteros sin decimales ('95', no '95.0').
+ *
+ * v11.67 (V-1): la UI es toda en inglés, así que el separador decimal es el PUNTO. Antes era
+ * la coma, y era el único sitio donde se decidía: cambiarlo aquí cambia los kg de la tarjeta,
+ * la lectura de la sesión, la línea de rendimiento y los objetivos de una vez.
  */
 function _coachFmtKg(kg) {
   const n = Number(kg);
   if (!isFinite(n)) return '';
-  const s = (Math.round(n * 100) / 100).toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
-  return s.replace('.', ',');
+  return (Math.round(n * 100) / 100).toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
 }
 
 /**
- * RPE siempre con un decimal ('7,0', '9,0'): es como se ha escrito siempre en la app y en las
+ * RPE siempre con un decimal ('7.0', '9.0'): es como se ha escrito siempre en la app y en las
  * revisiones del coach, y un '7' pelado se confunde con el tope del rango prescrito.
  */
 function _coachFmtRpe(v) {
   const n = Number(v);
   if (!isFinite(n)) return '';
-  return n.toFixed(1).replace('.', ',');
+  return n.toFixed(1);
 }
 
 /** 'YYYY-MM-DD' desde lo que venga (ISO completo, ms, o ya una fecha). */
@@ -783,8 +789,10 @@ function parseCoachTarget(str) {
     if (mBw) out.kg = num(mBw[1]);
     return out;
   }
-  // 'empezar en 60 kg, ajustar a RPE 7' — la única forma en prosa que el cron usa.
-  const mProse = /^empezar en\s+(\d+(?:[.,]\d+)?)\s*kg\b/i.exec(raw);
+  // 'empezar en 60 kg, ajustar a RPE 7' — la única forma en prosa que usaba el cron. Desde
+  // v11.67 la prosa del coach es inglesa ('start at 60 kg'), y las dos formas se aceptan: las
+  // filas históricas de `weekly_reviews` siguen en castellano y tienen que seguir parseando.
+  const mProse = /^(?:empezar en|start at)\s+(\d+(?:[.,]\d+)?)\s*kg\b/i.exec(raw);
   if (mProse) { out.kg = num(mProse[1]); return out; }
   // Número (o rango de kg, '8-9 kg/mano') al PRINCIPIO de la cadena. En un rango manda el
   // suelo: es la carga con la que se empieza la serie.
@@ -893,9 +901,9 @@ function suggestSetTarget(ex, history, opts = {}) {
 
   // ── (1) Se mide, no se carga ──────────────────────────────────────────────────────
   if (type === 'measure') {
-    if (o.measureUnit) return mk(null, 'none', `Se mide en ${o.measureUnit}, no en kg`);
+    if (o.measureUnit) return mk(null, 'none', `Measured in ${o.measureUnit}, not in kg`);
     // Pliometría sin columna de medida (pogo hops): la intención es la carga.
-    return mk(null, 'none', 'Salto: progresa la intención y la altura, no el kg');
+    return mk(null, 'none', 'Jump: intent and height progress, not the load');
   }
 
   // Sesiones utilizables: las que tienen alguna serie hecha con carga. En peso corporal una
@@ -921,8 +929,8 @@ function suggestSetTarget(ex, history, opts = {}) {
   // AMRAP, '20 m' de trineo, '250 m' de SkiErg: lo que progresa no es la carga.
   if (!range.numeric) {
     const reason = lastTopKg != null
-      ? `Sin rango de reps (${baseReps}): repite ${_coachFmtKg(lastTopKg)} kg y ajusta por sensación`
-      : `Sin rango de reps (${baseReps}): elige la carga por sensación, 2-3 reps en reserva`;
+      ? `No rep range (${baseReps}): repeat ${_coachFmtKg(lastTopKg)} kg and adjust by feel`
+      : `No rep range (${baseReps}): pick the load by feel, 2-3 reps in reserve`;
     return withBasis(mk(lastTopKg, 'last', reason, { delta: 0 }));
   }
 
@@ -951,27 +959,27 @@ function suggestSetTarget(ex, history, opts = {}) {
         reps: ct.reps || baseReps,
         rpe: ct.rpe || baseRpe,
         source: 'coach',
-        reason: ct.note || 'Objetivo del coach para esta semana',
+        reason: ct.note || 'Coach target for this week',
         delta: deltaFrom(kg),
         ruleIds: Array.isArray(ct.ruleIds) ? ct.ruleIds.slice() : [],
         basis,
       });
     }
     expiredPrefix = ageDays != null
-      ? `Objetivo del coach de hace ${ageDays} días — aplico la regla. `
-      : 'Objetivo del coach sin fecha — aplico la regla. ';
+      ? `Coach target from ${ageDays} days ago — falling back to the rule. `
+      : 'Coach target with no date — falling back to the rule. ';
   }
 
   // ── (4) Sin historial no se inventa un número ────────────────────────────────────
   if (!lastSession) {
     return mk(null, 'none',
-      expiredPrefix + 'Primera vez: elige un peso que deje 2-3 reps en reserva');
+      expiredPrefix + 'First time: pick a weight that leaves 2-3 reps in reserve');
   }
 
   // ── (5) Pausa larga: repetir, nunca subir (LOAD-004) ─────────────────────────────
   if (daysSince != null && daysSince > COACH_PAUSE_DAYS) {
     return withBasis(mk(lastTopKg, 'last',
-      `${expiredPrefix}Pausa de ${daysSince} días: repite la carga; si sale fácil, sube la próxima`,
+      `${expiredPrefix}${daysSince}-day break: repeat the load; if it feels easy, go up next time`,
       { delta: 0, ruleIds: ['LOAD-004'] }));
   }
 
@@ -992,7 +1000,7 @@ function suggestSetTarget(ex, history, opts = {}) {
       reps: baseReps,
       rpe: '5-6',
       source: 'rule',
-      reason: expiredPrefix + 'Deload · semana 5/5: −10 % y RPE 5-6',
+      reason: expiredPrefix + 'Deload · week 5/5: −10 % and RPE 5-6',
       delta: deltaFrom(kg),
       ruleIds: ['LOAD-004'],
       basis,
@@ -1047,8 +1055,8 @@ function suggestSetTarget(ex, history, opts = {}) {
   // con dos contracturas en el historial.
   if (type === 'bw' && baseRpe === '-') {
     return rule(null, allHitMax
-      ? 'Al tope del rango: sube el recorrido o +1 rep, no el lastre'
-      : 'Completa el rango antes de tocar nada más');
+      ? 'Top of the range: add range of motion or +1 rep, not load'
+      : 'Complete the range before changing anything else');
   }
 
   // RPE AUSENTE NO ES RPE BAJO (E-2, auditoría 2026-09-08).
@@ -1060,7 +1068,7 @@ function suggestSetTarget(ex, history, opts = {}) {
   // Una sesión al tope puede ser una sesión al límite; dos son una tendencia.
   if (allHitMax && avgRpe == null && !prevAllHitMax) {
     return rule(lastTopKg,
-      'sin RPE: subo sólo tras dos sesiones al tope. Hoy: mismo kg, y anota el RPE',
+      'No RPE logged: load only goes up after two sessions at the top. Today: same kg, and log the RPE',
       ['STR-001', 'GEN-002']);
   }
 
@@ -1068,7 +1076,7 @@ function suggestSetTarget(ex, history, opts = {}) {
     // Peso corporal al tope y sin lastre: el salto es empezar a colgar disco.
     if (type === 'bw' && (lastTopKg == null || lastTopKg <= 0)) {
       return rule(COACH_INC.bw,
-        `${doneSets.length}×${range.max} a peso corporal → añade ${_coachFmtKg(COACH_INC.bw)} kg de lastre`);
+        `${doneSets.length}×${range.max} at bodyweight → add ${_coachFmtKg(COACH_INC.bw)} kg of load`);
     }
     const next = _coachIncrement(e, lastTopKg, 1, o.measureUnit);
     // EL TOPE PORCENTUAL (E-1) NO BLOQUEA: PIDE UNA SESIÓN MÁS AL TOPE.
@@ -1081,20 +1089,20 @@ function suggestSetTarget(ex, history, opts = {}) {
     if (tooBigJump(lastTopKg, next) && !prevAllHitMax) {
       const pct = Math.round(jumpPct(lastTopKg, next) * 100);
       return rule(lastTopKg,
-        `De ${_coachFmtKg(lastTopKg)} a ${_coachFmtKg(next)} kg serían +${pct} % — salto grande (>10 %): una sesión más al tope antes de subir. Hoy: mismo kg y +reps (+1 por serie)`,
+        `${_coachFmtKg(lastTopKg)} → ${_coachFmtKg(next)} kg would be +${pct} % — big jump (>10 %): one more session at the top before going up. Today: same kg and +reps (+1 per set)`,
         ['STR-001', 'STR-009']);
     }
-    const rpeTxt = avgRpe == null ? '(sin RPE anotado, segunda al tope)' : `@${_coachFmtRpe(avgRpe)}`;
+    const rpeTxt = avgRpe == null ? '(no RPE logged, second one at the top)' : `@${_coachFmtRpe(avgRpe)}`;
     return rule(next,
-      `Todas las series al tope (${range.max}) ${rpeTxt} → +${_coachFmtKg((next || 0) - (lastTopKg || 0))} kg. Apunta al mínimo del rango.`);
+      `All sets at the top (${range.max}) ${rpeTxt} → +${_coachFmtKg((next || 0) - (lastTopKg || 0))} kg. Aim for the bottom of the range.`);
   }
 
   if (allHitMax) {
     // Al tope pero con el RPE por encima del objetivo: la carga ya está donde tiene que estar;
     // lo que falta es que ese mismo peso se sienta más fácil.
     const reason = avgRpe > COACH_RPE_HIGH
-      ? `Al tope pero RPE ${_coachFmtRpe(avgRpe)}: mismo kg hasta bajar a ${_coachFmtKg(rpeTop)}`
-      : `Al tope con RPE ${_coachFmtRpe(avgRpe)} sobre el objetivo (${_coachFmtKg(rpeTop)}): mismo kg hasta que baje`;
+      ? `At the top but RPE ${_coachFmtRpe(avgRpe)}: same kg until it drops to ${_coachFmtKg(rpeTop)}`
+      : `At the top with RPE ${_coachFmtRpe(avgRpe)} above target (${_coachFmtKg(rpeTop)}): same kg until it comes down`;
     return rule(lastTopKg, reason);
   }
 
@@ -1104,10 +1112,10 @@ function suggestSetTarget(ex, history, opts = {}) {
     if (short >= mitad || (avgRpe != null && avgRpe >= 9)) {
       const down = _coachIncrement(e, lastTopKg, -1, o.measureUnit);
       return rule(down,
-        `No llegaste al mínimo en ${short} ${short === 1 ? 'serie' : 'series'} → −${_coachFmtKg((lastTopKg || 0) - (down || 0))} kg`);
+        `Missed the minimum on ${short} ${short === 1 ? 'set' : 'sets'} → −${_coachFmtKg((lastTopKg || 0) - (down || 0))} kg`);
     }
     return rule(lastTopKg,
-      `Una serie corta: repite ${_coachFmtKg(lastTopKg)} kg y completa el rango`);
+      `One set short: repeat ${_coachFmtKg(lastTopKg)} kg and complete the range`);
   }
 
   // Dentro del rango pero sin llegar al tope: lo que progresa son reps, no kg.
@@ -1117,11 +1125,11 @@ function suggestSetTarget(ex, history, opts = {}) {
     if (prevTop != null && prevTop === lastTopKg
         && mean(prevDoneSets.map(s => Number(s.reps) || 0)) === mean(lastReps)) {
       return rule(lastTopKg,
-        `Dos sesiones iguales: hoy +1 rep o RPE ${_coachFmtKg(rpeTop)} en la última`);
+        `Two identical sessions: today +1 rep or RPE ${_coachFmtKg(rpeTop)} on the last set`);
     }
   }
   const bump = lastReps.map(r => Math.min(r + 1, range.max));
-  return rule(lastTopKg, `+1 rep por serie (${lastReps.join('/')} → ${bump.join('/')})`);
+  return rule(lastTopKg, `+1 rep per set (${lastReps.join('/')} → ${bump.join('/')})`);
 }
 
 /**
@@ -1192,19 +1200,18 @@ function sessionReadout(workout, targetsById, exDefs, nextById) {
     });
   }
 
-  // Una línea, en castellano, con lo único que se lee de un vistazo: cuántas subieron y qué
-  // sube la próxima vez.
+  // Una línea con lo único que se lee de un vistazo: cuántas subieron y qué sube la próxima vez.
   const plural = (n, sing, pl) => `${n} ${n === 1 ? sing : pl}`;
   const trozos = [];
-  if (summary.progressed) trozos.push(plural(summary.progressed, 'subida', 'subidas'));
-  if (summary.held) trozos.push(plural(summary.held, 'mantenida', 'mantenidas'));
-  if (summary.regressed) trozos.push(plural(summary.regressed, 'corta', 'cortas'));
-  if (summary.skipped) trozos.push(plural(summary.skipped, 'saltado', 'saltados'));
+  if (summary.progressed) trozos.push(plural(summary.progressed, 'up', 'up'));
+  if (summary.held) trozos.push(plural(summary.held, 'held', 'held'));
+  if (summary.regressed) trozos.push(plural(summary.regressed, 'short', 'short'));
+  if (summary.skipped) trozos.push(plural(summary.skipped, 'skipped', 'skipped'));
   const suben = items.filter(it => it.next && it.target && it.next.kg > it.target.kg);
   const cola = suben.length
-    ? ` ${suben[0].name} sube a ${_coachFmtKg(suben[0].next.kg)} kg la próxima.`
+    ? ` ${suben[0].name} goes to ${_coachFmtKg(suben[0].next.kg)} kg next time.`
     : '';
-  const line = (trozos.length ? trozos.join(', ') + '.' : 'Sin series registradas.') + cola;
+  const line = (trozos.length ? trozos.join(', ') + '.' : 'No sets logged.') + cola;
 
   return { items, summary, line };
 }
@@ -1274,7 +1281,7 @@ const READ_MIN_SLEEP_NIGHTS = 4;
 /** Reglas que gobiernan el CÁLCULO. READ-007 gobierna el ajuste, no el cálculo. */
 const READ_RULE_IDS = ['READ-001', 'READ-002', 'READ-003', 'READ-004', 'READ-005', 'READ-006', 'READ-008'];
 
-const _READ_COLOR_ES = { green: 'verde', yellow: 'amarillo', red: 'rojo', unknown: 'sin dato' };
+const _READ_COLOR_LABEL = { green: 'green', yellow: 'yellow', red: 'red', unknown: 'no data' };
 
 /** Media aritmética, o null si no hay nada que promediar. */
 function _readMean(values) {
@@ -1284,7 +1291,7 @@ function _readMean(values) {
   return s / values.length;
 }
 
-/** '−13 %' / '+4 %' con el menos tipográfico (U+2212), como el resto de la UI en castellano. */
+/** '−13 %' / '+4 %' con el menos tipográfico (U+2212), como el resto de la UI. */
 function _readPct(pct) {
   const n = Math.round(Number(pct));
   return (n < 0 ? '−' : '+') + Math.abs(n) + ' %';
@@ -1298,8 +1305,8 @@ function _readDelta(d) {
 
 /** Nombre corto de cada señal, para la UI. El motivo (`reason`) NO lo repite. */
 const _READ_LABELS = {
-  whoop: 'WHOOP hoy', hrv7v28: 'HRV 7d', rhr7v28: 'FC reposo 7d', sleep7: 'Sueño 7d',
-  rpe2: 'RPE', quality2: 'Calidad',
+  whoop: 'WHOOP today', hrv7v28: 'HRV 7d', rhr7v28: 'Resting HR 7d', sleep7: 'Sleep 7d',
+  rpe2: 'RPE', quality2: 'Quality',
 };
 
 /** Señal sin dato suficiente. Lleva SIEMPRE el motivo: "no hay dato" no es una explicación. */
@@ -1307,7 +1314,7 @@ function _readInsufficient(id, unit, reason) {
   const label = _READ_LABELS[id] || id;
   return {
     id, label, fired: false, dir: null, value: null, baseline: null, unit,
-    text: label + ': sin dato — ' + reason, status: 'insufficient', reason,
+    text: label + ': no data — ' + reason, status: 'insufficient', reason,
   };
 }
 
@@ -1320,7 +1327,7 @@ function _readInsufficient(id, unit, reason) {
  *                                             `{date, readiness, hrv, restingHR, sleepSecs}`.
  *                                             Fuente: intervals.icu (histórico) + WHOOP directo (hoy).
  * @param {object|null} inputs.whoopToday      `{score, source, fetchedAt}` SÓLO si es de HOY (F-6).
- * @param {string} [inputs.whoopMissingReason] Por qué falta el dato de hoy, en castellano.
+ * @param {string} [inputs.whoopMissingReason] Por qué falta el dato de hoy (texto de pantalla).
  * @param {Array}  inputs.workouts             `workouts` en orden DESCENDENTE de fecha.
  * @param {object} [inputs.cutoffs]            `{green:67, yellow:34}`.
  * @returns {{color:'green'|'yellow'|'red'|'unknown',
@@ -1363,11 +1370,11 @@ function computeReadinessFrom(inputs = {}) {
     signals.push({
       id: 'whoop', label: _READ_LABELS.whoop, fired: whoopColor === 'red', dir: 'level',
       value: sc, baseline: cut.yellow, unit: '%',
-      text: 'WHOOP hoy ' + sc + ' % · ' + _READ_COLOR_ES[whoopColor],
+      text: 'WHOOP today ' + sc + ' % · ' + _READ_COLOR_LABEL[whoopColor],
       status: 'ok',
     });
   } else {
-    signals.push(_readInsufficient('whoop', '%', inp.whoopMissingReason || 'Sin dato de recuperación de hoy'));
+    signals.push(_readInsufficient('whoop', '%', inp.whoopMissingReason || 'No recovery data for today'));
   }
 
   // ---- 2. HRV: media 7d vs base propia de los días 7..34 (READ-001 + READ-004) -------------
@@ -1375,9 +1382,9 @@ function computeReadinessFrom(inputs = {}) {
     const w = pick('hrv', 0, READ_TREND_TO);
     const b = pick('hrv', READ_BASE_FROM, READ_BASE_TO);
     if (w.length < READ_MIN_TREND_VALUES) {
-      signals.push(_readInsufficient('hrv7v28', 'ms', 'sólo ' + w.length + ' de 7 días'));
+      signals.push(_readInsufficient('hrv7v28', 'ms', 'only ' + w.length + ' of 7 days'));
     } else if (b.length < READ_MIN_BASE_VALUES) {
-      signals.push(_readInsufficient('hrv7v28', 'ms', 'base propia incompleta (' + b.length + ' de 28 días)'));
+      signals.push(_readInsufficient('hrv7v28', 'ms', 'own baseline incomplete (' + b.length + ' of 28 days)'));
     } else {
       const m = _readMean(w);
       const base = _readMean(b);
@@ -1385,7 +1392,7 @@ function computeReadinessFrom(inputs = {}) {
       signals.push({
         id: 'hrv7v28', label: _READ_LABELS.hrv7v28, fired: pct <= READ_HRV_DROP_PCT, dir: pct < 0 ? 'down' : 'up',
         value: Math.round(m), baseline: Math.round(base), unit: 'ms',
-        text: 'HRV 7d ' + Math.round(m) + ' ms vs ' + Math.round(base) + ' de base (' + _readPct(pct) + ')',
+        text: 'HRV 7d ' + Math.round(m) + ' ms vs ' + Math.round(base) + ' baseline (' + _readPct(pct) + ')',
         status: 'ok',
       });
     }
@@ -1396,9 +1403,9 @@ function computeReadinessFrom(inputs = {}) {
     const w = pick('restingHR', 0, READ_TREND_TO);
     const b = pick('restingHR', READ_BASE_FROM, READ_BASE_TO);
     if (w.length < READ_MIN_TREND_VALUES) {
-      signals.push(_readInsufficient('rhr7v28', 'bpm', 'sólo ' + w.length + ' de 7 días'));
+      signals.push(_readInsufficient('rhr7v28', 'bpm', 'only ' + w.length + ' of 7 days'));
     } else if (b.length < READ_MIN_BASE_VALUES) {
-      signals.push(_readInsufficient('rhr7v28', 'bpm', 'base propia incompleta (' + b.length + ' de 28 días)'));
+      signals.push(_readInsufficient('rhr7v28', 'bpm', 'own baseline incomplete (' + b.length + ' of 28 days)'));
     } else {
       const m = _readMean(w);
       const base = _readMean(b);
@@ -1406,7 +1413,7 @@ function computeReadinessFrom(inputs = {}) {
       signals.push({
         id: 'rhr7v28', label: _READ_LABELS.rhr7v28, fired: d >= READ_RHR_RISE_BPM, dir: d > 0 ? 'up' : 'down',
         value: Math.round(m), baseline: Math.round(base), unit: 'bpm',
-        text: 'FC reposo 7d ' + Math.round(m) + ' vs ' + Math.round(base) + ' (' + _readDelta(d) + ')',
+        text: 'Resting HR 7d ' + Math.round(m) + ' vs ' + Math.round(base) + ' (' + _readDelta(d) + ')',
         status: 'ok',
       });
     }
@@ -1418,14 +1425,14 @@ function computeReadinessFrom(inputs = {}) {
   {
     const w = pick('sleepSecs', 0, READ_TREND_TO);
     if (w.length < READ_MIN_SLEEP_NIGHTS) {
-      signals.push(_readInsufficient('sleep7', 'h', 'sólo ' + w.length + ' de 7 noches'));
+      signals.push(_readInsufficient('sleep7', 'h', 'only ' + w.length + ' of 7 nights'));
     } else {
       const m = _readMean(w);
       const hrs = Math.round((m / 3600) * 10) / 10;
       signals.push({
         id: 'sleep7', label: _READ_LABELS.sleep7, fired: m < READ_SLEEP_FLOOR_SECS, dir: 'down',
         value: hrs, baseline: Math.round((READ_SLEEP_FLOOR_SECS / 3600) * 10) / 10, unit: 'h',
-        text: 'Sueño 7d ' + _coachFmtKg(hrs) + ' h', status: 'ok',
+        text: 'Sleep 7d ' + _coachFmtKg(hrs) + ' h', status: 'ok',
       });
     }
   }
@@ -1446,15 +1453,15 @@ function computeReadinessFrom(inputs = {}) {
     if (rped.length === 2) break;
   }
   if (rped.length < 2) {
-    signals.push(_readInsufficient('rpe2', 'RPE', 'sólo ' + rped.length + ' sesión(es) con RPE apuntado'));
+    signals.push(_readInsufficient('rpe2', 'RPE', 'only ' + rped.length + ' session(s) with RPE logged'));
   } else {
     const both = rped[0].avg >= READ_RPE_FLOOR && rped[1].avg >= READ_RPE_FLOOR;
     signals.push({
       id: 'rpe2', label: _READ_LABELS.rpe2, fired: both, dir: 'up',
       value: Math.round(rped[0].avg * 10) / 10, baseline: READ_RPE_FLOOR, unit: 'RPE',
       text: both
-        ? 'RPE ≥9 en las 2 últimas sesiones'
-        : 'RPE medio ' + _coachFmtRpe(rped[0].avg) + ' y ' + _coachFmtRpe(rped[1].avg) + ' en las 2 últimas',
+        ? 'RPE ≥9 in the last 2 sessions'
+        : 'Mean RPE ' + _coachFmtRpe(rped[0].avg) + ' and ' + _coachFmtRpe(rped[1].avg) + ' in the last 2',
       status: 'ok',
     });
   }
@@ -1467,13 +1474,13 @@ function computeReadinessFrom(inputs = {}) {
     if (quals.length === 2) break;
   }
   if (quals.length < 2) {
-    signals.push(_readInsufficient('quality2', '/5', 'sólo ' + quals.length + ' sesión(es) puntuada(s)'));
+    signals.push(_readInsufficient('quality2', '/5', 'only ' + quals.length + ' rated session(s)'));
   } else {
     const both = quals[0] <= READ_QUALITY_CEIL && quals[1] <= READ_QUALITY_CEIL;
     signals.push({
       id: 'quality2', label: _READ_LABELS.quality2, fired: both, dir: 'down',
       value: quals[0], baseline: READ_QUALITY_CEIL, unit: '/5',
-      text: both ? 'Calidad ≤2 en las 2 últimas' : 'Calidad ' + quals[0] + ' y ' + quals[1] + ' en las 2 últimas',
+      text: both ? 'Quality ≤2 in the last 2' : 'Quality ' + quals[0] + ' and ' + quals[1] + ' in the last 2',
       status: 'ok',
     });
   }
@@ -1535,16 +1542,16 @@ function computeReadinessFrom(inputs = {}) {
 // fechas y la lectura de IndexedDB los hace `renderRecoveryLine()` en coach.js.
 
 /**
- * Nombre corto en castellano de las anclas. `getExerciseName()` devuelve el nombre completo en
- * inglés del plan ("Barbell Back Squat"), que en una línea con tres ejercicios y una carrera no
- * cabe. Sólo las anclas y sus variantes: para todo lo demás vale el nombre que trae la lectura.
+ * Nombre CORTO de las anclas. `getExerciseName()` devuelve el nombre completo del plan
+ * ("Barbell Back Squat"), que en una línea con tres ejercicios y una carrera no cabe. Sólo las
+ * anclas y sus variantes: para todo lo demás vale el nombre que trae la lectura.
  */
-const COACH_LIFT_ES = {
-  'back-squat': 'sentadilla', 'front-squat': 'sentadilla frontal', 'hack-squat': 'hack',
-  'bench-press': 'banca', 'db-bench': 'banca mancuernas', 'incline-db-press': 'inclinado',
-  'sumo-dl': 'peso muerto', 'conv-dl': 'peso muerto', 'trap-bar-dl': 'peso muerto hex',
-  'rdl': 'peso muerto rumano',
-  'ohp': 'press militar', 'barbell-row': 'remo', 'chinups': 'dominadas', 'pullups': 'dominadas',
+const COACH_LIFT_LABEL = {
+  'back-squat': 'squat', 'front-squat': 'front squat', 'hack-squat': 'hack squat',
+  'bench-press': 'bench', 'db-bench': 'db bench', 'incline-db-press': 'incline press',
+  'sumo-dl': 'deadlift', 'conv-dl': 'deadlift', 'trap-bar-dl': 'trap-bar dl',
+  'rdl': 'RDL',
+  'ohp': 'OHP', 'barbell-row': 'row', 'chinups': 'chin-ups', 'pullups': 'pull-ups',
 };
 
 /** Cuántas anclas caben en la línea antes de que deje de leerse de un vistazo. */
@@ -1595,7 +1602,7 @@ function _perfItems(w) {
 }
 
 /**
- * "Rendimiento: banca 95×8 ↑ · sentadilla 105×8 → · Z2 5,1 km @141".
+ * "Performance: bench 95×8 ↑ · squat 105×8 → · Z2 5.1 km @141".
  *
  * La última lectura de cada ancla (máximo 3, la más reciente primero) más la última carrera.
  * La carrera se llama "Z2" SÓLO si su pulso medio está en el techo de Z2 (más la tolerancia de
@@ -1639,7 +1646,7 @@ function performanceLine(workouts, runs, opts = {}) {
       const id = it && it.exerciseId;
       if (!id || !anchors.has(id) || vistos.has(id)) continue;
       vistos.add(id);
-      const nombre = COACH_LIFT_ES[id] || it.name || id;
+      const nombre = COACH_LIFT_LABEL[id] || it.name || id;
       const flecha = PERF_OUTCOME_ARROW[it.outcome] || '○';
       const done = it.done || {};
       const kg = _perfToKg(done.topKg, w.unit);
@@ -1649,7 +1656,7 @@ function performanceLine(workouts, runs, opts = {}) {
       const u = it.measureUnit ? ' ' + it.measureUnit : '';
       const cuerpo = (kg != null && kg > 0 && reps.length)
         ? _coachFmtKg(Math.round(kg * 10) / 10) + u + '×' + reps[0]
-        : 'saltado';
+        : 'skipped';
       partes.push(nombre + ' ' + cuerpo + ' ' + flecha);
     }
   }
@@ -1663,7 +1670,7 @@ function performanceLine(workouts, runs, opts = {}) {
     const km = Number(last.distance != null ? last.distance : last.km);
     const hrRaw = Number(last.avgHR);
     const hr = (last.avgHR != null && isFinite(hrRaw) && hrRaw > 0) ? Math.round(hrRaw) : null;
-    const etiqueta = (hr != null && hr <= z2Ceiling) ? 'Z2' : 'carrera';
+    const etiqueta = (hr != null && hr <= z2Ceiling) ? 'Z2' : 'run';
     if (isFinite(km) && km > 0) {
       partes.push(etiqueta + ' ' + _coachFmtKg(Math.round(km * 10) / 10) + ' km' + (hr != null ? ' @' + hr : ''));
     } else if (hr != null) {
@@ -1672,7 +1679,7 @@ function performanceLine(workouts, runs, opts = {}) {
   }
 
   if (!partes.length) return '';
-  return 'Rendimiento: ' + partes.join(' · ');
+  return 'Performance: ' + partes.join(' · ');
 }
 
 // ==================== CARRERA HACIA EL 10K ====================
@@ -1749,22 +1756,22 @@ const RW_DELOAD_FACTOR = 0.7;
 const RW_WALK_CAPS = [30, 40];
 const RW_WALK_OPT_CAP = 20;
 const RW_PATTERNS = {
-  early: { run: 3, walk: 2, label: '3′ trote / 2′ caminar' },
-  later: { run: 5, walk: 1, label: '5′ trote / 1′ caminar' },
+  early: { run: 3, walk: 2, label: '3′ jog / 2′ walk' },
+  later: { run: 5, walk: 1, label: '5′ jog / 1′ walk' },
 };
 /** Km mínimos de la carrera suave opcional: por debajo de 2 km no es una sesión. */
 const RW_EASY_MIN_KM = 2;
 
 /**
- * Las cuatro fases en castellano. Vive AQUÍ y no en app.js porque los ids de fase los define
- * este módulo y los consumen dos ficheros (`runningPhaseLabel` en app.js y `renderGoalsCard`
- * en coach.js): la etiqueta tiene que estar cargada antes que los dos.
+ * Las cuatro fases, etiquetadas para pantalla. Vive AQUÍ y no en app.js porque los ids de fase
+ * los define este módulo y los consumen dos ficheros (`runningPhaseLabel` en app.js y
+ * `renderGoalsCard` en coach.js): la etiqueta tiene que estar cargada antes que los dos.
  */
-const RW_PHASE_ES = {
-  run_walk: 'trote/caminata',
+const RW_PHASE_LABEL = {
+  run_walk: 'run/walk',
   base: 'base',
-  build: 'construcción',
-  ready10k: 'listo para 10 km',
+  build: 'build',
+  ready10k: 'ready for 10 km',
 };
 
 /** Redondeo del OBJETIVO: hacia arriba, para no quedarse por debajo de la rampa prescrita. */
@@ -1773,15 +1780,15 @@ function _rwCeilHalf(x) { return Math.ceil(Number(x) / 0.5 - 1e-9) * 0.5; }
 function _rwFloorHalf(x) { return Math.floor(Number(x) / 0.5 + 1e-9) * 0.5; }
 
 /**
- * Número para pantalla, en castellano: coma decimal y sin ceros de relleno.
- * 6.5 → "6,5" · 13 → "13" · −0,4407 con 2 decimales → "−0,44".
+ * Número para pantalla: punto decimal y sin ceros de relleno (v11.67, V-1).
+ * 6.5 → "6.5" · 13 → "13" · −0.4407 con 2 decimales → "−0.44".
  */
 function _rwFmt(x, dec) {
   const n = Number(x);
   if (x == null || !isFinite(n)) return '—';
   let s = n.toFixed(dec == null ? 1 : dec);
   if (s.indexOf('.') !== -1) s = s.replace(/0+$/, '').replace(/\.$/, '');
-  return s.replace('.', ',');
+  return s;
 }
 
 /** Fecha 'YYYY-MM-DD' desplazada N días, en UTC (misma aritmética que `mondayOf`). */
@@ -1912,19 +1919,19 @@ function _rwGates(runs, opts) {
   let decouplingNote = null;
   const largos = z2Runs.filter(r => r.km >= RW_READY_LONG_KM);
   if (!largos.length) {
-    decouplingNote = `sin largo de ${RW_READY_LONG_KM} km en Z2: aún no hay dónde medir la deriva`;
+    decouplingNote = `no ${RW_READY_LONG_KM} km long run in Z2 yet: nowhere to measure drift`;
   } else {
     const conDato = largos.find(r => r.decoupling != null);
     const conMitades = largos.find(r => r.halves);
     if (conDato) {
       decouplingOk = conDato.decoupling < RW_DECOUPLING_MAX;
-      decouplingNote = `deriva ${_rwFmt(conDato.decoupling)} % en el largo del ${conDato.date}`;
+      decouplingNote = `${_rwFmt(conDato.decoupling)} % drift on the long run of ${conDato.date}`;
     } else if (conMitades) {
       const drift = conMitades.halves[1] - conMitades.halves[0];
       decouplingOk = drift < RW_DRIFT_MAX_BPM;
-      decouplingNote = `deriva de FC por mitades ${drift >= 0 ? '+' : ''}${_rwFmt(drift, 0)} bpm (proxy declarado)`;
+      decouplingNote = `HR drift by halves ${drift >= 0 ? '+' : ''}${_rwFmt(drift, 0)} bpm (declared proxy)`;
     } else {
-      decouplingNote = 'falta la deriva de FC del largo: sin ese dato no se declara el 10k';
+      decouplingNote = 'no HR drift for the long run: without it the 10k is not declared';
     }
   }
 
@@ -2078,8 +2085,8 @@ function suggestRunningWeek(input) {
       sessions.push({
         dow: slot.dow, type: 'run-walk', min, baseMin, km: null, reps, pattern: pat.label, hrCap,
         dsl: _rwWalkDsl(reps, pat), source: 'rule',
-        summary: `${reps} × (${pat.label}) · FC ≤${hrCap}`,
-        note: `Por tiempo, no por ritmo: si la FC media pasa de ${hrCap}, alarga el tramo de caminar`,
+        summary: `${reps} × (${pat.label}) · HR ≤${hrCap}`,
+        note: `By time, not by pace: if mean HR goes above ${hrCap}, lengthen the walk segment`,
       });
     });
     slots.optional.forEach((slot) => {
@@ -2088,20 +2095,20 @@ function suggestRunningWeek(input) {
       sessions.push({
         dow: slot.dow, type: 'easy-opt', min, baseMin, km: null, hrCap,
         dsl: _rwMinDsl(min), source: 'rule',
-        summary: `${min}′ suave (opcional) · FC ≤${hrCap}`,
-        note: 'Opcional: caminata rápida o trote muy suave; cuenta igual',
+        summary: `${min}′ easy (optional) · HR ≤${hrCap}`,
+        note: 'Optional: brisk walk or very easy jog; it counts the same',
       });
     });
     if (gates.aboveZ2 >= 2) {
-      reason = `${gates.aboveZ2} de las ${gates.z2Sample} últimas carreras por encima de ${z2max} bpm: seguimos en trote/caminata por tiempo`;
+      reason = `${gates.aboveZ2} of the last ${gates.z2Sample} runs above ${z2max} bpm: staying on run/walk by time`;
     } else if (gates.runCount === 0) {
-      reason = 'Sin carreras registradas en 4 semanas: se arranca por tiempo con caminata intercalada';
+      reason = 'No runs logged in 4 weeks: starting by time with walk intervals';
     } else if (gates.lastRunDaysAgo == null || gates.lastRunDaysAgo > RW_PAUSE_DAYS) {
-      reason = `${gates.lastRunDaysAgo} días sin correr: se vuelve por tiempo, no por kilómetros`;
+      reason = `${gates.lastRunDaysAgo} days without running: back by time, not by kilometres`;
     } else if (gates.runCount < RW_MIN_RUNS) {
-      reason = `${gates.runCount} carrera en 4 semanas: con n=1 no hay base que rampar, seguimos por tiempo`;
+      reason = `${gates.runCount} run in 4 weeks: with n=1 there is no base to ramp, staying on time`;
     } else {
-      reason = `${_rwFmt(gates.rampFromKm)} km en las dos últimas semanas (menos de ${RW_MIN_WEEK_KM}): la dosis se mide en minutos`;
+      reason = `${_rwFmt(gates.rampFromKm)} km over the last two weeks (under ${RW_MIN_WEEK_KM}): the dose is measured in minutes`;
     }
   } else {
     ruleIds.push('END-003');
@@ -2141,10 +2148,10 @@ function suggestRunningWeek(input) {
       const esLargo = i === 0;
       const tipo = esLargo ? 'long' : (slot.optional ? 'easy-opt' : 'Z2');
       let note = esLargo
-        ? 'El largo de la semana: fácil de principio a fin, sin acelerar el último kilómetro'
+        ? 'The long run of the week: easy from start to finish, no surge on the last kilometre'
         : (slot.optional
-          ? 'Opcional: si el sábado dejó las piernas cargadas, camina en su lugar'
-          : `Fácil y conversacional; si la FC media pasa de ${hrCap}, baja el ritmo`);
+          ? 'Optional: if Saturday left the legs heavy, walk instead'
+          : `Easy and conversational; if mean HR goes above ${hrCap}, slow down`);
       if (esLargo && gates.decouplingOk === null && gates.decouplingNote
           && gates.longestZ2Km >= RW_READY_LONG_KM) {
         note += ` · ${gates.decouplingNote}`;
@@ -2152,23 +2159,23 @@ function suggestRunningWeek(input) {
       sessions.push({
         dow: slot.dow, type: tipo, min: null, km, hrCap,
         dsl: _rwKmDsl(km), source: 'rule',
-        summary: `${_rwFmt(km)} km Z2${esLargo ? ' · largo' : (slot.optional ? ' · opcional' : '')} · FC ≤${hrCap}`,
+        summary: `${_rwFmt(km)} km Z2${esLargo ? ' · long' : (slot.optional ? ' · optional' : '')} · HR ≤${hrCap}`,
         note,
       });
     });
 
     if (ph.deload) {
       ruleIds.push('LOAD-004');
-      reason = `Semana de descarga: ${_rwFmt(weeklyKmTarget)} km (−30 % sobre ${_rwFmt(last)}), el largo baja con ella`;
+      reason = `Deload week: ${_rwFmt(weeklyKmTarget)} km (−30 % on ${_rwFmt(last)}), the long run comes down with it`;
     } else if (ph.phase === 'ready10k') {
-      reason = `Largo de ${_rwFmt(gates.longestZ2Km)} km en Z2 con deriva bajo control y ${_rwFmt(last)} km/sem: el 10 km cómodo está a tiro`;
+      reason = `${_rwFmt(gates.longestZ2Km)} km long run in Z2 with drift under control and ${_rwFmt(last)} km/wk: a comfortable 10 km is within reach`;
     } else if (ph.phase === 'build') {
-      reason = `${gates.baseWeeks} semanas de base cumplidas: ${_rwFmt(weeklyKmTarget)} km y largo de ${_rwFmt(longKm)} km`;
+      reason = `${gates.baseWeeks} base weeks done: ${_rwFmt(weeklyKmTarget)} km and a ${_rwFmt(longKm)} km long run`;
     } else {
       // "de referencia" y no "la semana pasada" cuando la referencia viene de dos semanas
       // atrás: decir "la semana pasada" sobre el número de otra semana es mentir en pequeño.
-      const ref = last === gates.lastWeekKm ? 'la semana pasada' : 'de referencia';
-      reason = `${_rwFmt(last)} km ${ref} con ${gates.z2Compliance} de ${gates.z2Sample} en Z2: ${_rwFmt(weeklyKmTarget)} km esta semana, largo de ${_rwFmt(longKm)} km`;
+      const ref = last === gates.lastWeekKm ? 'last week' : 'as reference';
+      reason = `${_rwFmt(last)} km ${ref} with ${gates.z2Compliance} of ${gates.z2Sample} in Z2: ${_rwFmt(weeklyKmTarget)} km this week, ${_rwFmt(longKm)} km long run`;
     }
   }
 
@@ -2176,7 +2183,7 @@ function suggestRunningWeek(input) {
   // del número, y sin cambiarlo: quien decide si esta semana se recorta es el coach con el
   // usuario delante, no una tendencia de HRV leída por el motor.
   if (ph.hold && reason) {
-    reason += ' · señal de fatiga acumulada en la recuperación: dato para la revisión semanal, no un recorte automático';
+    reason += ' · accumulated fatigue signal in recovery: input for the weekly review, not an automatic cut';
   }
 
   if (ph.qualityUnlocked) { ruleIds.push('END-004'); ruleIds.push('INT-001'); }
@@ -2248,13 +2255,13 @@ const GP_ANCHOR_NOW_DAYS = 14;    // mejor e1RM de los últimos 14 días
 const GP_ANCHOR_THEN_FROM = 42;   // contra el mejor de la ventana −42..−28
 const GP_ANCHOR_THEN_TO = 28;
 
-const _GP_STATUS_ES = {
-  'at-target': 'en la banda objetivo',
-  'on-track': 'en rumbo',
-  slow: 'lento',
-  stalled: 'estancado',
-  fast: 'demasiado rápido',
-  insufficient: 'sin señal suficiente',
+const _GP_STATUS_LABEL = {
+  'at-target': 'inside the target band',
+  'on-track': 'on track',
+  slow: 'slow',
+  stalled: 'stalled',
+  fast: 'too fast',
+  insufficient: 'not enough signal',
 };
 
 /** Una fila por día (media si hubo varias pesadas), ordenada de antigua a reciente. */
@@ -2384,38 +2391,38 @@ function goalProgress(goals, facts) {
   let wText;
   if (status === 'insufficient') {
     wText = rows.length
-      ? `Peso: ${n14} pesadas en 14 días — hacen falta ${GP_MIN_WEIGHINS_14D} y ${GP_SLOPE_WINDOW_DAYS} días para leer una pendiente`
-      : 'Peso: sin pesadas medidas — la báscula diaria es lo que hace legible el resto';
+      ? `Weight: ${n14} weigh-ins in 14 days — ${GP_MIN_WEIGHINS_14D} and ${GP_SLOPE_WINDOW_DAYS} days are needed to read a slope`
+      : 'Weight: no measured weigh-ins — the daily scale is what makes the rest legible';
   } else {
-    wText = `Peso: ${n14} pesadas en 14 días, media 7d ${_rwFmt(trend7d)} → ${_rwFmt(slope, 2)} kg/sem, ${_GP_STATUS_ES[status]}`;
+    wText = `Weight: ${n14} weigh-ins in 14 days, 7d mean ${_rwFmt(trend7d)} → ${_rwFmt(slope, 2)} kg/wk, ${_GP_STATUS_LABEL[status]}`;
     if (etaMilestoneWeeks != null && etaMilestoneWeeks > 0) {
-      wText += `; hito ${_rwFmt(milestone, 0)} kg en ~${_rwFmt(etaMilestoneWeeks, 0)} sem`;
+      wText += `; milestone ${_rwFmt(milestone, 0)} kg in ~${_rwFmt(etaMilestoneWeeks, 0)} wk`;
     } else if (etaWeeks != null && etaWeeks > 0) {
-      wText += `; ${_rwFmt(targetHi, 0)} kg en ~${_rwFmt(etaWeeks, 0)} sem`;
+      wText += `; ${_rwFmt(targetHi, 0)} kg in ~${_rwFmt(etaWeeks, 0)} wk`;
     }
   }
   if (status === 'at-target') {
     signals.push({
       id: 'weight-at-target', severity: 'info',
-      text: `Media 7d ${_rwFmt(trend7d)} kg: dentro de la banda objetivo — toca decidir si se cierra el déficit`,
+      text: `7d mean ${_rwFmt(trend7d)} kg: inside the target band — time to decide whether to close the deficit`,
     });
   }
   if (trend7d != null && isFinite(milestone) && trend7d <= milestone) {
     signals.push({
       id: 'milestone-reached', severity: 'info',
-      text: `Hito de ${_rwFmt(milestone, 0)} kg alcanzado (media 7d ${_rwFmt(trend7d)} kg)`,
+      text: `Milestone of ${_rwFmt(milestone, 0)} kg reached (7d mean ${_rwFmt(trend7d)} kg)`,
     });
   }
   if (slope != null && slope < GP_RATE_FAST && status !== 'insufficient') {
     signals.push({
       id: 'rate-too-fast', severity: 'flag',
-      text: `Bajando ${_rwFmt(-slope, 2)} kg/sem, por encima de ${_rwFmt(-GP_RATE_FAST, 2)}: aflojar el déficit antes de perder magra`,
+      text: `Dropping ${_rwFmt(-slope, 2)} kg/wk, above ${_rwFmt(-GP_RATE_FAST, 2)}: ease the deficit before losing lean mass`,
     });
   }
   if (status === 'stalled') {
     signals.push({
       id: 'stalled-3w', severity: 'flag',
-      text: `${en28.length} pesadas y la media 7d plana (${_rwFmt(slope, 2)} kg/sem): primero pasos, después kcal`,
+      text: `${en28.length} weigh-ins and a flat 7d mean (${_rwFmt(slope, 2)} kg/wk): steps first, kcal after`,
     });
   }
 
@@ -2432,18 +2439,18 @@ function goalProgress(goals, facts) {
     + 0.2 * z2Ratio
   ) * 100) / 100;
   const rText = rGates.runCount === 0
-    ? 'Correr: sin carreras en 4 semanas; el indicador hacia el 10k parte de cero'
-    : `Correr: largo Z2 ${_rwFmt(rGates.longestZ2Km)} km, ${_rwFmt(rGates.lastWeekKm)} km la última semana completa, ${rGates.z2Compliance} de ${rGates.z2Sample} en Z2 → indicador ${_rwFmt(readinessFor10k * 100, 0)} % (indicador, no dosis)`;
+    ? 'Running: no runs in 4 weeks; the 10k indicator starts from zero'
+    : `Running: Z2 long run ${_rwFmt(rGates.longestZ2Km)} km, ${_rwFmt(rGates.lastWeekKm)} km last full week, ${rGates.z2Compliance} of ${rGates.z2Sample} in Z2 → indicator ${_rwFmt(readinessFor10k * 100, 0)} % (an indicator, not a dose)`;
   if (rGates.longestZ2Km >= RW_READY_LONG_KM) {
     signals.push({
       id: 'long-run-8k', severity: 'info',
-      text: `Largo de ${_rwFmt(rGates.longestZ2Km)} km en Z2: el 10 km deja de ser teórico`,
+      text: `${_rwFmt(rGates.longestZ2Km)} km long run in Z2: the 10 km stops being theoretical`,
     });
   }
   if (rPh.qualityUnlocked) {
     signals.push({
       id: 'quality-unlocked', severity: 'info',
-      text: `${rGates.baseWeeks} semanas de base: cabe una sesión de calidad a la semana (la propone el coach, no la regla)`,
+      text: `${rGates.baseWeeks} base weeks: one quality session a week now fits (the coach proposes it, not the rule)`,
     });
   }
 
@@ -2470,15 +2477,15 @@ function goalProgress(goals, facts) {
   const caidas = anchors.filter(a => a.pct != null && a.pct <= GP_STRENGTH_DROP_PCT);
   const allMaintained = conDato.length ? caidas.length === 0 : null;
   const sText = conDato.length
-    ? `Fuerza: ${mantenidas}/${anchorIds.length} anclas mantenidas` +
+    ? `Strength: ${mantenidas}/${anchorIds.length} anchors maintained` +
       (anchors.length - conDato.length
-        ? ` · ${anchors.length - conDato.length} sin exposición en las dos ventanas`
+        ? ` · ${anchors.length - conDato.length} with no exposure in either window`
         : '')
-    : `Fuerza: 0/${anchorIds.length} anclas con dato en las dos ventanas — sin veredicto`;
+    : `Strength: 0/${anchorIds.length} anchors with data in either window — no verdict`;
   if (caidas.length) {
     signals.push({
       id: 'strength-drop', severity: 'flag',
-      text: `${caidas.length} ancla${caidas.length > 1 ? 's' : ''} por debajo de ${_rwFmt(GP_STRENGTH_DROP_PCT, 0)} %: ` +
+      text: `${caidas.length} anchor${caidas.length > 1 ? 's' : ''} below ${_rwFmt(GP_STRENGTH_DROP_PCT, 0)} %: ` +
         caidas.map(a => `${exName(a.id)} (${_rwFmt(a.pct)} %)`).join(', '),
     });
   }
@@ -2515,7 +2522,7 @@ if (typeof module !== 'undefined' && module.exports) {
     ffmKg,
     isoWeekKey,
     coachTargetWeekKey,
-    PHASE_ES,
+    PHASE_LABEL,
     mondayOf,
     blockWeekFromDates,
     blockLabel,
@@ -2568,7 +2575,7 @@ if (typeof module !== 'undefined' && module.exports) {
     computeReadinessFrom,
     // Línea de rendimiento (v11.62). Sustituye al motor de ajuste de la sesión: la
     // recuperación informa, no ajusta (decisión del usuario, 2026-09-07).
-    COACH_LIFT_ES,
+    COACH_LIFT_LABEL,
     PERF_MAX_LIFTS,
     PERF_OUTCOME_ARROW,
     _perfItems,
@@ -2584,7 +2591,7 @@ if (typeof module !== 'undefined' && module.exports) {
     RW_READY_WEEK_KM,
     RW_DECOUPLING_MAX,
     RW_PATTERNS,
-    RW_PHASE_ES,
+    RW_PHASE_LABEL,
     _rwCeilHalf,
     _rwFloorHalf,
     _rwFmt,

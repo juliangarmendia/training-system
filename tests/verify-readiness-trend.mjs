@@ -98,10 +98,10 @@ eq(r.color, 'green', 'color verde');
 eq(r.fired, 0, 'cero señales disparadas');
 eq(r.confidence, 'high', 'confianza alta (dato de hoy + 28 días de base)');
 eq(r.deloadHint, false, 'sin deloadHint');
-eq(sig(r, 'whoop').text, 'WHOOP hoy 74 % · verde', 'texto de la señal WHOOP');
+eq(sig(r, 'whoop').text, 'WHOOP today 74 % · green', 'texto de la señal WHOOP');
 eq(sig(r, 'hrv7v28').status, 'ok', 'la tendencia de HRV tiene datos suficientes');
-eq(sig(r, 'hrv7v28').text, 'HRV 7d 71 ms vs 71 de base (+0 %)', 'y se lee con su valor y su base');
-eq(sig(r, 'sleep7').text, 'Sueño 7d 7,2 h', 'el sueño con coma decimal');
+eq(sig(r, 'hrv7v28').text, 'HRV 7d 71 ms vs 71 baseline (+0 %)', 'y se lee con su valor y su base');
+eq(sig(r, 'sleep7').text, 'Sleep 7d 7.2 h', 'el sueño con punto decimal');
 // Anti-falsa-precisión: la salida NO puede traer un score del que derivar una dosis.
 yes(!('score' in r) && !('fatigue' in r), 'la salida no lleva score ni fatigue (READ-003)');
 yes(Array.isArray(r.ruleIds) && r.ruleIds.includes('READ-002') && r.ruleIds.includes('READ-004'),
@@ -117,7 +117,7 @@ r = run({
 eq(r.color, 'yellow', 'color amarillo con una sola señal (READ-002)');
 eq(r.fired, 1, 'una señal');
 eq(firedIds(r), 'hrv7v28', 'y es la de HRV');
-eq(sig(r, 'hrv7v28').text, 'HRV 7d 62 ms vs 71 de base (−13 %)', 'el texto del wireframe, literal');
+eq(sig(r, 'hrv7v28').text, 'HRV 7d 62 ms vs 71 baseline (−13 %)', 'el texto del wireframe, literal');
 eq(sig(r, 'hrv7v28').value, 62, 'value = media 7d');
 eq(sig(r, 'hrv7v28').baseline, 71, 'baseline = base propia (días 7..34), no poblacional');
 eq(r.deloadHint, false, 'una señal no propone deload');
@@ -132,7 +132,7 @@ r = run({
 eq(r.color, 'red', 'color rojo');
 eq(r.fired, 2, 'dos señales');
 eq(firedIds(r), 'hrv7v28,rhr7v28', 'HRV y FC de reposo');
-eq(sig(r, 'rhr7v28').text, 'FC reposo 7d 55 vs 49 (+6)', 'texto de la FC de reposo');
+eq(sig(r, 'rhr7v28').text, 'Resting HR 7d 55 vs 49 (+6)', 'texto de la FC de reposo');
 eq(r.deloadHint, false, 'dos señales NO proponen deload todavía (READ-008 pide sostenido)');
 
 // ── 4. …y encima RPE ≥9 en las dos últimas → deloadHint ───────────────────────────────
@@ -146,7 +146,7 @@ r = run({
 eq(r.color, 'red', 'sigue rojo');
 eq(r.deloadHint, true, 'deloadHint: RPE ≥9 dos veces (LOAD-004)');
 yes(sig(r, 'rpe2').fired, 'la señal rpe2 dispara');
-eq(sig(r, 'rpe2').text, 'RPE ≥9 en las 2 últimas sesiones', 'con su texto');
+eq(sig(r, 'rpe2').text, 'RPE ≥9 in the last 2 sessions', 'con su texto');
 // Una sola sesión al límite no basta.
 const soloUna = run({ workouts: [workout(1, 9.4, 4)] });
 eq(sig(soloUna, 'rpe2').status, 'insufficient', 'con UNA sola sesión con RPE la señal es insuficiente');
@@ -177,7 +177,7 @@ console.log('6. Sólo 10 días de historial');
 r = run({ wellness: wellness(10), whoopToday: null });
 eq(r.confidence, 'low', 'confianza baja (<14 días de base y sin dato de hoy)');
 eq(sig(r, 'hrv7v28').status, 'insufficient', 'la tendencia de HRV no se calcula sin base');
-yes(/base propia incompleta/.test(sig(r, 'hrv7v28').reason || ''), 'y dice por qué');
+yes(/own baseline incomplete/.test(sig(r, 'hrv7v28').reason || ''), 'y dice por qué');
 eq(sig(r, 'rhr7v28').status, 'insufficient', 'igual la FC de reposo');
 eq(r.fired, 0, 'no se inventan señales con datos insuficientes');
 
@@ -187,7 +187,7 @@ console.log('7. WHOOP amarillo de hoy, todo lo demás en rango');
 r = run({ whoopToday: { score: 52, source: 'intervals' } });
 eq(r.color, 'yellow', 'amarillo: el color de WHOOP fija un suelo');
 eq(r.fired, 0, 'pero no cuenta como señal disparada (READ-003: bandera, no dosis)');
-eq(sig(r, 'whoop').text, 'WHOOP hoy 52 % · amarillo', 'texto de la señal');
+eq(sig(r, 'whoop').text, 'WHOOP today 52 % · yellow', 'texto de la señal');
 eq(r.deloadHint, false, 'sin deloadHint');
 // Y un rojo de hoy, solo, es UNA señal: amarillo. Es la corrección explícita del v1.
 const rojoSolo = run({ whoopToday: { score: 24, source: 'intervals' } });
@@ -206,7 +206,7 @@ r = run({
   whoopToday: { score: 74, source: 'whoop-direct' },
 });
 eq(sig(r, 'sleep7').fired, false, 'sleep7 NO dispara (media 7d = 7,0 h > 6,5)');
-eq(sig(r, 'sleep7').text, 'Sueño 7d 7 h', 'y se lee la media, no la noche mala');
+eq(sig(r, 'sleep7').text, 'Sleep 7d 7 h', 'y se lee la media, no la noche mala');
 eq(r.color, 'green', 'el día sigue verde');
 // Con la media POR DEBAJO de 6,5 h sí dispara.
 const pocoSueno = run({
@@ -214,7 +214,7 @@ const pocoSueno = run({
   whoopToday: { score: 74, source: 'whoop-direct' },
 });
 yes(sig(pocoSueno, 'sleep7').fired, 'media 7d de 6,1 h sí dispara (READ-006)');
-eq(sig(pocoSueno, 'sleep7').text, 'Sueño 7d 6,1 h', 'con el texto del wireframe');
+eq(sig(pocoSueno, 'sleep7').text, 'Sleep 7d 6.1 h', 'con el texto del wireframe');
 eq(pocoSueno.color, 'yellow', 'una señal → amarillo');
 
 // ── 9. EXACTAMENTE SEIS SEÑALES: el check-in subjetivo ya no existe (v11.62) ──────────
@@ -264,11 +264,11 @@ console.log('');
 console.log('11. Calidad de sesión');
 r = run({ workouts: [workout(1, 7, 2), workout(3, 7, 1)], whoopToday: { score: 74, source: 'intervals' } });
 yes(sig(r, 'quality2').fired, 'calidad 2 y 1 dispara quality2');
-eq(sig(r, 'quality2').text, 'Calidad ≤2 en las 2 últimas', 'con su texto');
+eq(sig(r, 'quality2').text, 'Quality ≤2 in the last 2', 'con su texto');
 eq(r.color, 'yellow', 'una señal → amarillo');
 const buenaCalidad = run({ workouts: [workout(1, 7, 4), workout(3, 7, 2)] });
 eq(sig(buenaCalidad, 'quality2').fired, false, 'con una buena de las dos, no dispara');
-eq(sig(buenaCalidad, 'quality2').text, 'Calidad 4 y 2 en las 2 últimas', 'y muestra las dos');
+eq(sig(buenaCalidad, 'quality2').text, 'Quality 4 and 2 in the last 2', 'y muestra las dos');
 // El trío del deload sostenido.
 const trio = run({
   wellness: wellness(35, (age) => (age <= 6 ? { hrv: 62, restingHR: 55 } : null)),

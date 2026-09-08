@@ -75,11 +75,11 @@ ok(!html.includes('[object Object]'), 'no aparece "[object Object]"');
 ok(!/>\s*null\s*</.test(html), 'no aparece "null" como texto visible');
 
 console.log('\n=== LONG-003: los avisos están presentes ===');
-ok(html.includes('no un diagnóstico'), 'la cabecera dice que no es un diagnóstico');
-ok(html.includes('no cambia ningún entrenamiento'), 'dice explícitamente que no cambia el entrenamiento');
+ok(html.includes('not a diagnosis'), 'la cabecera dice que no es un diagnóstico');
+ok(html.includes('does not change any training'), 'dice explícitamente que no cambia el entrenamiento');
 ok(html.includes('an-overdue'), 'muestra el aviso de caducidad (el panel más nuevo pasa de 12 meses)');
-ok(html.includes('Toca repetir la analítica'), 'el aviso de caducidad tiene texto');
-ok(/es de tu médico/.test(html), 'el pie deriva al médico en vez de dar pauta');
+ok(html.includes('Time to repeat the bloodwork'), 'el aviso de caducidad tiene texto');
+ok(/belongs to your doctor/.test(html), 'el pie deriva al médico en vez de dar pauta');
 
 console.log('\n=== Todos los marcadores medidos aparecen ===');
 const medidos = ctx.BLOOD_MARKERS
@@ -102,19 +102,19 @@ console.log('\n=== Puntaje y antigüedad son DOS elementos separados ===');
 ok(html.includes('an-score s1') && html.includes('an-stale historico'),
   'el puntaje (an-score) y la antigüedad (an-stale) se pintan por separado');
 // La vitamina D es el caso que motivó separar los ejes: 1/5 medido hace 36 meses.
-const vdIdx = html.indexOf('25-OH vitamina D');
+const vdIdx = html.indexOf('25-OH vitamin D');
 const bloque = html.slice(vdIdx, vdIdx + 700);
 ok(/an-score s1/.test(bloque), 'vitamina D pinta el puntaje 1');
 ok(/an-stale historico/.test(bloque), 'vitamina D pinta la antigüedad como histórica, aparte del puntaje');
 // Sin fijar la cifra: la vista se renderiza con la fecha real, así que un "36 meses" hardcodeado
 // caduca solo al pasar el mes. Lo que importa es que muestre la antigüedad, no cuál es.
-ok(/\d+ meses/.test(bloque), 'vitamina D dice cuántos meses tiene el dato');
+ok(/\d+ months/.test(bloque), 'vitamina D dice cuántos meses tiene el dato');
 
 console.log('\n=== Orden: lo peor primero dentro de cada familia ===');
 // En lípidos, el ApoB (2) debe ir antes que los que no se puntúan.
-ok(html.indexOf('Apolipoproteína B') < html.indexOf('Apolipoproteína A-I'),
+ok(html.indexOf('Apolipoprotein B') < html.indexOf('Apolipoprotein A-I'),
   'ApoB (puntaje 2) va antes que ApoA-I (sin puntaje)');
-ok(html.indexOf('Colesterol no-HDL') < html.indexOf('Triglicéridos'),
+ok(html.indexOf('Non-HDL cholesterol') < html.indexOf('Triglycerides'),
   'no-HDL (2) va antes que triglicéridos (5)');
 
 console.log('\n=== Series longitudinales ===');
@@ -123,10 +123,10 @@ ok(html.includes('<i>LabCorp</i>') || html.includes('LabCorp'),
   'la serie etiqueta el laboratorio cuando hay más de uno');
 
 console.log('\n=== Suplementación y qué pedir ===');
-ok(html.includes('Creatina monohidrato'), 'creatina presente');
-ok(html.includes('Grupo A del AIS'), 'cita el marco del AIS');
-ok(html.includes('Lo que no vale la pena'), 'incluye lo que no vale la pena');
-ok(!/vitamina D.*\d+\.?\d*\s*UI/i.test(html), 'NO hay dosis de vitamina D en la vista (es médico)');
+ok(html.includes('Creatine monohydrate'), 'creatina presente');
+ok(html.includes('AIS Group A'), 'cita el marco del AIS');
+ok(html.includes('Not worth it'), 'incluye lo que no vale la pena');
+ok(!/vitamin D.*\d+\.?\d*\s*IU/i.test(html), 'NO hay dosis de vitamina D en la vista (es médico)');
 ok(html.includes('an-copy'), 'el botón de copiar la lista existe');
 ok(ctx.BLOOD_REQUEST_LIST.every(r => html.includes(r)), 'la lista de qué pedir está completa');
 

@@ -71,8 +71,8 @@ const RUNS = [{ date: '2026-09-06', distance: 5.1, duration: 32, avgHR: 141 }];
 // ── 1. La línea exacta ─────────────────────────────────────────────────────────────────
 console.log('1. Dos sesiones con lectura + una carrera en Z2');
 eq(E.performanceLine(WORKOUTS, RUNS, { z2Ceiling: 143 }),
-  'Rendimiento: banca 95×8 ↑ · sentadilla 105×8 → · Z2 5,1 km @141',
-  'la línea completa, con nombres cortos en castellano y coma decimal');
+  'Performance: bench 95×8 ↑ · squat 105×8 → · Z2 5.1 km @141',
+  'la línea completa, con nombres cortos y punto decimal');
 
 // Sólo las anclas: el elevador lateral de la misma sesión NO entra.
 yes(!E.performanceLine(WORKOUTS, RUNS, { z2Ceiling: 143 }).includes('Lateral'),
@@ -80,20 +80,20 @@ yes(!E.performanceLine(WORKOUTS, RUNS, { z2Ceiling: 143 }).includes('Lateral'),
 
 // Y el orden es el del calendario: lo más reciente primero.
 const linea = E.performanceLine(WORKOUTS, RUNS, { z2Ceiling: 143 });
-yes(linea.indexOf('banca') < linea.indexOf('sentadilla'),
+yes(linea.indexOf('bench') < linea.indexOf('squat'),
   'la sesión más reciente va primero (banca 5-sep antes que sentadilla 3-sep)');
 
 // ── 2. Una carrera por encima del techo de Z2 NO es Z2 ─────────────────────────────────
 console.log('');
 console.log('2. Carrera a 151 bpm con el techo en 145');
 eq(E.performanceLine([], [{ date: '2026-09-06', distance: 5.1, avgHR: 151 }], { z2Ceiling: 145 }),
-  'Rendimiento: carrera 5,1 km @151',
-  'por encima del techo se llama "carrera", nunca "Z2"');
+  'Performance: run 5.1 km @151',
+  'por encima del techo se llama "run", nunca "Z2"');
 eq(E.performanceLine([], [{ date: '2026-09-06', distance: 5.1, avgHR: 145 }], { z2Ceiling: 145 }),
-  'Rendimiento: Z2 5,1 km @145',
+  'Performance: Z2 5.1 km @145',
   'justo en el techo sí cuenta como Z2');
 eq(E.performanceLine([], [{ date: '2026-09-06', distance: 5.1, avgHR: null }], { z2Ceiling: 145 }),
-  'Rendimiento: carrera 5,1 km',
+  'Performance: run 5.1 km',
   'sin pulso no se afirma la zona ni se inventa un @');
 
 // ── 3. Sin nada que decir, no se dice nada ─────────────────────────────────────────────
@@ -109,16 +109,16 @@ console.log('');
 console.log('4. Flechas ↑ → ↓ ○');
 const flecha = (outcome) => E.performanceLine(
   [wk('2026-09-05', [item('bench-press', 'Barbell Bench Press', 95, [8], outcome, 95)])], [], {});
-eq(flecha('progressed'), 'Rendimiento: banca 95×8 ↑', 'progressed → ↑');
-eq(flecha('held'), 'Rendimiento: banca 95×8 →', 'held → →');
-eq(flecha('regressed'), 'Rendimiento: banca 95×8 ↓', 'regressed → ↓');
-eq(flecha('no-target'), 'Rendimiento: banca 95×8 ○', 'sin objetivo → ○ (no se juzga)');
+eq(flecha('progressed'), 'Performance: bench 95×8 ↑', 'progressed → ↑');
+eq(flecha('held'), 'Performance: bench 95×8 →', 'held → →');
+eq(flecha('regressed'), 'Performance: bench 95×8 ↓', 'regressed → ↓');
+eq(flecha('no-target'), 'Performance: bench 95×8 ○', 'sin objetivo → ○ (no se juzga)');
 // Un ejercicio saltado no tiene número: se dice que se saltó, no se pinta un 0.
 eq(E.performanceLine(
   [wk('2026-09-05', [{ exerciseId: 'bench-press', name: 'Barbell Bench Press', target: null,
     done: { topKg: null, reps: [], avgRpe: null }, outcome: 'skipped', measureUnit: null, next: null }])],
   [], {}),
-  'Rendimiento: banca saltado ○', 'saltado → sin kg inventado');
+  'Performance: bench skipped ○', 'saltado → sin kg inventado');
 
 // ── 5. Tope de 3 anclas ────────────────────────────────────────────────────────────────
 console.log('');
@@ -131,14 +131,14 @@ const cuatro = [
 ];
 const l5 = E.performanceLine(cuatro, [], {});
 eq((l5.match(/·/g) || []).length, 2, 'tres anclas = dos separadores');
-yes(!l5.includes('press militar'), 'la cuarta (la más antigua) se queda fuera');
+yes(!l5.includes('OHP'), 'la cuarta (la más antigua) se queda fuera');
 // Y una misma ancla no se repite: manda la lectura MÁS RECIENTE.
 const repetida = [
   wk('2026-09-06', [item('bench-press', 'Bench', 97.5, [6], 'progressed', 97.5)]),
   wk('2026-09-02', [item('bench-press', 'Bench', 95, [8], 'held', 95)]),
 ];
-eq(E.performanceLine(repetida, [], {}), 'Rendimiento: banca 97,5×6 ↑',
-  'una sola fila por ancla, la más reciente, con coma decimal');
+eq(E.performanceLine(repetida, [], {}), 'Performance: bench 97.5×6 ↑',
+  'una sola fila por ancla, la más reciente, con punto decimal');
 
 // ── 6. Sin `readout` se calcula desde las series (registros anteriores a v11.57) ───────
 console.log('');
@@ -152,7 +152,7 @@ const viejo = [{
            { weight: 95, reps: 0, rpe: null, done: false }],
   }],
 }];
-eq(E.performanceLine(viejo, [], {}), 'Rendimiento: banca 95×8 ↑',
+eq(E.performanceLine(viejo, [], {}), 'Performance: bench 95×8 ↑',
   'se reconstruye desde las series hechas y el objetivo sellado');
 // Los registros en libras (pre-España) se convierten: 205 lb ≈ 93 kg, no 205.
 const enLb = [{
@@ -169,7 +169,7 @@ yes(Array.isArray(E.COACH_GOALS_DEFAULT.preserve.anchorLifts)
   && E.COACH_GOALS_DEFAULT.preserve.anchorLifts.includes('bench-press'),
   'COACH_GOALS_DEFAULT.preserve.anchorLifts sigue siendo la fuente');
 eq(E.performanceLine(WORKOUTS, [], { anchorIds: ['lat-raise'] }),
-  'Rendimiento: Lateral Raise 12×12 →',
+  'Performance: Lateral Raise 12×12 →',
   'con anchorIds propios manda la lista dada, y sin nombre corto se usa el del registro');
 
 console.log('');

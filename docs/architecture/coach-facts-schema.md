@@ -102,7 +102,7 @@ suponer una fecha (ver *Lo que no se puede calcular hoy*).
 | `toSession` | `(record, store) => session` · **opcional** | `budgetWeight` cae a un espejo local de `SESSION_TYPES` |
 | `nutRollingWeight` | `(rows, date, win)` · **opcional** | no se usa hoy (el pack calcula su media sobre filas medidas) |
 | `weeklyDeficits` | `(days) => rows` · **opcional** | `nutrition.weeklyDeficits: null` |
-| `z2Ceiling` | `number` (143 por defecto) | 143, y `cardio.z2Ceiling.source = 'declarado'` |
+| `z2Ceiling` | `number` (143 por defecto) | 143, y `cardio.z2Ceiling.source = 'declared'` |
 | `computeReadinessFrom` | `(inputs) => {color, signals, deloadHint…}` · **opcional** | el global del motor; si tampoco está, `readiness.deloadHint: null` |
 | `blockWeekFromDates` | `(date, anchor, weeks)` · **opcional** | el global del motor (mismo patrón que `isoWeekKey`/`mondayOf`) |
 
@@ -172,8 +172,8 @@ no están sembrados.
   waist: { last3: [{date,cm}], delta2w: null, delta2wFrom: null, daysSinceLast: 0, n: 2 },
   running: { longRun4wKm: 6, longRun4wDate, kmPerWeek: [4.5,5,11,0], kmPerWeekMean: 5.1,
              paceAtZ2: '7:00', nRuns4w: 4, nZ2Compliant4w: 3,
-             tenKReadiness: { verdict: 'lejos', longestKm, longestZ2Compliant, driftBpm: null,
-                              criteria: {…}, basis: 'Sólo se pueden medir distancia y FC media…' } } }
+             tenKReadiness: { verdict: 'far off', longestKm, longestZ2Compliant, driftBpm: null,
+                              criteria: {…}, basis: 'Only distance and mean HR can be measured…' } } }
 ```
 
 **La pendiente sólo mira pesadas MEDIDAS** (`bodyweight.measured === true` o
@@ -381,7 +381,7 @@ actual hacia atrás y se declara — en la fila **y** en `dataGaps`.
 
 ### `cardio`
 ```js
-{ z2Ceiling: { bpm: 143, source: 'icuZones'|'declarado', lthr, maxHr }, z2Tolerance: 2,
+{ z2Ceiling: { bpm: 143, source: 'icuZones'|'declared', lthr, maxHr }, z2Tolerance: 2,
   weeks: [{ weekKey, km, min, sessions, hard, finishers }],
   runs: [{ date, km, min, avgHR, maxHR, pace, gapPace, subtype, z2Compliant: true|false|null,
            pctZ2, pctAboveZ2, decoupling, hrDrift: null, source, sport, trainingLoad }],
@@ -583,7 +583,7 @@ deducido del plan por músculo/patrón, y `exerciseLibrary` **no viaja** (el pac
 
 **39 ids** (33 hasta v11.65; los 6 de fn v4 son `SESSION-COUNT` duro —el id existía, el nivel no—,
 `ORDER-SAME-DAY`, `FREQ-FLOOR`, `RECOVERY-ONLY`, `KCAL-STEP`, `MVPA-FLOOR` y `PLYO-CONTACTS`). Todos
-con etiqueta en `COACH_GUARD_ES` (`app/coach.js`) y todos con Rule IDs del corpus:
+con etiqueta en `COACH_GUARD_LABEL` (`app/coach.js`) y todos con Rule IDs del corpus:
 `tests/verify-plan-validator.mjs` cuenta los ids leyendo el fuente y comprueba que ninguno cita una
 regla que no existe.
 
@@ -708,7 +708,7 @@ Dos detalles a mano del autor del prompt:
 - **`facts.cardio.z2Ceiling` es un OBJETO** (`{bpm, source, lthr, maxHr}`), no un número.
   `prompt.ts` lo cita como si fuera el bpm ("FC media ≤ `facts.cardio.z2Ceiling`"); conviene
   escribirlo como `facts.cardio.z2Ceiling.bpm` para que el modelo no compare una FC con un objeto.
-  El campo lleva además `source: 'icuZones'|'declarado'`, que es lo que hace honesta la cifra.
+  El campo lleva además `source: 'icuZones'|'declared'`, que es lo que hace honesta la cifra.
 - El `factsHash` lo calcula la función en el servidor con su propio `stableStringify` sobre el pack
   ya pasado por JSON. Coincide con `stableStringify` de este módulo porque `buildCoachFacts`
   sanea `undefined`/`NaN` a `null` antes de devolver: sin ese saneado, las dos implementaciones

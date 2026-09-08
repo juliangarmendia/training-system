@@ -10,12 +10,12 @@
 // sourceSha256: 8222692765c569fec90afd5015d10c5c617ebe6d920d635416a186097d93fa9b
 // count: 72
 //
-// POR QUÉ EXISTE. La vista Coach escribe "Regla STR-001 (evidencia fuerte): <texto>" debajo de
+// POR QUÉ EXISTE. La vista Coach escribe "Rule STR-001 (strong evidence): <texto>" debajo de
 // cada decisión del coach. Los Rule ID crudos en pantalla son ruido (§B.9) y el texto no puede
 // venir por fetch: la app entrena sin conexión, así que el corpus va en el APP_SHELL. Sólo
 // viajan `rule` y `evidenceLevel`; el resto de campos son para el prompt, no para la pantalla.
-// El texto de la regla se queda en el idioma del corpus (inglés); la etiqueta de evidencia la
-// traduce COACH_EVIDENCE_ES en app/coach.js.
+// El texto de la regla se queda en el idioma del corpus (inglés) y la etiqueta de evidencia
+// sale de COACH_EVIDENCE_LABEL en app/coach.js.
 
 const COACH_RULES = {
   "GEN-001": { rule: "Prefer ONE dominant quality per block when weekly hard-stress is already at cap; two qualities may progress together at moderate loads. This is a fatigue-budgeting heuristic, not an interference finding.", evidenceLevel: "expert" },

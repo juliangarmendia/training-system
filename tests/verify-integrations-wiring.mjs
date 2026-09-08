@@ -637,19 +637,19 @@ yes(/pullStore\('wellness'\)/.test(INTEGJS) && /pullStore\('bodyweight'\)/.test(
 yes(/invalidateReadiness\(\)/.test(INTEGJS), 'e invalida el readiness cacheado');
 yes(/status: 'needs_reconnect'/.test(INTEGJS),
     'trata needs_reconnect como un estado que se pinta, no como una caída');
-yes(/Conectado/.test(INTEGJS) && /Reconectar/.test(INTEGJS) && /No conectado/.test(INTEGJS),
-    'la pill tiene los tres estados en castellano');
+yes(/Connected/.test(INTEGJS) && /Reconnect/.test(INTEGJS) && /Not connected/.test(INTEGJS),
+    'la pill tiene los tres estados (en inglés: la UI es toda en inglés desde v11.67)');
 yes(/integ-pill/.test(INTEGJS) && /\.ok|'ok'/.test(INTEGJS), 'con sus clases CSS');
-yes(/Sincronizar ahora/.test(INTEGJS) && /Desconectar/.test(INTEGJS) && />Conectar</.test(INTEGJS),
+yes(/Sync now/.test(INTEGJS) && /Disconnect</.test(INTEGJS) && />Connect</.test(INTEGJS),
     'y los tres botones');
-yes(/último sync \$\{/.test(INTEGJS) && /evento \$\{/.test(INTEGJS),
+yes(/last sync \$\{/.test(INTEGJS) && /event \$\{/.test(INTEGJS),
     'la segunda línea dice último sync y último evento');
-yes(/'nunca'/.test(INTEGJS), 'con "nunca" cuando no hay marca');
+yes(/'never'/.test(INTEGJS), 'con "never" cuando no hay marca');
 yes(/integ-err/.test(INTEGJS) && /last_error/.test(INTEGJS), 'y `last_error` tiene su hueco');
-yes(/Inicia sesión para conectar/.test(INTEGJS), 'sin sesión la tarjeta lo dice');
+yes(/Sign in to connect/.test(INTEGJS), 'sin sesión la tarjeta lo dice');
 yes(/status: 'offline'/.test(INTEGJS), "y las funciones devuelven { ok:false, status:'offline' }");
 yes(/connect_error/.test(INTEGJS) && /no_refresh_token/.test(INTEGJS),
-    'la vuelta del OAuth traduce los códigos de error al castellano');
+    'la vuelta del OAuth traduce los códigos de error a prosa legible');
 yes(/params\.get\('connected'\)/.test(INTEGJS) && /switchTab\('settings'\)/.test(INTEGJS),
     'y al volver conectado abre Ajustes');
 yes(/visibilitychange/.test(INTEGJS),

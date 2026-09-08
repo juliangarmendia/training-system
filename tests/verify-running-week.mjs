@@ -98,7 +98,7 @@ eq(real.gates.qualityUnlocked, false, 'sin base, la sesión de calidad sigue cer
 eq(real.gates.baseWeeks, 0, 'cero semanas ISO con ≥15 km en Z2');
 eq(real.gates.longestZ2Km, 0, 'y cero km de largo EN Z2 (ninguna carrera cumplió)');
 yes(real.sessions.length === 3, 'tres sesiones (los tres slots del ideal de 6 días)');
-yes(/145|Z2|trote/i.test(real.reason), `la razón cita el número: "${real.reason}"`);
+yes(/145|Z2|run\/walk/i.test(real.reason), `la razón cita el número: "${real.reason}"`);
 yes(real.reason.length < 170, 'y es una línea, no un párrafo');
 
 const rMid = byDow(real, 3), rLong = byDow(real, 6), rOpt = byDow(real, 0);
@@ -109,11 +109,11 @@ eq(rMid.min, 35, "miércoles 35' (base 30' de run/walk, semana 3 del bloque)");
 eq(rLong.min, 50, "sábado 50' (base 40' de run/walk, semana 3)");
 eq(rOpt.min, 24, "domingo 24' (base 20', paso de 2')");
 yes(rMid.km == null && rLong.km == null, 'ninguna sesión lleva km: la dosis es tiempo');
-eq(rMid.pattern, '5′ trote / 1′ caminar', 'semana ≥3 del bloque → patrón 5/1');
+eq(rMid.pattern, '5′ jog / 1′ walk', 'semana ≥3 del bloque → patrón 5/1');
 eq(rMid.hrCap, 143, 'el techo de FC es el alto de Z2 (143), no el z2max con ruido');
 eq(rMid.source, 'rule', "source:'rule' (esto NO es el coach)");
-yes(/6 × \(5′ trote \/ 1′ caminar\)/.test(rMid.summary || ''), `summary legible: "${rMid.summary}"`);
-yes(/FC ≤143/.test(rMid.summary || ''), 'con el techo de FC en el resumen');
+yes(/6 × \(5′ jog \/ 1′ walk\)/.test(rMid.summary || ''), `summary legible: "${rMid.summary}"`);
+yes(/HR ≤143/.test(rMid.summary || ''), 'con el techo de FC en el resumen');
 
 // El DSL es lo que llega al reloj: un bloque de repeticiones válido de intervals.icu.
 console.log('');
@@ -130,7 +130,7 @@ yes(!/Z[45] HR/.test(real.sessions.map(s => s.dsl).join('\n')), 'ningún tramo d
 
 // Semanas 1-2 del bloque: el patrón es más conservador.
 const w1 = call({ history4w: REAL, block: E.blockWeekFromDates('2026-09-09', ANCHOR, 5) });
-eq(byDow(w1, 3).pattern, '3′ trote / 2′ caminar', 'semanas 1-2 del bloque → patrón 3/2');
+eq(byDow(w1, 3).pattern, '3′ jog / 2′ walk', 'semanas 1-2 del bloque → patrón 3/2');
 eq(byDow(w1, 3).min, 30, "y sin progresión: 30' en la semana 1");
 eq((byDow(w1, 3).dsl.match(/(\d+)x/) || [])[1], 6, "30' con patrón 3+2 → 6 repeticiones");
 
@@ -170,7 +170,7 @@ eq(byDow(base2, 3).type, 'Z2', 'el miércoles es Z2');
 eq(byDow(base2, 3).km, 6.5, 'y se lleva la otra mitad');
 yes(byDow(base2, 6).min == null, 'en fase km la sesión no prescribe minutos (no se inventa ritmo)');
 yes(/- 6\.5km Z2 HR/.test(byDow(base2, 6).dsl), `DSL por distancia: ${JSON.stringify(byDow(base2, 6).dsl)}`);
-yes(/6,5 km Z2/.test(byDow(base2, 6).summary || ''), `summary en castellano: "${byDow(base2, 6).summary}"`);
+yes(/6\.5 km Z2/.test(byDow(base2, 6).summary || ''), `summary con punto decimal: "${byDow(base2, 6).summary}"`);
 yes(/12|13,5/.test(base2.reason), `la razón cita los km: "${base2.reason}"`);
 
 const base3 = call({ history4w: BASE, slots: SLOTS3 });
@@ -204,8 +204,8 @@ eq(hint.gates.qualityUnlocked, verde.gates.qualityUnlocked,
 eq(JSON.stringify(hint.sessions.map(s => [s.dow, s.km, s.min])),
   JSON.stringify(verde.sessions.map(s => [s.dow, s.km, s.min])),
   '…ni el reparto por sesión, km a km');
-yes(/fatiga/i.test(hint.reason), `la señal se NOMBRA en la razón, sin recortar: "${hint.reason}"`);
-yes(/revisión semanal/i.test(hint.reason), '…y dice a quién le toca decidir');
+yes(/fatigue/i.test(hint.reason), `la señal se NOMBRA en la razón, sin recortar: "${hint.reason}"`);
+yes(/weekly review/i.test(hint.reason), '…y dice a quién le toca decidir');
 
 // Y con la puerta de la calidad abierta, `deloadHint` tampoco la cierra.
 const conBase = {
@@ -291,7 +291,7 @@ yes(/8,2|4,1|10 km/.test(ready.reason), `la razón cita los números: "${ready.r
 const noDec = call({ history4w: READY.map(r => { const c = { ...r }; delete c.decoupling; return c; }), slots: SLOTS2 });
 eq(noDec.gates.decouplingOk, null, 'sin decoupling → null (END-005: no se inventa)');
 yes(noDec.phase !== 'ready10k', `y NO se declara listo (fase ${noDec.phase})`);
-yes(/deriva|decoupling/i.test([byDow(noDec, 6).note, noDec.reason, noDec.gates.decouplingNote].join(' ')),
+yes(/drift|decoupling/i.test([byDow(noDec, 6).note, noDec.reason, noDec.gates.decouplingNote].join(' ')),
   'se dice que falta el dato, en vez de callarlo');
 
 const decBad = call({
