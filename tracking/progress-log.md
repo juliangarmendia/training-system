@@ -2,6 +2,34 @@
 
 > Key metrics over time. Updated after each check-in.
 
+## W37 (analizado el 2026-09-09) — primera revisión del coach, a mano
+
+Detalle en [`weekly-reviews/2026-W37-deep-dive.md`](weekly-reviews/2026-W37-deep-dive.md).
+
+### Fuerza — kg, top set
+
+| Ancla | 03-sep | **Ahora** | Delta |
+|---|---|---|---|
+| Back Squat | 105 × 5 @7 | **105 × 6/6/6/6 @7** (8-sep) | +1 rep/serie |
+| Bench | 95 × 8/7/8/8 @7,9 (24-ago) | **90 × 8/8/8/8 @7** (7-sep) | −5 kg tras 2 semanas flojas; RPE 7 → sube |
+| Sumo DL | — | **110 × 8/6/6/6 @6,6** (5-sep) | n=1 |
+| OHP | 55 × 8 @6,9 (14-ago) | **55 × 6/6/8/7 @7,5** (4-sep) | plano |
+| Row | 60 × 10 (24-ago) | **65 × 10/10/10/10 @6,8** (7-sep) | +5 kg |
+| Chin-ups | +5 × 8 (26-ago) | **+8 × 5/6/7/7 @6,9** (4-sep) | +3 kg lastre |
+
+### Composición (Withings, referencia desde el 7-sep)
+
+| Fecha | Peso | Grasa | FFM | Visceral | BMR |
+|---|---|---|---|---|---|
+| 2026-09-07 | **88,4** | 21,2 % | 69,6 | 2,9 | 2.042 |
+
+Salida declarada 87,1 (19-ago). Tres semanas sin bajada; 0 días de nutrición registrados.
+
+### Carrera y recuperación
+
+- Km/semana W34-W37: 1 · 1,9 · 0 · 5,3. Lunes 7-sep: 5,31 km @139 (Z2) en 39 min.
+- WHOOP recovery 8 d: 96 · 96 · 78 · 69 · 61 · 44 · 63 · 39. HRV 77 → 50. Informativo.
+
 ## W34-W36 (analizado el 2026-09-03) — reorientación a cintura
 
 Las revisiones W34 y W35 nunca se generaron (el cron no corrió). Detalle en

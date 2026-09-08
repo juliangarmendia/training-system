@@ -13,6 +13,27 @@
 
 ---
 
+## 2026-09-09 (mié) — W37 en curso · primera revisión del coach, hecha a mano
+
+*Fuente: Supabase (SQL) + WHOOP directo + Withings. Detalle en
+[`weekly-reviews/2026-W37-deep-dive.md`](weekly-reviews/2026-W37-deep-dive.md). La propuesta está en la
+app (`coach_reviews 2026-W37#1 · proposed`), pendiente de aplicar.*
+
+- **Peso:** 88,4 kg (Withings, 7-sep, ayunas): 21,2 % grasa, FFM 69,6, visceral 2,9, BMR 2.042. Antes:
+  86,3 (4-sep) y 87,9 (5-sep) en intervals.icu. Salida declarada 87,1 el 19-ago. **Sin tendencia
+  (n=3, dos básculas) y sin señal de déficit.**
+- **Fuerza:** sentadilla 105×6/6/6/6 @7 ↑ · RDL 90×10 @7 (→ 92,5) · remo 65×10 @6,8 ↑ · dominadas
+  +8 kg ×5-7 ↑ · sumo 110×8/6/6/6 @6,6 (n=1) · banca 90×8/8/8/8 @7 (bajó de 95 tras dos semanas
+  flojas) · OHP 55 plano (n=2). 5 de 6 anclas suben o aguantan.
+- **Adherencia:** W36 3/4 gym, 0/2 carreras. W37: L Upper A (47 min), M Lower A (74:46, en el tope).
+- **Carrera:** 5,31 km @139 en 39 min el lunes — primera carrera limpia en Z2 desde julio.
+- **Recuperación:** WHOOP 96 → 39 en 8 días, HRV 77 → 50, sueño 5,6 h anoche. Informativo: el
+  rendimiento subió a la vez.
+- **Nutrición:** 0 comidas registradas en 21 días. Es el hueco que decide la semana.
+- **Propuesta W37:** mantener las 4 sesiones de fuerza; X 30 + S 40 min Z2 por tiempo (≤143);
+  gemelo opcional en Lower A; box jump re-etiquetado (cuádriceps 16 → 13 series); kcal 2.700/2.400
+  sin tocar; registrar ≥5 días y pesarse a diario → decisión de kcal el 21-sep.
+
 ## 2026-09-03 (jue) — W36 en curso · el objetivo cambia de forma
 
 **Objetivo reformulado:** bajar de peso para reducir cintura — *"me queda todo chico de cintura"*.

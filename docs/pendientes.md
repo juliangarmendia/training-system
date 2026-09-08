@@ -598,3 +598,14 @@ expresar la regla que debía cumplir.
 No fue falta de evidencia ni de reglas. Fue que **nada dejaba rastro al fallar**. De ahí la
 prioridad de los diagnósticos visibles y de los tests: el fallo de la variante de 6 días lo encontró
 un test, no la lectura del código.
+
+## Coach W37 a mano (2026-09-09)
+
+- Revisión W37 escrita por Claude en la sesión (petición de Julian), validada con `validatePlanVersion`
+  (0 duros, 2 avisos de plantilla) y guardada como `coach_reviews 2026-W37#1 · proposed`,
+  `usage.source: 'manual'`. Procedimiento en `.claude/commands/coach-manual-run.md`. **Pendiente de
+  Julian:** aplicar o rechazar en la app; registrar comidas ≥5 días y pesarse a diario (decisión de kcal
+  el 21-sep). A partir del domingo 13 la función lo hace sola (clave ya cargada).
+- Hallazgo de la semilla: `box-jump` etiquetado `Quads` infla el recuento a 16 series/semana; la
+  propuesta lo re-etiqueta `Power` en Lower A. Si se aplica, considerar arreglarlo también en
+  `IDEAL_BLOCK_V1` para las próximas regeneraciones del plan.
