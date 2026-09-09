@@ -568,7 +568,7 @@ async function renderCoachGoalLine() {
 // LA VERSIÓN DE LA APP viaja al servidor (`clientVersion`) y al pack (`meta.appVersion`), que
 // es lo que permite luego saber qué código produjo una revisión rara.
 // `verify-coach-wiring.mjs` comprueba que coincide con la de index.html y con `CACHE_NAME`.
-const COACH_APP_VERSION = 'v11.68';
+const COACH_APP_VERSION = 'v11.69';
 
 const COACH_MAX_SESSION_IDS = 12;   // el tope que valida la edge function
 const COACH_MAX_EXERCISE_IDS = 150; // idem
@@ -579,6 +579,7 @@ const COACH_POLL_MAX_MS = 5 * 60 * 1000;
 const COACH_STATUS_LABEL = {
   running: 'running', proposed: 'proposed', applied: 'applied',
   rejected: 'rejected', expired: 'expired', failed: 'failed',
+  requested: 'requested (manual)',
 };
 // El adjetivo, no el sustantivo: la etiqueta se arma como "<nivel> evidence", así que
 // `expert` va suelto aunque el corpus lo llame "expert opinion".
@@ -939,6 +940,10 @@ async function maybeRunWeeklyCoach() {
     if (!supa) return;
     const user = (typeof getUser === 'function') ? await getUser() : null;
     if (!user) return;
+    // v11.69: en modo manual la app NUNCA llama al modelo por su cuenta. La revisión la escribe
+    // Claude Code desde la sesión (`scripts/coach-manual-review.mjs`) sobre la fila `requested`
+    // que deja "Cerrar la semana"; abrir la app un lunes no puede costar $0,60 sin que nadie lo pida.
+    if (coachReviewMode() === 'manual') { _coachWeeklyTried = true; return; }
 
     const wk = _cWeekKey(today());
     const rows = await dbGetAll('coach_reviews').catch(() => []);
@@ -973,6 +978,12 @@ async function maybeRunWeeklyCoach() {
 async function runWeeklyCoach({ weekKey, userNote, regenerate, force } = {}) {
   const wk = weekKey || _cWeekKey(today());
   if (_coachInvoking) { if (typeof toast === 'function') toast('The coach is already working'); return null; }
+  // v11.69: "Cerrar la semana" en modo manual guarda el MISMO body que viajaría a la función y no
+  // llama a nadie. Regenerar (`regenerate`) y "Ask the model instead" (`force`) sí llaman: son una
+  // decisión explícita del usuario de gastar la llamada.
+  if (!force && !regenerate && coachReviewMode() === 'manual') {
+    return requestManualCoachReview({ weekKey: wk, userNote });
+  }
   if (!force && !regenerate) {
     const previas = ((await dbGetAll('coach_reviews').catch(() => [])) || []).filter((r) => r && r.weekKey === wk);
     const enMarcha = previas.find((r) => r.status === 'running');
@@ -1202,7 +1213,7 @@ async function _coachLatestReview() {
  * que llegar al otro dispositivo para que no ofrezca aplicar una propuesta muerta.
  */
 async function _coachExpireIfStale(review) {
-  if (!review || review.status !== 'proposed') return review;
+  if (!review || (review.status !== 'proposed' && review.status !== 'requested')) return review;
   const wk = _cWeekKey(today());
   if (!wk || !review.weekKey || String(review.weekKey) >= String(wk)) return review;
   const row = Object.assign({}, review, { status: 'expired', updatedAt: new Date().toISOString() });
@@ -1865,6 +1876,14 @@ async function renderCoachWeekCard(opts = {}) {
         : `<div class="coach-week-line">The coach is reviewing ${wkTxt}… <span id="coach-week-elapsed" class="coach-week-mono">${_coachElapsed(desde)}</span></div>`;
       if (rendido) acciones = '<button class="coach-btn" id="coach-week-regen">Regenerate</button>';
       else if (!_coachPoll || _coachPoll.reviewId !== review.id) pollCoachReview(review.id);
+    } else if (review.status === 'requested') {
+      // ESTADO `requested` (v11.69, modo manual): la semana está cerrada y su pack guardado; la
+      // propuesta la escribe Claude Code desde la sesión. Un solo botón, y cuesta dinero a
+      // propósito: pedírsela al modelo en vez de esperar.
+      const cuando = review.requestedAt ? String(review.requestedAt).slice(0, 10) : null;
+      const fecha = (cuando && typeof formatDate === 'function') ? formatDate(cuando) : cuando;
+      cuerpo = `<div class="coach-week-line">Week ${wkTxt} closed${fecha ? ` on ${_cEsc(fecha)}` : ''} · waiting for the manual review from Claude Code. The facts pack is saved; the proposal will show up here once it is written.</div>`;
+      acciones = '<button class="coach-btn" id="coach-week-ask-api">Ask the model instead</button>';
     } else if (review.status === 'proposed') {
       const prev = plan || {};
       const merged = (typeof mergeProposal === 'function') ? mergeProposal(prev, (review.output || {}).proposal || {}) : null;
@@ -1931,6 +1950,7 @@ async function renderCoachWeekCard(opts = {}) {
         await rejectCoachProposal(review, (why || '').trim() || null);
       });
       on('coach-week-regen', () => runWeeklyCoach({ weekKey: _cWeekKey(today()), regenerate: true }));
+      on('coach-week-ask-api', () => runWeeklyCoach({ weekKey: review.weekKey || _cTargetWeek(today()), force: true }));
       on('coach-week-regen-note', () => {
         const nota = (typeof prompt === 'function') ? prompt('What should it take into account? (one or two sentences)') : null;
         if (!nota) return;
@@ -2369,6 +2389,75 @@ async function setCoachAutoApply(mode) {
   }
 }
 
+// ==================== MODO DE REVISIÓN: API O MANUAL (v11.69) ====================
+//
+// "Quiero poder hacerla con el API (desde la web) o desde aquí para no gastar API, debería ser lo
+// mismo, ¿no?" (Julian, 2026-09-09). Lo es, y para que lo sea DE VERDAD el camino manual tiene que
+// recibir exactamente lo que recibiría la función: el mismo facts pack, el mismo plan activo, el
+// mismo vocabulario permitido y las mismas revisiones previas. Por eso en modo manual "Cerrar la
+// semana" no llama a nadie: construye el mismo `body` y lo guarda como fila `requested` en
+// `coach_reviews`. La sesión de Claude Code (`scripts/coach-manual-review.mjs`) la lee de
+// Supabase, escribe la propuesta con el mismo contrato y el mismo validador, y la fila pasa a
+// `proposed`: la app la pinta igual que una de la función. "Regenerar" sigue llamando al modelo.
+function coachReviewMode() {
+  const v = state && state.settings && state.settings.coachReviewMode;
+  return v === 'manual' ? 'manual' : 'api';
+}
+
+async function setCoachReviewMode(mode) {
+  const v = mode === 'manual' ? 'manual' : 'api';
+  state.settings = Object.assign({}, state.settings, { coachReviewMode: v });
+  await smartPut('settings', { key: 'userSettings', data: state.settings });
+  if (typeof toast === 'function') {
+    toast(v === 'manual' ? 'Manual mode: closing the week saves the facts for Claude Code' : 'The app will ask the model');
+  }
+}
+
+/**
+ * Cierra la semana SIN llamar a la función. Guarda el mismo `body` que viajaría a
+ * `coach-weekly-review` como fila `requested`, con `smartPut` porque es una escritura del USUARIO
+ * que tiene que llegar a la nube: la sesión la lee de Supabase, no del teléfono.
+ *
+ * El `attempt` sigue la numeración de la función (filas de la semana + 1), así el `proposed` que
+ * escriba la sesión ocupa el MISMO id y un "Regenerar" posterior es el intento siguiente.
+ */
+async function requestManualCoachReview({ weekKey, userNote } = {}) {
+  const wk = weekKey || _cWeekKey(today());
+  const todas = (await dbGetAll('coach_reviews').catch(() => [])) || [];
+  const rows = todas.filter((r) => r && r.weekKey === wk);
+  const ya = rows.find((r) => r.status === 'requested');
+  if (ya) {
+    if (typeof toast === 'function') toast('The week is already closed and waiting for the manual review');
+    try { openCoachView(); } catch (e) {}
+    return ya;
+  }
+  try { await renderCoachWeekCard({ pending: true }); } catch (e) { /* la tarjeta no bloquea */ }
+  const facts = await buildCoachFactsFromStores({ weekKey: wk });
+  const nowIso = new Date().toISOString();
+  const row = {
+    id: `${wk}#${rows.length + 1}`, weekKey: wk, attempt: rows.length + 1,
+    status: 'requested', createdAt: nowIso, updatedAt: nowIso, requestedAt: nowIso,
+    facts,
+    // Lo que la función recibe además del pack, tal cual lo construye `runWeeklyCoach`.
+    request: {
+      currentPlan: _coachCurrentPlan(),
+      allowed: _coachAllowed(),
+      priorReviews: _coachPriorReviews(todas),
+      lowerSessionIds: Object.entries((typeof sessionClassMap === 'function' ? sessionClassMap() : {}) || {})
+        .filter(([, c]) => c && (c.subtype === 'lower' || c.subtype === 'full' || c.family === 'hybrid'))
+        .map(([sid]) => sid),
+    },
+    userNote: userNote ? String(userNote).slice(0, COACH_MAX_USER_NOTE) : null,
+    clientVersion: COACH_APP_VERSION,
+    prompt: { model: 'manual-claude', promptVersion: 2 },
+  };
+  await smartPut('coach_reviews', row);
+  try { await renderCoachWeekCard(); } catch (e) {}
+  try { if (state && state.currentView === 'coach') await renderCoachView(); } catch (e) {}
+  if (typeof toast === 'function') toast('Week closed. The review is waiting for Claude Code.');
+  return row;
+}
+
 // Exports para los tests (Node los carga con `vm`); en el navegador no estorba.
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
@@ -2382,5 +2471,6 @@ if (typeof module !== 'undefined' && module.exports) {
     renderCoachWeekCard, renderCoachView, openCoachView, coachDiffGroups,
     _coachRenderLedger, COACH_LEDGER_TOP,
     exportCoachFacts, coachAutoApplyMode, setCoachAutoApply,
+    coachReviewMode, setCoachReviewMode, requestManualCoachReview,
   };
 }

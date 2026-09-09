@@ -21,6 +21,9 @@
 //     PERSONA. Entra en la tendencia como si fuera un salto de 12 kg en un día.
 //   · `groupByDay` quedándose con la última pesada del día en vez de la primera: pesarse
 //     después de cenar y en ayunas no es lo mismo, y mezclarlas añade ±1 kg de ruido diario.
+//   · `groupByDay` quedándose con "el primer grupo" del día: la Body Smart manda el pulso en
+//     un grupo aparte con el MISMO timestamp y delante del de peso — la fila salía sin `weight`
+//     y la app pintaba "NaN kg" (2026-09-09).
 //   · `mergeBodyweight` pisando el peso MANUAL con el de la báscula: Julian escribió ese número
 //     a propósito; verlo cambiar solo es la forma más rápida de dejar de fiarse de la app.
 //
@@ -189,6 +192,40 @@ const soloAttrib1 = groupByDay(
   TZ,
 );
 eq(Object.keys(soloAttrib1).length, 0, 'un día con SÓLO medidas attrib:1 no genera fila');
+
+// ── 6b. La Body Smart manda DOS grupos por pesada (2026-09-09) ────────────────────────────
+// Reproducción literal de lo que devolvió la API el 8 y el 9 de septiembre: un grupo con SÓLO
+// el pulso (tipo 11) y otro con peso y composición, el MISMO `date`, y el del pulso delante
+// (grpid más alto). Quedarse con "el primero del día" dejaba la fila sin `weight` y la app
+// pintaba "NaN kg" en Stats › Body.
+console.log('6b. groupByDay · dos grupos con el mismo timestamp: el pulso no pisa el peso');
+const dobles = [
+  { grpid: 8395287124, attrib: 0, date: sec(4, 37), measures: [{ value: 85, type: 11, unit: 0 }] },
+  {
+    grpid: 8395287115, attrib: 0, date: sec(4, 37),
+    measures: [
+      { value: 86101, type: 1, unit: -3 }, { value: 68080, type: 5, unit: -3 }, { value: 20917, type: 6, unit: -3 },
+      { value: 18010, type: 8, unit: -3 }, { value: 64680, type: 76, unit: -3 }, { value: 47410, type: 77, unit: -3 },
+      { value: 3390, type: 88, unit: -3 }, { value: 28, type: 170, unit: -1 }, { value: 1992, type: 226, unit: 0 },
+      { value: 31, type: 227, unit: 0 },
+    ],
+  },
+  // Y una pesada de la NOCHE (21:40 local), que no debe ganar a la de la mañana.
+  { grpid: 8395299999, attrib: 0, date: sec(19, 40), measures: [{ value: 87400, type: 1, unit: -3 }, { value: 70, type: 11, unit: 0 }] },
+];
+const doble = groupByDay(dobles, TZ)['2026-09-08'];
+yes(!!doble, 'hay fila para 2026-09-08');
+eq(doble?.weight, 86.101, 'el peso entra aunque el grupo del pulso vaya delante con el mismo timestamp');
+eq(doble?.heartRateBpm, 85, 'y el pulso del grupo aparte entra en la misma fila');
+eq(doble?.fatPct, 20.917, 'la composición viaja con el peso de la mañana');
+eq(doble?.visceralFat, 2.8, 'grasa visceral con unit -1 decodificada');
+eq(doble?.withingsN, 2, 'withingsN cuenta PESADAS (grupos con peso): 2, no 3 grupos');
+eq(doble?.withingsGrpId, 8395287115, 'withingsGrpId es el del grupo que trae el peso de la mañana');
+eq(doble?.timestamp, sec(4, 37) * 1000, 'timestamp = la pesada de la mañana');
+const soloPulso = groupByDay([{ grpid: 1, attrib: 0, date: sec(5, 0), measures: [{ value: 60, type: 11, unit: 0 }] }], TZ)['2026-09-08'];
+eq(soloPulso?.weight, undefined, 'un día con SÓLO pulso no inventa peso');
+eq(soloPulso?.heartRateBpm, 60, 'pero el pulso se guarda');
+eq(soloPulso?.withingsN, 1, 'y withingsN cae al número de grupos cuando no hay pesada');
 
 // ── 7. mergeBodyweight ─────────────────────────────────────────────────────────────────────
 console.log('7. mergeBodyweight · el peso manual manda; la báscula añade composición');

@@ -376,11 +376,22 @@ function estimateCalories({ type, durationMin, bodyweightKg, avgHr, avgRpe, dist
 let _bwCache = null;
 async function getBodyweightLatest() {
   if (_bwCache) return _bwCache;
-  const all = await dbGetAll('bodyweight');
-  if (!all || all.length === 0) return null;
-  const sorted = all.sort((a, b) => a.date.localeCompare(b.date));
-  _bwCache = sorted[sorted.length - 1].weight;
+  const all = _bwWeighIns(await dbGetAll('bodyweight'));
+  if (all.length === 0) return null;
+  _bwCache = all[all.length - 1].weight;
   return _bwCache;
+}
+
+// Las filas de `bodyweight` que SON una pesada, ascendentes por fecha.
+//
+// EL FALLO QUE IMPIDE (2026-09-09): el store guarda tres cosas con la misma clave `date` — la
+// pesada, la fila de cintura (sin `weight`) y, desde Withings, una fila que puede traer sólo el
+// pulso de la báscula. Toda la serie de peso (tarjeta, gráfico, deltas, ETA, kcal estimadas) hacía
+// `row.weight` sin mirar si existía, y con una fila sin peso el resultado era "NaN kg" en Stats.
+function _bwWeighIns(rows) {
+  return (rows || [])
+    .filter((r) => r && r.date && Number.isFinite(Number(r.weight)) && Number(r.weight) > 0)
+    .sort((a, b) => String(a.date).localeCompare(String(b.date)));
 }
 
 // Avg RPE across all done sets in a workout (used for calorie estimation).
@@ -5008,6 +5019,7 @@ async function renderStats() {
       ['bodyweight-chart', () => renderBodyWeightChart()],
       ['streak-calendar', () => renderStreakCalendar()],
       ['muscle-volume', () => renderMuscleVolume()],
+      ['withings-comp', () => renderWithingsComposition()],
       ['bodycomp', () => renderBodyCompEstimator()],
       ['steps-history', () => renderStepsHistoryChart()],
       ['protein-chart', () => renderProteinChart()],
@@ -6708,6 +6720,96 @@ async function renderStreakCalendar() {
 // cintura se mide un dia a la semana, asi que pisar la fila perderia uno de los dos.
 const WAIST_MIN_DELTA_DAYS = 10; // por debajo de esto el delta es ruido, no senal
 
+// ==================== WITHINGS BODY SMART · COMPOSICIÓN ====================
+//
+// "Extraer y apalancar todas las métricas de Withings" (Julian, 2026-09-09). La báscula manda por
+// pesada: peso, % grasa, masa grasa, FFM, músculo, agua, hueso, grasa visceral (índice),
+// metabolismo basal, edad metabólica y pulso de pie. Hasta aquí sólo se leía el peso y una línea
+// apagada; el resto se guardaba y no se veía. Esta tarjeta los enseña TODOS, con un delta que se
+// lee sobre DÍAS (la bioimpedancia oscila ±0,5 % de un día a otro: comparar con la pesada anterior
+// es leer ruido) y una línea de recomposición: grasa que baja con FFM que aguanta es el objetivo 1
+// aunque el peso se mueva poco. El mismo criterio que `trajectory.weight.scale` en el pack del coach.
+const WCOMP_MIN_DELTA_DAYS = 7;
+const WCOMP_WINDOW_DAYS = 28;
+const WCOMP_FIELDS = [
+  { key: 'fatPct',       label: 'Body fat',       unit: '%',    d: 1, goodDown: true },
+  { key: 'fatMassKg',    label: 'Fat mass',       unit: 'kg',   d: 1, goodDown: true },
+  { key: 'ffmKg',        label: 'Lean mass',      unit: 'kg',   d: 1, goodDown: false },
+  { key: 'muscleKg',     label: 'Muscle',         unit: 'kg',   d: 1, goodDown: false },
+  { key: 'waterKg',      label: 'Water',          unit: 'kg',   d: 1, goodDown: null },
+  { key: 'boneKg',       label: 'Bone',           unit: 'kg',   d: 2, goodDown: null },
+  { key: 'visceralFat',  label: 'Visceral fat',   unit: '',     d: 1, goodDown: true },
+  { key: 'bmrKcal',      label: 'BMR',            unit: 'kcal', d: 0, goodDown: null },
+  { key: 'metabolicAge', label: 'Metabolic age',  unit: 'y',    d: 0, goodDown: true },
+  { key: 'heartRateBpm', label: 'Standing pulse', unit: 'bpm',  d: 0, goodDown: null },
+];
+
+async function renderWithingsComposition() {
+  const el = document.getElementById('withings-comp');
+  if (!el) return;
+  const num = (v) => (v == null || v === '' ? null : (Number.isFinite(Number(v)) ? Number(v) : null));
+  const rows = (await dbGetAll('bodyweight').catch(() => [])) || [];
+  const scale = rows
+    .filter((r) => r && r.source === 'withings' && r.date && WCOMP_FIELDS.some((f) => num(r[f.key]) != null))
+    .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  if (!scale.length) { el.classList.add('hidden'); el.innerHTML = ''; return; }
+
+  const last = scale[scale.length - 1];
+  const dayMs = 86400000;
+  const t = (d) => new Date(d + 'T12:00:00').getTime();
+  const in28 = scale.filter((r) => (t(last.date) - t(r.date)) < WCOMP_WINDOW_DAYS * dayMs);
+  // Referencia: la lectura MÁS ANTIGUA dentro de 28 días que esté a ≥7 días de la última.
+  const ref = in28.find((r) => (t(last.date) - t(r.date)) >= WCOMP_MIN_DELTA_DAYS * dayMs) || null;
+  const refDays = ref ? Math.round((t(last.date) - t(ref.date)) / dayMs) : null;
+  const fmt = (v, d) => (d === 0 ? Math.round(v).toLocaleString('en-US') : v.toFixed(d));
+  const MINUS = '\u2212';
+  const sg = (x, d) => (x > 0 ? '+' : (x < 0 ? MINUS : '')) + fmt(Math.abs(x), d);
+
+  const tiles = WCOMP_FIELDS.map((f) => {
+    const v = num(last[f.key]);
+    if (v == null) return '';
+    let delta = '<span class="wcomp-delta muted">no reference yet</span>';
+    const rv = ref ? num(ref[f.key]) : null;
+    if (rv != null) {
+      const dlt = v - rv;
+      const eps = f.d === 0 ? 0.5 : Math.pow(10, -f.d) / 2;
+      let color = 'var(--text3)';
+      if (Math.abs(dlt) >= eps && f.goodDown !== null) color = ((dlt < 0) === f.goodDown) ? 'var(--accent)' : 'var(--red)';
+      const unit = f.unit === '%' ? ' pp' : (f.unit ? ' ' + f.unit : '');
+      delta = `<span class="wcomp-delta" style="color:${color}">${sg(dlt, f.d)}${unit} · ${refDays} d</span>`;
+    }
+    return `<div class="wcomp-stat"><span class="wcomp-label">${f.label}</span><span class="wcomp-val">${fmt(v, f.d)}${f.unit ? `<span class="wcomp-unit">${f.unit}</span>` : ''}</span>${delta}</div>`;
+  }).join('');
+
+  // Recomposición: masa grasa y FFM contra la referencia, y la media de 7 días del % de grasa
+  // cuando hay ≥3 lecturas en la semana — la forma honesta de leer una bioimpedancia.
+  const in7 = scale.filter((r) => (t(last.date) - t(r.date)) < 7 * dayMs && num(r.fatPct) != null);
+  const avg7 = in7.length >= 3 ? in7.reduce((acc, r) => acc + num(r.fatPct), 0) / in7.length : null;
+  let recomp;
+  if (ref && num(last.fatMassKg) != null && num(ref.fatMassKg) != null && num(last.ffmKg) != null && num(ref.ffmKg) != null) {
+    const dFat = num(last.fatMassKg) - num(ref.fatMassKg);
+    const dFfm = num(last.ffmKg) - num(ref.ffmKg);
+    let verdict;
+    if (dFat <= -0.3 && dFfm >= -0.3) verdict = 'recomposition on track: fat down, lean mass held';
+    else if (dFat <= -0.3) verdict = 'fat is going, but so is lean mass: check protein and the anchors';
+    else if (dFat >= 0.3) verdict = 'fat mass is up over this window';
+    else verdict = 'within the noise of the scale for now';
+    recomp = `<b>Fat mass ${sg(dFat, 1)} kg · lean mass ${sg(dFfm, 1)} kg</b> since ${formatDate(ref.date)} (n=${in28.length}): ${verdict}.`;
+  } else {
+    recomp = `Need weigh-ins ${WCOMP_MIN_DELTA_DAYS}+ days apart to read the recomposition trend (n=${in28.length} in 28 d).`;
+  }
+  if (avg7 != null) recomp += ` 7-day fat average <b>${avg7.toFixed(1)} %</b> (n=${in7.length}).`;
+
+  el.classList.remove('hidden');
+  el.innerHTML = `
+    <div class="wcomp-head">
+      <span class="wcomp-title"><span class="bw-source-pill">Withings</span> Body Smart</span>
+      <span class="wcomp-meta">last ${formatDate(last.date)}${num(last.weight) != null ? ` · ${num(last.weight).toFixed(1)} kg` : ''} · ${in28.length} weigh-in${in28.length === 1 ? '' : 's'} / 28 d</span>
+    </div>
+    <div class="wcomp-grid">${tiles}</div>
+    <div class="wcomp-recomp">${recomp}</div>`;
+}
+
 async function renderBodyCompEstimator() {
   const container = document.getElementById('bodycomp-section');
   if (!container) return;
@@ -6716,7 +6818,8 @@ async function renderBodyCompEstimator() {
   const sorted = rows.slice().sort((a, b) => String(a.date).localeCompare(String(b.date)));
   const waistLog = sorted.filter(e => Number(e.waist) > 0);
   const last = waistLog.length ? waistLog[waistLog.length - 1] : null;
-  const lastWeighIn = sorted.length ? sorted[sorted.length - 1] : null;
+  const pesadas = _bwWeighIns(rows);
+  const lastWeighIn = pesadas.length ? pesadas[pesadas.length - 1] : null;
 
   // Prefill: cuello y altura no cambian entre mediciones; el peso viene del ultimo pesaje.
   const pfWeight = (lastWeighIn && Number(lastWeighIn.weight)) || '';
@@ -10749,7 +10852,7 @@ async function renderBodyWeightChart() {
   const nudgeEl = document.getElementById('bw-nudge');
   const etaEl = document.getElementById('bw-eta');
   const plateauEl = document.getElementById('bw-plateau');
-  const entries = (await dbGetAll('bodyweight')).sort((a, b) => a.date.localeCompare(b.date));
+  const entries = _bwWeighIns(await dbGetAll('bodyweight'));
 
   if (entries.length === 0) {
     currentEl.textContent = '--';
@@ -11091,9 +11194,13 @@ async function exportCSV() {
 
   // Body weight
   csv += '\n=== BODY WEIGHT ===\n';
-  csv += 'Date,Weight(kg)\n';
+  csv += 'Date,Weight(kg),Source,Fat%,FatMass(kg),FFM(kg),Muscle(kg),Water(kg),Bone(kg),Visceral,BMR(kcal),MetabolicAge,Pulse,Waist(cm)\n';
+  // Nunca `undefined` en el CSV: una fila de sólo cintura o de sólo pulso no tiene peso.
+  const _c = (v) => (v == null || v === '' || Number.isNaN(v)) ? '' : v;
   bodyweight.forEach(b => {
-    csv += `${b.date},${b.weight}\n`;
+    csv += [b.date, _c(b.weight), _c(b.source), _c(b.fatPct != null ? b.fatPct : b.bfPct), _c(b.fatMassKg), _c(b.ffmKg),
+      _c(b.muscleKg), _c(b.waterKg), _c(b.boneKg), _c(b.visceralFat), _c(b.bmrKcal), _c(b.metabolicAge),
+      _c(b.heartRateBpm), _c(b.waist)].join(',') + '\n';
   });
 
   const blob = new Blob([csv], { type: 'text/csv' });
@@ -11490,6 +11597,9 @@ function applySettingsToUI() {
   // Coach v2 (v11.61): 'ask' por defecto. `coachAutoApplyMode()` normaliza (vive en coach.js).
   const autoEl = document.getElementById('setting-coach-auto-apply');
   if (autoEl) autoEl.value = (typeof coachAutoApplyMode === 'function') ? coachAutoApplyMode() : 'ask';
+  // v11.69: quién escribe la revisión — la función con la API, o Claude Code a mano (sin coste).
+  const modeEl = document.getElementById('setting-coach-review-mode');
+  if (modeEl) modeEl.value = (typeof coachReviewMode === 'function') ? coachReviewMode() : 'api';
 }
 
 async function saveSettings() {
@@ -11636,6 +11746,10 @@ function bindEvents() {
     const s = document.getElementById('setting-coach-auto-apply');
     // Se guarda al cambiar y no al pulsar "Save": es un interruptor, no un formulario.
     if (s) s.addEventListener('change', () => { if (typeof setCoachAutoApply === 'function') setCoachAutoApply(s.value); });
+  }
+  {
+    const s = document.getElementById('setting-coach-review-mode');
+    if (s) s.addEventListener('change', () => { if (typeof setCoachReviewMode === 'function') setCoachReviewMode(s.value); });
   }
 
   // Unit toggle in workout header (segmented control)

@@ -17,13 +17,18 @@ Detalle en [`weekly-reviews/2026-W37-deep-dive.md`](weekly-reviews/2026-W37-deep
 | Row | 60 × 10 (24-ago) | **65 × 10/10/10/10 @6,8** (7-sep) | +5 kg |
 | Chin-ups | +5 × 8 (26-ago) | **+8 × 5/6/7/7 @6,9** (4-sep) | +3 kg lastre |
 
-### Composición (Withings, referencia desde el 7-sep)
+### Composición (Withings Body Smart, ayunas; serie corregida el 2026-09-09)
 
-| Fecha | Peso | Grasa | FFM | Visceral | BMR |
-|---|---|---|---|---|---|
-| 2026-09-07 | **88,4** | 21,2 % | 69,6 | 2,9 | 2.042 |
+| Fecha | Peso | Grasa | Masa grasa | FFM | Visceral | BMR | Pulso |
+|---|---|---|---|---|---|---|---|
+| 2026-09-04 | 86,3 | 21,1 % | 18,2 | 68,1 | 2,9 | 2.010 | 76 |
+| 2026-09-05 | 87,9 | 21,0 % | 18,5 | 69,4 | 2,9 | 2.035 | 70 |
+| 2026-09-07 | 88,4 | 21,2 % | 18,7 | 69,6 | 2,9 | 2.042 | — |
+| 2026-09-08 | 86,1 | 20,9 % | 18,0 | 68,1 | 2,8 | 1.992 | 85 |
+| 2026-09-09 | **86,7** | **20,5 %** | **17,8** | 68,9 | 2,8 | 2.018 | 78 |
 
-Salida declarada 87,1 (19-ago). Tres semanas sin bajada; 0 días de nutrición registrados.
+Media de los cinco: **87,1 kg**, la salida declarada (19-ago). Plano; 0 días de nutrición registrados.
+La recomposición se leerá en masa grasa/FFM con ≥21 días entre lecturas.
 
 ### Carrera y recuperación
 

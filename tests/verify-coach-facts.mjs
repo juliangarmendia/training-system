@@ -737,6 +737,30 @@ const factsScaleCorta = buildCoachFacts(mkInput({
 }), DEPS);
 eq(factsScaleCorta.trajectory.weight.scale.fatPctDelta28d, null, 'con 5 días entre lecturas no hay delta: el % grasa de báscula oscila a diario');
 eq(factsScaleCorta.trajectory.weight.scale.bmrKcal, null, 'las claves que la fila no trae van a null, no a 0');
+eq(sc && sc.readings7d, 1, 'readings7d: sólo la lectura del 6-sep cae en la última semana');
+eq(sc && sc.fatPct7dAvg, null, 'con <3 lecturas en 7 días no hay media semanal de % grasa');
+eq(sc && sc.deltaFrom, '2026-08-12', 'deltaFrom dice desde qué lectura se mide el delta');
+eq(sc && sc.fatMassKgDelta28d, null, 'fatMassKgDelta28d va a null si la fila no trae fatMassKg (no se deriva)');
+eq(sc && sc.weightKg, 85.6, 'weightKg: el peso de la misma pesada, para leer composición y peso juntos');
+// El fallo del 2026-09-09: la Body Smart manda el pulso en un grupo aparte y una fila puede traer
+// SÓLO `heartRateBpm`. Esa fila no es "lo que dice la báscula" sobre el cuerpo: `scale` tiene que
+// seguir apuntando a la última lectura con composición, y la media de 7 días se calcula con las
+// lecturas que tienen % grasa.
+const factsScalePulso = buildCoachFacts(mkInput({
+  stores: Object.assign({}, mkInput().stores, {
+    bodyweight: BODYWEIGHT.concat([
+      { date: '2026-09-03', weight: 86.4, measured: true, source: 'withings', fatPct: 22.9, ffmKg: 66.6, fatMassKg: 19.8 },
+      { date: '2026-09-05', weight: 86.0, measured: true, source: 'withings', fatPct: 22.7, ffmKg: 66.5, fatMassKg: 19.5 },
+      { date: '2026-09-06', weight: 85.6, measured: true, source: 'withings', fatPct: 22.6, ffmKg: 66.2, fatMassKg: 19.3 },
+      { date: '2026-09-07', measured: true, source: 'withings', heartRateBpm: 78 },
+    ]),
+  }),
+}), DEPS);
+const scP = factsScalePulso.trajectory.weight.scale;
+eq(scP && scP.date, '2026-09-06', 'una fila de SÓLO pulso no se convierte en la lectura de la báscula');
+eq(scP && scP.readings7d, 3, 'tres lecturas con composición en 7 días');
+eq(scP && scP.fatPct7dAvg, 22.7, 'y su media de % grasa a 7 días: 22,7');
+eq(scP && scP.fatMassKg, 19.3, 'fatMassKg viaja al pack (la recomposición se lee en masa grasa, no sólo en %)');
 
 // ---- anchors · las 6 anclas de goals.preserve, con lb → kg ----
 const anchorsById = Object.fromEntries(tr.anchors.map(a => [a.id, a]));

@@ -884,5 +884,39 @@ const mergedRes = validatePlanVersion(Object.assign({ block: PLAN_OK.block, nutr
 ok(Array.isArray(mergedRes), 'el plan mergeado pasa por el validador sin lanzar');
 silent(mergedRes, 'NO-SOURCE-KG', 'los objetivos del coach traen evidencia');
 
+
+// ════════════════════════════════════════════════════════════════════════════════════
+sec('mergeProposal · una sesión propuesta sin `muscle` hereda el del plan base (2026-09-09)');
+// EL FALLO: el contrato de salida no transporta `muscle`/`name`/`db`/`bw`. Una sesión propuesta
+// llegaba al validador con todos sus ejercicios sin músculo, VOL-CAP los contaba como "otros"
+// (19 series → duro FALSO) y el recuento real por músculo quedaba corto. Se vio en la primera
+// revisión manual (W37): el mismo pack, validado con el plan completo, daba 0 duros.
+// ════════════════════════════════════════════════════════════════════════════════════
+const sinLib = {
+  sessions: [{
+    id: 'upperB', focus: 'igual',
+    exercises: [
+      { id: EX.ohp.id, sets: EX.ohp.sets, reps: EX.ohp.reps, rpe: EX.ohp.rpe, optional: false, superset: null,
+        target: { kg: 55, reps: '5-8', rpe: '7-8', source: 'coach', evidence: ['STR-001'] } },
+      { id: EX.chins.id, sets: 4, reps: '5-8', rpe: '7-8', optional: false, superset: null, muscle: 'Lats',
+        target: { kg: 5, reps: '5-8', rpe: '7-8', source: 'coach', evidence: ['STR-001'] } },
+    ],
+    changes: [],
+  }],
+  cardio: [], weekTemplateChanges: [],
+};
+const mSin = mergeProposal(PLAN_OK, sinLib);
+const exOhp = mSin.sessions.upperB.exercises.find(e => e.id === EX.ohp.id);
+ok(!!EX.ohp.muscle, 'fixture: el OHP del plan tiene `muscle`');
+eq(exOhp.muscle, EX.ohp.muscle, 'el OHP propuesto sin `muscle` hereda el del plan (antes VOL-CAP lo contaba como "otros")');
+eq(exOhp.name, EX.ohp.name, 'y el nombre');
+const exChins = mSin.sessions.upperB.exercises.find(e => e.id === EX.chins.id);
+eq(exChins.muscle, 'Lats', 'un `muscle` explícito en la propuesta gana al del plan');
+eq(String(exChins.bw), String(EX.chins.bw), 'y hereda `bw` (el kg es lastre), que el contrato no transporta');
+eq(exChins.sets, 4, 'las series son las de la propuesta, no las del plan');
+ok(sinLib.sessions[0].exercises[0].muscle === undefined, 'la propuesta original no se muta');
+const volSin = validatePlanVersion(Object.assign({ block: PLAN_OK.block, nutrition: PLAN_OK.nutrition }, mSin), CTX_OK);
+ok(!volSin.some(g => g.id === 'VOL-CAP' && /otros/.test(g.text)), 'VOL-CAP ya no cuenta series en "otros" por una sesión propuesta');
+
 console.log(`\n${fail === 0 ? 'TODO OK' : `${fail} FALLOS`}`);
 process.exit(fail === 0 ? 0 : 1);

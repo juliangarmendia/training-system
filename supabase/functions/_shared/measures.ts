@@ -103,8 +103,16 @@ export function decodeMeasure(m: { value: number; unit: number }): number {
  *
  * · `attrib === 1` fuera: "medida no atribuida al usuario". En una Body+ compartida es
  *   literalmente otra persona; sin este filtro el peso de la casa entra en la tendencia.
- * · Varias pesadas el mismo día → la MÁS TEMPRANA para todos los valores (la de ayunas es la
- *   comparable día a día), y `withingsN` cuenta cuántas hubo.
+ * · Varias pesadas el mismo día → la MÁS TEMPRANA manda (la de ayunas es la comparable día a
+ *   día), y `withingsN` cuenta cuántas pesadas (grupos con peso) hubo.
+ *
+ * EL FALLO QUE ESTO CIERRA (2026-09-09). La Body Smart NO manda una pesada como un grupo:
+ * manda DOS con el mismo `date` — uno sólo con el pulso (tipo 11) y otro con peso y
+ * composición — y la API los devuelve con el del pulso delante. La versión anterior se quedaba
+ * con "el primer grupo del día" y el 8 y el 9 de septiembre entraron con `heartRateBpm` y sin
+ * `weight`: la app pintó "NaN kg". Ahora la fila se COMPONE con todos los grupos atribuidos del
+ * día: cada clave toma el valor del grupo más temprano que la trae, así el peso de ayunas sigue
+ * ganando a la pesada de la noche y el pulso entra aunque venga en su propio grupo.
  */
 export function groupByDay(
   measuregrps: WithingsGroup[] | null | undefined,
@@ -118,22 +126,34 @@ export function groupByDay(
     (byDay[day] || (byDay[day] = [])).push(g);
   }
 
+  const hasWeight = (g: WithingsGroup) => (g.measures || []).some((m) => Number(m.type) === 1);
+
   const out: Record<string, BodyweightRow> = {};
   for (const day of Object.keys(byDay)) {
-    const groups = byDay[day].slice().sort((a, b) => (a.date || 0) - (b.date || 0));
-    const first = groups[0];
+    // Orden estable: fecha y, a igual fecha, grpid ascendente (el de peso es el más bajo).
+    const groups = byDay[day].slice().sort((a, b) =>
+      ((a.date || 0) - (b.date || 0)) || ((a.grpid || 0) - (b.grpid || 0))
+    );
+    const weighIns = groups.filter(hasWeight);
+    // El grupo "principal" es la primera PESADA del día; si ningún grupo trae peso (sólo pulso,
+    // por ejemplo), el primero que haya.
+    const first = weighIns[0] || groups[0];
     const row: BodyweightRow = {
       date: day,
       measured: true,
       source: "withings",
       timestamp: (first.date || 0) * 1000,
-      withingsN: groups.length,
+      withingsN: weighIns.length || groups.length,
     };
     if (typeof first.grpid === "number") row.withingsGrpId = first.grpid;
-    for (const m of first.measures || []) {
-      const key = MEAS_TYPES[Number(m.type)];
-      if (!key) continue;
-      row[key] = decodeMeasure(m);
+    // Cada clave, del grupo más temprano que la traiga: los grupos ya están ordenados, así
+    // que la primera asignación gana y las demás no la pisan.
+    for (const g of groups) {
+      for (const m of g.measures || []) {
+        const key = MEAS_TYPES[Number(m.type)];
+        if (!key || row[key] !== undefined) continue;
+        row[key] = decodeMeasure(m);
+      }
     }
     // `bfPct` es la clave que ya leen `nutFfmKg` y la tarjeta de cintura: el % de la báscula
     // sustituye al estimado Navy del día, pero las medidas de cinta se conservan aparte.

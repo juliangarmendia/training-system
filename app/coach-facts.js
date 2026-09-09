@@ -735,30 +735,47 @@ function _trajWeight(ctx) {
  * grasa). Null si nunca se ha conectado la báscula: el modelo no debe inventar composición.
  */
 function _trajScale(ctx) {
+  const COMP = ['fatPct', 'ffmKg', 'fatMassKg', 'muscleKg', 'waterKg', 'boneKg', 'visceralFat', 'bmrKcal', 'metabolicAge', 'heartRateBpm'];
   const rows = (ctx.bodyweight || [])
-    .filter(r => r && r.source === 'withings' && _cfDate(r.date))
+    .filter(r => r && r.source === 'withings' && _cfDate(r.date) && (_n(r.weight) != null || COMP.some(k => _n(r[k]) != null)))
     .sort((a, b) => String(a.date).localeCompare(String(b.date)));
   if (!rows.length) return null;
-  const last = rows[rows.length - 1];
+  // La última lectura CON composición: una fila de sólo pulso (Withings manda el pulso en un grupo
+  // aparte, 2026-09-09) no describe el cuerpo y no puede ser "lo que dice la báscula".
+  const withComp = rows.filter(r => _n(r.fatPct) != null || _n(r.ffmKg) != null);
+  const last = withComp.length ? withComp[withComp.length - 1] : rows[rows.length - 1];
   const pick = (r, k, rnd) => { const v = _n(r[k]); return v == null ? null : (rnd ? rnd(v) : v); };
-  const in28 = rows.filter(r => { const dd = _cfDiff(r.date, ctx.todayStr); return dd != null && dd >= 0 && dd < FACTS_LONG_WINDOW_DAYS; });
+  const inDays = (list, n) => list.filter(r => { const dd = _cfDiff(r.date, ctx.todayStr); return dd != null && dd >= 0 && dd < n; });
+  const in28 = inDays(withComp.length ? withComp : rows, FACTS_LONG_WINDOW_DAYS);
+  const in7 = inDays(in28, 7);
   const firstIn28 = in28.length ? in28[0] : null;
-  const fatNow = pick(last, 'fatPct', _rBw), fatThen = firstIn28 ? pick(firstIn28, 'fatPct', _rBw) : null;
   const spanOk = firstIn28 && _cfDiff(firstIn28.date, last.date) >= 21;
+  const delta = (k) => (spanOk && pick(last, k) != null && pick(firstIn28, k) != null) ? _rBw(pick(last, k) - pick(firstIn28, k)) : null;
+  const fat7 = in7.map(r => _n(r.fatPct)).filter(v => v != null);
   return {
     date: last.date,
     daysAgo: _cfDiff(last.date, ctx.todayStr),
-    fatPct: fatNow,
+    weightKg: pick(last, 'weight', _rBw),
+    fatPct: pick(last, 'fatPct', _rBw),
+    fatMassKg: pick(last, 'fatMassKg', _rBw),
     ffmKg: pick(last, 'ffmKg', _rBw),
     muscleKg: pick(last, 'muscleKg', _rBw),
+    waterKg: pick(last, 'waterKg', _rBw),
+    boneKg: pick(last, 'boneKg', _rBw),
     visceralFat: pick(last, 'visceralFat'),
     bmrKcal: pick(last, 'bmrKcal', (v) => Math.round(v)),
     metabolicAge: pick(last, 'metabolicAge', (v) => Math.round(v)),
     heartRateBpm: pick(last, 'heartRateBpm', (v) => Math.round(v)),
     readings28d: in28.length,
-    fatPctDelta28d: (spanOk && fatNow != null && fatThen != null) ? _rBw(fatNow - fatThen) : null,
-    ffmKgDelta28d: (spanOk && pick(last, 'ffmKg') != null && pick(firstIn28, 'ffmKg') != null)
-      ? _rBw(pick(last, 'ffmKg') - pick(firstIn28, 'ffmKg')) : null,
+    readings7d: in7.length,
+    // Media de 7 días del % de grasa cuando hay ≥3 lecturas: la bioimpedancia oscila a diario y
+    // el día suelto no es señal (misma regla que la tarjeta de Stats › Body).
+    fatPct7dAvg: fat7.length >= 3 ? _rBw(_mean(fat7)) : null,
+    // Deltas sólo con ≥21 días entre la primera lectura de la ventana y la última.
+    deltaFrom: spanOk ? firstIn28.date : null,
+    fatPctDelta28d: delta('fatPct'),
+    fatMassKgDelta28d: delta('fatMassKg'),
+    ffmKgDelta28d: delta('ffmKg'),
   };
 }
 
@@ -3411,6 +3428,27 @@ function mergeProposal(activePlan, proposal) {
   const sessions = {};
   for (const [sid, s] of Object.entries(base.sessions || {})) sessions[sid] = s;   // intactas, misma referencia
 
+  // Los campos de LIBRERÍA de un ejercicio (`muscle`, `name`, `db`, `bw`, `measure`,
+  // `movementPattern`) no viajan en el contrato de salida: el coach devuelve id, series, reps, RPE y
+  // objetivo. Sin heredarlos del plan base, una sesión propuesta llegaba al validador con todos sus
+  // ejercicios sin `muscle` y VOL-CAP los contaba como "otros" (19 series → duro falso), mientras el
+  // recuento real por músculo quedaba corto (2026-09-09, primera revisión manual). El ejercicio del
+  // mismo id se busca primero en la misma sesión y después en cualquier sesión del plan; lo que la
+  // propuesta trae explícito (p. ej. un `muscle` re-etiquetado) gana.
+  const LIB_FIELDS = ['muscle', 'name', 'db', 'bw', 'measure', 'movementPattern'];
+  const baseExById = {};
+  for (const s of Object.values(base.sessions || {})) {
+    for (const ex of (s && s.exercises) || []) if (ex && ex.id && !baseExById[ex.id]) baseExById[ex.id] = ex;
+  }
+  const inherit = (ex, prevSession) => {
+    if (!ex || !ex.id) return ex;
+    const same = ((prevSession && prevSession.exercises) || []).find(e => e && e.id === ex.id) || baseExById[ex.id];
+    if (!same) return ex;
+    const out = Object.assign({}, ex);
+    for (const k of LIB_FIELDS) if (out[k] == null && same[k] != null) out[k] = same[k];
+    return out;
+  };
+
   const touched = [];
   const stripped = [];
   for (const ps of (prop.sessions || [])) {
@@ -3420,6 +3458,7 @@ function mergeProposal(activePlan, proposal) {
     if (Object.prototype.hasOwnProperty.call(merged, 'warmup')) { delete merged.warmup; stripped.push(ps.id); }
     merged.id = ps.id;
     if (!merged.name) merged.name = prev.name || ps.id;
+    if (Array.isArray(ps.exercises)) merged.exercises = ps.exercises.map(ex => inherit(ex, prev));
     sessions[ps.id] = merged;
     touched.push(ps.id);
   }

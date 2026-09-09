@@ -111,6 +111,10 @@ const threePoints = render([
 // se ejecuten sin reventar, y que el payload que llega a smartPut sea el correcto.
 {
   const FN_SRC = SRC.slice(SRC.indexOf('const WAIST_MIN_DELTA_DAYS'), j);
+  // v11.69: el prefill del peso pasa por `_bwWeighIns` (filas CON peso, ascendentes), que vive junto a
+  // `getBodyweightLatest` y no dentro de la rebanada de arriba. Se trae tal cual: es el mismo código.
+  const BW_SRC = SRC.slice(SRC.indexOf('function _bwWeighIns(rows)'), SRC.indexOf('// Avg RPE across all done sets'));
+  if (!BW_SRC.startsWith('function _bwWeighIns')) { bad('no se pudo localizar _bwWeighIns en app.js'); }
 
   const el = (id) => ({
     id, value: '', innerHTML: '', _listeners: {},
@@ -140,7 +144,7 @@ const threePoints = render([
   };
   sandbox.globalThis = sandbox;
   vm.createContext(sandbox);
-  vm.runInContext(`${FN_SRC}; globalThis.__render = renderBodyCompEstimator;`, sandbox);
+  vm.runInContext(`${BW_SRC}; ${FN_SRC}; globalThis.__render = renderBodyCompEstimator;`, sandbox);
 
   await sandbox.__render();
 

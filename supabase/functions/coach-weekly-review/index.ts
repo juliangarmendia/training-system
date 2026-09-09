@@ -104,6 +104,11 @@ const ROUND_KG = 1.25;
 // "por qué cambia o por qué sigue igual"; `weekSummary` lleva UNA fila por sesión del plan.
 const MAX_FOCUS = 160;
 const MAX_WHY = 600;
+// Voz (2026-09-09): la concisión se PIDE en el prompt (≤900 / ≤1.400) y se MIDE aquí con margen.
+// No se recorta —truncar markdown rompe las cabeceras que la app busca—; se anota en `sanitized`
+// para que una revisión que vuelve a ser un informe se vea como tal en la fila y en la app.
+const VERBOSE_LASTWEEK = 1500;
+const VERBOSE_NEXTWEEK = 2500;
 const MAX_LASTWEEK_BULLETS = 3;
 const MAX_WEEK_SUMMARY = 12;
 const MAX_SUMMARY_LINE = 160;
@@ -829,6 +834,12 @@ function sanitizeOutput(
     const text = briefing[field];
     const missing = headers.filter((h) => !text.includes(h));
     if (missing.length) sanitized.push(`briefing.${field} is missing the sections: ${missing.join(", ")}`);
+  }
+  if (briefing.lastWeek.length > VERBOSE_LASTWEEK) {
+    sanitized.push(`briefing.lastWeek is ${briefing.lastWeek.length} characters (the voice guide asks for ≤900): this reads as a report, not a review`);
+  }
+  if (briefing.nextWeek.length > VERBOSE_NEXTWEEK) {
+    sanitized.push(`briefing.nextWeek is ${briefing.nextWeek.length} characters (the voice guide asks for ≤1,400): this reads as a report, not a review`);
   }
 
   // Los `dataGaps` del pack tienen que aparecer literalmente en el briefing (ethos).

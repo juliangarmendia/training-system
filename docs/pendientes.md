@@ -609,3 +609,19 @@ un test, no la lectura del código.
 - Hallazgo de la semilla: `box-jump` etiquetado `Quads` infla el recuento a 16 series/semana; la
   propuesta lo re-etiqueta `Power` en Lower A. Si se aplica, considerar arreglarlo también en
   `IDEAL_BLOCK_V1` para las próximas regeneraciones del plan.
+
+## v11.69 (2026-09-09) — Withings completo, voz del coach, modo manual
+
+- **Hecho:** `groupByDay` compone la fila con todos los grupos del día (el pulso ya no esconde el
+  peso: "NaN kg" arreglado, 30 días resincronizados); tarjeta "Withings Body Smart" en Stats › Body
+  (10 métricas, deltas ≥7 d, línea de recomposición); `trajectory.weight.scale` con masa grasa, agua,
+  hueso, media 7 d y deltas 28 d; bloque `VOZ` en el prompt + avisos de longitud en `sanitized`;
+  `mergeProposal` hereda `muscle`/`name`/`db`/`bw` del plan base (duro `VOL-CAP` falso); modo manual
+  del coach (`coachReviewMode`, fila `requested`, `scripts/coach-manual-review.mjs`).
+- **Pendiente de Julian:** poner "Who writes the weekly review" en *Manual* si quiere que W38 la haga
+  la sesión sin API; el domingo 13, "Close the week" deja la fila `requested` y aquí se corre
+  `/coach-manual-run`. Con *API* la función lo hace sola.
+- **Pendiente dev:** la media de 7 días de % grasa y masa grasa en la tarjeta de Home (hoy sólo en
+  Stats › Body y en el pack); exportar la composición al CSV ya está. Considerar `fatMassKg7dAvg`
+  en el piloto del déficit cuando haya ≥14 días de báscula (REC-002 lee peso; la Body Smart permite
+  leer grasa).

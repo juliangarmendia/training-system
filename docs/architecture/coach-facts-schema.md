@@ -214,7 +214,7 @@ trajectory: {
             slopeSinceStartKgPerWeek: -0.7, slopeUsedForEta: '28d'|'sinceStart'|null,
             weeksToMilestoneAtCurrentSlope: 5.6, weeksToTargetAtCurrentSlope: 7,
             scale: { date, daysAgo, fatPct, ffmKg, muscleKg, visceralFat, bmrKcal, metabolicAge,
-                     heartRateBpm, readings28d, fatPctDelta28d, ffmKgDelta28d } | null,
+                     heartRateBpm, readings28d, fatPctDelta28d, ffmKgDelta28d, fatMassKgDelta28d, fatPct7dAvg, readings7d, deltaFrom, weightKg, fatMassKg, waterKg, boneKg } | null,
             note },
   anchors: [{ id, name, kind: 'load'|'bw', first: {date,kg,reps,e1rm}, best: {…},
               latest: {…, outcome}, exposures, exposures12w, daysSinceLast,

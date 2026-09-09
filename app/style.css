@@ -1106,6 +1106,23 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
   vertical-align: middle;
 }
 
+/* ========== Withings Body Smart · composición (2026-09-09) ==========
+   Una tarjeta, una rejilla de 2 columnas y una línea de recomposición. Cada tile es el ÚLTIMO
+   valor con su delta contra la primera lectura a ≥7 días dentro de 28: la bioimpedancia oscila a
+   diario, así que el delta se lee sobre días, no sobre la pesada anterior. */
+.wcomp-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+.wcomp-title { font-size: 13px; font-weight: 600; }
+.wcomp-meta { font-size: 11px; color: var(--text3); font-variant-numeric: tabular-nums; }
+.wcomp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.wcomp-stat { background: var(--surface2, rgba(255,255,255,0.04)); border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; min-height: 54px; display: flex; flex-direction: column; justify-content: center; }
+.wcomp-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text2); margin-bottom: 2px; }
+.wcomp-val { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.wcomp-val .wcomp-unit { font-size: 11px; font-weight: 500; color: var(--text2); margin-left: 2px; }
+.wcomp-delta { font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; margin-top: 1px; }
+.wcomp-delta.muted { color: var(--text3); font-weight: 500; }
+.wcomp-recomp { margin-top: 10px; font-size: 12px; line-height: 1.5; color: var(--text2); }
+.wcomp-recomp b { color: var(--text); }
+
 /* ========== Daily Steps card ========== */
 .steps-row { display: flex; align-items: center; gap: 14px; }
 .steps-ring { flex-shrink: 0; }

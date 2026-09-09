@@ -428,6 +428,18 @@ yes(/\(no priority — the coach did not give one\)/.test(INDEX), 'y la priorida
 }
 
 console.log('');
+console.log('10c. Prompt: la voz del coach (petición de Julian, 2026-09-09)');
+// "Conciso pero thoughtful, como haría un coach profesional": la primera revisión era un informe
+// que repetía las mismas cifras en cada sección. La voz vive en el prefijo estático (cacheable).
+yes(/const VOZ = `# Cómo escribes/.test(PROMPT), 'existe el bloque VOZ');
+yes(/ETHOS,\s*VOZ,\s*PROCEDIMIENTO/.test(PROMPT_CODE), 'y va en SYSTEM_STATIC entre el ethos y el procedimiento');
+yes(/Veredicto primero, dato después/.test(PROMPT), 'veredicto primero');
+yes(/Cada número una vez, donde decide/.test(PROMPT), 'cada número una vez');
+yes(/≤900 caracteres/.test(PROMPT) && /≤1\.400 caracteres/.test(PROMPT), 'longitudes recomendadas para lastWeek y nextWeek');
+yes(/Mal \(registro\)/.test(PROMPT) && /Bien \(coach\)/.test(PROMPT), 'con el ejemplo malo → bueno');
+yes(/fatMassKgDelta28d/.test(PROMPT) && /fatPct7dAvg/.test(PROMPT), 'el paso 2b lee la composición completa de la báscula (masa grasa, media 7 d)');
+
+console.log('');
 console.log('11. Prompt: estructura cacheable y contrato de salida');
 yes(/export const SYSTEM_STATIC/.test(PROMPT), 'SYSTEM_STATIC construido al cargar el módulo');
 yes(/export function buildDynamicSystem/.test(PROMPT), 'y lo del request en buildDynamicSystem');
