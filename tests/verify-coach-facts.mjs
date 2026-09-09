@@ -968,5 +968,18 @@ if (empty) {
   eq(empty.confidence.overall, 'none', 'confianza "none": no hay nada sobre lo que decidir');
 }
 
+
+// ---- v11.70 (D-1) · wellness.weightMeasured lleva su origen ----
+// El espejo de Withings escribe `weightMeasured` + `weightSource:'withings'` en wellness. Etiquetarlo
+// 'intervals.icu' fijo contaba dos básculas donde había una.
+{
+  const wl = WELLNESS.map(w => Object.assign({}, w));
+  wl[3] = Object.assign({}, wl[3], { weightMeasured: 86.1, weightSource: 'withings' });
+  const fx = buildCoachFacts(mkInput({ stores: Object.assign({}, mkInput().stores, { wellness: wl, bodyweight: BODYWEIGHT.filter(r => r.date !== wl[3].date) }) }), DEPS);
+  const src = fx.progress.weight.measuredSources28d || {};
+  eq(src.withings, 1, 'un weightMeasured de wellness con weightSource withings cuenta como withings, no intervals.icu');
+  ok(Object.values(src).reduce((a, b) => a + b, 0) === fx.progress.weight.nMeasured28, 'y measuredSources28d suma exactamente nMeasured28');
+}
+
 console.log(`\n${fail === 0 ? 'TODO OK' : `${fail} FALLOS`}`);
 process.exit(fail === 0 ? 0 : 1);

@@ -205,9 +205,14 @@ eq(SESSIONS.length, 9, 'las 9 sesiones del plan se cargan');
     ? ok("los saltos se agregan en la fila 'Power', no como series de cuádriceps")
     : bad('los saltos siguen contando como volumen de cuádriceps (+71% el 3-sep)');
 
-  // El PLAN conserva muscle:'Quads' a propósito: alimenta data-swap-muscle.
+  // v11.70 (L-1): el PLAN dice lo que el ejercicio ES ('Power'); el swap sigue teniendo alternativas
+  // porque EXERCISE_ALTERNATIVES tiene la familia 'Power'. Con 'Quads', VOL-CAP contaba 16 series.
   const bj = PLAN.sessions.lowerA.exercises.find(e => e.id === 'box-jump');
-  eq(bj.muscle, 'Quads', "box-jump mantiene muscle:'Quads' en el PLAN, para que el swap tenga alternativas");
+  eq(bj.muscle, 'Power', "box-jump lleva muscle:'Power' en el PLAN (no es volumen de cuádriceps)");
+  const altM = SRC.match(/'Power': \[([\s\S]*?)\]/);
+  (altM && /'box-jump'/.test(altM[1]))
+    ? ok("y EXERCISE_ALTERNATIVES tiene la familia 'Power' con el box jump: el swap sigue teniendo alternativas")
+    : bad("EXERCISE_ALTERNATIVES no tiene 'Power': el swap del box jump se quedaría sin alternativas");
 
   const mi = SRC.indexOf('const MOVEMENT_PATTERNS');
   /'box-jump':\s*'plyometric'/.test(SRC.slice(mi, mi + 4000))

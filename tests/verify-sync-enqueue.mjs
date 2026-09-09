@@ -106,6 +106,27 @@ const SYNCALL_SRC = slice('async function syncAll() {', 'const lastSync', 'syncA
 yes(/if \(!supabaseClient \|\| !navigator\.onLine\) return;/.test(SYNCALL_SRC),
   'syncAll() sigue saliendo sin cliente / sin red');
 
+
+// ── v11.70 (C-4) · la marca de agua del pull: reloj del servidor, con solapo ────────────────
+console.log('');
+console.log('v11.70 · _syncNextWatermark: máximo updated_at visto − 60 s, nunca el reloj del teléfono');
+{
+  const _yes = (c, m) => { if (c) console.log(`  ok   ${m}`); else { console.log(`  FAIL ${m}`); failed++; } };
+  const i = SYNC.indexOf('function _syncNextWatermark(');
+  const j = SYNC.indexOf('\n}\n', i);
+  _yes(i > 0, 'existe _syncNextWatermark()');
+  const c3 = {};
+  vm.createContext(c3);
+  vm.runInContext(`const SYNC_WATERMARK_OVERLAP_MS = 60_000;\n${SYNC.slice(i, j + 2)}\nglobalThis.__wm = _syncNextWatermark;`, c3);
+  _yes(c3.__wm('2026-09-09T10:00:00.000Z', '2026-09-09T12:00:00.000Z') === '2026-09-09T11:59:00.000Z', 'con filas vistas: máximo updated_at − 60 s');
+  _yes(c3.__wm('2026-09-09T10:00:00.000Z', null) === '2026-09-09T10:00:00.000Z', 'sin filas nuevas: la marca no avanza (no se pierde nada por releer)');
+  _yes(c3.__wm('2026-09-09T10:00:00.000Z', '2026-09-09T10:00:30.000Z') === '2026-09-09T10:00:00.000Z', 'una fila dentro del solapo no retrocede la marca');
+  _yes(c3.__wm(null, '2026-09-09T12:00:00.000Z') === '2026-09-09T11:59:00.000Z', 'primer pull: la marca es la del servidor');
+  _yes(/data: _syncNextWatermark\(since, _pullMaxUpdatedAt\)/.test(SYNC), 'syncAll() escribe lastSyncTimestamp con la marca calculada');
+  _yes(!/key: 'lastSyncTimestamp', data: new Date\(\)\.toISOString\(\)/.test(SYNC), 'y ya no con new Date() del teléfono');
+  _yes(/_pullMaxUpdatedAt = String\(row\.updated_at\)/.test(SYNC), 'pullStore registra el máximo updated_at visto');
+}
+
 console.log('');
 console.log(failed === 0
   ? '✅ enqueueSync gatea por configuración: las escrituras del arranque llegan a la nube.'

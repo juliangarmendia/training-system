@@ -55,6 +55,18 @@ const MAX_WHY = 600;
 const MAX_SUMMARY_LINE = 160;
 const VERBOSE_LASTWEEK = 1500;
 const VERBOSE_NEXTWEEK = 2500;
+// v11.70 (C-3): los topes de SANEADO de `index.ts`. Antes el script validaba y no saneaba: un
+// `kg: 82.3` manual llegaba al plan tal cual y `suggestSetTarget` progresaba desde un peso que no
+// existe en discos. `verify-coach-manual-mode` compara cada uno con su gemelo de la función.
+const MAX_NOTE = 240;
+const N_PRIORITIES = 3;
+const MAX_CARDIO_SLOTS = 10;
+const MAX_DECISIONS = 12;
+const MAX_TEMPLATE_CHANGES = 7;
+const MAX_REQUESTED_DATA = 8;
+const ROUND_KG = 1.25;
+const MAX_LASTWEEK_BULLETS = 3;
+const MAX_WEEK_SUMMARY = 12;
 const VOICE_LASTWEEK = 900;
 const VOICE_NEXTWEEK = 1400;
 const VOICE_WHY = 350;
@@ -283,6 +295,62 @@ function template(pack) {
   };
 }
 
+// ── Saneado: lo que `sanitizeOutput` hace en la función, aquí ─────────────────────────
+// Devuelve una COPIA saneada y las notas (van a `sanitized[]` de la fila, como en la función).
+function sanitizeLite(raw, pack) {
+  const notes = [];
+  const o = JSON.parse(JSON.stringify(raw));
+  const b = o.briefing = o.briefing || {};
+  const p = o.proposal = o.proposal || {};
+  const clipS = (v, max) => { const t = String(v ?? ''); return t.length > max ? t.slice(0, max) : t; };
+  const roundKg = (v) => Math.round(Number(v) / ROUND_KG) * ROUND_KG;
+  const trim = (arr, max, label) => {
+    if (!Array.isArray(arr)) return arr;
+    if (arr.length > max) { notes.push(`${label}: ${arr.length} → keeping the first ${max}`); return arr.slice(0, max); }
+    return arr;
+  };
+  const sessionIds = new Set((pack?.allowed?.sessionIds) || []);
+
+  b.focus = clipS(b.focus, MAX_FOCUS);
+  b.whyChanged = clipS(b.whyChanged, MAX_WHY);
+  b.whyKept = clipS(b.whyKept, MAX_WHY);
+  b.lastWeekSummary = (trim(b.lastWeekSummary || [], MAX_LASTWEEK_BULLETS, 'lastWeekSummary')).map((l) => clipS(l, MAX_SUMMARY_LINE));
+  if (Array.isArray(b.priorities) && b.priorities.length > N_PRIORITIES) { notes.push(`priorities: ${b.priorities.length} → ${N_PRIORITIES}`); b.priorities = b.priorities.slice(0, N_PRIORITIES); }
+
+  o.decisions = trim(o.decisions || [], MAX_DECISIONS, 'decisions');
+  o.requestedData = trim(o.requestedData || [], MAX_REQUESTED_DATA, 'requestedData');
+  p.weekSummary = (trim(p.weekSummary || [], MAX_WEEK_SUMMARY, 'weekSummary')).map((w) => ({ ...w, line: clipS(w.line, MAX_SUMMARY_LINE) }));
+  p.sessions = trim(p.sessions || [], MAX_SESSIONS, 'sessions');
+  for (const sess of p.sessions) {
+    sess.exercises = trim(sess.exercises || [], MAX_EX_PER_SESSION, `${sess.id}.exercises`);
+    for (const ex of sess.exercises) {
+      if (!ex.target) continue;
+      if (ex.target.kg != null && Number.isFinite(Number(ex.target.kg))) {
+        const r = roundKg(ex.target.kg);
+        if (Math.abs(r - Number(ex.target.kg)) > 1e-9) { notes.push(`${sess.id}/${ex.id}: kg ${ex.target.kg} → ${r} (ROUND_KG ${ROUND_KG})`); ex.target.kg = r; }
+      }
+      if (String(ex.target.note ?? '').length > MAX_NOTE) { notes.push(`${sess.id}/${ex.id}: target.note clipped to ${MAX_NOTE}`); ex.target.note = clipS(ex.target.note, MAX_NOTE); }
+    }
+    for (const c of (sess.changes || [])) if (String(c.why ?? '').length > MAX_NOTE) { notes.push(`${sess.id}: change.why clipped`); c.why = clipS(c.why, MAX_NOTE); }
+  }
+  const cardioIn = Array.isArray(p.cardio) ? p.cardio : [];
+  p.cardio = cardioIn.filter((c) => {
+    const okDow = Number.isInteger(c?.dow) && c.dow >= 0 && c.dow <= 6;
+    const okDur = Number(c?.durationMin) > 0;
+    if (!okDow || !okDur) notes.push(`cardio slot dropped (dow ${c?.dow}, ${c?.durationMin} min)`);
+    return okDow && okDur;
+  }).map((c) => ({ ...c, note: clipS(c.note, MAX_NOTE) }));
+  p.cardio = trim(p.cardio, MAX_CARDIO_SLOTS, 'cardio');
+  const tplIn = Array.isArray(p.weekTemplateChanges) ? p.weekTemplateChanges : [];
+  p.weekTemplateChanges = trim(tplIn.filter((t) => {
+    const okDow = Number.isInteger(t?.dow) && t.dow >= 0 && t.dow <= 6;
+    const okSid = t?.type !== 'gym' || (t.sessionId && sessionIds.has(t.sessionId));
+    if (!okDow || !okSid) notes.push(`weekTemplateChanges entry dropped (dow ${t?.dow}, session ${t?.sessionId})`);
+    return okDow && okSid;
+  }).map((t) => ({ ...t, why: clipS(t.why, MAX_NOTE) })), MAX_TEMPLATE_CHANGES, 'weekTemplateChanges');
+  return { output: o, notes };
+}
+
 // ── Validación: contrato + validador de la función ───────────────────────────────────
 async function loadValidator() {
   const src = readFileSync(path.join(FN_DIR, 'coach-facts.generated.js'), 'utf8');
@@ -410,14 +478,16 @@ async function runValidator(output, pack) {
 
 async function validate(week) {
   if (!args.output) throw new Error('falta --output output.json');
-  const output = readJson(args.output);
   const pack = await buildPack(week);
+  const { output, notes: sanitizeNotes } = sanitizeLite(readJson(args.output), pack);
   const P = await import(pathToFileURL(path.join(FN_DIR, 'prompt.ts')).href);
   const { hard: cHard, soft } = contractIssues(output, pack, P.RULE_IDS);
+  for (const n of sanitizeNotes) soft.unshift(`sanitized: ${n}`);
   const { guardrails, structural } = await runValidator(output, pack);
   const hard = guardrails.filter((g) => g.level === 'hard');
   const warn = guardrails.filter((g) => g.level === 'warn');
   console.log(`validate ${week} · pack: ${pack.source}`);
+  console.log(`  saneado: ${sanitizeNotes.length ? sanitizeNotes.length + ' correcciones' : 'nada que tocar'}`);
   console.log(`  contrato: ${cHard.length ? cHard.length + ' fallos' : 'ok'}`);
   for (const x of cHard) console.log(`    ✗ ${x}`);
   console.log(`  voz: ${soft.length ? soft.length + ' avisos' : 'ok'}`);
@@ -447,7 +517,7 @@ async function cmdWrite() {
   const prev = r.pack.row ? r.pack.row.data : null;
   const id = (r.pack.row && r.pack.row.record_id) || `${week}#${r.pack.rows.length + 1}`;
   const attempt = Number(String(id).split('#')[1]) || 1;
-  const sanitized = [...r.soft.map((s) => `voice: ${s}`)];
+  const sanitized = r.soft.map((s) => (s.startsWith('sanitized: ') ? s.slice('sanitized: '.length) : `voice: ${s}`));
   const data = {
     id, weekKey: week, attempt, status: 'proposed',
     createdAt: prev?.createdAt ?? nowIso, updatedAt: nowIso, requestedAt: prev?.requestedAt ?? null,

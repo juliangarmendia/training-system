@@ -440,6 +440,16 @@ yes(/Mal \(registro\)/.test(PROMPT) && /Bien \(coach\)/.test(PROMPT), 'con el ej
 yes(/fatMassKgDelta28d/.test(PROMPT) && /fatPct7dAvg/.test(PROMPT), 'el paso 2b lee la composición completa de la báscula (masa grasa, media 7 d)');
 
 console.log('');
+console.log('10d. Prompt: el piloto del déficit (v11.70, F-4/F-5)');
+// EL FALLO: el paso 6 ordenaba "−200 kcal" y los guardarraíles duros (KCAL-STEP ≤150, KCAL-FLOOR en
+// 2.700/2.400 = el objetivo actual) lo hacían imposible; y pilotaba sólo con el peso teniendo la
+// composición de Withings en el pack.
+yes(!/−200 kcal/.test(PROMPT), 'ya no ordena −200 kcal (G-H14 no permite más de 150)');
+yes(/primero el GASTO/.test(PROMPT), 'la palanca declarada en el suelo es el gasto (pasos REC-009, minutos END-009)');
+yes(/fatMassKgDelta28d ≤ −0,5/.test(PROMPT) && /ffmKgDelta28d ≥ −0,3/.test(PROMPT), 'veto por recomposición: grasa que baja con FFM que aguanta no es estancamiento');
+yes(/está exactamente en ese suelo/.test(PROMPT), 'y dice que hoy el objetivo está en el suelo');
+
+console.log('');
 console.log('11. Prompt: estructura cacheable y contrato de salida');
 yes(/export const SYSTEM_STATIC/.test(PROMPT), 'SYSTEM_STATIC construido al cargar el módulo');
 yes(/export function buildDynamicSystem/.test(PROMPT), 'y lo del request en buildDynamicSystem');

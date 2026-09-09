@@ -77,7 +77,11 @@ Deno.serve(async (req) => {
       ? null
       : String(payload.user_id);
     const externalId = payload.id === undefined || payload.id === null ? null : String(payload.id);
-    const traceId = payload.trace_id ? String(payload.trace_id) : null;
+    // v11.70 (C-9): sin `trace_id` la clave del índice único era NULL y cada uno de los cinco
+    // reintentos de WHOOP era una fila y un sync distintos. Clave sintética, como hace Withings.
+    const traceId = payload.trace_id
+      ? String(payload.trace_id)
+      : `${type}:${externalUserId}:${externalId ?? "noid"}`;
     if (!type || !externalUserId) return json({ error: "Payload incompleto" }, 400);
 
     const supa = serviceClient();

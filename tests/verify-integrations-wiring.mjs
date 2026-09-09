@@ -566,7 +566,7 @@ yes(/readinessSource === 'whoop'/.test(IFW),
     "intervalsFetchWellness guarda la precedencia: `readinessSource === 'whoop'` manda");
 yes(/WHOOP_OWNED_KEYS/.test(WHOOPJS) && /'sleepRemSecs'/.test(WHOOPJS),
     'con la lista de claves de WHOOP declarada y testeable');
-yes(/_whoopRowsEqual\(compact, prev\)/.test(IFW),
+yes(/_whoopRowsEqual\((compact|merged), prev\)/.test(IFW),
     'y no reescribe una fila idéntica (mata el churn de updated_at en cada render)');
 yes(/source === 'withings'/.test(IFW),
     'ni escribe un bodyweight sobre una pesada de la báscula Withings');
@@ -669,6 +669,26 @@ yes(/_bwSourcePill/.test(APPJS), 'hay una pill de origen para la fila de bodywei
 yes(/e\.source !== 'withings'/.test(APPJS), 'que sólo se pinta cuando la fila es de la báscula');
 yes(/fatPct/.test(APPJS), 'y añade el % de grasa del dispositivo cuando viene');
 yes(/\.bw-source-pill/.test(read('app/style.css')), 'con su CSS');
+
+
+// ── v11.70 · S-1 strava-sync: el usuario del JWT, nunca del cuerpo · C-9 trace_id sintético ──
+console.log('');
+console.log('v11.70 · strava-sync no confía en body.user_id; strava.js llama con la sesión; WHOOP dedupe sin trace_id');
+{
+  const STRAVA_FN = read('supabase/functions/strava-sync/index.ts');
+  const STRAVAJS = read('app/strava.js');
+  const syncBody = STRAVA_FN.slice(STRAVA_FN.indexOf('if (action === "sync")'));
+  yes(/asUser\.auth\.getUser\(\)/.test(syncBody), 'sync: el usuario sale de asUser.auth.getUser() (patrón de whoop-sync)');
+  yes(!/user_id\s*\}\s*=\s*body/.test(STRAVA_FN) && !/body\.user_id/.test(STRAVA_FN), 'sync: body.user_id no se lee en ningún sitio');
+  yes((syncBody.match(/user_id: userId/g) || []).length >= 2, 'y los dos upserts (runs, sessions) escriben el userId del JWT');
+  yes(!/text\.substring\(0, 500\) \}/.test(STRAVA_FN) && !/\$\{text\.substring\(0, 200\)\}/.test(STRAVA_FN), 'los textos crudos de Strava/PostgREST ya no van al cliente');
+  yes(/import \{ createClient \} from "npm:@supabase\/supabase-js@2"/.test(STRAVA_FN), 'importa createClient para resolver la sesión');
+  yes(!/Bearer \$\{SUPABASE_ANON_KEY\}/.test(STRAVAJS), 'strava.js ya no manda la anon key como Authorization');
+  yes(/functions\.invoke\('strava-sync'/.test(STRAVAJS), 'strava.js llama con functions.invoke (JWT de la sesión)');
+  yes(!/user_id: user\.id/.test(STRAVAJS), 'y no manda user_id en el cuerpo');
+  yes(/payload\.trace_id\s*\?\s*String\(payload\.trace_id\)\s*:\s*`\$\{type\}:\$\{externalUserId\}:/.test(HOOKFN),
+    'whoop-webhook: sin trace_id, clave sintética type:user:id (cinco reintentos = una fila)');
+}
 
 console.log(failed === 0 ? '\nTODO OK' : `\n${failed} FALLOS`);
 process.exit(failed === 0 ? 0 : 1);

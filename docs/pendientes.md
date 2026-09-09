@@ -625,3 +625,17 @@ un test, no la lectura del código.
   Stats › Body y en el pack); exportar la composición al CSV ya está. Considerar `fatMassKg7dAvg`
   en el piloto del déficit cuando haya ≥14 días de báscula (REC-002 lee peso; la Body Smart permite
   leer grasa).
+
+## Auditoría 2026-09-09 → v11.70 (2026-09-10) — P0 + datos + seguridad
+
+Informe y plan: `docs/audits/2026-09-09-app-audit.md` (83 hallazgos). **Hecho en v11.70:** `strava-sync` saca el usuario
+del JWT e ignora el `user_id` del cuerpo (S-1); el backup redacta `stepsSecret`/`intervalsIcuApiKey` y lleva `meals`/`foods`
+(S-2, D-2); la importación de intervals.icu conserva lo que escribió el servidor desde Withings (D-1) y el pack dice de qué
+báscula salen las pesadas (`measuredSources28d`); el box jump y el sled push son `Power` y los dos contadores de series los
+excluyen de VOL-CAP (L-1); aplicar un plan del coach ya no apaga run/walk, y los km/zona/nota del coach se pintan (L-2);
+"Backup completo" en inglés, toast multilínea, labels sticky bajo la barra de pestañas (V-1..V-3); marca de agua del pull
+con el reloj del servidor (C-4); autosave con dueño (C-5); dedupe de WHOOP sin `trace_id` (C-9); Regenerate pide la
+semana objetivo y el modo manual retoma el polling (F-16); el script manual SANEA como la función (C-3); paso 6 del
+prompt: en el suelo la palanca es el gasto y la báscula veta por recomposición (F-4/F-5). **Pendiente:** v11.71 motores y
+pack · v11.72 UX · fn v5 servidor · v11.73 código y tests, en ese orden, según el informe. La comprobación en vivo de
+`strava-sync` con la anon key (esperado 401) no se ejecutó desde la sesión: hacerla desde el iPhone o con curl.

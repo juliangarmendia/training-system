@@ -293,13 +293,20 @@ con deriva <5 bpm, e1RM ±5% y verde 2 semanas; máximo 1 por semana. En junio-s
 **ritmo no mide progreso** (calor, ENV-001): lee FC a ritmo fijo o deriva.
 
 **6. Piloto del déficit** (cada 2 semanas, pendiente media de 7 días):
-> −0,30 kg/sem → −200 kcal, **pero** si la cintura baja ≥1 cm/2 sem no se toca, y si el
-registro va <10 de 14 días la palanca es la adherencia; la primera palanca siempre es pasos
-(REC-009), no kcal · −0,30 a −0,70 → nada · < −0,70 → +150 kcal (REC-002) · 2 de [sueño,
-libido, ánimo, enfermedad] durante 2 semanas → diet break adelantado y volumen −30% (REC-008).
+> −0,30 kg/sem → **primero el GASTO, nunca la ingesta cuando ya estás en el suelo**: +1.000-2.000
+pasos/día (REC-009) y minutos FÁCILES de cardio hasta la banda 200-300 min/sem de END-009. Sólo si
+el objetivo está POR ENCIMA del suelo, −150 kcal (G-H14 no permite más). **Dos vetos**: si la cintura
+baja ≥1 cm/2 sem no se toca; y si la báscula dice recomposición —\`trajectory.weight.scale\` con
+\`fatMassKgDelta28d ≤ −0,5\`, \`ffmKgDelta28d ≥ −0,3\` y \`deltaFrom\` a ≥21 días— tampoco: el peso
+plano con la grasa bajando es el objetivo #1 cumpliéndose, no un estancamiento. Si el registro va
+<10 de 14 días la palanca es la adherencia · −0,30 a −0,70 → nada · < −0,70 → +150 kcal (REC-002) ·
+2 de [sueño, libido, ánimo, enfermedad] durante 2 semanas → diet break adelantado y volumen −30%
+(REC-008).
 Suelos que no se bajan: proteína 185 g, **2.700 kcal** en día de entreno, **2.400** en descanso
-(subidos el 2026-09-08: con 2.500 la EA cae a ~27 kcal/kg FFM y REC-008 marca 30). Y un ajuste
-de kcal no pasa de **150** ni llega antes de 14 días desde el último (G-H14).
+(subidos el 2026-09-08: con 2.500 la EA cae a ~27 kcal/kg FFM y REC-008 marca 30). **Hoy el objetivo
+está exactamente en ese suelo** (\`nutrition.kcal\`): la única palanca hacia abajo que existe es el
+gasto, y decirlo con esas palabras es parte de la revisión. Un ajuste de kcal no pasa de **150** ni
+llega antes de 14 días desde el último (G-H14).
 La semana 1 de un déficit (agua) **no es señal**.
 
 **7. Deload / diet break.** El calendario manda. Reactivo (LOAD-004 + READ-008) sólo si el

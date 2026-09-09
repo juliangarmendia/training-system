@@ -86,7 +86,7 @@ const PLAN = {
         // como "+kg" con placeholder 0 (el 3-sep quedo registrado como 0x5@6, donde el 0 es
         // ruido). Ahora esa columna mide la ALTURA DEL CAJON en cm, que es su variable de
         // progresion real. Ver `_MEASURE_EXERCISES`.
-        { id: 'box-jump', name: 'Box Jump', muscle: 'Quads', sets: 3, reps: '5', rpe: '-', defaultRest: 90, notes: 'Log the BOX HEIGHT in cm in the load column. Jump with maximal intent and **STEP DOWN**, never jump down: the landing is where injuries happen. If technique degrades, end the set.' },
+        { id: 'box-jump', name: 'Box Jump', muscle: 'Power', sets: 3, reps: '5', rpe: '-', defaultRest: 90, notes: 'Log the BOX HEIGHT in cm in the load column. Jump with maximal intent and **STEP DOWN**, never jump down: the landing is where injuries happen. If technique degrades, end the set.' },
         { id: 'back-squat', name: 'Barbell Back Squat', muscle: 'Quads', sets: 4, reps: '5-8', rpe: '7-8', defaultRest: 180, notes: 'Priority #1. Use rack safeties.', compound: true },
         { id: 'rdl', name: 'Barbell RDL', muscle: 'Hamstrings', sets: 3, reps: '8-10', rpe: '7', defaultRest: 150, notes: '3 sec eccentric. Stop at mid-shin.' },
         { id: 'hack-squat', name: 'Hack Squat', muscle: 'Quads', sets: 3, reps: '10-12', rpe: '7-8', defaultRest: 120, notes: 'Quad volume, no spinal load. Controlled depth.' },
@@ -249,7 +249,7 @@ const PLAN = {
         'SkiErg 1 min easy',
       ],
       exercises: [
-        { id: 'sled-push', name: 'Sled Push', muscle: 'Quads', sets: 6, reps: '20 m', rpe: '8', defaultRest: 90, notes: 'Continuous push, torso leaning in, short powerful steps. Purely concentric: almost no soreness, so it does not interfere with legs or running. Rest = walk back.', compound: true },
+        { id: 'sled-push', name: 'Sled Push', muscle: 'Power', sets: 6, reps: '20 m', rpe: '8', defaultRest: 90, notes: 'Continuous push, torso leaning in, short powerful steps. Purely concentric: almost no soreness, so it does not interfere with legs or running. Rest = walk back.', compound: true },
         { id: 'ski-erg', name: 'SkiErg', muscle: 'Back', sets: 5, reps: '250 m', rpe: '7-8', defaultRest: 60, notes: 'Pull from the core and hips, not just the arms. Zero impact: this is what you can do hard on tired legs.', compound: true },
         { id: 'farmer-carry', name: 'Farmer Carry', muscle: 'Core', sets: 4, reps: '40 m', rpe: '8', defaultRest: 90, notes: 'Heavy, torso solid, no leaning to one side. It is anti-lateral: core and grip. If the low back complains, drop the weight — not the distance.' },
       ]
@@ -551,6 +551,15 @@ function mobilityColorVars(color) {
 
 // Exercise alternatives by muscle group (for swapping)
 const EXERCISE_ALTERNATIVES = {
+  // v11.70 (L-1): la pliometría y el acondicionamiento dejan de etiquetarse 'Quads' en la semilla (el
+  // validador contaba el box jump como volumen de cuádriceps). El swap sigue teniendo alternativas: las
+  // suyas, no las de sentadilla.
+  'Power': [
+    { id: 'box-jump', name: 'Box Jump' },
+    { id: 'broad-jump', name: 'Broad Jump' },
+    { id: 'pogo-hops', name: 'Pogo Hops' },
+    { id: 'sled-push', name: 'Sled Push' },
+  ],
   'Chest': [
     { id: 'bench-press', name: 'Barbell Bench Press' },
     { id: 'incline-press', name: 'Incline Chest Press' },
@@ -3696,7 +3705,7 @@ async function startWorkout(sessionId, opts = {}) {
 
   // Event: per-exercise notes auto-save
   container.querySelectorAll('.ex-note').forEach(textarea => {
-    textarea.addEventListener('input', () => saveActiveWorkout());
+    textarea.addEventListener('input', () => _autosaveWorkout());
   });
 
   // Event: RPE color on change + auto-save
@@ -3711,13 +3720,13 @@ async function startWorkout(sessionId, opts = {}) {
         row.style.borderLeft = '';
         select.style.color = '';
       }
-      saveActiveWorkout();
+      _autosaveWorkout();
     });
   });
 
   // Auto-save on weight/reps input change
   container.querySelectorAll('[data-field="weight"], [data-field="reps"]').forEach(input => {
-    input.addEventListener('change', () => saveActiveWorkout());
+    input.addEventListener('change', () => _autosaveWorkout());
   });
 
   // Event: tappable exercise names
@@ -4272,6 +4281,20 @@ function captureWorkoutState() {
     // el registro tiene que decir eso y no el verde que llegó a mediodía.
     readinessAtStart: state.activeReadiness ? JSON.parse(JSON.stringify(state.activeReadiness)) : null,
   };
+}
+
+// v11.70 (C-5): el autoguardado del entreno en curso colgaba de `input`/`change` sin `catch`. Un
+// fallo de IndexedDB (cuota, VersionError, pestaña bloqueada) era un rechazo sin dueño por pulsación
+// y el borrador dejaba de persistir EN SILENCIO — el dato más caro de perder de la app. Un toast, una
+// sola vez por sesión: el segundo fallo ya no es noticia, y el aviso en cada tecla sería ruido.
+let _autosaveWarned = false;
+function _autosaveWorkout() {
+  Promise.resolve().then(() => saveActiveWorkout()).catch((e) => {
+    console.warn('[workout] autosave:', e);
+    if (_autosaveWarned) return;
+    _autosaveWarned = true;
+    if (typeof toast === 'function') toast('Could not save the workout draft. Check storage and try again.');
+  });
 }
 
 async function saveActiveWorkout() {
@@ -8380,6 +8403,25 @@ function _coachCardioMin(jsDay, field) {
   return (v != null && isFinite(Number(v))) ? Number(v) : null;
 }
 
+/** El cardio que el COACH escribió para este día de la semana, si sigue vigente (misma ventana que
+ *  los kg, E-4). `source: 'seed'` no es una prescripción con fecha y no cuenta como del coach. */
+function _coachCardioSlot(jsDay) {
+  if (!activePlan || !activePlan.weekTemplate) return null;
+  const d = activePlan.weekTemplate[jsDay];
+  const c = d && d.cardio;
+  if (!c || c.source === 'seed') return null;
+  return _coachPlanTargetsAreCurrent() ? c : null;
+}
+
+/** ¿Tiene el coach la semana de carrera ENTERA (`running.plan[]` con slots) y sigue vigente? Sólo en
+ *  ese caso la regla no entra en los días sin cardio del coach. Los tres números de `running`
+ *  (`weeklyKmTarget`, `longRunKm`, `hardSessions`) no son un plan de días. */
+function _coachRunningPlanIsCurrent() {
+  const r = activePlan && activePlan.running;
+  if (!r || !Array.isArray(r.plan) || !r.plan.length) return false;
+  return _coachPlanTargetsAreCurrent();
+}
+
 // ==================== CARRERA DE LA SEMANA: FALLBACK DETERMINISTA (v11.60) ====================
 //
 // EL PROBLEMA QUE RESUELVE. El plan vivo trae "Cardio Z2 40'" el miércoles y "Cardio calidad
@@ -8624,10 +8666,25 @@ async function getPlannedSessionForDate(date) {
       const base = slot.durationMin || null;
       const p = await prog(base, _coachCardioMin(jsDay, 'durationMin'));
       const out = { type: 'run', date: ds, name: slot.label || 'Cardio Z2', subtitle: cardioSubtypeLabel(st), subtype: st, durationMin: p.min, baseMin: base, durationSource: p.source, durationNote: p.note, block: blk, summary: slot.summary || null, hrTarget: cardioHrTarget(st) };
-      // v11.60: la carrera de la semana. Coach > regla > base: si el coach fijó
-      // `activePlan.running` manda él y aquí no se entra; si no, la regla decide la fase
-      // (trote/caminata por tiempo, kilómetros, o listo para 10k) y pisa el resumen del slot.
-      if (!(activePlan && activePlan.running)) await _applyRunningWeekFallback(out, date, jsDay, p);
+      // v11.60: la carrera de la semana. Coach > regla > base.
+      //
+      // v11.70 (L-2). La puerta era `if (!(activePlan && activePlan.running))`, y el esquema del
+      // coach SIEMPRE devuelve `running{weeklyKmTarget, longRunKm, hardSessions}` — tres números
+      // que `mergeProposal` hereda en cada versión. Aplicar la primera propuesta apagaba para
+      // siempre el motor de run/walk (`3 × (3′ trote / 2′ caminata) · HR ≤143`), y los km/techo que
+      // el coach escribe en `weekTemplate[dow].cardio` no se leían: sólo `durationMin`. Ahora manda
+      // el coach cuando ESTE día tiene su cardio vigente (km, zona y nota se pintan), la regla
+      // decide la fase cuando no lo tiene, y un `running.plan[]` (que hoy nadie escribe) sería la
+      // única forma de que el coach se quede la semana entera.
+      const cc = _coachCardioSlot(jsDay);
+      if (cc) {
+        if (cc.distanceKm != null && isFinite(Number(cc.distanceKm))) out.distanceKm = Number(cc.distanceKm);
+        if (cc.hrZone) out.hrZone = cc.hrZone;
+        if (cc.note) out.summary = cc.note;
+        out.runningSource = 'coach';
+      } else if (!_coachRunningPlanIsCurrent()) {
+        await _applyRunningWeekFallback(out, date, jsDay, p);
+      }
       return out;
     }
     if (slot.type === 'recovery') {
@@ -9084,7 +9141,9 @@ function buildWeekTemplateFromIdeal(variantNum) {
 // 7 = v11.47 (Upper B de 7 a 5 ejercicios, con el core al principio).
 // 8 = v11.48 (calentamientos: fuera las rampas fijas de %, prep de overhead en upperB/fullB,
 //     bracing en lowerB, tobillo en lowerA; los pogo hops pasan de ejercicio a calentamiento).
-const PLAN_REV = 8;
+// 9 = v11.70 (box jump y sled push pasan de 'Quads' a 'Power': el validador contaba 16 series de
+//     cuádriceps a la semana cuando eran 13 y disparaba VOL-CAP en rojo en cada propuesta del coach).
+const PLAN_REV = 9;
 
 async function applyIdealPlan({ force = false } = {}) {
   const n = _idealVariant();
@@ -11119,7 +11178,25 @@ const BACKUP_STORES = [
   // Coach v2 (v11.55): las revisiones del coach y el registro de decisiones son el historial
   // de por qué el plan es como es. Un backup sin ellos deja el plan sin su explicación.
   'coach_reviews', 'decisions',
+  // v11.70 (D-2): nutrición v2. `meals` es el registro de comida que empieza el 2026-09-09 y `foods`
+  // la biblioteca con macros verificados. Faltaban aquí y sí estaban en la lista de sync: un restore
+  // los perdía. `verify-home-render` exige BACKUP_STORES ⊇ stores de sync (menos la cola).
+  'meals', 'foods',
 ];
+
+// v11.70 (S-2): el backup sale por la hoja de compartir de iOS (WhatsApp, correo, iCloud). Dos claves
+// de `settings/userSettings` son secretos operativos y no viajan: con `stepsSecret` cualquiera
+// escribe en `steps` vía steps-ingest; con la API key de intervals.icu se lee todo el histórico.
+const BACKUP_REDACT_KEYS = ['stepsSecret', 'intervalsIcuApiKey'];
+function _redactSettingsRows(rows) {
+  return (rows || []).map((row) => {
+    if (!row || !row.data || typeof row.data !== 'object' || Array.isArray(row.data)) return row;
+    if (!BACKUP_REDACT_KEYS.some((k) => k in row.data)) return row;
+    const data = Object.assign({}, row.data);
+    for (const k of BACKUP_REDACT_KEYS) delete data[k];
+    return Object.assign({}, row, { data });
+  });
+}
 
 async function exportJSON() {
   const data = {};
@@ -11127,7 +11204,7 @@ async function exportJSON() {
   for (const store of BACKUP_STORES) {
     try {
       const rows = await dbGetAll(store);
-      data[store] = rows || [];
+      data[store] = store === 'settings' ? _redactSettingsRows(rows || []) : (rows || []);
       counts[store] = (rows || []).length;
     } catch (e) {
       data[store] = [];
@@ -11662,7 +11739,7 @@ async function exportBackup() {
     workouts: await dbGetAll('workouts'),
     runs: await dbGetAll('runs'),
     nutrition: await dbGetAll('nutrition'),
-    settings: await dbGetAll('settings'),
+    settings: _redactSettingsRows(await dbGetAll('settings')),
   };
 
   const json = JSON.stringify(data, null, 2);

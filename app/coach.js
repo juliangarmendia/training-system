@@ -568,7 +568,7 @@ async function renderCoachGoalLine() {
 // LA VERSIÓN DE LA APP viaja al servidor (`clientVersion`) y al pack (`meta.appVersion`), que
 // es lo que permite luego saber qué código produjo una revisión rara.
 // `verify-coach-wiring.mjs` comprueba que coincide con la de index.html y con `CACHE_NAME`.
-const COACH_APP_VERSION = 'v11.69';
+const COACH_APP_VERSION = 'v11.70';
 
 const COACH_MAX_SESSION_IDS = 12;   // el tope que valida la edge function
 const COACH_MAX_EXERCISE_IDS = 150; // idem
@@ -943,7 +943,16 @@ async function maybeRunWeeklyCoach() {
     // v11.69: en modo manual la app NUNCA llama al modelo por su cuenta. La revisión la escribe
     // Claude Code desde la sesión (`scripts/coach-manual-review.mjs`) sobre la fila `requested`
     // que deja "Cerrar la semana"; abrir la app un lunes no puede costar $0,60 sin que nadie lo pida.
-    if (coachReviewMode() === 'manual') { _coachWeeklyTried = true; return; }
+    if (coachReviewMode() === 'manual') {
+      _coachWeeklyTried = true;
+      // Sin llamar a nadie, pero una fila `running` (de "Ask the model instead") se sigue vigilando:
+      // cerrar la app a mitad de la revisión no puede dejarla huérfana en la tarjeta.
+      const filas = (await dbGetAll('coach_reviews').catch(() => [])) || [];
+      const enMarcha = filas.find((r) => r && r.status === 'running'
+        && (r.weekKey === _cWeekKey(today()) || r.weekKey === _cTargetWeek(today())));
+      if (enMarcha) pollCoachReview(enMarcha.id);
+      return;
+    }
 
     const wk = _cWeekKey(today());
     const rows = await dbGetAll('coach_reviews').catch(() => []);
@@ -1949,12 +1958,12 @@ async function renderCoachWeekCard(opts = {}) {
         if (why === null) return;   // Cancelar no rechaza
         await rejectCoachProposal(review, (why || '').trim() || null);
       });
-      on('coach-week-regen', () => runWeeklyCoach({ weekKey: _cWeekKey(today()), regenerate: true }));
+      on('coach-week-regen', () => runWeeklyCoach({ weekKey: _cTargetWeek(today()), regenerate: true }));
       on('coach-week-ask-api', () => runWeeklyCoach({ weekKey: review.weekKey || _cTargetWeek(today()), force: true }));
       on('coach-week-regen-note', () => {
         const nota = (typeof prompt === 'function') ? prompt('What should it take into account? (one or two sentences)') : null;
         if (!nota) return;
-        return runWeeklyCoach({ weekKey: _cWeekKey(today()), userNote: nota.trim(), regenerate: true });
+        return runWeeklyCoach({ weekKey: _cTargetWeek(today()), userNote: nota.trim(), regenerate: true });
       });
       on('coach-week-undo', (e) => rollbackPlanVersion(e.currentTarget.dataset.plan));
     }
@@ -2213,7 +2222,7 @@ async function _coachRenderProposal(el, review) {
   on('coach-view-regen', () => {
     const nota = (typeof prompt === 'function') ? prompt('What should it take into account? (one or two sentences)') : null;
     if (!nota) return;
-    return runWeeklyCoach({ weekKey: _cWeekKey(today()), userNote: nota.trim(), regenerate: true });
+    return runWeeklyCoach({ weekKey: _cTargetWeek(today()), userNote: nota.trim(), regenerate: true });
   });
 }
 

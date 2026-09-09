@@ -37,6 +37,30 @@ function stravaMarkReconnect(reason) {
   localStorage.removeItem('strava_token_expiry');
 }
 
+
+// ==================== LLAMADA A LA FUNCIÓN ====================
+//
+// v11.70 (S-1). `functions.invoke` pone en `Authorization` el JWT de la sesión (o la anon key si no
+// hay sesión), que es lo que `strava-sync` valida con `asUser.auth.getUser()` en `sync`. Devuelve la
+// misma forma que tenía el `fetch` (`ok`, `status`, `data`) para no tocar a los llamadores. Sin
+// cliente de Supabase (arranque sin red) no hay a quién llamar y se dice.
+async function _stravaCall(body) {
+  const supa = (typeof getSupaClient === 'function') ? getSupaClient() : null;
+  if (!supa) return { ok: false, status: 0, data: { error: 'no cloud session' } };
+  try {
+    const { data, error } = await supa.functions.invoke('strava-sync', { body });
+    if (error) {
+      const status = (error.context && Number(error.context.status)) || 500;
+      let detail = error.message || 'strava-sync failed';
+      try { const j = error.context && typeof error.context.json === 'function' ? await error.context.json() : null; if (j && j.error) detail = j.error; } catch (e) { /* cuerpo no JSON */ }
+      return { ok: false, status, data: { error: detail } };
+    }
+    return { ok: !(data && data.error), status: 200, data: data || {} };
+  } catch (e) {
+    return { ok: false, status: 0, data: { error: (e && e.message) || 'network error' } };
+  }
+}
+
 // ==================== OAUTH ====================
 function stravaConnect() {
   if (STRAVA_CLIENT_ID === 'TODO_PASTE_CLIENT_ID_HERE') {
@@ -60,15 +84,8 @@ async function stravaRefreshToken() {
     return null;
   }
   try {
-    const res = await fetch(STRAVA_PROXY, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-      },
-      body: JSON.stringify({ action: 'refresh', refresh_token: refresh }),
-    });
-    const data = await res.json().catch(() => ({}));
+    const res = await _stravaCall({ action: 'refresh', refresh_token: refresh });
+    const data = res.data;
     if (!res.ok || data.error) {
       // Only mark reconnect on 401 (refresh token rejected). 400/403 transient.
       if (res.status === 401) {
@@ -116,20 +133,10 @@ async function stravaSync() {
   const sinceEpoch = Math.floor(sinceMs / 1000);
 
   try {
-    const res = await fetch(STRAVA_PROXY, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-      },
-      body: JSON.stringify({
-        action: 'sync',
-        access_token: token,
-        since_epoch: sinceEpoch,
-        user_id: user.id,
-      }),
-    });
-    const data = await res.json().catch(() => ({}));
+    // v11.70 (S-1): con la SESIÓN, no con la anon key. La función saca el usuario del JWT y ya no
+    // acepta `user_id` en el cuerpo.
+    const res = await _stravaCall({ action: 'sync', access_token: token, since_epoch: sinceEpoch });
+    const data = res.data;
     if (!res.ok) {
       console.warn('[Strava] sync failed:', res.status, data.error);
       return null;

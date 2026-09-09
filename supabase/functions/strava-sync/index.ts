@@ -1,11 +1,20 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { createClient } from "npm:@supabase/supabase-js@2";
 
 // Strava OAuth + activity sync proxy.
 // Three actions:
 //   - exchange: code → access_token + refresh_token + athlete_id
 //   - refresh:  refresh_token → fresh access_token
-//   - sync:     access_token + since_epoch + user_id → fetch ALL cardio activities,
+//   - sync:     access_token + since_epoch → fetch ALL cardio activities,
 //               runs → public.runs, everything else → public.sessions (both source='strava')
+//
+// v11.70 (auditoría 2026-09-09, S-1). `sync` escribía con el service role el `user_id` QUE LLEGABA EN
+// EL CUERPO, y el cliente llamaba con la anon key — pública en GitHub Pages. Cualquiera podía insertar
+// carreras en la cuenta de cualquier usuario saltándose el RLS. Ahora el usuario sale SIEMPRE del JWT
+// de la sesión (`asUser.auth.getUser()`, el mismo patrón que whoop-sync); el `user_id` del cuerpo se ignora.
+// `exchange`/`refresh` siguen aceptando la anon key: la página de callback de Strava corre fuera de la
+// PWA (Safari, sin sesión) y sólo pueden devolverle a quien llama tokens de SU PROPIA cuenta de Strava.
+// Los textos crudos de PostgREST y de Strava van al log, no al cliente (eran un oráculo de esquema).
 
 const STRAVA_TOKEN_URL = "https://www.strava.com/oauth/token";
 const STRAVA_API_BASE = "https://www.strava.com/api/v3";
@@ -119,8 +128,18 @@ Deno.serve(async (req) => {
 
     // ---------- ACTIVITY SYNC ----------
     if (action === "sync") {
-      const { access_token, since_epoch, user_id } = body;
-      if (!access_token || !user_id) return jsonResponse({ error: "Missing access_token or user_id" }, 400);
+      const { access_token, since_epoch } = body;
+      if (!access_token) return jsonResponse({ error: "Missing access_token" }, 400);
+
+      // El usuario, del JWT de la sesión. Nunca del cuerpo.
+      const authHeader = req.headers.get("Authorization") || "";
+      if (!authHeader) return jsonResponse({ error: "Missing Authorization" }, 401);
+      const asUser = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, {
+        global: { headers: { Authorization: authHeader } },
+      });
+      const { data: userData, error: userErr } = await asUser.auth.getUser();
+      if (userErr || !userData?.user) return jsonResponse({ error: "Invalid session" }, 401);
+      const userId = userData.user.id;
 
       // Default to last 30 days if no since provided
       const since = since_epoch || Math.floor((Date.now() - 30 * 86400000) / 1000);
@@ -128,7 +147,8 @@ Deno.serve(async (req) => {
       const res = await fetch(url, { headers: { Authorization: `Bearer ${access_token}` } });
       if (!res.ok) {
         const text = await res.text();
-        return jsonResponse({ error: `Strava activities fetch failed: ${res.status}`, body: text.substring(0, 500) }, res.status);
+        console.error(`[strava-sync] activities ${res.status}: ${text.substring(0, 500)}`);
+        return jsonResponse({ error: "strava_fetch_failed", status: res.status }, res.status === 401 ? 401 : 502);
       }
       const activities = await res.json();
       // v11.36: import EVERY cardio modality, not just runs. This filter used to be
@@ -196,7 +216,7 @@ Deno.serve(async (req) => {
             Prefer: "resolution=merge-duplicates,return=representation",
           },
           body: JSON.stringify({
-            user_id,
+            user_id: userId,
             record_id: recordId,
             data,
             source: "strava",
@@ -207,7 +227,8 @@ Deno.serve(async (req) => {
 
         if (!upsertRes.ok) {
           const text = await upsertRes.text();
-          errors.push(`${stravaId}: ${upsertRes.status} ${text.substring(0, 200)}`);
+          console.error(`[strava-sync] runs upsert ${stravaId}: ${upsertRes.status} ${text.substring(0, 300)}`);
+          errors.push(`${stravaId}: upsert_failed ${upsertRes.status}`);
           continue;
         }
         // Heuristic: representation array length 1 means inserted-or-updated; we don't differentiate cleanly here.
@@ -256,11 +277,12 @@ Deno.serve(async (req) => {
             "Content-Type": "application/json",
             Prefer: "resolution=merge-duplicates,return=minimal",
           },
-          body: JSON.stringify({ user_id, record_id: recordId, data, updated_at: new Date().toISOString() }),
+          body: JSON.stringify({ user_id: userId, record_id: recordId, data, updated_at: new Date().toISOString() }),
         });
         if (!upsertRes.ok) {
           const text = await upsertRes.text();
-          errors.push(`${stravaId} (${modality}): ${upsertRes.status} ${text.substring(0, 200)}`);
+          console.error(`[strava-sync] sessions upsert ${stravaId}: ${upsertRes.status} ${text.substring(0, 300)}`);
+          errors.push(`${stravaId} (${modality}): upsert_failed ${upsertRes.status}`);
           continue;
         }
         sessionsSynced++;

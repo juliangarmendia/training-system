@@ -9,6 +9,7 @@
   --surface: #16171a; --surface2: #202126; --surface3: #2a2b31; --card: #16171a;
   --border: rgba(255,255,255,0.07); --border2: rgba(255,255,255,0.13);
   --text: #f5f5f5; --text2: #84868c; --text3: #616369;
+  --stats-tabs-h: 40px;
   /* recovery green = brand / primary accent */
   --accent: #68e371; --accent2: #4bc957;
   --accent-dim: rgba(104,227,113,0.15); --accent-glow: rgba(104,227,113,0.30);
@@ -658,7 +659,7 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
 .muted { color: var(--text3); }
 .hidden { display: none !important; }
 .workout-actions { display: flex; flex-direction: column; gap: 12px; margin-top: 16px; }
-.toast { position: fixed; bottom: calc(var(--nav-h) + var(--safe-bottom) + 16px); left: 50%; transform: translateX(-50%) translateY(80px); background: var(--surface2); border: 1px solid var(--accent); border-radius: var(--radius-sm); padding: 10px 22px; font-size: 14px; font-weight: 600; color: var(--accent); z-index: 2000; transition: transform 0.3s, opacity 0.3s; opacity: 0; pointer-events: none; white-space: nowrap; box-shadow: 0 4px 20px rgba(0,0,0,0.4); }
+.toast { position: fixed; bottom: calc(var(--nav-h) + var(--safe-bottom) + 16px); left: 50%; transform: translateX(-50%) translateY(80px); background: var(--surface2); border: 1px solid var(--accent); border-radius: var(--radius-sm); padding: 10px 22px; font-size: 14px; font-weight: 600; color: var(--accent); z-index: 2000; transition: transform 0.3s, opacity 0.3s; opacity: 0; pointer-events: none; white-space: normal; max-width: min(340px, calc(100vw - 48px)); text-align: center; line-height: 1.4; box-shadow: 0 4px 20px rgba(0,0,0,0.4); }
 .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; pointer-events: auto; }
 .view-scroll::-webkit-scrollbar { width: 0; }
 
@@ -1506,10 +1507,16 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
 #view-stats .view-scroll > .readiness-signals { margin-bottom: 12px; }
 
 /* ========== Stats sub-tabs ========== */
+/* v11.70 (V-3): la barra de pestañas y las `.section-label` sticky se pegaban a la misma banda
+   (top: 0) y la barra, opaca y con z-index mayor, tapaba la etiqueta comprimida en Stats y en
+   Nutrición. La barra tiene altura fija y las etiquetas de esas dos vistas se pegan DEBAJO. */
 .stats-tabs {
   display: flex;
   gap: 6px;
   padding: 4px;
+  height: var(--stats-tabs-h);
+  box-sizing: border-box;
+  align-items: stretch;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -1518,6 +1525,8 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
   top: 0;
   z-index: 30;
 }
+#view-stats .view-scroll > .section-label,
+#view-nutrition .view-scroll > .section-label { top: var(--stats-tabs-h); }
 .stats-tab {
   flex: 1;
   padding: 8px 4px;

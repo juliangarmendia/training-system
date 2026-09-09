@@ -72,6 +72,39 @@ function _whoopIsOwnedKey(k) {
   return WHOOP_OWNED_KEYS.indexOf(k) >= 0 || /^whoop/.test(k) || k === 'readinessSource';
 }
 
+/**
+ * La fila de wellness de intervals.icu, fundida con la que YA había en el día. Pura, con test.
+ *
+ * Tres dueños escriben en `wellness[date]` y la escritura es un `put`, no un merge:
+ *   · la app (`subjective`, el check-in) — se conserva siempre;
+ *   · el servidor desde WHOOP (`whoop*` + las fisiológicas cuando `readinessSource === 'whoop'`) —
+ *     se conserva porque llega antes y mejor (fases de sueño, SpO2) que la copia de intervals.icu;
+ *   · el servidor desde Withings (`weightSource`, `weightMeasured`, `bodyFat` del espejo).
+ *
+ * EL FALLO QUE ESTO CIERRA (auditoría 2026-09-09, D-1). La versión anterior conservaba SÓLO las dos
+ * primeras familias, por lista blanca. Las claves de Withings se perdían en cada importación de
+ * intervals.icu: las filas del 7, 8 y 9 de septiembre llegaron a Supabase sin `weightSource`, y el
+ * pack del coach contó "básculas distintas" que no lo eran. La regla nueva es la contraria: lo que
+ * intervals.icu NO aporta hoy se conserva tal cual, venga de quien venga. intervals.icu sólo puede
+ * pisar lo que intervals.icu trae.
+ */
+function _whoopMergePrevRow(compact, prev) {
+  if (!prev) return compact;
+  const out = Object.assign({}, compact);
+  if (prev.subjective) out.subjective = prev.subjective;
+  const whoopOwns = prev.readinessSource === 'whoop';
+  for (const k of Object.keys(prev)) {
+    if (k === '_updated_at' || k === 'ts') continue;
+    const v = prev[k];
+    if (v === null || v === undefined) continue;
+    if (/^whoop/.test(k)) { out[k] = v; continue; }
+    if (whoopOwns && _whoopIsOwnedKey(k)) { out[k] = v; continue; }
+    if (!(k in out)) out[k] = v;
+  }
+  if (!whoopOwns && prev.readinessSource && out.readiness == null) out.readinessSource = prev.readinessSource;
+  return out;
+}
+
 // Igualdad profunda "de datos" entre la fila compactada y la guardada, ignorando la marca de
 // tiempo. Sin esto, cada apertura de la app reescribía las siete filas de wellness con el mismo
 // contenido y un `ts` nuevo: siete `smartPut` → siete filas en la cola → siete `updated_at`
@@ -347,34 +380,17 @@ async function intervalsFetchWellness() {
         if (typeof dbGet === 'function') {
           try { prev = await dbGet('wellness', r.id); } catch { /* fila nueva */ }
         }
-        if (prev) {
-          if (prev.subjective) compact.subjective = prev.subjective;
-          const whoopOwns = prev.readinessSource === 'whoop';
-          for (const k of Object.keys(prev)) {
-            if (k === '_updated_at' || k === 'ts') continue;
-            const v = prev[k];
-            if (v === null || v === undefined) continue;
-            // Las claves de contabilidad de WHOOP (`whoop*`) no las escribe nadie más: se
-            // conservan siempre. Las fisiológicas, sólo cuando la fila es suya — y sólo las que
-            // el servidor realmente escribió: donde WHOOP no dio nada, el valor de intervals.icu
-            // sigue siendo mejor que un hueco.
-            if (/^whoop/.test(k)) { compact[k] = v; continue; }
-            if (whoopOwns && _whoopIsOwnedKey(k)) compact[k] = v;
-          }
-          if (!whoopOwns && prev.readinessSource && compact.readiness == null) {
-            compact.readinessSource = prev.readinessSource;
-          }
-        }
+        const merged = prev ? _whoopMergePrevRow(compact, prev) : compact;
 
         // Only write if there's at least one signal beyond the metadata (date + source)
-        const signalCount = Object.keys(compact).length - 2;
+        const signalCount = Object.keys(merged).length - 2;
         if (signalCount > 0) {
-          if (prev && _whoopRowsEqual(compact, prev)) {
+          if (prev && _whoopRowsEqual(merged, prev)) {
             // Idéntica a la guardada: no se escribe. Un `smartPut` aquí encolaría una fila sin
             // un solo dato nuevo y movería `updated_at` en Supabase en cada render.
           } else {
-            compact.ts = Date.now();
-            await smartPut('wellness', compact);
+            merged.ts = Date.now();
+            await smartPut('wellness', merged);
             wellnessWrites++;
           }
         }

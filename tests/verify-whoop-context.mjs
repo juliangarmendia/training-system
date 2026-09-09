@@ -144,6 +144,37 @@ for (const f of readdirSync('app').filter(n => n.endsWith('.js'))) {
   yes(!/adjustSessionForReadiness/.test(src), `app/${f} sin adjustSessionForReadiness`);
 }
 
+
+// ── v11.70 (D-1) · _whoopMergePrevRow: intervals.icu sólo pisa lo que intervals.icu trae ────────
+console.log('');
+console.log('v11.70 · la importación de intervals.icu conserva lo que escribió el servidor (Withings)');
+{
+  const _yes = (c, m) => { if (c) console.log(`  ok   ${m}`); else { console.log(`  FAIL ${m}`); failed++; } };
+  const cutFn = (src, start) => { const i = src.indexOf(start); const j = src.indexOf('\n}\n', i); return i < 0 ? '' : src.slice(i, j + 2); };
+  const mergeSrc = cutFn(WHOOP, 'function _whoopMergePrevRow(');
+  const ownedSrc = cutFn(WHOOP, 'function _whoopIsOwnedKey(');
+  _yes(mergeSrc.length > 0 && ownedSrc.length > 0, 'existen _whoopMergePrevRow() y _whoopIsOwnedKey()');
+  const c2 = {};
+  vm.createContext(c2);
+  vm.runInContext(`const WHOOP_OWNED_KEYS = ['readiness', 'hrv', 'restingHR', 'sleepSecs'];\n${ownedSrc}\n${mergeSrc}\nglobalThis.__merge = _whoopMergePrevRow;`, c2);
+  const compact = { date: '2026-09-08', source: 'intervals.icu', steps: 27454, weight: 86.1, bodyFat: 20.9, ctl: 6.1, atl: 18, hrv: 51, readiness: 40 };
+  const prev = { date: '2026-09-08', readinessSource: 'whoop', readiness: 39, hrv: 50.47, whoopCycleId: 'c1', whoopSyncedAt: 't',
+    weightSource: 'withings', weightMeasured: 86.101, abdomen: null, subjective: { mood: 4 }, _updated_at: 1, ts: 2 };
+  const out = c2.__merge(compact, prev);
+  _yes(out.weightSource === 'withings' && out.weightMeasured === 86.101, 'weightSource/weightMeasured de Withings SOBREVIVEN a la importación (antes se perdían)');
+  _yes(out.readiness === 39 && out.hrv === 50.47, 'las fisiológicas de WHOOP siguen mandando cuando la fila es suya');
+  _yes(out.whoopCycleId === 'c1', 'las claves whoop* se conservan siempre');
+  _yes(out.steps === 27454 && out.weight === 86.1 && out.bodyFat === 20.9, 'lo que intervals.icu trae, entra');
+  _yes(out.subjective && out.subjective.mood === 4, 'el check-in subjetivo de la app se conserva');
+  _yes(!('_updated_at' in out) && !('ts' in out), 'la contabilidad de sync no se copia');
+  _yes(!('abdomen' in out), 'un null del servidor no se copia como clave');
+  const prev2 = { date: '2026-09-08', readinessSource: 'intervals', weightSource: 'manual', weightMeasured: 86.0 };
+  const out2 = c2.__merge({ date: '2026-09-08', source: 'intervals.icu', steps: 100 }, prev2);
+  _yes(out2.weightSource === 'manual' && out2.readinessSource === 'intervals', 'sin WHOOP: lo que la fila ya tenía y hoy no llega se queda, y readinessSource se hereda');
+  _yes(/const merged = prev \? _whoopMergePrevRow\(compact, prev\) : compact;/.test(WHOOP) && /await smartPut\('wellness', merged\)/.test(WHOOP),
+    'y el importador escribe la fila FUNDIDA, no la compacta');
+}
+
 console.log('');
 console.log(failed === 0
   ? '✅ WHOOP: el dato de hoy es de hoy, el de ayer se pinta con su fecha y nadie ajusta el día con él.'

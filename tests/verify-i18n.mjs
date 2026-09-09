@@ -35,6 +35,8 @@ const SPANISH = [
   'con', 'sin', 'para', 'por', 'pero',
   // tiempo
   'semana', 'semanas', 'hoy', 'ayer', 'mañana', 'aún', 'todavía', 'nunca',
+  // v11.70 (V-1): "Backup completo (JSON)" sobrevivió a V-1 porque ninguna de estas estaba.
+  'completo', 'completa', 'cerrar', 'resumen', 'abrir',
   'última', 'último', 'próxima', 'siguiente',
   // entrenamiento
   'entreno', 'entrenos', 'sesión', 'sesiones', 'peso', 'carrera', 'carreras',

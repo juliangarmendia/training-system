@@ -918,5 +918,58 @@ ok(sinLib.sessions[0].exercises[0].muscle === undefined, 'la propuesta original 
 const volSin = validatePlanVersion(Object.assign({ block: PLAN_OK.block, nutrition: PLAN_OK.nutrition }, mSin), CTX_OK);
 ok(!volSin.some(g => g.id === 'VOL-CAP' && /otros/.test(g.text)), 'VOL-CAP ya no cuenta series en "otros" por una sesión propuesta');
 
+
+// ════════════════════════════════════════════════════════════════════════════════════
+sec('VOL-CAP sobre la semilla REAL (v11.70, L-1): el box jump no es volumen de cuádriceps');
+// EL FALLO: el fixture de arriba etiqueta el box jump como 'Power' y la semilla real lo etiquetaba
+// 'Quads' — 3 + 4 + 3 + 3 + 3 = 16 series contra un tope de 14, VOL-CAP en rojo en CADA propuesta del
+// coach, el modo manual negándose a escribir y la regeneración de la función gastada en un fallo que el
+// modelo no causó. Por eso este bloque carga PLAN e IDEAL_BLOCK_V1 de app.js, no un fixture.
+// ════════════════════════════════════════════════════════════════════════════════════
+{
+  const APP_SRC = readFileSync('app/app.js', 'utf8');
+  const cutConst = (start) => { const i = APP_SRC.indexOf(start); if (i < 0) return ''; const j = APP_SRC.indexOf('\n};', i); return APP_SRC.slice(i, j + 3); };
+  const cutFn = (start) => { const i = APP_SRC.indexOf(start); if (i < 0) return ''; const j = APP_SRC.indexOf('\n}\n', i); return APP_SRC.slice(i, j + 2); };
+  // Constantes que el literal de PLAN referencia y viven fuera de él: su valor no afecta al recuento de series.
+  const seedSrc = ["const RAMP_NOTE = ''; const LB_TO_KG = 0.45359237;", cutConst('const PLAN = {'), cutConst('const IDEAL_BLOCK_V1 = {'), cutFn('function buildWeekTemplateFromIdeal(')].join('\n');
+  const seedCtx = { console };
+  vm.createContext(seedCtx);
+  let SEED = null;
+  try {
+    new vm.Script(seedSrc + '\nglobalThis.__seed = { PLAN, IDEAL_BLOCK_V1, buildWeekTemplateFromIdeal };').runInContext(seedCtx);
+    SEED = seedCtx.__seed;
+    ok(true, 'PLAN, IDEAL_BLOCK_V1 y buildWeekTemplateFromIdeal se cargan tal cual desde app.js');
+  } catch (e) {
+    ok(false, `no se pudo cargar la semilla de app.js: ${e.message}`);
+  }
+  if (SEED) {
+    const bj = SEED.PLAN.sessions.lowerA.exercises.find(e => e.id === 'box-jump');
+    const sp = SEED.PLAN.sessions.hybrid1.exercises.find(e => e.id === 'sled-push');
+    eq(bj && bj.muscle, 'Power', "la semilla etiqueta el box jump como 'Power'");
+    eq(sp && sp.muscle, 'Power', "y el sled push como 'Power' (6 series que sumaban a cuádriceps en el híbrido)");
+    for (const variant of [6, 5, 4, 3]) {
+      const tpl = SEED.buildWeekTemplateFromIdeal(variant);
+      const seedPlan = { sessions: SEED.PLAN.sessions, weekTemplate: tpl, running: null, block: PLAN_OK.block, nutrition: PLAN_OK.nutrition };
+      const ids = new Set();
+      for (const s of Object.values(SEED.PLAN.sessions)) for (const ex of (s.exercises || [])) ids.add(ex.id);
+      const ctxV = Object.assign({}, CTX_OK, { basedOn: null, libraryIds: ids, variant, lowerSessionIds: new Set(['lowerA', 'lowerB', 'fullA', 'fullB', 'hybrid1', 'travelA', 'travelB']) });
+      const res = validatePlanVersion(seedPlan, ctxV);
+      const vol = res.filter(g => g.id === 'VOL-CAP');
+      ok(vol.length === 0, `la semilla de ${variant} días no dispara VOL-CAP${vol.length ? ` — ${vol.map(g => g.text).join(' | ')}` : ''}`);
+    }
+  }
+  // Y aunque la semilla volviera a decir 'Quads', el contador manda el box jump a 'Power' POR ID.
+  const quadsPlan = clone(PLAN_OK);
+  quadsPlan.sessions.lowerA.exercises = [
+    Object.assign({}, EX.boxJump, { muscle: 'Quads', sets: 3 }),
+    Object.assign({}, EX.squat, { sets: 4 }),
+    { id: 'hack-squat', name: 'Hack', muscle: 'Quads', sets: 3, reps: '10-12', rpe: '7-8' },
+    { id: 'leg-extension', name: 'Ext', muscle: 'Quads', sets: 4, reps: '12', rpe: '7' },
+  ];
+  const quadsRes = validatePlanVersion(quadsPlan, Object.assign({}, CTX_OK, { basedOn: null }));
+  ok(!quadsRes.some(g => g.id === 'VOL-CAP' && /Quads/.test(g.text)), 'box jump etiquetado Quads (3) + 11 series reales = 11 para VOL-CAP, no 14+');
+  ok(!quadsRes.some(g => g.id === 'VOL-CAP' && /Power/.test(g.text)), "y la fila 'Power' nunca se juzga contra el tope");
+}
+
 console.log(`\n${fail === 0 ? 'TODO OK' : `${fail} FALLOS`}`);
 process.exit(fail === 0 ? 0 : 1);

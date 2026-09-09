@@ -399,6 +399,11 @@ async function pullStore(store, { since, user } = {}) {
     if (!remoteRows || remoteRows.length === 0) return 0;
 
     for (const row of remoteRows) {
+      // v11.70 (C-4): la marca de agua del pull se calcula con los `updated_at` VISTOS (reloj de
+      // Postgres), no con el reloj del teléfono. Ver `_syncNextWatermark`.
+      if (row.updated_at && (!_pullMaxUpdatedAt || String(row.updated_at) > _pullMaxUpdatedAt)) {
+        _pullMaxUpdatedAt = String(row.updated_at);
+      }
       const localKey = row.data.id || row.data.date || row.data.key;
       const local = await dbGet(store, localKey);
 
@@ -419,6 +424,23 @@ async function pullStore(store, { since, user } = {}) {
 }
 
 // ==================== FULL SYNC ====================
+//
+// v11.70 (C-4, auditoría 2026-09-09). La marca de agua del pull era `new Date().toISOString()` del
+// TELÉFONO, y el filtro `.gte('updated_at', desde)` compara contra el `now()` de POSTGRES que ponen
+// `merge_generic_row` y las funciones. Un teléfono adelantado N minutos dejaba un agujero de N minutos
+// de filas que nunca se bajaban — en silencio, porque `pullStore` devuelve 0 y nadie lo mira. La fila
+// `proposed` que escribe el camino manual del coach podía no llegar nunca a la app. Ahora la marca es
+// el máximo `updated_at` visto en las respuestas (reloj del servidor) menos 60 s de solapo; sin filas
+// nuevas, no avanza (no hay nada que perder por releer lo mismo).
+const SYNC_WATERMARK_OVERLAP_MS = 60_000;
+let _pullMaxUpdatedAt = null;
+function _syncNextWatermark(prevIso, maxSeenIso) {
+  const prev = Date.parse(prevIso || '') || 0;
+  const seen = Date.parse(maxSeenIso || '') || 0;
+  if (!seen) return prevIso || '1970-01-01T00:00:00Z';
+  return new Date(Math.max(prev, seen - SYNC_WATERMARK_OVERLAP_MS)).toISOString();
+}
+
 async function syncAll() {
   if (!supabaseClient || !navigator.onLine) return;
   const user = await getUser();
@@ -438,12 +460,13 @@ async function syncAll() {
   const lastSync = await dbGet('settings', 'lastSyncTimestamp');
   const since = lastSync ? lastSync.data : '1970-01-01T00:00:00Z';
 
+  _pullMaxUpdatedAt = null;
   for (const store of stores) {
     await pullStore(store, { since, user });
   }
 
-  // Update last sync timestamp
-  await dbPut('settings', { key: 'lastSyncTimestamp', data: new Date().toISOString() });
+  // La marca de agua: el máximo `updated_at` visto menos el solapo, nunca el reloj del teléfono.
+  await dbPut('settings', { key: 'lastSyncTimestamp', data: _syncNextWatermark(since, _pullMaxUpdatedAt) });
   await setSyncStatus({ pulledAt: Date.now() });
   // V-8: el punto de estado del topbar cuenta esta cola. Sin esto se queda en ámbar después
   // de una subida que sí salió bien. `safeCall` vive en app.js, que se carga después.

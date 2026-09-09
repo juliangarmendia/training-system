@@ -4,6 +4,16 @@
 
 ---
 
+## 2026-09-09 — Auditoría completa tras v11.69 (visual · código · funcionalidad · lógica)
+
+Informe y plan en `docs/audits/2026-09-09-app-audit.md`. 83 hallazgos (9 P0, 30 P1). Lo que toca al research: el
+piloto del déficit (REC-002) no tiene palanca hacia abajo cuando el objetivo está en el suelo de REC-008 y el prompt no lo
+sabe (paso 6 pasa a "la palanca es el gasto": REC-009, END-009); REC-002 debe leer también masa grasa/FFM de Withings
+(recomposición); la mitad reactiva de LOAD-004 no se calcula; sin suelo de series (STR-003 es rango, no techo); STR-002
+incumplida en la variante 5 (decisión: Lower/Upper/Upper); READ-006/LONG-004 piden consistencia de sueño y el pack sólo
+publica duración; el disparador de LEA de REC-008 es inejecutable con los campos actuales; REC-006 tiene consumidor posible
+(hidratación ya persistida). Y un duro falso del validador: el box jump contaba como cuádriceps (16 > 14).
+
 ## App audit and remediation plan (2026-09-08)
 
 Full audit of the app after the v11.55 → v11.65 sprint (weekly coach, removal of the daily readiness

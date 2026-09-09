@@ -350,6 +350,21 @@ const soloUnSlot = call({ history4w: REAL, slots: [{ dow: 3, base: 30, subtype: 
 eq(soloUnSlot.sessions.length, 1, 'variante de viaje (1 slot) → 1 sesión, sin inventar días');
 eq(byDow(soloUnSlot, 3).min, 35, "y progresa desde la base del slot (30' → 35'), no desde 40'");
 
+
+// ── v11.70 (L-2) · aplicar un plan del coach NO apaga el motor de run/walk ────────────────
+console.log('');
+console.log('v11.70 · la puerta del fallback de carrera: coach por DÍA, regla si no, `running.plan[]` para la semana entera');
+{
+  const _yes = (c, m) => { if (c) console.log(`  ok   ${m}`); else { console.log(`  FAIL ${m}`); failed++; } };
+  const APPSRC = readFileSync('app/app.js', 'utf8');
+  _yes(!/if \(!\(activePlan && activePlan\.running\)\) await _applyRunningWeekFallback/.test(APPSRC), 'la puerta ya no es `activePlan.running` (que el esquema del coach rellena SIEMPRE)');
+  _yes(/function _coachRunningPlanIsCurrent\(\)/.test(APPSRC) && /!Array\.isArray\(r\.plan\) \|\| !r\.plan\.length/.test(APPSRC), '_coachRunningPlanIsCurrent(): sólo un running.plan[] vigente se queda la semana entera');
+  _yes(/function _coachCardioSlot\(jsDay\)/.test(APPSRC) && /_coachPlanTargetsAreCurrent\(\) \? c : null/.test(APPSRC), '_coachCardioSlot(): el cardio del coach del día, con la misma ventana de vigencia que los kg (E-4)');
+  const runBranch = APPSRC.slice(APPSRC.indexOf("if (slot.type === 'run') {"), APPSRC.indexOf("if (slot.type === 'recovery') {"));
+  _yes(/out\.distanceKm = Number\(cc\.distanceKm\)/.test(runBranch) && /out\.hrZone = cc\.hrZone/.test(runBranch) && /out\.summary = cc\.note/.test(runBranch), 'los km, la zona y la nota del coach se pintan en la tarjeta del día');
+  _yes(/else if \(!_coachRunningPlanIsCurrent\(\)\) \{\s*await _applyRunningWeekFallback/.test(runBranch), 'sin cardio del coach para el día, la regla decide la fase (run/walk)');
+}
+
 console.log('');
 console.log(failed === 0
   ? '✅ Carrera hacia el 10k: tiempo mientras la FC no cumple, km cuando cumple, cero duras sin base.'

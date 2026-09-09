@@ -22,6 +22,7 @@
 // Uso: node tests/verify-home-render.mjs
 
 import { readFileSync, existsSync } from 'node:fs';
+import vm from 'node:vm';
 
 let fails = 0;
 let checks = 0;
@@ -407,6 +408,48 @@ yes(/isShellRequest\(url\)[\s\S]{0,140}cacheFirstRevalidate/.test(SW),
 
 // ---------------------------------------------------------------------------
 console.log('');
+
+// ── v11.70 · Backup: todos los stores que sincronizan, sin secretos; autosave con dueño ──────
+{
+  const _ok = (cond, msg) => { checks++; if (!cond) { fails++; console.log(`  FAIL ${msg}`); } else console.log(`  ok   ${msg}`); };
+  const SYNC_SRC = readFileSync('app/supabase-sync.js', 'utf8');
+  const listOf = (src, re) => { const m = src.match(re); if (!m) return null; return m[1].replace(/\/\/.*$/gm, '').split(',').map((x) => x.trim().replace(/^'|'$/g, '')).filter(Boolean); };
+  const backupStores = listOf(APP, /const BACKUP_STORES = \[([\s\S]*?)\];/);
+  const syncStores = listOf(SYNC_SRC, /const stores = \[([^\]]*)\];/);
+  _ok(Array.isArray(backupStores) && Array.isArray(syncStores), 'BACKUP_STORES y la lista de sync se pueden leer');
+  if (backupStores && syncStores) {
+    const missing = syncStores.filter((s) => !backupStores.includes(s));
+    _ok(missing.length === 0, `BACKUP_STORES ⊇ stores de sync (D-2)${missing.length ? ` — faltan: ${missing.join(', ')}` : ''}`);
+  }
+  // Redactado de secretos: la función es pura, se ejecuta.
+  const i = APP.indexOf('function _redactSettingsRows(');
+  const j = APP.indexOf('\n}\n', i);
+  _ok(i > 0 && j > i, 'existe _redactSettingsRows()');
+  if (i > 0 && j > i) {
+    const keysM = APP.match(/const BACKUP_REDACT_KEYS = (\[[^\]]*\]);/);
+    const ctxR = {};
+    vm.createContext(ctxR);
+    vm.runInContext(`const BACKUP_REDACT_KEYS = ${keysM ? keysM[1] : "['stepsSecret','intervalsIcuApiKey']"};\n${APP.slice(i, j + 2)}\nglobalThis.__redact = _redactSettingsRows;`, ctxR);
+    const rows = [
+      { key: 'userSettings', data: { unit: 'kg', stepsSecret: 'S3CR3T', intervalsIcuApiKey: 'K3Y', goals: { a: 1 } } },
+      { key: 'lastSyncTimestamp', data: '2026-09-09T10:00:00Z' },
+    ];
+    const out = ctxR.__redact(rows);
+    _ok(!('stepsSecret' in out[0].data) && !('intervalsIcuApiKey' in out[0].data), 'el backup no lleva stepsSecret ni intervalsIcuApiKey (S-2)');
+    _ok(out[0].data.unit === 'kg' && out[0].data.goals && out[0].data.goals.a === 1, 'y conserva el resto de userSettings');
+    _ok(out[1] === rows[1], 'las filas sin secretos salen tal cual (misma referencia)');
+    _ok(rows[0].data.stepsSecret === 'S3CR3T', 'la fila original NO se muta (el redactado es una copia)');
+  }
+  _ok(/settings: _redactSettingsRows\(await dbGetAll\('settings'\)\)/.test(APP), 'exportBackup() redacta settings');
+  _ok(/data\[store\] = store === 'settings' \? _redactSettingsRows\(rows \|\| \[\]\) : \(rows \|\| \[\]\)/.test(APP), 'exportJSON() redacta settings');
+  // Autosave del entreno (C-5): un solo camino, con catch.
+  const a = APP.indexOf('function _autosaveWorkout()');
+  const b = APP.indexOf('\n}\n', a);
+  _ok(a > 0 && /\.catch\(/.test(APP.slice(a, b)), '_autosaveWorkout() existe y captura el rechazo');
+  _ok(!/addEventListener\('(input|change)', \(\) => saveActiveWorkout\(\)\)/.test(APP), 'ningún listener llama a saveActiveWorkout() sin catch');
+  _ok(!/^\s+saveActiveWorkout\(\);\s*$/m.test(APP.slice(APP.indexOf("container.querySelectorAll('[data-field=\"rpe\"]')"), APP.indexOf("container.querySelectorAll('[data-field=\"rpe\"]')") + 600)), 'el handler de RPE tampoco');
+}
+
 if (fails) {
   console.error(`verify-home-render: ${fails} de ${checks} comprobaciones FALLAN`);
   process.exit(1);

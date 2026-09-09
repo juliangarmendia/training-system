@@ -101,8 +101,10 @@ console.log('6. El script del camino manual replica las constantes de la funció
 yes(SCRIPT.length > 0, `existe ${SCRIPT_PATH}`);
 const c = (re, src) => { const m = src.match(re); return m ? m[1] : null; };
 yes(c(/const PROMPT_VERSION = (\d+)/, SCRIPT) === c(/const PROMPT_VERSION = (\d+)/, INDEX), `PROMPT_VERSION igual que index.ts (${c(/const PROMPT_VERSION = (\d+)/, INDEX)})`);
-for (const k of ['MAX_SESSIONS', 'MAX_EX_PER_SESSION', 'MAX_FOCUS', 'MAX_WHY', 'MAX_SUMMARY_LINE', 'VERBOSE_LASTWEEK', 'VERBOSE_NEXTWEEK']) {
-  const a = c(new RegExp(`const ${k} = (\\d+)`), SCRIPT), b = c(new RegExp(`const ${k} = (\\d+)`), INDEX);
+for (const k of ['MAX_SESSIONS', 'MAX_EX_PER_SESSION', 'MAX_FOCUS', 'MAX_WHY', 'MAX_SUMMARY_LINE', 'VERBOSE_LASTWEEK', 'VERBOSE_NEXTWEEK',
+  // v11.70 (C-3): los topes de SANEADO también, no sólo los de validación
+  'MAX_NOTE', 'N_PRIORITIES', 'MAX_CARDIO_SLOTS', 'MAX_DECISIONS', 'MAX_TEMPLATE_CHANGES', 'MAX_REQUESTED_DATA', 'ROUND_KG', 'MAX_LASTWEEK_BULLETS', 'MAX_WEEK_SUMMARY']) {
+  const a = c(new RegExp(`const ${k} = ([\\d.]+)`), SCRIPT), b = c(new RegExp(`const ${k} = ([\\d.]+)`), INDEX);
   yes(a !== null && a === b, `${k} = ${b} en los dos`);
 }
 yes(/"## What I am changing",\s*"## Why it changes",\s*"## Why it holds",\s*"## What I am watching",\s*"## What I need from you"/.test(INDEX)
@@ -119,6 +121,16 @@ try {
 } catch (e) {
   bad(`help no arranca: ${e.message.split('\n')[0]}`);
 }
+
+yes(/function sanitizeLite\(raw, pack\)/.test(SCRIPT) && /Math\.round\(Number\(v\) \/ ROUND_KG\) \* ROUND_KG/.test(SCRIPT), 'el script SANEA (redondeo a ROUND_KG, topes, cardio y weekTemplateChanges) antes de validar y escribir');
+yes(/const \{ output, notes: sanitizeNotes \} = sanitizeLite\(readJson\(args\.output\), pack\)/.test(SCRIPT), 'validate() usa la copia saneada (y write() escribe esa copia)');
+
+console.log('');
+console.log('6b. v11.70 · Regenerate pide la semana OBJETIVO y el modo manual retoma el polling');
+yes(!/runWeeklyCoach\(\{ weekKey: _cWeekKey\(today\(\)\), (userNote: nota\.trim\(\), )?regenerate: true \}\)/.test(COACH), 'ningún Regenerate usa _cWeekKey(today()) (el domingo era la semana que muere a medianoche)');
+yes((COACH.match(/runWeeklyCoach\(\{ weekKey: _cTargetWeek\(today\(\)\), (userNote: nota\.trim\(\), )?regenerate: true \}\)/g) || []).length >= 3, 'los tres Regenerate usan _cTargetWeek(today()), como "Close the week"');
+const manualBranch = maybe.slice(maybe.indexOf("coachReviewMode() === 'manual'"), maybe.indexOf("coachReviewMode() === 'manual'") + 700);
+yes(/pollCoachReview\(/.test(manualBranch) && manualBranch.indexOf('pollCoachReview(') < manualBranch.indexOf('return;'), 'en modo manual, una fila running se sigue vigilando antes de volver');
 
 console.log('');
 console.log('7. El comando del repo documenta el camino nuevo');

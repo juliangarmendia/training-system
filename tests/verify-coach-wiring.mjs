@@ -686,7 +686,7 @@ yes(/readinessSource === 'whoop'/.test(IFW_SRC),
   "intervalsFetchWellness respeta la fila del servidor (readinessSource === 'whoop')");
 yes(/WHOOP_OWNED_KEYS/.test(WHOOPJS) && /'sleepRemSecs'/.test(WHOOPJS),
   'la lista de claves que son de WHOOP está declarada y es testeable');
-yes(/_whoopRowsEqual\(compact, prev\)/.test(IFW_SRC),
+yes(/_whoopRowsEqual\((compact|merged), prev\)/.test(IFW_SRC),
   'y no reescribe una fila idéntica (mata el churn de updated_at en cada render)');
 yes(/source === 'withings'/.test(IFW_SRC),
   'ni pisa una pesada de la báscula Withings con el eco de intervals.icu');

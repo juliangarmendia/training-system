@@ -8,7 +8,7 @@
 //
 //   node scripts/build-fn-assets.mjs
 //
-// sourceSha256: 84a319f53864e99c94c3c5ecc62d968adf5be818988d02777a9439d30bf7eee9
+// sourceSha256: 66afb8cc5fa20522b7c84d00ae2ae0679df64959ba9c9a3727b0724ef8b56c1e
 // source: app/coach-facts.js
 //
 // tests/verify-fn-assets.mjs FALLA si app/coach-facts.js cambia y nadie regeneró esto: dos
@@ -1078,7 +1078,10 @@ function _weightDays(ctx) {
     const date = _cfDate(w.date), kg = _n(w.weightMeasured);
     if (!date || kg == null || kg <= 0) continue;
     const prev = byDate.get(date);
-    if (!prev || !prev.measured) byDate.set(date, { date, kg, measured: true, source: 'intervals.icu' });
+    // v11.70 (D-1): `weightSource` lo escribe el servidor desde Withings ('withings' | 'manual');
+    // sin él, la fila es el `weightMeasured` clásico de intervals.icu. Etiquetarlo fijo contaba
+    // "dos básculas" en el pack cuando era la misma.
+    if (!prev || !prev.measured) byDate.set(date, { date, kg, measured: true, source: w.weightSource || 'intervals.icu' });
   }
   const all = [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
   return { all, measured: all.filter(r => r.measured) };
@@ -1110,6 +1113,9 @@ function _factsWeight(ctx) {
     nMeasured14: m14.length,
     nMeasured28: m28.length,
     nForwardFilled28: inLast(all, 28).length - m28.length,
+    // v11.70 (D-1): de dónde salen las pesadas medidas de 28 días. "n=5 en una báscula" y "n=5 en dos"
+    // no son la misma frase para el coach, y hasta ahora el pack no podía distinguirlas.
+    measuredSources28d: m28.reduce((acc, r) => { const k = r.source || 'manual'; acc[k] = (acc[k] || 0) + 1; return acc; }, {}),
     last: all.length ? { date: all[all.length - 1].date, kg: _rBw(all[all.length - 1].kg), measured: all[all.length - 1].measured } : null,
     lastMeasured: measured.length ? { date: measured[measured.length - 1].date, kg: _rBw(measured[measured.length - 1].kg) } : null,
     daysSinceMeasured: measured.length ? _cfDiff(measured[measured.length - 1].date, ctx.todayStr) : null,
@@ -1865,7 +1871,7 @@ function _setsPerMuscle(ctx) {
         if (!id) continue;
         const n = (ex.sets || []).filter(s => s && s.done === true).length;
         if (!n) continue;
-        const m = muscleOf(id, ex);
+        const m = _vpVolumeMuscle(id, muscleOf(id, ex));
         done[m] = (done[m] || 0) + n;
       }
     }
@@ -2239,6 +2245,19 @@ function _factsConfidence(ctx, facts) {
 // contradecía la regla que lo justificaba, y lo hacía en la dirección que más cuesta deshacer.
 const VP_FLOORS = { proteinG: 185, kcalTraining: 2700, kcalRest: 2400 };
 const VP_MAX_SETS_PER_MUSCLE = 14;
+// v11.70 (L-1). Ejercicios que NO son volumen de hipertrofia aunque la semilla les ponga un músculo:
+// pliometría, acondicionamiento y transporte — el mismo criterio que MOVEMENT_PATTERNS en app.js y que
+// `renderMuscleVolume` (que ya los mandaba a la fila 'Power' EN PANTALLA desde v11.48, mientras los dos
+// contadores de aquí seguían sumándolos). Con el box jump como 'Quads', la semana de 6 días leía 16
+// series contra un tope de 14 y VOL-CAP salía en rojo en cada propuesta del coach — y el coach veía 16
+// cuando eran 13. Se cuentan aparte, en 'Power', y VOL-CAP no juzga esa fila.
+const VP_NON_HYPERTROPHY_IDS = new Set(['box-jump', 'pogo-hops', 'broad-jump', 'sled-push', 'sled-drag', 'ski-erg', 'farmer-carry']);
+const VP_POWER_MUSCLE = 'Power';
+function _vpVolumeMuscle(id, muscle) {
+  if (VP_NON_HYPERTROPHY_IDS.has(String(id || ''))) return VP_POWER_MUSCLE;
+  if (/^(power|conditioning|cardio|plyo)$/i.test(String(muscle || ''))) return VP_POWER_MUSCLE;
+  return muscle || 'otros';
+}
 const VP_MAX_HARD_CARDIO = 1;
 const VP_MAX_BUDGET = 6;
 const VP_MAX_PRESS_EXPOSURES = 2;
@@ -2454,6 +2473,7 @@ function validatePlanVersion(plan, ctx) {
     const setsPrev = c.basedOn ? _vpSetsPerMuscle(c.basedOn.sessions || {}, c.basedOn.weekTemplate || null) : null;
     const deficit = !goals || !goals.primary || goals.primary.type !== 'maintenance';
     for (const [muscle, n] of Object.entries(setsNow.byMuscle)) {
+      if (muscle === VP_POWER_MUSCLE) continue;   // pliometría/acondicionamiento: no es hipertrofia
       if (deficit && n > VP_MAX_SETS_PER_MUSCLE) {
         add('VOL-CAP', 'hard',
           `${muscle}: ${n} sets/week, above the cap of ${VP_MAX_SETS_PER_MUSCLE} in a deficit (STR-003 says 10-14). In a deficit volume is maintained, not raised.`,
@@ -3025,7 +3045,7 @@ function _vpSetsPerMuscle(sessions, tpl) {
       if (!ex) continue;
       const n = (_n(ex.sets) || 0) * times;
       if (!n) continue;
-      const m = ex.muscle || 'otros';
+      const m = _vpVolumeMuscle(ex.id, ex.muscle);
       byMuscle[m] = (byMuscle[m] || 0) + n;
       total += n;
     }
