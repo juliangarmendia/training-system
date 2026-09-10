@@ -696,3 +696,29 @@ Body, calculadora de discos en Strength, revisión del coach en Week); una sola 
 en Now; enfocar peso/reps/RPE sin zoom; "Regenerate with a note" abriendo la hoja y no el diálogo del
 navegador; el formulario Waist con báscula; y con el móvil en avión, tarjetas que dicen "Could not load
 this" con Retry.
+
+### Tres cosas que salieron al integrar
+
+1. **El sha de los activos generados dependía del fin de línea.** CI cayó con "DESINCRONIZADO"
+   sobre un `coach-facts.generated.js` que estaba al día: el árbol de Windows es CRLF y el checkout
+   de CI es LF, y el sello se calculaba sobre los bytes. Los dos generadores y los dos tests leen
+   ahora normalizando a LF. Comprobación rápida: `git show HEAD:app/coach-facts.js | sha256sum` tiene
+   que dar lo que hay en `coach-facts.generated.sha`.
+2. **Guardar sólo la cintura marcaba la fila del día como pesada** (`measured: true`). Con báscula,
+   el peso de esa fila puede ser el forward-fill de intervals.icu, así que medir la cintura habría
+   metido un valor suavizado en `nMeasured28` y en la pendiente de 28 días que pilotan el déficit.
+   `measured` describe el PESO: ahora sólo lo escribe el modo Navy, que es el único que teclea uno.
+3. **`VOL-FLOOR` avisaba seis veces.** Medido sobre la semilla real incumplen el suelo seis familias
+   (Rear Delt 3, Chest 4, Shoulders 4, Quads 7, cadena posterior 7, Back 8), cada una con el mismo
+   texto de tres frases. Ahora es UN aviso con la lista ordenada por lo peor.
+
+### Decisión pendiente de Julian (lógica de entrenamiento)
+
+**¿Series fraccionadas?** `VOL-FLOOR` y `VOL-CAP` cuentan las series cuya etiqueta `muscle` es esa
+familia: las DIRECTAS. La contribución de un compuesto a sus secundarios (el press al hombro, la
+remada al bíceps) no se cuenta, porque la semilla no declara secundarios y fabricar ese mapa sería
+inventarse el denominador. Por eso el aviso dice "direct sets" y pide leerse como "pocas series
+DIRECTAS". Contarlas fraccionadas (1,0 al motor primario, 0,5 al secundario, que es la convención
+de la literatura de hipertrofia) haría el suelo realista, pero **también cambiaría el techo**: con
+crédito indirecto, `VOL-CAP` empezaría a disparar donde hoy calla. Es un cambio de lógica de
+entrenamiento con efecto en las dos direcciones, así que lo decide Julian, no la implementación.
