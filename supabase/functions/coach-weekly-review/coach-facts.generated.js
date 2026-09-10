@@ -8,7 +8,7 @@
 //
 //   node scripts/build-fn-assets.mjs
 //
-// sourceSha256: d006173fde5e93c9d049714ecfd2a4c0e27ac87065610fdddc1504db6b815b86
+// sourceSha256: 63a8662f357e088e68addc644e6df3d6ef1f51c508408d86b2bb334111afaed2
 // source: app/coach-facts.js
 //
 // tests/verify-fn-assets.mjs FALLA si app/coach-facts.js cambia y nadie regeneró esto: dos
@@ -1373,13 +1373,25 @@ function _factsPlan(ctx) {
     // 14. `Power`, `Core` y `otros` quedan fuera: no son volumen de hipertrofia.
     plannedSetsPerMuscle: (() => {
       const sets = _vpSetsPerMuscle(sessions, tpl);
+      const eff = _vpEffectiveSetsPerMuscle(sessions, tpl);
       return {
         byMuscle: sets.byMuscle,
         families: _vpMuscleFamilies(sets.byMuscle),
         total: sets.total,
+        // v11.71 · LAS DOS CUENTAS, las dos visibles. `byMuscle`/`families` son series DIRECTAS
+        // (la etiqueta `muscle` del ejercicio); `effective` añade el crédito fraccionado por
+        // patrón, que es la convención en la que está escrito el 10-14 de STR-003 y la que juzgan
+        // `VOL-FLOOR` y el aviso de `VOL-CAP`. Publicar sólo una de las dos fue el fallo: con
+        // las directas a secas el coach leía "Shoulders 7" de una semana con dos empujes.
+        effective: {
+          byMuscle: eff.byMuscle,
+          families: eff.families,
+          total: eff.total,
+          note: 'Effective sets: 1.0 for the exercise\'s primary muscle (its `muscle` label) + 0.5 for each meaningfully loaded secondary of its `movementPattern` — horizontal press → shoulders + triceps, vertical press → triceps, horizontal pull → biceps + rear delts, vertical pull → biceps, squat/single-leg → glutes, hinge → the other posterior-chain muscle + `Erectors` (its own bucket, not `Back`: the erector is not the lat, and `Erectors` has no floor or cap because the corpus declares no band for it). Isolation, glute, carry, plyometric, conditioning, core and openers (flies) credit nothing beyond the primary. Rounded to 0.5. THIS is the number VOL-FLOOR and the VOL-CAP warning judge, because STR-003\'s 10-14 is written in these terms.',
+        },
         floorPerMuscle: VP_MIN_SETS_PER_MUSCLE,
         capPerMuscle: VP_MAX_SETS_PER_MUSCLE,
-        note: 'Sets × times the session appears in `weekTemplate`. `families` merges Hamstrings + Posterior + Glutes into "Posterior chain"; Power, Core and `otros` are not judged as hypertrophy volume. Same counter the validator uses for VOL-CAP and VOL-FLOOR.',
+        note: 'Sets × times the session appears in `weekTemplate`. `byMuscle`/`families` are DIRECT sets (the exercise\'s `muscle` label only); `effective` adds fractional credit for secondary muscles — see `effective.note`. `families` merges Hamstrings + Posterior + Glutes into "Posterior chain"; Power, Core and `otros` are not judged as hypertrophy volume. Same counters the validator uses: VOL-FLOOR and the VOL-CAP warning judge `effective`, the hard VOL-CAP judges direct sets only.',
       };
     })(),
     overrides: { exercises: ovr, futureSchedule: futureSched },
@@ -2525,7 +2537,10 @@ const VP_VOLUME_FAMILY_MERGE = {
 // Lo que NO es volumen de hipertrofia y por tanto no tiene suelo: pliometría/acondicionamiento
 // (`Power`, ver `_vpVolumeMuscle`), el core (ATH-003 lo gobierna por PATRÓN, no por series) y el
 // cajón de sastre `otros`, que es "la semilla no dijo músculo" y no un grupo muscular.
-const VP_VOLUME_NO_FLOOR = { power: 1, core: 1, otros: 1 };
+// Los erectores, como el core: se entrenan por patrón (cada bisagra, cada transporte) y el corpus
+// no declara un rango de series para ellos. Sólo aparecen como crédito secundario de `hinge`.
+const VP_ERECTORS_MUSCLE = 'Erectors';
+const VP_VOLUME_NO_FLOOR = { power: 1, core: 1, otros: 1, erectors: 1 };
 /** La familia de volumen de un músculo (agrega la cadena posterior). */
 function _vpMuscleFamily(muscle) {
   const key = String(muscle == null ? '' : muscle).trim().toLowerCase();
@@ -2557,6 +2572,94 @@ function _vpVolumeMuscle(id, muscle) {
   if (/^(power|conditioning|cardio|plyo)$/i.test(String(muscle || ''))) return VP_POWER_MUSCLE;
   return muscle || 'otros';
 }
+
+// ── SERIES EFECTIVAS (fraccionadas) · v11.71 ────────────────────────────────────────────────
+//
+// EL FALLO. Los dos contadores de volumen sumaban series DIRECTAS: la etiqueta `muscle` del
+// ejercicio, 1 serie entera para ese músculo y NADA para nadie más. Con esa cuenta un press de
+// banca no le acredita nada al hombro ni al tríceps, y una remada nada al bíceps — así que sobre
+// la semilla real seis familias incumplían el suelo de 10 a la vez (Rear Delt 3, Chest 4,
+// Shoulders 4, Quads 7, Posterior chain 7, Back 8) con un plan perfectamente razonable delante.
+// Ningún entrenador cuenta así, y el 10-14 de STR-003 NO está escrito en esos términos: la
+// convención de la literatura de dosis-respuesta (Pelland 2026, Currier 2023) es **1,0 serie para
+// el motor primario y ~0,5 para cada secundario cargado de forma significativa**.
+//
+// LA DECISIÓN SE TOMA POR PATRÓN, no por ejercicio. `movementPattern` ya existe en la librería
+// (`MOVEMENT_PATTERNS` en app.js) y es la única propiedad estructural del movimiento que el
+// sistema tiene; decidir por id serían 90 decisiones sin auditar. Una decisión por patrón,
+// conservadora, y el primario es SIEMPRE la etiqueta `muscle` del propio ejercicio a 1,0.
+//
+// CONSERVADORA quiere decir dos cosas concretas:
+//   · Un patrón que no está en el mapa (o un ejercicio cuyo patrón no se puede resolver) no
+//     acredita NADA. El sesgo es siempre a subcontar, nunca a inflar.
+//   · Un secundario que coincide con el primario no cobra dos veces (close-grip bench etiquetado
+//     'Triceps' vale 1,0, no 1,5).
+const VP_SECONDARY_CREDIT = 0.5;
+// El compañero de cadena posterior de una bisagra: el miembro que NO es el primario. Con la
+// etiqueta paraguas 'Posterior' (peso muerto) se acredita el glúteo, que es el motor de la
+// extensión de cadera terminal.
+function _vpHingePartner(muscle) {
+  return /^glutes?$/i.test(String(muscle == null ? '' : muscle).trim()) ? 'Hamstrings' : 'Glutes';
+}
+// Los valores son las etiquetas `muscle` de la semilla (las claves de EXERCISE_ALTERNATIVES en
+// app.js): 'Shoulders', 'Triceps', 'Biceps', 'Rear Delt', 'Glutes', 'Hamstrings', 'Back'. Una
+// función cuando el secundario depende del primario. `[]` es una decisión explícita de no
+// acreditar, no un hueco.
+const VP_PATTERN_SECONDARIES = {
+  // Deltoides anterior y tríceps son sinergistas obligados de cualquier empuje horizontal.
+  'horizontal-press': ['Shoulders', 'Triceps'],
+  // En el empuje vertical el hombro YA es el primario; queda la extensión de codo.
+  'vertical-press': ['Triceps'],
+  // Flexión de codo (bíceps) + deltoides posterior en la retracción escapular.
+  'horizontal-pull': ['Biceps', 'Rear Delt'],
+  // Flexión de codo. El deltoides posterior apenas trabaja en el plano vertical.
+  'vertical-pull': ['Biceps'],
+  // Extensión de cadera bajo carga. Los isquios en sentadilla trabajan casi isométricos: no cobran.
+  squat: ['Glutes'],
+  // Zancada / split squat: la misma extensión de cadera que la sentadilla, con MÁS recorrido de
+  // cadera todavía. Misma decisión que `squat`, por consistencia.
+  'single-leg': ['Glutes'],
+  // El otro miembro de la cadena posterior, y los erectores — que en un peso muerto sostienen la
+  // columna bajo la carga más alta de la semana.
+  //
+  // LOS ERECTORES VAN A SU PROPIO CUBO, no a `Back`. La etiqueta `Back` de la semilla es dorsal y
+  // espalda media, y está EXACTAMENTE en el tope (14 directas): sumarle ahí el crédito de los
+  // erectores la empujaba a 17,5 efectivas y encendía un `VOL-CAP` blando permanente sobre un
+  // músculo que no se ha pasado de nada. Además el erector no es el dorsal. `Erectors` no tiene
+  // suelo ni techo (`VP_VOLUME_NO_FLOOR`, `_vpFamilyHasCap`): el corpus no declara un 10-14 para
+  // los erectores, que trabajan en cada bisagra y en cada transporte de la semana.
+  hinge: (muscle) => [_vpHingePartner(muscle), VP_ERECTORS_MUSCLE],
+  // Hip thrust / glute drive / kickback: cadera extendida con el tronco APOYADO — sin carga de
+  // erectores, y el isquio trabaja corto. Es prácticamente monoarticular.
+  glute: [],
+  // Aislamiento: monoarticular por definición. Todo el crédito es del primario.
+  'isolation-quad': [], 'isolation-ham': [], 'isolation-calf': [], 'isolation-lat': [],
+  'isolation-shoulder': [], 'isolation-rear-delt': [], 'isolation-tricep': [], 'isolation-bicep': [],
+  // No son volumen de hipertrofia (van a la fila `Power`, ver `_vpVolumeMuscle`): acreditar
+  // secundarios sería inventarse volumen que la regla no cuenta.
+  plyometric: [], conditioning: [], carry: [],
+  // El core lo gobierna ATH-003 por PATRÓN, no por series, y no tiene suelo (VP_VOLUME_NO_FLOOR).
+  'core-anti-rotation': [], 'core-anti-extension': [], 'core-flexion': [],
+  // Patrón desconocido: sin decisión no hay crédito.
+  other: [],
+};
+// APERTURAS: monoarticulares aunque la librería las etiquete `horizontal-press`. Una apertura no
+// extiende el codo ni presiona por encima, así que no acredita tríceps ni hombro. Se listan por id
+// porque el patrón que traen de `app.js` es el del press y ese fichero no es de este incremento.
+const VP_NO_SECONDARY_IDS = {
+  'incline-db-fly': 1, 'cable-fly': 1, 'cable-crossover': 1, 'pec-deck': 1, 'db-fly': 1,
+  'machine-fly': 1, 'rear-delt-fly': 1,
+};
+/** Los secundarios de un ejercicio, ya resueltos contra su primario. */
+function _vpSecondariesFor(pattern, muscle) {
+  const def = VP_PATTERN_SECONDARIES[String(pattern == null ? '' : pattern)];
+  if (def == null) return [];
+  const list = typeof def === 'function' ? def(muscle) : def;
+  return (Array.isArray(list) ? list : []).filter(m => m && String(m) !== String(muscle));
+}
+/** Redondeo a media serie: el crédito fraccionado es una estimación, no una medida al decimal. */
+function _vpHalf(n) { return Math.round((_n(n) || 0) * 2) / 2; }
+
 const VP_MAX_HARD_CARDIO = 1;
 const VP_MAX_BUDGET = 6;
 const VP_MAX_PRESS_EXPOSURES = 2;
@@ -2596,6 +2699,10 @@ const VP_LOWER_KCAL_RE = /\b(lower|reduce|cut|drop|decrease|trim)\b[^.]{0,40}\b(
 // sería permanente.
 const VP_MIN_PATTERN_EXPOSURES = 2;
 const VP_FREQ_FLOOR_MIN_VARIANT = 4;
+// Días de gimnasio mínimos para que el SUELO de series tenga sentido. Con dos sesiones, 10 series
+// por familia no cabe en la semana; con tres, las familias grandes llegan y las pequeñas no, y eso
+// SÍ es una decisión (redistribuir o aceptar).
+const VP_MIN_GYM_DAYS_FOR_FLOOR = 3;
 /**
  * Las cuatro FAMILIAS de patrón mayor, y por qué son familias y no patrones sueltos.
  *
@@ -2782,48 +2889,77 @@ function validatePlanVersion(plan, ctx) {
     }
 
     // ---- G-H7 · VOL-CAP (STR-003, STR-001) ----
+    //
+    // DOS NIVELES, y la frontera es el tipo de número. Desde v11.71 el volumen se juzga en series
+    // EFECTIVAS (directas + 0,5 por secundario del patrón, ver `VP_PATTERN_SECONDARIES`), porque
+    // es la convención en la que está escrito el 10-14 de STR-003. Pero el crédito fraccionado es
+    // una ESTIMACIÓN de modelo, no un hecho registrado, y un DURO detiene el camino manual: sin
+    // `--allow-hard` no escribe. Así que:
+    //   · DURO sólo si las DIRECTAS pasan del tope. Eso es inequívoco: son series prescritas.
+    //   · AVISO si sólo las EFECTIVAS lo pasan. El exceso viene del crédito fraccionado, y una
+    //     estimación no bloquea un apply — se dice y Julian decide.
     const setsNow = _vpSetsPerMuscle(sessions, tpl);
+    const effNow = _vpEffectiveSetsPerMuscle(sessions, tpl);
     const setsPrev = c.basedOn ? _vpSetsPerMuscle(c.basedOn.sessions || {}, c.basedOn.weekTemplate || null) : null;
     const deficit = !goals || !goals.primary || goals.primary.type !== 'maintenance';
     for (const [muscle, n] of Object.entries(setsNow.byMuscle)) {
       if (muscle === VP_POWER_MUSCLE) continue;   // pliometría/acondicionamiento: no es hipertrofia
       if (deficit && n > VP_MAX_SETS_PER_MUSCLE) {
         add('VOL-CAP', 'hard',
-          `${muscle}: ${n} sets/week, above the cap of ${VP_MAX_SETS_PER_MUSCLE} in a deficit (STR-003 says 10-14). In a deficit volume is maintained, not raised.`,
+          `${muscle}: ${n} DIRECT sets/week, above the cap of ${VP_MAX_SETS_PER_MUSCLE} in a deficit (STR-003 says 10-14). These are prescribed sets, not an estimate: no fractional credit is involved. In a deficit volume is maintained, not raised.`,
           ['STR-003', 'STR-001']);
       }
     }
+    for (const [muscle, n] of Object.entries(effNow.byMuscle)) {
+      if (muscle === VP_POWER_MUSCLE) continue;
+      if (!deficit || n <= VP_MAX_SETS_PER_MUSCLE) continue;
+      const dir = _n(setsNow.byMuscle[muscle]) || 0;
+      if (dir > VP_MAX_SETS_PER_MUSCLE) continue;   // ya salió como duro con el número directo
+      add('VOL-CAP', 'warn',
+        `${muscle}: ${_vpNum(n, 1)} EFFECTIVE sets/week against a cap of ${VP_MAX_SETS_PER_MUSCLE} in a deficit (STR-003 says 10-14), but only ${dir} direct. The excess is fractional credit from compounds (1.0 for the primary muscle, ${VP_SECONDARY_CREDIT} per loaded secondary of its movement pattern) — a modelling estimate, so this warns and does not block. If it is deliberate, say so; otherwise move a compound or drop a set.`,
+        ['STR-003', 'STR-001']);
+    }
     // ---- F-7 (auditoría 2026-09-09) · VOL-FLOOR (STR-003, STR-001) ----
     //
-    // El suelo de STR-003, que sólo existía como techo. Igual que `FREQ-FLOOR`, sólo en variantes
-    // de ≥4 días: con 2-3 días de fuerza, 10 series por familia es aritméticamente imposible y el
-    // aviso sería permanente. Y sólo en déficit, que es donde 10-14 es el rango declarado.
+    // El suelo de STR-003, que sólo existía como techo. Sólo en déficit, que es donde 10-14 es el
+    // rango declarado, y sólo con al menos 3 DÍAS DE GIMNASIO en la plantilla.
     //
-    // Se juzgan las familias PRESENTES en el plan. Un músculo que el plan no nombra (bíceps
-    // directo, por ejemplo) no se puede contar sin una lista canónica de grupos musculares, y
+    // LA PUERTA CUENTA DÍAS DE GIMNASIO, NO LA VARIANTE. La variante son los días que Julian
+    // dedica a entrenar, cardio y recuperación incluidos: la de 4 días tiene DOS de fuerza, y con
+    // dos sesiones 10 series por familia es aritméticamente imposible — el suelo avisaba de ocho
+    // familias a la vez sobre un plan que no puede hacer otra cosa, que es un aviso sobre el que
+    // no se puede actuar. Con la plantilla delante el número real está ahí, así que se usa ése;
+    // la variante queda de respaldo para cuando no hay plantilla.
+    //
+    // Se juzgan las familias PRESENTES en el plan. Un músculo que el plan no nombra ni recibe
+    // crédito de ningún patrón no se puede contar sin una lista canónica de grupos musculares, y
     // fabricarla aquí sería inventar el denominador: eso se ve en `plan.plannedSetsPerMuscle` y
-    // lo juzga el coach.
-    if (deficit && (_n(c.variant) == null || _n(c.variant) >= VP_FREQ_FLOOR_MIN_VARIANT)) {
-      const families = _vpMuscleFamilies(setsNow.byMuscle);
+    // lo juzga el coach. Desde v11.71 el bíceps SÍ entra (lo acreditan los tirones), que era el
+    // ejemplo que este comentario usaba para decir que no se podía.
+    const gymDaysForFloor = tpl ? _vpCount(tpl, x => x && x.type === 'gym') : null;
+    const floorGateOk = gymDaysForFloor != null
+      ? gymDaysForFloor >= VP_MIN_GYM_DAYS_FOR_FLOOR
+      : (_n(c.variant) == null || _n(c.variant) >= VP_FREQ_FLOOR_MIN_VARIANT);
+    if (deficit && floorGateOk) {
+      const families = effNow.families;
       // UN aviso con la lista, no uno por familia: sobre el plan vivo el suelo lo incumplen tres
       // o cuatro a la vez, y cuatro chips con el mismo texto de tres frases se leen como ruido.
       // El hallazgo es uno y la decisión también (¿se redistribuyen series o se acepta?).
       //
-      // Y EL AVISO DICE SU PROPIA LIMITACIÓN. El contador suma las series cuya etiqueta `muscle`
-      // es esa familia: las DIRECTAS. La contribución de un compuesto a sus músculos secundarios
-      // (el press al hombro, la remada al bíceps) no se cuenta, porque la semilla no declara
-      // secundarios y fabricar ese mapa aquí sería inventarse el denominador. Por eso el texto
-      // dice "direct sets": el coach tiene que leerlo como "pocas series DIRECTAS", que es
-      // accionable (redistribuir o aceptar), y no como "este músculo no se estimula", que sería
-      // falso. Cerrar esto de verdad es contar series fraccionadas, y eso cambiaría también
-      // `VOL-CAP`: es una decisión de lógica de entrenamiento, no de implementación.
+      // Y SE JUZGA EN SERIES EFECTIVAS (v11.71). Hasta aquí el contador sumaba sólo las series
+      // cuya etiqueta `muscle` era esa familia — las DIRECTAS — y el aviso lo confesaba: un press
+      // no acreditaba nada al hombro, una remada nada al bíceps. Sobre la semilla real eso hacía
+      // que seis familias incumplieran el suelo a la vez con un plan razonable delante, y un aviso
+      // que salta siempre no informa de nada. El 10-14 de STR-003 está escrito en series
+      // efectivas (1,0 al primario + 0,5 a cada secundario cargado del patrón), así que ése es el
+      // número que se juzga. Las directas siguen publicadas en el pack, al lado.
       const bajo = Object.entries(families)
         .filter(([fam, n]) => _vpFamilyHasFloor(fam) && n < VP_MIN_SETS_PER_MUSCLE)
         .sort((a, b) => a[1] - b[1]);
       if (bajo.length) {
         add('VOL-FLOOR', 'warn',
-          `Below the floor of ${VP_MIN_SETS_PER_MUSCLE} direct sets/week (STR-003 says 10-14 in a deficit): ${
-            bajo.map(([fam, n]) => `${fam} ${n}`).join(', ')}. Under the floor the muscle is not maintained, it is visited — and in a deficit that is where lean mass goes. Direct sets only: a compound's contribution to its secondary muscles is not counted, so read this as few DIRECT sets and decide whether to redistribute or accept. Counted by family: ${VP_POSTERIOR_FAMILY} merges Hamstrings + Posterior + Glutes.`,
+          `Below the floor of ${VP_MIN_SETS_PER_MUSCLE} EFFECTIVE sets/week (STR-003 says 10-14 in a deficit): ${
+            bajo.map(([fam, n]) => `${fam} ${_vpNum(n, 1)}`).join(', ')}. Effective sets = 1.0 for the exercise's primary muscle + ${VP_SECONDARY_CREDIT} for each meaningfully loaded secondary of its movement pattern (a bench press credits shoulders and triceps, a row credits biceps and rear delts), which is the convention STR-003's 10-14 is written in; the direct-only count is published next to it in \`plan.plannedSetsPerMuscle.byMuscle\`. Under the floor the muscle is not maintained, it is visited — and in a deficit that is where lean mass goes. Counted by family: ${VP_POSTERIOR_FAMILY} merges Hamstrings + Posterior + Glutes.`,
           ['STR-003', 'STR-001']);
       }
     }
@@ -3450,6 +3586,49 @@ function _vpSetsPerMuscle(sessions, tpl) {
   return { byMuscle, total, occurrences };
 }
 
+/**
+ * Series EFECTIVAS por músculo: directas (1,0 al primario) + fraccionadas (0,5 a cada secundario
+ * del patrón). Ver `VP_PATTERN_SECONDARIES` para el mapa y su justificación patrón a patrón.
+ *
+ * Misma firma que `_vpSetsPerMuscle` **a propósito**: dos argumentos, sin `ctx`. El patrón sale
+ * del propio ejercicio (`movementPattern`, que `mergeProposal` hereda del plan base) y, si no lo
+ * trae, de `VP_PATTERN_IDS` — que es el fallback que ya usa el resto del validador. Pasarle la
+ * librería aquí haría que la app contase una cosa y la edge function (que no la recibe) otra, y
+ * dos contadores de volumen distintos en el mismo repo es exactamente el fallo de L-1: la app
+ * leía 16 series donde el validador leía 13. Un solo número, en los dos lados.
+ *
+ * `Power` no acredita secundarios: no es volumen de hipertrofia.
+ *
+ * @returns {{byMuscle: object, families: object, total: number}} en series efectivas, a 0,5
+ */
+function _vpEffectiveSetsPerMuscle(sessions, tpl) {
+  const direct = _vpSetsPerMuscle(sessions, tpl);
+  const occurrences = direct.occurrences;
+  const byMuscle = {};
+  const bump = (m, n) => { if (m && n) byMuscle[m] = (byMuscle[m] || 0) + n; };
+  for (const [sid, s] of Object.entries(sessions || {})) {
+    const times = tpl ? (occurrences[sid] || 0) : 1;
+    if (!times) continue;
+    for (const ex of (s.exercises || [])) {
+      if (!ex) continue;
+      const n = (_n(ex.sets) || 0) * times;
+      if (!n) continue;
+      const primary = _vpVolumeMuscle(ex.id, ex.muscle);
+      bump(primary, n);
+      if (primary === VP_POWER_MUSCLE) continue;
+      if (VP_NO_SECONDARY_IDS[String(ex.id || '')]) continue;
+      const pattern = ex.movementPattern || VP_PATTERN_IDS[String(ex.id || '')] || null;
+      if (!pattern) continue;
+      for (const sec of _vpSecondariesFor(pattern, primary)) bump(sec, n * VP_SECONDARY_CREDIT);
+    }
+  }
+  let total = 0;
+  for (const m of Object.keys(byMuscle)) { byMuscle[m] = _vpHalf(byMuscle[m]); total += byMuscle[m]; }
+  const families = _vpMuscleFamilies(byMuscle);
+  for (const f of Object.keys(families)) families[f] = _vpHalf(families[f]);
+  return { byMuscle, families, total: _vpHalf(total) };
+}
+
 function _vpVolumeGatesOk(facts) {
   const adh = (facts.adherence || []).slice(-4);
   if (!adh.length) return false;
@@ -3961,14 +4140,17 @@ if (typeof module !== 'undefined' && module.exports) {
     // v11.67 / fn v4 (auditoría 2026-09-08): los umbrales de los 6 ids nuevos
     VP_MAX_STRENGTH_DAYS, VP_VARIANT_SLACK, VP_LONG_RUN_HARD_KM, VP_MIN_MVPA_MIN,
     VP_MVPA_FAT_LOSS_MIN, VP_KCAL_STEP_MAX, VP_KCAL_ADJUST_DAYS, VP_MIN_PATTERN_EXPOSURES,
-    VP_FREQ_FLOOR_MIN_VARIANT, VP_PATTERN_FAMILIES, VP_PATTERN_IDS,
+    VP_FREQ_FLOOR_MIN_VARIANT, VP_MIN_GYM_DAYS_FOR_FLOOR, VP_PATTERN_FAMILIES, VP_PATTERN_IDS,
     // v11.71 / auditoría 2026-09-09: los umbrales de los 2 ids nuevos (F-5, F-7)
     VP_MIN_SETS_PER_MUSCLE, VP_POSTERIOR_FAMILY, VP_VOLUME_FAMILY_MERGE, VP_VOLUME_NO_FLOOR,
     VP_RECOMP_FAT_DROP_KG, VP_RECOMP_FFM_HOLD_KG, VP_RECOMP_MIN_SPAN_DAYS,
+    // v11.71 · series efectivas (crédito fraccionado por patrón)
+    VP_SECONDARY_CREDIT, VP_PATTERN_SECONDARIES, VP_NO_SECONDARY_IDS, VP_ERECTORS_MUSCLE,
     // Internos que los tests usan para no re-implementar aritmética
     _cfShift, _cfDiff, _cfIsoWeek, _cfMonday, _durMin, _paceSec, _fmtPace,
     _slopePerWeek, _liftTrend, _z2Compliant, _sanitize, _weeksSpan, _weightDays,
-    _vpSetsPerMuscle, _vpMuscleFamily, _vpMuscleFamilies, _vpFamilyHasFloor,
+    _vpSetsPerMuscle, _vpEffectiveSetsPerMuscle, _vpSecondariesFor, _vpHingePartner,
+    _vpMuscleFamily, _vpMuscleFamilies, _vpFamilyHasFloor,
     _vpSessionMin, _vpPlyoExercises, _vpMobilitySlots, _vpHardCardio,
     _vpPatternExposures, _vpWeeklyCardioMin, _vpCardioBeforeLift, _vpHardSessionDays,
     _vpSlotIsHardCardio,

@@ -358,17 +358,52 @@ Plan activo compacto: identidad (`id`, `version`, `schema`, `status`, `author`, 
 
 ```js
 plannedSetsPerMuscle: {
+  // DIRECTAS: la etiqueta `muscle` del ejercicio, 1 serie = 1 serie, y nada para nadie más
   byMuscle: { Chest: 4, Back: 8, Shoulders: 4, Quads: 7, Hamstrings: 7, Core: 9, Power: 3 },
   families: { …, 'Posterior chain': 7 },      // Hamstrings + Posterior + Glutes, agregados
+  // EFECTIVAS (v11.71): 1,0 al primario + 0,5 por secundario del patrón, redondeado a 0,5
+  effective: {
+    byMuscle: { Chest: 4, Back: 10, Shoulders: 6, Triceps: 4, Biceps: 4, 'Rear Delt': 5, … },
+    families: { …, 'Posterior chain': 11 },
+    total: 63, note },
   total: 45, floorPerMuscle: 10, capPerMuscle: 14, note }
 ```
 
-Series **prescritas** × las veces que la sesión aparece en `weekTemplate`, con el MISMO contador
-(`_vpSetsPerMuscle`) que el validador usa en `VOL-CAP` y `VOL-FLOOR` — el coach ve el número por el
-que se le juzga. Hasta v11.70 sólo viajaban las series HECHAS (`readiness.setsPerMuscle`) y las
-prescritas había que sumarlas del plan a mano. `families` agrega la cadena posterior, que la
-semilla reparte en tres etiquetas y hacía leer "9 series de isquios" sobre 14 de cadena posterior;
-`Power`, `Core` y `otros` quedan fuera del juicio de hipertrofia.
+Series **prescritas** × las veces que la sesión aparece en `weekTemplate`, con los MISMOS
+contadores (`_vpSetsPerMuscle`, `_vpEffectiveSetsPerMuscle`) que el validador usa en `VOL-CAP` y
+`VOL-FLOOR` — el coach ve el número por el que se le juzga. Hasta v11.70 sólo viajaban las series
+HECHAS (`readiness.setsPerMuscle`) y las prescritas había que sumarlas del plan a mano. `families`
+agrega la cadena posterior, que la semilla reparte en tres etiquetas y hacía leer "9 series de
+isquios" sobre 14 de cadena posterior; `Power`, `Core` y `otros` quedan fuera del juicio de
+hipertrofia.
+
+**Las DOS cuentas viajan, y hay una razón para cada una.** `byMuscle`/`families` son series
+DIRECTAS: la etiqueta `muscle` y nada más. Así contado, un press de banca acredita 0 al hombro y 0
+al tríceps y una remada 0 al bíceps — sobre el plan vivo eso ponía seis familias por debajo del
+suelo a la vez. `effective` añade el crédito fraccionado que la literatura de dosis-respuesta usa y
+en el que está escrito el 10-14 de STR-003: **1,0 serie al motor primario (la etiqueta `muscle`) +
+0,5 a cada secundario cargado**, decidido por `movementPattern` — una decisión por patrón, en
+`VP_PATTERN_SECONDARIES` (`app/coach-facts.js`):
+
+| patrón | secundarios a 0,5 |
+| --- | --- |
+| `horizontal-press` | Shoulders, Triceps |
+| `vertical-press` | Triceps |
+| `horizontal-pull` | Biceps, Rear Delt |
+| `vertical-pull` | Biceps |
+| `squat`, `single-leg` | Glutes |
+| `hinge` | el otro miembro de la cadena posterior (Glutes, o Hamstrings si el primario ya es Glutes) + Back (erectores) |
+| `isolation-*`, `glute`, `carry`, `conditioning`, `plyometric`, `core-*`, `other` | ninguno |
+
+El patrón sale de `ex.movementPattern` y, si no viaja, del fallback por id `VP_PATTERN_IDS`; un
+patrón que no se puede resolver **no acredita nada**, así que el sesgo es siempre a subcontar.
+`Power` tampoco acredita: no es volumen de hipertrofia.
+
+**Quién juzga qué.** `VOL-FLOOR` (blando, <10) juzga `effective.families`. `VOL-CAP` está partido a
+propósito: **duro** sólo si las series DIRECTAS pasan de 14 (eso es sobrepasarse en series
+prescritas, un hecho), **blando** si sólo lo pasan las efectivas (el exceso viene del crédito
+fraccionado, que es una estimación de modelo). Un duro detiene el camino manual — sin `--allow-hard`
+no escribe —, así que un duro sólo puede salir de un hecho, nunca de una estimación.
 
 **Esta sección es el vocabulario de la edge function**: `deriveAllowedFromFacts()`
 (`supabase/functions/coach-weekly-review/index.ts`) construye `allowed.sessionIds` y

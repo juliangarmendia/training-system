@@ -730,6 +730,22 @@ console.log('13. Prompt v11.71 (F-6, F-9, F-11, F-12, F-22)');
   // F-5 / F-7 · los dos avisos nuevos del validador viajan como guardarraíles blandos.
   yes(/\*\*G-S21\*\*[\s\S]{0,320}10 series/.test(PROMPT), 'G-S21: el suelo de 10 series/familia (STR-003)');
   yes(/G-S21[\s\S]{0,400}plannedSetsPerMuscle/.test(PROMPT), '   y dice dónde mirarlo en el pack');
+  // v11.71 · SERIES EFECTIVAS. El prompt tiene que decir QUÉ NÚMERO se juzga. Si el coach lee
+  // las directas y el validador juzga las efectivas, cada revisión trae una discrepancia
+  // aritmética que el pack existe precisamente para quitar (L-1: la app leía 16, el validador 13).
+  {
+    const gs21 = PROMPT.slice(PROMPT.indexOf('**G-S21**'), PROMPT.indexOf('**G-S22**'));
+    yes(/plannedSetsPerMuscle\.effective/.test(gs21),
+      '   G-S21 nombra `plannedSetsPerMuscle.effective` como el número que juzga el validador');
+    yes(/EFECTIVAS/.test(gs21) && /DIRECTAS/.test(gs21),
+      '   y dice que las directas también van publicadas, para no comparar contra la columna equivocada');
+    yes(/1,0 al[\s\S]{0,20}músculo primario[\s\S]{0,120}0,5 a cada secundario/.test(gs21),
+      '   con la convención en una frase (1,0 primario + 0,5 secundario del patrón)');
+    const gh7 = PROMPT.slice(PROMPT.indexOf('**G-H7**'), PROMPT.indexOf('**G-H8**'));
+    yes(/DIRECTAS/.test(gh7), 'G-H7: el techo DURO de 14 es sobre series directas');
+    yes(/no invalida la propuesta/.test(gh7),
+      '   y pasarse sólo en efectivas NO invalida la propuesta (el crédito fraccionado es una estimación, avisa)');
+  }
   yes(/\*\*G-S22\*\*[\s\S]{0,320}recomposición/.test(PROMPT), 'G-S22: no bajar kcal en recomposición (REC-002)');
 
   // El reparto estático/dinámico no se toca: nada de esto depende del request.

@@ -982,6 +982,29 @@ eq(psm.total, 45, 'total de series prescritas de la semana');
 eq(psm.floorPerMuscle, 10, 'con el suelo…');
 eq(psm.capPerMuscle, 14, '…y el techo que el validador aplica, para que el coach vea el mismo número');
 
+// ---- v11.71 · las series EFECTIVAS, al lado de las directas ----
+// EL FALLO: publicar UNA sola cuenta. Con las directas a secas el coach leía "Shoulders 4" de
+// una semana con press de banca Y press militar, y `VOL-FLOOR` juzgaba ese mismo 4 — mientras el
+// 10-14 de STR-003 está escrito en series efectivas. Publicar sólo las efectivas sería el mismo
+// error al revés: el duro de `VOL-CAP` mira las directas y el coach tiene que poder verlas.
+ok(!!psm.effective, 'plan.plannedSetsPerMuscle.effective existe, junto a byMuscle/families');
+eq(psm.byMuscle.Shoulders, 4, 'las DIRECTAS dejan al hombro en 4 (sólo el OHP lleva la etiqueta)…');
+eq(psm.effective.byMuscle.Shoulders, 6, '…y las EFECTIVAS lo suben a 6, con 0,5 × 4 series de banca');
+eq(psm.effective.byMuscle.Triceps, 4, 'tríceps 4: 0,5 × (4 banca + 4 OHP), sin una sola serie directa');
+eq(psm.effective.byMuscle.Biceps, 4, 'bíceps 4: 0,5 × (4 remo + 4 dominadas) — antes no existía en el pack');
+eq(psm.effective.byMuscle.Chest, 4, 'el pecho no cambia: es el primario de la banca y nadie más le acredita');
+eq(psm.effective.byMuscle.Back, 8, 'la espalda NO sube: el erector del peso muerto no es el dorsal');
+eq(psm.effective.byMuscle.Erectors, 2, 'los erectores van a su propio cubo (0,5 × 4 del peso muerto)');
+eq(psm.effective.byMuscle.Power, 3, "'Power' se queda en 3: la pliometría no acredita secundarios");
+eq(psm.effective.families['Posterior chain'], 11, 'la cadena posterior efectiva: 7 directas + 2 del glúteo de la sentadilla + 2 del peso muerto');
+eq(psm.effective.total, 63, 'y el total efectivo de la semana');
+ok(/1\.0 for the exercise's primary muscle/.test(String(psm.effective.note)),
+  'effective.note explica la convención (1,0 primario + 0,5 secundario)');
+ok(/VOL-FLOOR/.test(String(psm.effective.note)) && /VOL-CAP/.test(String(psm.effective.note)),
+  '   y dice que ÉSTE es el número que juzgan los guardarraíles');
+ok(/DIRECT sets/.test(String(psm.note)) && /effective/.test(String(psm.note)),
+  'y la nota de arriba distingue las dos cuentas, para que nadie compare contra la columna equivocada');
+
 // ---- F-9 · una sola tabla de color ----
 ok(Array.isArray(facts.readiness.firedSignals), 'readiness.firedSignals es un array (nunca null)');
 ok(facts.readiness.firedSignals.every(x => typeof x === 'string'), 'de ids de señal');

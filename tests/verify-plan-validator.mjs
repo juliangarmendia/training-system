@@ -55,6 +55,20 @@ const { validatePlanVersion, diffPlanVersions, mergeProposal } = F;
 
 const clone = (o) => JSON.parse(JSON.stringify(o));
 
+// `MOVEMENT_PATTERNS` tal cual está en app.js: la lista REAL de patrones que la librería puede
+// producir. El mapa de crédito fraccionado se comprueba contra ella y no contra una copia, para
+// que añadir un patrón allí y olvidarse aquí sea un fallo y no un silencio.
+const SEED_PATTERNS = (() => {
+  const src = readFileSync('app/app.js', 'utf8');
+  const i = src.indexOf('const MOVEMENT_PATTERNS = {');
+  if (i < 0) return null;
+  const j = src.indexOf('\n};', i);
+  const box = { console };
+  vm.createContext(box);
+  new vm.Script(`${src.slice(i, j + 3)}\nglobalThis.__p = MOVEMENT_PATTERNS;`).runInContext(box);
+  return box.__p;
+})();
+
 // ════════════════════════════════════════════════════════════════════════════════════
 // FIXTURE LIMPIO — la semana ideal real (4 fuerza + 2 cardio + recuperación) sobre hechos
 // plausibles. Dispara UN aviso y sólo uno: HARD-BUDGET, porque el presupuesto del ideal es
@@ -179,10 +193,14 @@ sec('El plan limpio: HARD-BUDGET (7,5 sobre 6) y el suelo de series de una seman
 // ════════════════════════════════════════════════════════════════════════════════════
 // Hasta v11.70 este fixture disparaba UN aviso. Desde v11.71 dispara dos ids: `HARD-BUDGET` y
 // `VOL-FLOOR` (F-7), y el segundo también es un HECHO del plan, no un defecto del test — la
-// semana ideal de 4 sesiones deja pecho en 4 series, hombro en 4, cadena posterior en 7 y
-// cuádriceps en 7, todos por debajo del 10 que STR-003 declara como suelo en déficit. Que nadie
-// lo dijera durante meses es exactamente lo que la auditoría del 09-sep fue a buscar: el
-// validador tenía el techo (14) y no el suelo, así que "no pasarse" pasaba por "estar bien".
+// semana ideal de 4 sesiones deja pecho en 4 series EFECTIVAS, tríceps y bíceps en 4, deltoides
+// posterior en 5, hombro en 6 y cuádriceps en 7, todos por debajo del 10 que STR-003 declara
+// como suelo en déficit. Que nadie lo dijera durante meses es exactamente lo que la auditoría
+// del 09-sep fue a buscar: el validador tenía el techo (14) y no el suelo, así que "no pasarse"
+// pasaba por "estar bien".
+// La cadena posterior YA NO sale (11 efectivas: 7 directas + 2 del glúteo de la sentadilla + 2
+// del peso muerto), y el bíceps SÍ sale con 4 donde antes no existía: los dos son el efecto del
+// crédito fraccionado, que es el arreglo de este bloque, no un cambio de umbral.
 const base = run();
 eq([...new Set(ids(base))].sort().join(','), 'HARD-BUDGET,VOL-FLOOR', 'el ideal real produce dos ids: presupuesto y suelo de series');
 ok(base.every(r => r.level === 'warn'), 'y los dos son BLANDOS: BUD-001 es informativo y el suelo se discute, no bloquea');
@@ -274,11 +292,17 @@ sec('F-7 · VOL-FLOOR (warn) — STR-003: el SUELO de series, no sólo el techo'
   eq(volFloor.length, 1, 'el ideal de 4 sesiones dispara el suelo UNA vez, con la lista dentro');
   ok(volFloor.every(r => r.level === 'warn'), 'y siempre BLANDO: se discute, no bloquea');
   const floor = volFloor[0];
-  for (const n of ['Chest 4', '10 direct sets/week', 'STR-003', 'Direct sets only']) {
+  // El texto tiene que DECIR QUÉ NÚMERO usa. Un suelo que se juzga en series efectivas y se
+  // anuncia como "series" deja al coach comparando contra la columna equivocada del pack.
+  for (const n of ['Chest 4', '10 EFFECTIVE sets/week', 'STR-003', 'plan.plannedSetsPerMuscle.byMuscle']) {
     ok(floor.text.indexOf(n) !== -1, `   el texto lleva "${n}" — ${floor.text}`);
   }
-  ok(/Chest 4.*Shoulders 4|Shoulders 4.*Chest 4/.test(floor.text),
-    '   y nombra a las dos familias por debajo con su número, ordenadas por lo peor');
+  ok(/Chest 4[\s\S]*Shoulders 6/.test(floor.text),
+    '   y nombra a las familias por debajo con su número, ordenadas por lo peor');
+  ok(/Biceps 4/.test(floor.text),
+    '   el bíceps entra en la lista con 4 efectivas (2 de la remada + 2 de las dominadas): antes no existía en el recuento');
+  ok(!/Posterior chain \d/.test(floor.text),
+    '   y la cadena posterior sale de la lista con 11 efectivas (7 directas + glúteo de sentadilla y peso muerto)');
   eq(floor.ruleIds.join(','), 'STR-003,STR-001', '   y cita STR-003 (el que declara el 10-14)');
   // Ni pliometría ni core tienen suelo: ATH-003 gobierna el core por PATRÓN (anti-rotación /
   // anti-extensión), no por series, y el box jump no es volumen de hipertrofia (L-1, v11.70).
@@ -305,9 +329,23 @@ sec('F-7 · VOL-FLOOR (warn) — STR-003: el SUELO de series, no sólo el techo'
   ok(!/Chest \d/.test((pick(chestOk, 'VOL-FLOOR')[0] || { text: '' }).text),
     'pecho con 10 series exactas: en el suelo, no por debajo');
 
-  // Las dos puertas: variante <4 y mantenimiento.
-  silent(run(null, { variant: 3 }), 'VOL-FLOOR',
-    'variante de 3 días (10 series/familia es aritméticamente imposible)');
+  // Las dos puertas: pocos días DE GIMNASIO y mantenimiento.
+  //
+  // La puerta cuenta los días de gimnasio de la PLANTILLA, no la variante: la variante son los
+  // días que Julian dedica a entrenar (cardio y recuperación incluidos), así que la de 4 días
+  // tiene DOS de fuerza. Con dos sesiones, 10 series por familia no cabe en la semana y el aviso
+  // era un reproche sobre el que no se puede actuar.
+  const dosDiasGym = {
+    0: { type: 'recovery', subtype: 'mobility' }, 1: { type: 'gym', session: 'lowerA' },
+    2: { type: 'run', subtype: 'zone2', durationMin: 40 }, 3: { type: 'gym', session: 'upperA' },
+    4: { type: 'rest' }, 5: { type: 'run', subtype: 'zone2', durationMin: 30 }, 6: { type: 'rest' },
+  };
+  silent(run({ weekTemplate: dosDiasGym }, { variant: 4 }), 'VOL-FLOOR',
+    'dos días de gimnasio (10 series/familia es aritméticamente imposible)');
+  // Y la plantilla MANDA sobre la metadata: cuatro días de gimnasio con `variant: 3` sí se juzgan.
+  ok(pick(run(null, { variant: 3 }), 'VOL-FLOOR').length === 1,
+    'cuatro días de gimnasio con la variante diciendo 3: manda la plantilla y el suelo se juzga');
+  eq(F.VP_MIN_GYM_DAYS_FOR_FLOOR, 3, 'el mínimo de días de gimnasio está declarado como constante');
   silent(run(null, { goals: { primary: { type: 'maintenance' }, constraints: { proteinG: 185 } } }), 'VOL-FLOOR',
     'fuera de déficit (el 10-14 de STR-003 es el rango del déficit)');
   eq(F.VP_MIN_SETS_PER_MUSCLE, 10, 'el suelo está declarado como constante exportada');
@@ -317,6 +355,120 @@ sec('F-7 · VOL-FLOOR (warn) — STR-003: el SUELO de series, no sólo el techo'
   eq(F._vpMuscleFamily('Chest'), 'Chest', 'y deja el resto como está');
   eq(F._vpFamilyHasFloor('Power'), false, '_vpFamilyHasFloor: Power no');
   eq(F._vpFamilyHasFloor('Chest'), true, '   Chest sí');
+}
+
+// ════════════════════════════════════════════════════════════════════════════════════
+sec('v11.71 · SERIES EFECTIVAS — 1,0 al primario + 0,5 por secundario del patrón (STR-003)');
+// ════════════════════════════════════════════════════════════════════════════════════
+// EL FALLO QUE ESTE BLOQUE IMPIDE, y son dos.
+//
+//   1. **Contar sólo las directas.** El contador sumaba la etiqueta `muscle` y nada más: un
+//      press de banca acreditaba 0 al hombro y 0 al tríceps, una remada 0 al bíceps. Sobre la
+//      semilla real eso ponía SEIS familias por debajo del suelo de 10 a la vez con un plan
+//      razonable delante, y un aviso que salta siempre no informa de nada. El 10-14 de STR-003
+//      está escrito en series efectivas, no directas.
+//   2. **Dejar que la estimación bloquee.** El crédito fraccionado es un MODELO. Un DURO detiene
+//      el camino manual (sin `--allow-hard` no escribe), así que el duro sigue mirando sólo las
+//      directas y el exceso que sólo aparece en efectivas avisa. Si alguien "simplifica" esto a
+//      un solo nivel, un mapa de secundarios acaba decidiendo si un plan se puede aplicar.
+{
+  eq(F.VP_SECONDARY_CREDIT, 0.5, 'el crédito del secundario está declarado como constante exportada');
+  ok(F.VP_PATTERN_SECONDARIES && typeof F.VP_PATTERN_SECONDARIES === 'object', 'y el mapa por patrón también');
+
+  // TODO patrón que la librería puede producir tiene UNA decisión. Sin esto, añadir un patrón a
+  // `MOVEMENT_PATTERNS` en app.js lo deja sin crédito EN SILENCIO, que es la forma en la que el
+  // bíceps llevaba meses en 0.
+  const patrones = [...new Set(Object.values(SEED_PATTERNS || {}))].sort();
+  const sinDecision = patrones.filter(p => !Object.prototype.hasOwnProperty.call(F.VP_PATTERN_SECONDARIES, p));
+  eq(sinDecision.length, 0, `los ${patrones.length} patrones reales de app.js tienen decisión en el mapa${sinDecision.length ? ` — sin ella: ${sinDecision.join(', ')}` : ''}`);
+  ok(Object.prototype.hasOwnProperty.call(F.VP_PATTERN_SECONDARIES, 'other'),
+    "y 'other' (el fallback de app.js para un id sin patrón) también: no acredita nada");
+
+  // El mapa, patrón a patrón. Los valores son etiquetas `muscle` de la semilla.
+  const secs = (pat, muscle) => F._vpSecondariesFor(pat, muscle).join('+');
+  eq(secs('horizontal-press', 'Chest'), 'Shoulders+Triceps', 'press horizontal → hombro y tríceps');
+  eq(secs('vertical-press', 'Shoulders'), 'Triceps', 'press vertical → sólo tríceps (el hombro ya es el primario)');
+  eq(secs('horizontal-pull', 'Back'), 'Biceps+Rear Delt', 'tirón horizontal → bíceps y deltoides posterior');
+  eq(secs('vertical-pull', 'Back'), 'Biceps', 'tirón vertical → sólo bíceps');
+  eq(secs('squat', 'Quads'), 'Glutes', 'sentadilla → glúteo');
+  eq(secs('single-leg', 'Quads'), 'Glutes', 'zancada / split squat → glúteo (misma extensión de cadera)');
+  // Los erectores van a SU cubo, no a `Back`. `Back` en la semilla es dorsal y espalda media, y
+  // está exactamente en el tope de 14 directas: sumarle los erectores del peso muerto la empujaba
+  // por encima del tope y encendía un aviso permanente sobre un músculo que no se ha pasado.
+  eq(secs('hinge', 'Hamstrings'), 'Glutes+Erectors', 'bisagra con primario isquios → glúteo y erectores');
+  eq(secs('hinge', 'Glutes'), 'Hamstrings+Erectors', '   y con primario glúteo → isquios y erectores');
+  eq(secs('hinge', 'Posterior'), 'Glutes+Erectors', "   con la etiqueta paraguas 'Posterior' se acredita el glúteo");
+  // Una apertura NO extiende el codo: monoarticular aunque la librería la etiquete como press.
+  for (const id of ['incline-db-fly', 'cable-fly', 'cable-crossover', 'pec-deck', 'rear-delt-fly']) {
+    ok(!!F.VP_NO_SECONDARY_IDS[id], `'${id}' está en VP_NO_SECONDARY_IDS: una apertura no acredita tríceps`);
+  }
+  for (const pat of ['isolation-quad', 'isolation-ham', 'isolation-tricep', 'isolation-bicep',
+    'isolation-shoulder', 'isolation-rear-delt', 'isolation-calf', 'isolation-lat',
+    'glute', 'carry', 'conditioning', 'plyometric',
+    'core-anti-rotation', 'core-anti-extension', 'core-flexion', 'other']) {
+    eq(secs(pat, 'Chest'), '', `'${pat}' no acredita secundarios`);
+  }
+  eq(secs('patron-que-no-existe', 'Chest'), '', 'un patrón desconocido tampoco: el sesgo es a subcontar');
+  // Nadie cobra dos veces: la banca de agarre estrecho está etiquetada 'Triceps' en la semilla.
+  eq(secs('horizontal-press', 'Triceps'), 'Shoulders', 'un secundario que coincide con el primario no cobra dos veces');
+
+  // El contador, sobre una sesión mínima con un template de una sola aparición.
+  const uno = { upperA: { id: 'upperA', name: 'U', exercises: [
+    Object.assign({}, EX.bench, { sets: 3 }),      // Chest 3 · Shoulders 1,5 · Triceps 1,5
+    Object.assign({}, EX.row, { sets: 3 }),        // Back 3 · Biceps 1,5 · Rear Delt 1,5
+    Object.assign({}, EX.trap, { sets: 3 }),       // Hamstrings 3 · Glutes 1,5 · Back 1,5
+    Object.assign({}, EX.boxJump, { sets: 4 }),    // Power 4, sin secundarios
+  ] } };
+  const tplUno = { 1: { type: 'gym', session: 'upperA' } };
+  const dir = F._vpSetsPerMuscle(uno, tplUno);
+  const eff = F._vpEffectiveSetsPerMuscle(uno, tplUno);
+  eq(JSON.stringify(dir.byMuscle), JSON.stringify({ Chest: 3, Back: 3, Hamstrings: 3, Power: 4 }),
+    '`_vpSetsPerMuscle` sigue devolviendo DIRECTAS: no se ha tocado el contador viejo');
+  eq(eff.byMuscle.Chest, 3, 'efectivas: el primario vale 1,0 por serie');
+  eq(eff.byMuscle.Shoulders, 1.5, '   el hombro cobra 0,5 × 3 series de banca');
+  eq(eff.byMuscle.Triceps, 1.5, '   y el tríceps otro tanto');
+  eq(eff.byMuscle.Biceps, 1.5, '   el bíceps, 0,5 × 3 series de remada');
+  eq(eff.byMuscle['Rear Delt'], 1.5, '   el deltoides posterior igual');
+  eq(eff.byMuscle.Back, 3, '   la espalda se queda en sus 3 directas: el erector no es el dorsal');
+  eq(eff.byMuscle.Erectors, 1.5, '   los erectores cobran 0,5 × 3 del peso muerto, en su propio cubo');
+  eq(F._vpFamilyHasFloor('Erectors'), false, "   y 'Erectors' no tiene suelo: el corpus no le declara un 10-14");
+  eq(eff.byMuscle.Glutes, 1.5, '   el glúteo, 0,5 × 3 del peso muerto');
+  eq(eff.byMuscle.Power, 4, "   y 'Power' se queda con sus 4: la pliometría no acredita a nadie");
+  ok(!('Quads' in eff.byMuscle), '   nadie inventa cuádriceps desde el box jump');
+  eq(eff.families['Posterior chain'], 4.5, 'las familias se agregan igual (isquios 3 + glúteo 1,5)');
+  ok(Object.values(eff.byMuscle).every(n => n * 2 === Math.round(n * 2)), 'todo redondeado a 0,5: el crédito es estimación, no medida al decimal');
+
+  // Dos aperturas de 5 series dejan el tríceps en 2,5 → 0,5 × 5 = 2,5, no 2,4999.
+  const medias = { upperA: { id: 'upperA', name: 'U', exercises: [Object.assign({}, EX.bench, { sets: 5 })] } };
+  eq(F._vpEffectiveSetsPerMuscle(medias, tplUno).byMuscle.Triceps, 2.5, 'series impares → medias exactas');
+
+  // Sin template cada sesión cuenta una vez; con la sesión dos veces en la semana, el doble.
+  const tplDos = { 1: { type: 'gym', session: 'upperA' }, 4: { type: 'gym', session: 'upperA' } };
+  eq(F._vpEffectiveSetsPerMuscle(uno, tplDos).byMuscle.Shoulders, 3,
+    'la sesión que aparece dos veces en el template cuenta dos veces (igual que las directas)');
+
+  // Y los dos niveles de VOL-CAP, cada uno con su número.
+  // 15 directas de pecho: DURO, sin crédito de nadie.
+  const capDir = run({ sessions: Object.assign(clone(PLAN_OK.sessions), {
+    upperA: { id: 'upperA', name: 'Upper A', exercises: [Object.assign({}, EX.bench, { sets: 15 }), EX.facePull, EX.pallof] },
+  }) });
+  fires(capDir, 'VOL-CAP', 'hard', ['Chest', '15 DIRECT sets', 'not an estimate'], '15 series directas de pecho');
+  // 10 directas de hombro + press de banca y OHP: el tope se pasa sólo en efectivas → BLANDO.
+  const capEff = run({ sessions: Object.assign(clone(PLAN_OK.sessions), {
+    upperA: { id: 'upperA', name: 'Upper A', exercises: [Object.assign({}, EX.bench, { sets: 8 }), Object.assign({}, EX.ohp, { sets: 10 }), EX.pallof] },
+  }) });
+  const capEffHits = pick(capEff, 'VOL-CAP').filter(g => /^Shoulders: /.test(g.text));
+  eq(capEffHits.length, 1, 'el hombro por encima del tope sólo en efectivas dispara UNA vez');
+  eq(capEffHits[0] && capEffHits[0].level, 'warn', '   y BLANDO: el exceso es crédito fraccionado, una estimación no bloquea un apply');
+  ok(capEffHits[0] && /EFFECTIVE sets/.test(capEffHits[0].text) && /direct/.test(capEffHits[0].text),
+    `   con el efectivo y el directo los dos en el texto — ${capEffHits[0] ? capEffHits[0].text.slice(0, 110) : '(no disparó)'}`);
+  ok(!pick(capEff, 'VOL-CAP').some(g => g.level === 'hard' && /^Shoulders: /.test(g.text)),
+    '   y NUNCA duro por el mismo músculo: el duro es sólo para las directas');
+  // Fuera de déficit no hay techo (ni duro ni blando), igual que antes.
+  silent(run({ sessions: Object.assign(clone(PLAN_OK.sessions), {
+    upperA: { id: 'upperA', name: 'Upper A', exercises: [Object.assign({}, EX.bench, { sets: 15 }), EX.pallof] },
+  }) }, { goals: { primary: { type: 'maintenance' }, constraints: { proteinG: 185 } } }), 'VOL-CAP',
+    'fuera de déficit (el 10-14 de STR-003 es el rango del déficit)');
 }
 
 // ════════════════════════════════════════════════════════════════════════════════════
@@ -1080,7 +1232,43 @@ sec('VOL-CAP sobre la semilla REAL (v11.70, L-1): el box jump no es volumen de c
       const ctxV = Object.assign({}, CTX_OK, { basedOn: null, libraryIds: ids, variant, lowerSessionIds: new Set(['lowerA', 'lowerB', 'fullA', 'fullB', 'hybrid1', 'travelA', 'travelB']) });
       const res = validatePlanVersion(seedPlan, ctxV);
       const vol = res.filter(g => g.id === 'VOL-CAP');
-      ok(vol.length === 0, `la semilla de ${variant} días no dispara VOL-CAP${vol.length ? ` — ${vol.map(g => g.text).join(' | ')}` : ''}`);
+      // LO QUE NO PUEDE PASAR ES EL DURO. Un duro detiene el camino manual (sin `--allow-hard`
+      // no escribe) y pinta rojo en cada propuesta: ése fue el fallo de L-1. Desde v11.71 el duro
+      // sólo mira las series DIRECTAS, que sobre la semilla real no pasan de 14 en ninguna
+      // variante — Back se queda exactamente en 14 con 4 sesiones.
+      const duros = vol.filter(g => g.level === 'hard');
+      ok(duros.length === 0, `la semilla de ${variant} días no dispara VOL-CAP DURO${duros.length ? ` — ${duros.map(g => g.text).join(' | ')}` : ''}`);
+      // NI EL BLANDO, sobre la semilla real. Cuando los erectores del peso muerto se sumaban a
+      // `Back` (que está exactamente en 14 directas), el aviso salía en las variantes de 6 y 5
+      // TODAS las semanas, sobre un músculo que no se ha pasado de nada: ruido permanente nacido
+      // de meter el erector en el cubo del dorsal. Con `Erectors` aparte, la semilla está limpia
+      // en las tres variantes. El aviso blando sigue existiendo para un plan que SÍ se pase sólo
+      // en efectivas — lo cubre el caso sintético de más abajo.
+      const blandos = vol.filter(g => g.level === 'warn');
+      ok(blandos.length === 0, `variante ${variant}: ninguna familia pasa del tope, ni en directas ni en efectivas${blandos.length ? ` — ${blandos.map(g => g.text.slice(0, 90)).join(' | ')}` : ''}`);
+      // Y ESTO ES LO QUE JULIAN VE en la variante viva (6 días, 4 de gimnasio): UN aviso de suelo
+      // con los músculos pequeños que la semilla apenas entrena en directo. Es accionable (un
+      // curl, un face pull, o aceptarlo) y por eso se fija aquí: si la semilla cambia y la lista
+      // crece, este test lo dice antes de que lo diga la tarjeta del coach.
+      if (variant === 6) {
+        const floor = res.filter(g => g.id === 'VOL-FLOOR');
+        eq(floor.length, 1, 'variante viva: UN aviso de suelo, no uno por familia');
+        for (const fam of ['Calves', 'Rear Delt', 'Biceps', 'Triceps']) {
+          ok(floor[0].text.indexOf(fam) !== -1, `   y nombra ${fam}, que la semilla entrena poco en directo`);
+        }
+        for (const fam of ['Chest ', 'Back ']) {
+          ok(floor[0].text.indexOf(fam) === -1,
+            `   y NO nombra ${fam.trim()}: con crédito fraccionado llega al suelo (antes salía)`);
+        }
+        // La cadena posterior tampoco: con el glúteo de la sentadilla y del peso muerto llega. Se
+        // comprueba "nombre + número" porque el nombre reaparece al final del texto, en la frase
+        // que explica la fusión de familias.
+        ok(!/Posterior chain \d/.test(floor[0].text),
+          `   y NO nombra la cadena posterior: el glúteo de sentadilla y peso muerto la sube al suelo`);
+        // La lista exacta que verá la tarjeta, para que un cambio de semilla se note aquí primero.
+        ok(/: Calves 3, Rear Delt 6\.5, Biceps 7, Triceps 7\.5\./.test(floor[0].text),
+          `   la lista es Calves 3 · Rear Delt 6,5 · Biceps 7 · Triceps 7,5 — ${floor[0].text.slice(0, 130)}`);
+      }
     }
   }
   // Y aunque la semilla volviera a decir 'Quads', el contador manda el box jump a 'Power' POR ID.

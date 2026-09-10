@@ -371,9 +371,12 @@ propuesta viola una, se te devuelve para regenerar y se pinta en rojo en la app.
   \`weak_extrapolated\` y no sostiene una regla dura).
 - **G-H6** Un anchor sólo se sustituye dentro de {trap bar ↔ sumo, chest-supported row ↔
   barbell row con flag lumbar}. Fuera de eso, no se sustituye (STR-010, LOAD-003).
-- **G-H7** Ni >14 series por músculo y semana en déficit, ni un total >+10% sobre la semana
-  anterior sin las tres condiciones a la vez: adherencia ≥75%, recuperación verde y nutrición
-  ≥10 de 14 días (STR-003, STR-001).
+- **G-H7** Ni >14 series **DIRECTAS** por músculo y semana en déficit
+  (\`facts.plan.plannedSetsPerMuscle.byMuscle\`: las series cuya etiqueta \`muscle\` es ese
+  músculo), ni un total >+10% sobre la semana anterior sin las tres condiciones a la vez:
+  adherencia ≥75%, recuperación verde y nutrición ≥10 de 14 días (STR-003, STR-001). Pasarse del
+  14 sólo en series EFECTIVAS (\`plannedSetsPerMuscle.effective\`) **no invalida la propuesta**: el
+  crédito fraccionado es una estimación y el validador lo saca como aviso, no como duro. Dilo tú.
 - **G-H8** \`weeklyKmTarget\` nunca supera el máximo de las últimas 4 semanas × 1,2
   (END-003, LOAD-001).
 - **G-H9** Ninguna decisión baja la proteína de 185 g, las kcal de entreno de **2.700** o las de
@@ -434,10 +437,14 @@ const BLANDOS = `# Reglas blandas — SHOULD. Si las cruzas, dilo tú antes de q
 - **G-S20** La semana suma menos de **150 min** de cardio (END-009, ACSM 2024: 150 es el suelo,
   200-300 la banda de pérdida de grasa). El arreglo son minutos FÁCILES y pasos (REC-009), nunca
   otra sesión dura.
-- **G-S21** Una familia muscular por debajo de **10 series/semana** en déficit, en variantes de 4
-  días o más (STR-003 dice 10-14: el 14 es el techo y el 10 es el SUELO). Se cuenta por familia y
-  la cadena posterior va agregada (Hamstrings + Posterior + Glutes), que es como la mide el
-  validador: mira \`facts.plan.plannedSetsPerMuscle.families\` antes de quitar series de ningún sitio.
+- **G-S21** Una familia muscular por debajo de **10 series EFECTIVAS/semana** en déficit, en
+  variantes de 4 días o más (STR-003 dice 10-14: el 14 es el techo y el 10 es el SUELO). El número
+  que juzga el validador es \`facts.plan.plannedSetsPerMuscle.effective.families\`; las series
+  DIRECTAS van publicadas al lado, en \`plannedSetsPerMuscle.families\`. Serie efectiva = **1,0 al
+  músculo primario del ejercicio + 0,5 a cada secundario cargado de su patrón** (la banca acredita
+  hombro y tríceps, la remada bíceps y deltoides posterior, la bisagra glúteo y erectores). Se
+  cuenta por familia, con la cadena posterior agregada (Hamstrings + Posterior + Glutes). Mira ese
+  campo antes de quitar series de ningún sitio, y cita el número efectivo, no el directo.
 - **G-S22** Bajar kcal mientras la báscula dice recomposición (\`trajectory.weight.scale\`:
   \`fatMassKgDelta28d ≤ −0,5\`, \`ffmKgDelta28d ≥ −0,3\`, ≥21 días de span). Es el veto del paso 6
   con su aviso propio (REC-002, REC-008): el peso plano con la grasa bajando no es un

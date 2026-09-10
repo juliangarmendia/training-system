@@ -118,9 +118,10 @@ reescriben la regla.
     "sources": ["Pelland et al. 2026 (volume/frequency dose-response meta-regression, 67 studies n=2058; Sports Med; doi 10.1007/s40279-025-02344-w; PMID 41343037; verified)", "Currier 2023 (BJSM NMA)", "Currier 2026"],
     "applicabilityToUser": "high",
     "confidence": "high",
-    "caveats": ["Recovery ceiling is lower in a deficit, so 'more is more' inverts; the cap is recovery-driven, not an absolute hypertrophy ceiling."],
+    "caveats": ["Recovery ceiling is lower in a deficit, so 'more is more' inverts; the cap is recovery-driven, not an absolute hypertrophy ceiling.", "The 10-14 band counts EFFECTIVE sets (fractional credit for secondary muscles), which is the convention of the source meta-analyses; counting only sets labelled with a muscle understates every muscle that is trained as a synergist. See consumerNote."],
     "consumer": "validator",
-    "programmingAction": "Strength Engine targets 10-14 sets/muscle/wk in cut blocks; raise only if Readiness supports it."
+    "consumerNote": "COUNTING CONVENTION (added 2026-09-10). The 10-14 band is judged in EFFECTIVE sets: 1.0 set for the exercise's prime mover and 0.5 for each meaningfully loaded secondary, which is how the dose-response literature behind this rule counts volume. The credit is decided per `movementPattern`, one decision per pattern, in `VP_PATTERN_SECONDARIES` (app/coach-facts.js): horizontal press -> shoulders + triceps; vertical press -> triceps; horizontal pull -> biceps + rear delts; vertical pull -> biceps; squat and single-leg -> glutes; hinge -> the other posterior-chain muscle + 'Erectors' (its own bucket, NOT 'Back': the seed's 'Back' label is lats and mid-back, it already sits at the cap, and the erector is not the lat; 'Erectors' has no floor and no cap because the corpus declares no band for it and every hinge and carry trains it); isolation, glute, carry, plyometric, conditioning and core credit nothing beyond the primary. Openers (flies, crossovers, pec deck) credit nothing either, even though the library labels them 'horizontal-press': a fly does not extend the elbow. An unresolvable pattern credits nothing, so the count is biased to under-report. Counted per family (Hamstrings + Posterior + Glutes merge into 'Posterior chain'); Power, Core and 'otros' are outside the band. Consumed by `VOL-FLOOR` (warn, family below 10 effective sets in a deficit, and only with >=3 GYM DAYS in the week template, not >=4 days of the variant: the variant counts cardio and recovery days too, so the 4-day variant has two strength sessions and 10 sets per family does not fit in the week) and `VOL-CAP`. VOL-CAP is deliberately split by which number breaches the cap: HARD only when DIRECT sets exceed 14 (unambiguous overreach in prescribed sets), WARN when only the effective count does, because fractional credit is a modelling estimate and a hard guardrail blocks the manual apply path. Both counts are published side by side in the facts pack as `plan.plannedSetsPerMuscle` (direct) and `plan.plannedSetsPerMuscle.effective`, so the coach reads the same numbers the validator judges. Before this, direct-only counting put six families of the live plan below the floor at once - a bench press credited nothing to the shoulders and a row nothing to the biceps.",
+    "programmingAction": "Strength Engine targets 10-14 EFFECTIVE sets/muscle/wk in cut blocks; raise only if Readiness supports it."
   },
   {
     "id": "STR-004",
@@ -1147,6 +1148,16 @@ ATH-001..006 · READ-001..008 · LOAD-001..004 · SEL-001..004 · BUD-001..002 �
 **ENV-001..002**. Total: **72 reglas** (59 + 11 en la ronda 4 + 2 en la auditoría de la app).
 
 (STR-008 = periodización. ATH-005 = unilateral, provisional hasta verificar Speirs.)
+
+**Cambiadas 2026-09-10:** `STR-003` gana su **convención de recuento** en `consumerNote` (ningún id
+nuevo, ninguna renumeración). El 10-14 se juzga en **series efectivas** — 1,0 al motor primario y
+0,5 a cada secundario cargado, decidido por `movementPattern` en `VP_PATTERN_SECONDARIES`
+(`app/coach-facts.js`) — porque es la convención de los metaanálisis que la sostienen. Contando
+sólo la etiqueta `muscle`, seis familias del plan vivo incumplían el suelo a la vez: una banca no
+acreditaba nada al hombro ni al tríceps, una remada nada al bíceps. `VOL-CAP` queda partido por el
+número que se pasa del tope: **duro** con las series DIRECTAS, **blando** cuando sólo lo pasan las
+efectivas (el crédito fraccionado es una estimación de modelo y un duro detiene el camino manual).
+El pack publica las dos cuentas en `plan.plannedSetsPerMuscle` y `plan.plannedSetsPerMuscle.effective`.
 
 **Añadidas 2026-09-08** (auditoría de la app, ver [`../docs/audits/2026-09-08-app-audit.md`](../docs/audits/2026-09-08-app-audit.md)):
 
