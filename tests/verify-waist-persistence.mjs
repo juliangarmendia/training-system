@@ -235,7 +235,7 @@ function montar({ rows, wellness, withingsVisible }) {
 {
   const rows = [
     { date: '2026-09-05', weight: 86.6, source: 'withings', fatPct: 18.4, fatMassKg: 15.9, ffmKg: 70.7, muscleKg: 67.1 },
-    { date: '2026-09-06', weight: 86.4, source: 'withings', fatPct: 18.2, fatMassKg: 15.7, ffmKg: 70.7, bfPct: 18.2 },
+    { date: '2026-09-06', weight: 86.4, source: 'withings', fatPct: 18.2, fatMassKg: 15.7, ffmKg: 70.7, bfPct: 18.2, measured: false },
   ];
   const { sandbox, getEl, puts } = montar({ rows, wellness: [], withingsVisible: true });
   await sandbox.__render();
@@ -266,6 +266,11 @@ function montar({ rows, wellness, withingsVisible }) {
   (!('neck' in w.data) && !('heightCm' in w.data))
     ? ok('[con báscula] un cuello en blanco NO borra nada: los opcionales vacíos no se escriben')
     : bad('escribe cuello/altura vacíos y pisaría los de la semana pasada');
+  // `measured` describe el PESO. Guardando sólo la cintura no hay peso nuevo, así que la
+  // bandera se hereda: marcarla `true` sobre un peso forward-fill de intervals.icu haría que
+  // `_weightDays` (coach-facts.js) contase un valor suavizado como pesada real, y con él la
+  // pendiente de 28 días y `nMeasured28` que pilotan el déficit.
+  eq(w.data.measured, false, '[con báscula] `measured` se hereda: medir la cintura no convierte el peso del día en una pesada');
 }
 
 // 5.c — F-14: `wellness.abdomen` entra en la serie donde no hay medida manual.

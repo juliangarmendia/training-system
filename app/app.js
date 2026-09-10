@@ -7188,7 +7188,6 @@ async function renderBodyCompEstimator() {
     const fila = Object.assign({}, existing || {}, {
       date: d,
       waist,
-      measured: true,
       timestamp: Date.now(),
     });
     // Opcionales: sólo si vienen. Un cuello en blanco no puede borrar el de la semana pasada.
@@ -7199,6 +7198,11 @@ async function renderBodyCompEstimator() {
     if (navy) {
       fila.weight = weight;
       fila.bfPct = bfPct;
+      // `measured` es una propiedad del PESO, no de la cintura: aquí hay un peso teclado, así
+      // que la fila es una pesada real. Guardando sólo la cintura NO se toca — si el peso del
+      // día es el forward-fill de intervals.icu (`measured: false`), marcarlo `true` haría que
+      // `_weightDays` contase un valor suavizado como pesada, y con ella la pendiente de 28 días.
+      fila.measured = true;
     }
     try {
       await smartPut('bodyweight', fila);
