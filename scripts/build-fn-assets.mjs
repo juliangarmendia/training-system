@@ -101,8 +101,15 @@ export { ${EXPORTS.join(', ')} };
 `;
 }
 
+// LEE NORMALIZANDO A LF, y esto no es cosmetico. El sha se calcula sobre el contenido del
+// fuente; el arbol de trabajo de Windows tiene CRLF (autocrlf) y el checkout de CI tiene LF.
+// Hasheando los bytes crudos, regenerar en Windows producia un sha que CI no podia reproducir:
+// el job `test` fallaba con DESINCRONIZADO sobre un activo que estaba al dia, y la unica salida
+// era regenerar a mano en un checkout LF. El sha identifica el fuente LOGICO.
+const readText = (p) => readFileSync(p, 'utf8').split('\r\n').join('\n');
+
 function main() {
-  const source = readFileSync(SRC, 'utf8');
+  const source = readText(SRC);
   const sha = createHash('sha256').update(source).digest('hex');
   const out = wrap(source, sha);
 
@@ -111,11 +118,11 @@ function main() {
       console.error(`FALTA ${OUT}. Ejecuta: node scripts/build-fn-assets.mjs`);
       process.exit(1);
     }
-    if (readFileSync(OUT, 'utf8') !== out) {
+    if (readText(OUT) !== out) {
       console.error(`DESINCRONIZADO: ${OUT} no corresponde al ${SRC} actual. Ejecuta: node scripts/build-fn-assets.mjs`);
       process.exit(1);
     }
-    if (!existsSync(OUT_SHA) || readFileSync(OUT_SHA, 'utf8').trim() !== sha) {
+    if (!existsSync(OUT_SHA) || readText(OUT_SHA).trim() !== sha) {
       console.error(`DESINCRONIZADO: ${OUT_SHA}. Ejecuta: node scripts/build-fn-assets.mjs`);
       process.exit(1);
     }

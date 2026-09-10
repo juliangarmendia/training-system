@@ -55,11 +55,15 @@ if (!existsSync(GEN) || !existsSync(GEN_SHA)) {
   process.exit(1);
 }
 
-const source = readFileSync(SRC, 'utf8');
-const gen = readFileSync(GEN, 'utf8');
+// Normaliza a LF igual que el generador: el arbol de Windows es CRLF y el checkout de CI
+// es LF, y hashear los bytes crudos hace que el MISMO arbol pase en un sitio y falle en el
+// otro. El sha identifica el fuente logico.
+const readText = (p) => readFileSync(p, 'utf8').split('\r\n').join('\n');
+const source = readText(SRC);
+const gen = readText(GEN);
 const sha = createHash('sha256').update(source).digest('hex');
 
-eq(readFileSync(GEN_SHA, 'utf8').trim(), sha,
+eq(readText(GEN_SHA).trim(), sha,
   'coach-facts.generated.sha es el sha256 de app/coach-facts.js (un fuente cambiado sin regenerar falla aquí)');
 ok(gen.includes(`sourceSha256: ${sha}`), 'y el mismo sha viaja dentro del fichero generado');
 ok(/GENERADO por scripts\/build-fn-assets\.mjs — no editar/.test(gen),

@@ -81,8 +81,15 @@ export function extractRules(md) {
   return rules;
 }
 
+// LEE NORMALIZANDO A LF, y esto no es cosmetico. El sha se calcula sobre el contenido del
+// fuente; el arbol de trabajo de Windows tiene CRLF (autocrlf) y el checkout de CI tiene LF.
+// Hasheando los bytes crudos, regenerar en Windows producia un sha que CI no podia reproducir:
+// el job `test` fallaba con DESINCRONIZADO sobre un activo que estaba al dia, y la unica salida
+// era regenerar a mano en un checkout LF. El sha identifica el fuente LOGICO.
+const readText = (p) => readFileSync(p, 'utf8').split('\r\n').join('\n');
+
 function main() {
-  const md = readFileSync(SRC, 'utf8');
+  const md = readText(SRC);
   const sourceSha256 = createHash('sha256').update(md).digest('hex');
   const rules = extractRules(md);
 
@@ -170,12 +177,12 @@ if (typeof module !== 'undefined' && module.exports) module.exports = { COACH_RU
   if (check) {
     if (!existsSync(OUT)) { console.error(`FALTA ${OUT}. Ejecuta: node scripts/build-rules-compact.mjs`); process.exit(1); }
     let prev = null;
-    try { prev = JSON.parse(readFileSync(OUT, 'utf8')); } catch (e) { prev = null; }
+    try { prev = JSON.parse(readText(OUT)); } catch (e) { prev = null; }
     if (!prev || prev.sourceSha256 !== sourceSha256 || prev.count !== compact.length) {
       console.error(`DESINCRONIZADO: ${OUT} no corresponde al ${SRC} actual. Ejecuta: node scripts/build-rules-compact.mjs`);
       process.exit(1);
     }
-    if (!existsSync(OUT_JS) || readFileSync(OUT_JS, 'utf8') !== js) {
+    if (!existsSync(OUT_JS) || readText(OUT_JS) !== js) {
       console.error(`DESINCRONIZADO: ${OUT_JS} no corresponde al ${SRC} actual. Ejecuta: node scripts/build-rules-compact.mjs`);
       process.exit(1);
     }

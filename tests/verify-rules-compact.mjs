@@ -40,7 +40,11 @@ const eq = (got, want, m) => ok(String(got) === String(want), `${m}${String(got)
 const sec = (t) => console.log(`\n=== ${t} ===`);
 
 // ── El .md: se re-parsea aquí, sin usar el script, para que el test no valide su propio código.
-const md = readFileSync(SRC, 'utf8');
+// Normaliza a LF igual que el generador: el arbol de Windows es CRLF y el checkout de CI
+// es LF, y hashear los bytes crudos hace que el MISMO arbol pase en un sitio y falle en el
+// otro. El sha identifica el fuente logico.
+const readText = (p) => readFileSync(p, 'utf8').split('\r\n').join('\n');
+const md = readText(SRC);
 const blocks = [...md.matchAll(/```json\s*\n([\s\S]*?)\n```/g)];
 
 sec('Fuente de verdad');

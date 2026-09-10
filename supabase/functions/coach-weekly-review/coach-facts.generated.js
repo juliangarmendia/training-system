@@ -8,7 +8,7 @@
 //
 //   node scripts/build-fn-assets.mjs
 //
-// sourceSha256: 285851534c035536b72768b010703dd39c3ddc7484df7a8f76ebeb7bdd3a1b75
+// sourceSha256: ddcf4948c21f61b0eac782dc9cd57630248f60d9f689f143d769b568f3c6e02e
 // source: app/coach-facts.js
 //
 // tests/verify-fn-assets.mjs FALLA si app/coach-facts.js cambia y nadie regeneró esto: dos
