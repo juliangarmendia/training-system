@@ -8,7 +8,7 @@
 //
 //   node scripts/build-fn-assets.mjs
 //
-// sourceSha256: 63a8662f357e088e68addc644e6df3d6ef1f51c508408d86b2bb334111afaed2
+// sourceSha256: 47d33acf0fa1ca37d9bb70e5133ae1b332c8c70c2d4738b02111eeb71fbd2241
 // source: app/coach-facts.js
 //
 // tests/verify-fn-assets.mjs FALLA si app/coach-facts.js cambia y nadie regeneró esto: dos
@@ -1834,6 +1834,23 @@ function _factsCardio(ctx) {
     // banda 200-300 de END-009 / ACSM 2024, que es el objetivo de PÉRDIDA DE GRASA — 150 es el
     // suelo de salud, no el objetivo de este bloque.
     mvpaMinByWeek: weeks.map(w => ({ weekKey: w.weekKey, min: w.min })),
+    // F-26 (auditoría 2026-09-09) · EL CALOR MEDIDO, no el mes del calendario.
+    //
+    // `SUMMER-PACE` (ENV-001) avisaba por MES: junio a septiembre, siempre. Eso confunde dos
+    // cosas que no son la misma — una carrera a las 21:00 de septiembre a 19 °C y una a las
+    // 14:00 de junio a 36 °C recibían el mismo aviso, y el aviso es sobre el CALOR, no sobre la
+    // página del calendario. intervals.icu trae `average_temp` POR ACTIVIDAD, que además es la
+    // granularidad correcta: lo que degrada el ritmo a FC fija es el calor de esa carrera.
+    // Con el mes como respaldo, porque las actividades sin temperatura existen (cinta, un reloj
+    // que no la registra) y quedarse callado en agosto sería peor que avisar de más.
+    tempC28d: (() => {
+      const vals = [...ctx.runs, ...ctx.sessions]
+        .filter(x => x && _inWindow(_cfDate(x.date), ctx.from4w, ctx.todayStr))
+        .map(x => _n(x.tempC))
+        .filter(v => v != null && v > -30 && v < 60);
+      if (!vals.length) return { meanC: null, maxC: null, n: 0 };
+      return { meanC: Math.round(_mean(vals) * 10) / 10, maxC: Math.max(...vals), n: vals.length };
+    })(),
     mvpaBand: FACTS_MVPA_BAND.slice(),
     mvpaFloorMin: FACTS_MVPA_FLOOR_MIN,
     note: 'Runs and sessions arrive DEDUPED (`dedupeRuns`/`dedupeSessions`): the same COROS activity can come in through both Strava and intervals.icu. Post-strength Z2 finishers (`origin: z2_finisher`) count as real aerobic minutes.',
@@ -2757,7 +2774,13 @@ const VP_TARGET_STALE_DAYS = 21;
 const VP_PLYO_SESSION = 'lowerA';
 const VP_PLYO_IDS = { 'box-jump': 1, 'pogo-hops': 1, 'broad-jump': 1 };
 const VP_HARD_SUBTYPES = { threshold: 1, intervals: 1 };
+// Respaldo de ENV-001 cuando NINGUNA sesión trae temperatura. Madrid: junio a septiembre.
 const VP_SUMMER_MONTHS = { '06': 1, '07': 1, '08': 1, '09': 1 };
+// F-26: los umbrales de "hace calor" sobre la temperatura MEDIDA (`cardio.tempC28d`). 22 °C de
+// media es donde la deriva cardiovascular empieza a mover el ritmo a FC fija de forma visible;
+// 28 °C de máximo hace que una sola sesión caliente ya contamine la lectura por ritmo.
+const VP_HEAT_MEAN_C = 22;
+const VP_HEAT_MAX_C = 28;
 // Sustituciones permitidas de un ancla (STR-010 + LOAD-003, flag lumbar). Fuera de estos
 // pares, un ancla no se rota: se cambia el ESQUEMA, no el ejercicio.
 const VP_ANCHOR_SWAPS = {
@@ -3445,10 +3468,24 @@ function validatePlanVersion(plan, ctx) {
     }
 
     // ---- G-S10 · SUMMER-PACE (ENV-001) ----
+    //
+    // F-26: manda la temperatura MEDIDA de las últimas 4 semanas (`cardio.tempC28d`, de
+    // `average_temp` de intervals.icu) y el mes es sólo el respaldo para cuando no hay ninguna.
+    // El umbral son 22 °C de media, que es donde la deriva cardiovascular empieza a mover el
+    // ritmo a FC fija de forma visible; por encima de 28 °C de máximo basta una sola sesión
+    // caliente para que leer el progreso por ritmo engañe.
     const month = String(c.todayStr || (facts.meta && facts.meta.todayStr) || '').slice(5, 7);
-    if (VP_SUMMER_MONTHS[month] && _vpMentionsPaceProgress(decisions, briefing)) {
+    const t28 = (facts.cardio && facts.cardio.tempC28d) || null;
+    const calorMedido = t28 && t28.n > 0
+      ? ((_n(t28.meanC) != null && _n(t28.meanC) >= VP_HEAT_MEAN_C) || (_n(t28.maxC) != null && _n(t28.maxC) >= VP_HEAT_MAX_C))
+      : null;
+    const hacecalor = calorMedido != null ? calorMedido : !!VP_SUMMER_MONTHS[month];
+    if (hacecalor && _vpMentionsPaceProgress(decisions, briefing)) {
+      const porQue = calorMedido
+        ? `the last 4 weeks of sessions average ${_vpNum(t28.meanC, 1)} °C (peak ${_vpNum(t28.maxC, 0)} °C)`
+        : `it is month ${month} and no session carries a temperature`;
       add('SUMMER-PACE', 'warn',
-        `Aerobic progress is being read by PACE in ${month === '06' ? 'June' : month === '07' ? 'July' : month === '08' ? 'August' : 'September'}: in the heat, pace at fixed HR gets worse without fitness changing (ENV-001). Measure by HR and by duration.`,
+        `Aerobic progress is being read by PACE while it is hot: ${porQue}. In the heat, pace at fixed HR gets worse without fitness changing (ENV-001). Measure by HR and by duration.`,
         ['ENV-001', 'END-002']);
     }
 
@@ -4140,7 +4177,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // v11.67 / fn v4 (auditoría 2026-09-08): los umbrales de los 6 ids nuevos
     VP_MAX_STRENGTH_DAYS, VP_VARIANT_SLACK, VP_LONG_RUN_HARD_KM, VP_MIN_MVPA_MIN,
     VP_MVPA_FAT_LOSS_MIN, VP_KCAL_STEP_MAX, VP_KCAL_ADJUST_DAYS, VP_MIN_PATTERN_EXPOSURES,
-    VP_FREQ_FLOOR_MIN_VARIANT, VP_MIN_GYM_DAYS_FOR_FLOOR, VP_PATTERN_FAMILIES, VP_PATTERN_IDS,
+    VP_FREQ_FLOOR_MIN_VARIANT, VP_MIN_GYM_DAYS_FOR_FLOOR, VP_HEAT_MEAN_C, VP_HEAT_MAX_C, VP_PATTERN_FAMILIES, VP_PATTERN_IDS,
     // v11.71 / auditoría 2026-09-09: los umbrales de los 2 ids nuevos (F-5, F-7)
     VP_MIN_SETS_PER_MUSCLE, VP_POSTERIOR_FAMILY, VP_VOLUME_FAMILY_MERGE, VP_VOLUME_NO_FLOOR,
     VP_RECOMP_FAT_DROP_KG, VP_RECOMP_FFM_HOLD_KG, VP_RECOMP_MIN_SPAN_DAYS,

@@ -467,6 +467,7 @@ actual hacia atrás y se declara — en la fila **y** en `dataGaps`.
   weeks: [{ weekKey, km, min, sessions, hard, finishers,
             mvpa: { runMin, sessionMin, finisherMin } }],
   mvpaMinByWeek: [{ weekKey, min }], mvpaBand: [200, 300], mvpaFloorMin: 150,
+  tempC28d: { meanC, maxC, n },
   runs: [{ date, km, min, avgHR, maxHR, pace, gapPace, subtype, z2Compliant: true|false|null,
            pctZ2, pctAboveZ2, decoupling, hrDrift: null, source, sport, trainingLoad }],
   daysSinceLastRun, daysSinceLastCardio, z2CompliancePct4w, maxWeekKm4w, note: 'Carreras … DEDUPEADAS…' }
@@ -482,6 +483,12 @@ actual hacia atrás y se declara — en la fila **y** en `dataGaps`.
   ingesta ya está en el suelo, y "más minutos fáciles" sin un número no es una prescripción.
   `mvpaBand` es la banda de pérdida de grasa de END-009 (ACSM 2024) y `mvpaFloorMin` el suelo de
   salud (150): son cosas distintas y viajan separadas para que no se confundan.
+* `tempC28d` (F-26, v11.73) es la temperatura MEDIDA de las sesiones de 4 semanas
+  (`average_temp` de intervals.icu, por actividad). La juzga `SUMMER-PACE`: avisa a partir de
+  22 °C de media o 28 °C de máximo, y la lista de meses de verano queda sólo como respaldo
+  para cuando ninguna sesión trae temperatura. Antes el aviso era por mes, así que una
+  carrera a las 21:00 de septiembre a 19 °C y otra a las 14:00 de junio a 36 °C recibían el
+  mismo trato, y la regla habla del calor de esa carrera, no del calendario.
 * La carrera del **domingo** cuenta en SU semana ISO, no en la siguiente.
 
 ### `readiness`

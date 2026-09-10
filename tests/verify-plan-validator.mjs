@@ -933,10 +933,25 @@ silent(base, 'WEIGHT-WINDOW', 'ventana válida');
 sec('G-S10 · SUMMER-PACE (warn) — ENV-001');
 // ════════════════════════════════════════════════════════════════════════════════════
 const paceDec = [{ id: 'p1', type: 'running', what: 'Subir el largo', why: 'El ritmo mejora a la misma FC', ruleIds: ['END-003'], evidence: { numbers: { pace: 400 } } }];
-fires(run(null, { decisions: paceDec }), 'SUMMER-PACE', 'warn', ['September'], 'progreso por ritmo leído en septiembre');
+// F-26: manda la temperatura MEDIDA y el mes es sólo el respaldo. El fallo que impide: una
+// carrera a las 21:00 de septiembre a 19 °C y otra a las 14:00 de junio a 36 °C recibían el mismo
+// aviso, porque el juicio era la página del calendario y no el calor.
+fires(run(null, { decisions: paceDec }), 'SUMMER-PACE', 'warn', ['month 09', 'no session carries a temperature'],
+  'sin temperatura en ninguna sesión: cae al mes (septiembre)');
+const conCalor = (meanC, maxC) => Object.assign({}, FACTS_OK, {
+  cardio: Object.assign({}, FACTS_OK.cardio, { tempC28d: { meanC, maxC, n: 6 } }),
+});
+fires(run(null, { decisions: paceDec, todayStr: '2027-01-11', facts: Object.assign(conCalor(26.4, 31), { meta: { todayStr: '2027-01-11' } }) }),
+  'SUMMER-PACE', 'warn', ['26.4', '31'], 'ENERO a 26,4 °C de media: avisa igual, y con el número medido');
+silent(run(null, { decisions: paceDec, facts: conCalor(17.2, 21) }),
+  'SUMMER-PACE', 'SEPTIEMBRE a 17,2 °C (una carrera de noche): el mes decía calor y la temperatura dice que no');
+fires(run(null, { decisions: paceDec, facts: conCalor(18, 29) }),
+  'SUMMER-PACE', 'warn', ['29'], 'media templada pero un pico de 29 °C: una sola sesión caliente ya contamina el ritmo');
 silent(run(null, { decisions: paceDec, todayStr: '2027-01-11', facts: Object.assign({}, FACTS_OK, { meta: { todayStr: '2027-01-11' } }) }),
-  'SUMMER-PACE', 'el mismo texto en enero');
+  'SUMMER-PACE', 'enero y sin temperatura');
 silent(base, 'SUMMER-PACE', 'ninguna decisión habla de ritmo');
+eq(F.VP_HEAT_MEAN_C, 22, 'el umbral de media está declarado como constante exportada');
+eq(F.VP_HEAT_MAX_C, 28, 'y el de máximo también');
 
 // ════════════════════════════════════════════════════════════════════════════════════
 sec('G-S11 · Z2-CEILING (warn)');

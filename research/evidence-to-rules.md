@@ -1121,7 +1121,7 @@ reescriben la regla.
     "confidence": "medium",
     "caveats": ["The PHYSIOLOGY is well established (HR up and stroke volume down for a given work rate in heat, partially reversing over ~1-2 weeks of acclimation). The PRESCRIPTION 'hold HR, let pace go' is the practical corollary and is applied practice, not a tested protocol.", "Direct consequence for this system: a pace slowdown in a Madrid summer is NOT evidence of lost fitness, and pace-at-fixed-HR (END-005) is confounded in these months - do not read aerobic progress from it until autumn.", "Acclimation partially closes the gap within 1-2 weeks of consistent heat exposure, so mid-summer comparisons are unstable in both directions."],
     "consumer": "validator",
-    "programmingAction": "Cardio Engine keeps zone/HR as the target in heat and annotates pace expectations; Readiness Engine suppresses pace-based aerobic-progress claims during hot months."
+    "programmingAction": "Cardio Engine keeps zone/HR as the target in heat and annotates pace expectations; the validator suppresses pace-based aerobic-progress claims when it is HOT (SUMMER-PACE). Since 2026-09-10 \"hot\" is MEASURED, not assumed from the calendar: `cardio.tempC28d` averages `average_temp` from the last 4 weeks of intervals.icu activities and the warning fires at a mean of 22 C or a peak of 28 C, with the June-September month list kept only as the fallback for when no session carries a temperature. Judging by month treated a 19 C run at 21:00 in September and a 36 C run at 14:00 in June as the same thing, and the rule is about the heat of that run, not about the page of the calendar."
   },
   {
     "id": "ENV-002",

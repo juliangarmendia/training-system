@@ -145,9 +145,22 @@ function main() {
   // ---- El corpus para la PANTALLA (app/coach-rules.js) ----
   // Script clásico, no módulo: la PWA no tiene bundler y esto se carga por <script> junto a
   // coach-facts.js. Una regla por línea por el mismo motivo que el JSON: el diff se lee.
+  // F-25: viaja tambien la PRIMERA salvedad. `caveats` es un array en el corpus y en el prompt
+  // van todas, pero en la tarjeta del coach cabe una linea y no cinco: se manda la primera, que
+  // es la que el corpus escribe como principal. Sin esto, `_coachRuleCaveatHtml` (coach.js) tenia
+  // el pintor y no el dato, y una regla `strong` con una salvedad que el usuario no ve es media
+  // regla: el ledger de evidencia decia "strong" y se callaba el "pero".
   const jsBody = compact
-    .map(r => `  ${JSON.stringify(r.id)}: { rule: ${JSON.stringify(r.rule)}, evidenceLevel: ${JSON.stringify(r.evidenceLevel)} },`)
-    .join('\n');
+    .map((r) => {
+      const cav = Array.isArray(r.caveats) && r.caveats.length ? String(r.caveats[0]) : null;
+      const partes = [
+        `rule: ${JSON.stringify(r.rule)}`,
+        `evidenceLevel: ${JSON.stringify(r.evidenceLevel)}`,
+      ];
+      if (cav) partes.push(`caveat: ${JSON.stringify(cav)}`);
+      return `  ${JSON.stringify(r.id)}: { ${partes.join(', ')} },`;
+    })
+    .join(String.fromCharCode(10));
   const js = `// ============================================================
 // coach-rules.js — texto de las reglas para la vista Coach
 // ============================================================
@@ -163,7 +176,9 @@ function main() {
 // POR QUÉ EXISTE. La vista Coach escribe "Rule STR-001 (strong evidence): <texto>" debajo de
 // cada decisión del coach. Los Rule ID crudos en pantalla son ruido (§B.9) y el texto no puede
 // venir por fetch: la app entrena sin conexión, así que el corpus va en el APP_SHELL. Sólo
-// viajan \`rule\` y \`evidenceLevel\`; el resto de campos son para el prompt, no para la pantalla.
+// viajan \`rule\`, \`evidenceLevel\` y la PRIMERA salvedad (\`caveat\`): el resto de campos son
+// para el prompt, no para la pantalla. La salvedad va porque una regla \`strong\` cuyo "pero" no
+// se ve es media regla, y en la tarjeta cabe una linea, no las cinco de \`caveats\`.
 // El texto de la regla se queda en el idioma del corpus (inglés) y la etiqueta de evidencia
 // sale de COACH_EVIDENCE_LABEL en app/coach.js.
 
