@@ -18,7 +18,8 @@ reescriben la regla.
 - **`energyState`**: `deficit | maintenance | surplus`.
 - **`applicabilityToUser`** / **`confidence`**: `low | medium | high`.
 - **`consumer`** (obligatorio, desde 2026-09-08): quién APLICA la regla en el sistema —
-  `engine` (una computación de `coach-engine.js` / `nutrition.js` / las tablas del planificador) ·
+  `engine` (una computación de `coach-engine.js` / `coach-facts.js` / `nutrition.js` / las tablas
+  del planificador; el facts pack es determinista y cuenta como motor desde v11.71) ·
   `validator` (un id de `validatePlanVersion`) · `guardrail` (un G-H/G-S del prompt del coach) ·
   `prompt` (texto del procedimiento, sin id de guardarraíl) · `doc` (sólo documentación) ·
   `none` (nada). Una regla `strong` con `consumer: doc` o `none` **exige `consumerNote`** que
@@ -317,8 +318,8 @@ reescriben la regla.
     "applicabilityToUser": "high",
     "confidence": "high",
     "caveats": ["Already practised in plans/nutrition-notes.md since W19; formalised as a Rule ID 2026-08-16 so the engine can act on it.", "Interacts with ENV-001: heat raises sweat losses and blunts thirst, so the pre-session dose matters more in a Madrid summer.", "Supporting observation, not proof: the 2024-09-20 panel shows urine density 1.036 (very concentrated) alongside urea 59 mg/dL with normal creatinine/eGFR - consistent with dehydration at sampling. See data/processed/2026-08-16_blood-markers.md."],
-    "consumer": "doc",
-    "consumerNote": "STRONG AND UNCONSUMED, on purpose for now: there is no hydration field in any store, so a pre-session prompt would be an unverifiable nag. It reaches the user through plans/nutrition-notes.md only. Making it a real consumer needs a hydration log first (acquisition item).",
+    "consumer": "engine",
+    "consumerNote": "CORRECTED 2026-09-09 (audit F-13): the old note claimed no store carried hydration, and that was simply wrong - intervals.icu wellness carries `hydration` and `hydrationVolume`, and app/whoop.js has persisted both since the first sync. buildCoachFacts() publishes them as `facts.readiness.hydration7` {meanL, n} (app/coach-facts.js), so the weekly review can read intake against the 5-10 mL/kg baseline instead of nagging blind; ENV-002 raises the baseline in heat. Still not a per-session prompt: with n=0 the pack says null and the coach says the data is missing, which is the honest version of an unverifiable reminder.",
     "programmingAction": "Nutrition guidance surfaces a pre-session hydration prompt; Cardio Engine raises it under ENV-001 heat conditions."
   },
   {

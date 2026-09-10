@@ -8,7 +8,7 @@
 //
 //   node scripts/build-fn-assets.mjs
 //
-// sourceSha256: 66afb8cc5fa20522b7c84d00ae2ae0679df64959ba9c9a3727b0724ef8b56c1e
+// sourceSha256: 285851534c035536b72768b010703dd39c3ddc7484df7a8f76ebeb7bdd3a1b75
 // source: app/coach-facts.js
 //
 // tests/verify-fn-assets.mjs FALLA si app/coach-facts.js cambia y nadie regeneró esto: dos
@@ -251,7 +251,12 @@ function _ss(v) {
 
 // ==================== CONSTANTES DEL PACK ====================
 
-const FACTS_SCHEMA = 2;                 // versión del esquema del pack (viaja en `meta`)
+// v11.71 (auditoría 2026-09-09): esquema 3. Campos nuevos y todos ADITIVOS —
+// `progress.performance` (F-6), `plan.plannedSetsPerMuscle` (F-7), `readiness.firedSignals` como
+// contrato del motor (F-9), `readiness.sleep.{consistency7,debtHrs7,score7}` (F-11),
+// `readiness.subjective` (F-12), `readiness.hydration7` (F-13), `lifts[id].atSameLoad` (F-18),
+// `adherence[].restCompliancePct` (F-19) y `cardio.mvpaMinByWeek`/`mvpaBand` (F-22).
+const FACTS_SCHEMA = 3;                 // versión del esquema del pack (viaja en `meta`)
 const FACTS_WEEKS = 4;                  // ventana de semanas ISO (§A.4)
 const FACTS_LONG_WINDOW_DAYS = 28;      // ventana larga para baselines y nutrición
 const FACTS_MAX_LIFT_SESSIONS = 4;      // ≤4 sesiones por ejercicio
@@ -339,6 +344,11 @@ const FACTS_CARDIO_BW = {
   zone2: 0.5, recovery: 0, zone3: 1, long_easy: 1, threshold: 2, intervals: 2,
 };
 const FACTS_HARD_SUBTYPES = { threshold: 1, intervals: 1, benchmark: 1, strength_endurance: 1 };
+// END-009 / ACSM 2024 (Jakicic): 150 min/semana de MVPA es el suelo de salud y 200-300 la banda de
+// pérdida de grasa. Los mismos números que `VP_MIN_MVPA_MIN` / `VP_MVPA_FAT_LOSS_MIN` del
+// validador — declarados aquí para que el pack publique la banda contra la que se le juzga.
+const FACTS_MVPA_BAND = [200, 300];
+const FACTS_MVPA_FLOOR_MIN = 150;
 
 // ==================== FACTS PACK ====================
 
@@ -1046,6 +1056,58 @@ function _factsProgress(ctx) {
     weight: _factsWeight(ctx),
     waist: _factsWaist(ctx),
     running: _factsRunProgress(ctx),
+    performance: _factsPerformance(ctx),
+  };
+}
+
+/**
+ * F-6 (auditoría 2026-09-09) · LA MITAD REACTIVA DE LOAD-004, QUE NO CALCULABA NADIE.
+ *
+ * LOAD-004 dice "descarga reactiva si el RENDIMIENTO cae dos sesiones consecutivas". El pack
+ * traía `readiness.deloadHint`, que mira RPE, calidad percibida y wearable — o sea, todo menos
+ * el rendimiento. Y el dato existía desde v11.57: cada entreno cerrado sella su `readout`
+ * (`sessionReadout` en coach-engine.js, `attachSessionReadout` en app.js) con un `summary`
+ * `{progressed, held, regressed, skipped}` que compara lo prescrito con lo hecho, ejercicio a
+ * ejercicio. Nadie lo agregaba, así que el criterio del corpus no era ejecutable y el modelo
+ * acababa llamando "deload" a dos noches malas de HRV.
+ *
+ * `regressedStreak` son las sesiones de fuerza MÁS RECIENTES, consecutivas, con al menos un
+ * ejercicio por debajo del objetivo y NINGUNO por encima. Una sesión con una caída y una subida
+ * no es un declive: es una sesión. Y `skipped` no cuenta en ninguna dirección — no hacer un
+ * ejercicio no dice nada sobre la fuerza de ese día (eso lo mide `skipped`/`skipRate4w`).
+ *
+ * Sólo entran registros con `readout.summary` OBJETO. Las filas anteriores a v11.57 (y las de
+ * los fixtures viejos) llevan un `summary` de texto: se ignoran en silencio, porque parsear una
+ * frase para sacar un número es exactamente la aritmética que este pack existe para evitar.
+ */
+function _factsPerformance(ctx) {
+  const sessions = [];
+  for (const w of ctx.workouts) {
+    if (!_inWindow(w.date, ctx.from4w, ctx.todayStr)) continue;
+    const sum = w.readout && w.readout.summary;
+    if (!sum || typeof sum !== 'object') continue;
+    const progressed = _n(sum.progressed), held = _n(sum.held), regressed = _n(sum.regressed);
+    if (progressed == null && held == null && regressed == null) continue;
+    sessions.push({
+      date: _cfDate(w.date),
+      session: w.session || w.sessionName || null,
+      progressed: progressed || 0,
+      held: held || 0,
+      regressed: regressed || 0,
+    });
+  }
+  // `ctx.workouts` ya viene descendente: la primera es la más reciente.
+  let regressedStreak = 0;
+  for (const s of sessions) {
+    if (s.regressed >= 1 && s.progressed === 0) regressedStreak++;
+    else break;
+  }
+  const lastRegressed = sessions.find(s => s.regressed >= 1) || null;
+  return {
+    regressedStreak,
+    lastRegressedDate: lastRegressed ? lastRegressed.date : null,
+    sessions,
+    note: 'From each sealed workout `readout.summary` (prescribed vs done, exercise by exercise). `regressedStreak` = consecutive most-recent sessions with ≥1 exercise short and none progressed: it is THE signal for a reactive deload (LOAD-004), not the wearable.',
   };
 }
 
@@ -1297,6 +1359,29 @@ function _factsPlan(ctx) {
     idealVariant: _n(ctx.settings.idealVariant),
     weekTemplate: tpl,
     sessions,
+    // F-7 (auditoría 2026-09-09) · LAS SERIES PRESCRITAS POR MÚSCULO, publicadas.
+    //
+    // `readiness.setsPerMuscle` traía las series HECHAS y nadie publicaba las PLANIFICADAS, así
+    // que el coach no veía el mismo número que el validador juzga en `VOL-CAP` / `VOL-FLOOR` —
+    // tenía que sumarlas él del `weekTemplate` y las sesiones, que es justo la aritmética que
+    // este pack existe para quitarle. Es el MISMO contador (`_vpSetsPerMuscle`), no una segunda
+    // implementación: dos contadores de volumen en el mismo repo es cómo la app leía 16 series
+    // donde el validador leía 13 (L-1, v11.70).
+    //
+    // `families` agrega la cadena posterior (Hamstrings + Posterior + Glutes), que la semilla
+    // reparte en tres etiquetas y hacía leer "9 series de isquios" sobre una cadena posterior de
+    // 14. `Power`, `Core` y `otros` quedan fuera: no son volumen de hipertrofia.
+    plannedSetsPerMuscle: (() => {
+      const sets = _vpSetsPerMuscle(sessions, tpl);
+      return {
+        byMuscle: sets.byMuscle,
+        families: _vpMuscleFamilies(sets.byMuscle),
+        total: sets.total,
+        floorPerMuscle: VP_MIN_SETS_PER_MUSCLE,
+        capPerMuscle: VP_MAX_SETS_PER_MUSCLE,
+        note: 'Sets × times the session appears in `weekTemplate`. `families` merges Hamstrings + Posterior + Glutes into "Posterior chain"; Power, Core and `otros` are not judged as hypertrophy volume. Same counter the validator uses for VOL-CAP and VOL-FLOOR.',
+      };
+    })(),
     overrides: { exercises: ovr, futureSchedule: futureSched },
   };
 }
@@ -1345,6 +1430,7 @@ function _factsAdherence(ctx) {
       recovery: { planned: planned.recovery, done: mob.length },
       durationsMin: durations,
       avgDurationMin: _rMin(_mean(durations)),
+      ...(_restCompliance(workouts)),
       plannedSource: exact ? 'plan-activo' : 'plantilla-actual (aproximado)',
     };
   });
@@ -1352,6 +1438,38 @@ function _factsAdherence(ctx) {
     ctx.gaps.push('`adherence.planned` is APPROXIMATE in at least one week: the logs carry a different plan version, so what was planned has been projected from the current template.');
   }
   return rows;
+}
+
+/**
+ * F-19 (auditoría 2026-09-09) · CUMPLIMIENTO DE LOS DESCANSOS, desde `blockTimings`.
+ *
+ * Cada bloque de una sesión guarda su duración estimada y la real (`{estimatedSec, durationSec}`,
+ * `endBlockTimer` en app.js). El cociente Σreal/Σestimada es lo más cerca que el sistema está de
+ * medir si los 2-4 minutos entre series de un compuesto se respetan: por debajo del 100 % la
+ * sesión va con prisa, y la prisa en un básico es carga que no se levanta (STR-003, LOAD-001).
+ * NO es una medida de descanso set a set — nadie cronometra eso — y por eso va con su `n`: es un
+ * indicador de ritmo de sesión, no un número del que salga una prescripción.
+ *
+ * `null` cuando ningún entreno de la semana trae bloques con estimación: la mayoría de sesiones
+ * libres no los tienen, y un 0 % ahí sería una acusación inventada.
+ */
+function _restCompliance(workouts) {
+  let est = 0, real = 0, n = 0;
+  for (const w of (workouts || [])) {
+    const bt = Array.isArray(w.blockTimings) ? w.blockTimings : null;
+    if (!bt || !bt.length) continue;
+    let e = 0, r = 0;
+    for (const t of bt) {
+      const te = _n(t && t.estimatedSec), tr = _n(t && t.durationSec);
+      if (te == null || te <= 0 || tr == null || tr < 0) continue;
+      e += te; r += tr;
+    }
+    if (e > 0) { est += e; real += r; n++; }
+  }
+  return {
+    restCompliancePct: est > 0 ? Math.round((real / est) * 100) : null,
+    restComplianceN: n,
+  };
 }
 
 function _plannedForWeek(ctx, w, upTo) {
@@ -1450,6 +1568,7 @@ function _factsLifts(ctx) {
       daysSinceLast: _cfDiff(sessions[0].date, ctx.todayStr),
       nSessions: sessions.length,
       trend: _liftTrend(sessions),
+      atSameLoad: _liftAtSameLoad(sessions, measureUnit),
       skipRate4w: skip[id] ? _rPct(skip[id].rate * 100) : null,
       exposures4w: skip[id] ? skip[id].exposures : 0,
       pausedOver21d: (_cfDiff(sessions[0].date, ctx.todayStr) || 0) > FACTS_PAUSE_DAYS,
@@ -1526,6 +1645,41 @@ function _liftSession(ctx, id, item, sets, measureUnit, isBw, plannedSets) {
   return row;
 }
 
+/**
+ * F-18 (auditoría 2026-09-09) · LA DERIVA A CARGA IGUAL: la señal de progreso que no es el e1RM.
+ *
+ * `trend` compara e1RM, que mezcla carga y repeticiones y por eso se queda plano justo cuando
+ * más está pasando: tres semanas a 95 kg subiendo de 6 a 8 reps con el RPE bajando de 8,5 a 7,5
+ * es la doble progresión funcionando, y el e1RM apenas se mueve. Al revés, las MISMAS reps al
+ * MISMO kg con el RPE subiendo es fatiga acumulándose antes de que caiga ningún número.
+ *
+ * Se toma la carga de top set MÁS FRECUENTE de las últimas exposiciones (con ≥2, si no no hay
+ * "misma carga" que comparar) y se dan las reps y el RPE medio de cada una. Los deltas son
+ * **la más reciente menos la más antigua** a esa carga, en el mismo orden descendente que
+ * `sessions`. En medidas (cm de cajón) devuelve `null`: un centímetro no es una carga.
+ */
+function _liftAtSameLoad(sessions, measureUnit) {
+  if (measureUnit) return null;
+  const rows = (sessions || []).filter(s => _n(s.topKg) != null && _n(s.topReps) != null);
+  if (rows.length < 2) return null;
+  const counts = new Map();
+  for (const r of rows) { const k = _rKg(r.topKg); counts.set(k, (counts.get(k) || 0) + 1); }
+  let kg = null, best = 0;
+  for (const [k, n] of counts.entries()) {
+    if (n > best || (n === best && kg != null && k > kg)) { best = n; kg = k; }
+  }
+  if (best < 2) return null;
+  const series = rows.filter(r => _rKg(r.topKg) === kg)
+    .map(r => ({ date: r.date, reps: _n(r.topReps), avgRpe: _n(r.avgRpe) }));
+  const newest = series[0], oldest = series[series.length - 1];
+  return {
+    kg, n: series.length, series,
+    repsDelta: (newest.reps != null && oldest.reps != null) ? newest.reps - oldest.reps : null,
+    rpeDelta: (newest.avgRpe != null && oldest.avgRpe != null) ? _round(newest.avgRpe - oldest.avgRpe, 0.1) : null,
+    note: 'Most frequent top-set load among the last exposures. Deltas are MOST RECENT minus OLDEST at that load: +reps or −RPE at the same kg is progress the e1RM does not show.',
+  };
+}
+
 /** 'up' | 'flat' | 'down' | 'insufficient' — por e1RM, ±2 % sobre las sesiones disponibles. */
 function _liftTrend(sessions) {
   const vals = sessions.map(s => _n(s.e1rm)).filter(x => x != null && x > 0);
@@ -1594,13 +1748,22 @@ function _factsCardio(ctx) {
   const weeks = ctx.weeks.map(w => {
     const runs = ctx.runs.filter(r => _inWindow(r.date, w.monday, w.sunday));
     const sess = ctx.sessions.filter(s => _inWindow(s.date, w.monday, w.sunday) && (s.family || 'cardio') !== 'recovery');
+    const runMin = _sum(runs.map(r => _durMin(r.duration)));
+    const finishers = sess.filter(s => s.origin === 'z2_finisher');
     return {
       weekKey: w.weekKey,
       km: _rKm(_sum(runs.map(r => _n(r.distance))) + _sum(sess.map(s => _n(s.distance)))),
-      min: _rMin(_sum(runs.map(r => _durMin(r.duration))) + _sum(sess.map(s => _durMin(s.durationMin)))),
+      min: _rMin(runMin + _sum(sess.map(s => _durMin(s.durationMin)))),
       sessions: runs.length + sess.length,
       hard: _hardCount(ctx, runs, sess),
-      finishers: sess.filter(s => s.origin === 'z2_finisher').length,
+      finishers: finishers.length,
+      // F-22 (auditoría 2026-09-09): el desglose de los MVPA de la semana. Va aquí y no en un cálculo aparte para que
+      // el minuto que cuenta el pack sea el mismo que juzga `MVPA-FLOOR`.
+      mvpa: {
+        runMin: _rMin(runMin),
+        sessionMin: _rMin(_sum(sess.filter(x => x.origin !== 'z2_finisher').map(x => _durMin(x.durationMin)))),
+        finisherMin: _rMin(_sum(finishers.map(x => _durMin(x.durationMin)))),
+      },
     };
   });
 
@@ -1650,6 +1813,17 @@ function _factsCardio(ctx) {
       return _rPct(w.filter(r => _z2Compliant(r, ctx.z2Ceiling.bpm) === true).length / w.length * 100);
     })(),
     maxWeekKm4w: _rKm(Math.max(0, ...weeks.map(w => _n(w.km) || 0))) || 0,
+    // F-22 (auditoría 2026-09-09) · LOS MINUTOS MVPA HECHOS, contra la banda de END-009.
+    //
+    // El paso 6 del prompt manda mover el GASTO cuando la ingesta ya está en el suelo, y "más
+    // minutos fáciles" sin un número es una frase: sin saber si la semana lleva 150 o 260 min, el
+    // coach no puede decir cuántos faltan. Aquí van los minutos de carrera + cardio + finishers de
+    // Z2 por semana ISO (los mismos que suma `weeks[].min`, desglosados en `weeks[].mvpa`) y la
+    // banda 200-300 de END-009 / ACSM 2024, que es el objetivo de PÉRDIDA DE GRASA — 150 es el
+    // suelo de salud, no el objetivo de este bloque.
+    mvpaMinByWeek: weeks.map(w => ({ weekKey: w.weekKey, min: w.min })),
+    mvpaBand: FACTS_MVPA_BAND.slice(),
+    mvpaFloorMin: FACTS_MVPA_FLOOR_MIN,
     note: 'Runs and sessions arrive DEDUPED (`dedupeRuns`/`dedupeSessions`): the same COROS activity can come in through both Strava and intervals.icu. Post-strength Z2 finishers (`origin: z2_finisher`) count as real aerobic minutes.',
   };
 }
@@ -1716,6 +1890,14 @@ function _factsReadiness(ctx) {
       nightsUnder6h5_7: sleep7.filter(s => s < FACTS_SLEEP_FLOOR_SECS).length,
       nightsUnder6h_7: sleep7.filter(s => s < FACTS_SLEEP_SHORT_SECS).length,
       n7: sleep7.length, n28: sleep28.length,
+      // F-11 (auditoría 2026-09-09). WHOOP persiste consistencia, score y NECESIDAD de sueño
+      // (`sleepNeedSecs`) desde v11.69 y el pack sólo publicaba la duración, así que READ-006 y
+      // LONG-004 —que piden "duración **y** consistencia"— no eran ejecutables: siete horas de
+      // media con la hora de acostarse bailando 3 h no es el mismo sueño que siete horas
+      // regulares, y la deuda acumulada es lo que separa "una noche mala" de un déficit crónico.
+      consistency7: _band7(w, ctx, 'sleepConsistency', _rMin),
+      score7: _band7(w, ctx, 'sleepScore', _rMin),
+      debtHrs7: _sleepDebt7(w, ctx),
     },
     score: {
       mean7: _rMin(_mean(scores7.map(r => _n(r.readiness)))),
@@ -1743,6 +1925,13 @@ function _factsReadiness(ctx) {
       date: latest ? _cfDate(latest.date) : null,
       note: 'cardio only: strength sessions never reach intervals.icu, so this is NOT total load (F-3). `form = ctl − atl` (F-2); `rampRate` is ΔCTL/week, not form, and the TSB thresholds from the literature do not apply to this range (±2 measured).',
     },
+    // F-12 (auditoría 2026-09-09): las cinco subjetivas de intervals.icu, que YA se persisten (`whoop.js`) y no salían
+    // del store. Sin ellas el disparador de LEA de REC-008 ("2 de [sueño, libido, ánimo,
+    // enfermedad] durante 2 semanas") no lo podía evaluar nadie: sólo el sueño estaba en el pack.
+    subjective: _factsSubjective(ctx),
+    // F-13 (auditoría 2026-09-09): REC-006 (`strong`) se declaraba sin consumidor "porque no hay campo de hidratación",
+    // y `hydration`/`hydrationVolume` se persisten desde el primer día de wellness.
+    hydration7: _factsHydration(ctx),
     internalLoad: _internalLoad(ctx),
     pressExposuresPerWeek: _pressExposures(ctx),
     setsPerMuscle: _setsPerMuscle(ctx),
@@ -1754,6 +1943,78 @@ function _factsReadiness(ctx) {
     // un mal día — y sigue siendo INFORMACIÓN: la recuperación no dosifica (decisión del
     // usuario, 2026-09-07).
     ...(_readinessVerdict(ctx)),
+  };
+}
+
+/** Media de 7 días de un campo de `wellness`, con su n. `null` cuando no hay ni un dato. */
+function _band7(rows, ctx, field, rounder) {
+  const vals = (rows || [])
+    .filter(r => { const dd = _cfDiff(r.date, ctx.todayStr); return dd != null && dd >= 0 && dd < 7 && _n(r[field]) != null; })
+    .map(r => _n(r[field]));
+  return { mean: vals.length ? rounder(_mean(vals)) : null, n: vals.length };
+}
+
+/**
+ * F-11 (auditoría 2026-09-09) · Deuda de sueño de 7 días: media de `sleepNeedSecs − sleepSecs`, en horas y nunca
+ * negativa. Dormir de más no compensa una noche corta, así que el exceso se recorta a 0 en vez
+ * de restarse de la deuda de otro día. Sólo cuentan los días con LOS DOS campos.
+ */
+function _sleepDebt7(rows, ctx) {
+  const vals = [];
+  for (const r of (rows || [])) {
+    const dd = _cfDiff(r.date, ctx.todayStr);
+    if (dd == null || dd < 0 || dd >= 7) continue;
+    const need = _n(r.sleepNeedSecs), got = _n(r.sleepSecs);
+    if (need == null || got == null) continue;
+    vals.push(Math.max(0, need - got) / 3600);
+  }
+  return { mean: vals.length ? _rHrs(_mean(vals)) : null, n: vals.length };
+}
+
+/**
+ * F-12 (auditoría 2026-09-09) · Las cinco subjetivas de intervals.icu (`fatigue`, `soreness`, `stress`, `mood`,
+ * `motivation`), media de 7 días. `n7` son los días con AL MENOS una de las cinco: Julian no las
+ * rellena hoy, así que lo normal es `n7: 0` y cinco `null` — que es la respuesta correcta y la
+ * que impide que el modelo cuente el disparador de LEA sobre datos que no existen.
+ *
+ * NO se normalizan ni se invierten escalas: en intervals.icu 1 es lo mejor en `fatigue` y lo peor
+ * en `mood`, y darles un signo común aquí sería inventar una semántica que el store no tiene.
+ */
+function _factsSubjective(ctx) {
+  const w = ctx.wellness;
+  const fields = ['fatigue', 'soreness', 'stress', 'mood', 'motivation'];
+  const out = {};
+  for (const f of fields) out[`${f}7`] = _band7(w, ctx, f, (v) => _round(v, 0.1)).mean;
+  const days = new Set();
+  for (const r of w) {
+    const dd = _cfDiff(r.date, ctx.todayStr);
+    if (dd == null || dd < 0 || dd >= 7) continue;
+    if (fields.some(f => _n(r[f]) != null)) days.add(_cfDate(r.date));
+  }
+  out.n7 = days.size;
+  out.note = 'intervals.icu 1-5 scales, as stored: no normalisation and no common sign (1 is best in `fatigue`, worst in `mood`). Libido and illness are NOT here: they only exist if Julian writes them in the note.';
+  return out;
+}
+
+/**
+ * F-13 (auditoría 2026-09-09) · Hidratación de 7 días en litros (REC-006). `hydrationVolume` de intervals.icu llega en
+ * mililitros y `hydration` a veces como litros: se toma el primero que exista y se convierte por
+ * MAGNITUD (≥100 ⇒ ml), que es la única heurística honesta sin un campo de unidad en el store.
+ * Sin datos, `meanL: null` y `n: 0` — el hueco se declara, no se rellena con un objetivo.
+ */
+function _factsHydration(ctx) {
+  const vals = [];
+  for (const r of ctx.wellness) {
+    const dd = _cfDiff(r.date, ctx.todayStr);
+    if (dd == null || dd < 0 || dd >= 7) continue;
+    const raw = _n(r.hydrationVolume) != null ? _n(r.hydrationVolume) : _n(r.hydration);
+    if (raw == null || raw <= 0) continue;
+    vals.push(raw >= 100 ? raw / 1000 : raw);
+  }
+  return {
+    meanL: vals.length ? _round(_mean(vals), 0.1) : null,
+    n: vals.length,
+    note: 'REC-006: 5-10 mL/kg in the 2-4 h before a session (~500 mL for this user). Only what intervals.icu carries; a null here means it was not logged, not that it was low.',
   };
 }
 
@@ -1775,7 +2036,12 @@ function _readinessVerdict(ctx) {
     }) || {};
     return {
       deloadHint: !!res.deloadHint,
-      firedSignals: (res.signals || []).filter(s => s && s.fired).map(s => s.id),
+      // F-9 (auditoría 2026-09-09): la lista viene HECHA del motor desde v11.71. Se conserva el
+      // cálculo local como respaldo por si el pack corre contra un motor viejo (la copia
+      // generada de la función se regenera aparte), pero la fuente es una sola.
+      firedSignals: Array.isArray(res.firedSignals)
+        ? res.firedSignals.slice()
+        : (res.signals || []).filter(s => s && s.fired).map(s => s.id),
       readinessColor: res.color || null,
     };
   } catch (e) {
@@ -2245,6 +2511,39 @@ function _factsConfidence(ctx, facts) {
 // contradecía la regla que lo justificaba, y lo hacía en la dirección que más cuesta deshacer.
 const VP_FLOORS = { proteinG: 185, kcalTraining: 2700, kcalRest: 2400 };
 const VP_MAX_SETS_PER_MUSCLE = 14;
+// F-7 (auditoría 2026-09-09). STR-003 dice 10-14 series/músculo/semana en déficit y el validador
+// sólo tenía el TECHO: la semana viva pasaba con Hamstrings 9, Shoulders 7 y bíceps 0 directo sin
+// que nada dijera nada, porque "no pasarse" no es lo mismo que "llegar". El suelo se juzga sobre
+// FAMILIAS agregadas, no sobre las etiquetas de la semilla: la cadena posterior repartida en
+// `Hamstrings` / `Posterior` / `Glutes` leía 9 series donde había 14.
+const VP_MIN_SETS_PER_MUSCLE = 10;
+const VP_POSTERIOR_FAMILY = 'Posterior chain';
+const VP_VOLUME_FAMILY_MERGE = {
+  hamstrings: VP_POSTERIOR_FAMILY, posterior: VP_POSTERIOR_FAMILY,
+  'posterior chain': VP_POSTERIOR_FAMILY, glutes: VP_POSTERIOR_FAMILY,
+};
+// Lo que NO es volumen de hipertrofia y por tanto no tiene suelo: pliometría/acondicionamiento
+// (`Power`, ver `_vpVolumeMuscle`), el core (ATH-003 lo gobierna por PATRÓN, no por series) y el
+// cajón de sastre `otros`, que es "la semilla no dijo músculo" y no un grupo muscular.
+const VP_VOLUME_NO_FLOOR = { power: 1, core: 1, otros: 1 };
+/** La familia de volumen de un músculo (agrega la cadena posterior). */
+function _vpMuscleFamily(muscle) {
+  const key = String(muscle == null ? '' : muscle).trim().toLowerCase();
+  return VP_VOLUME_FAMILY_MERGE[key] || (muscle || 'otros');
+}
+/** `{músculo: series}` → `{familia: series}`. */
+function _vpMuscleFamilies(byMuscle) {
+  const out = {};
+  for (const [m, n] of Object.entries(byMuscle || {})) {
+    const fam = _vpMuscleFamily(m);
+    out[fam] = (out[fam] || 0) + (_n(n) || 0);
+  }
+  return out;
+}
+/** ¿Esta familia tiene suelo de series? (Power/Core/otros no.) */
+function _vpFamilyHasFloor(fam) {
+  return !VP_VOLUME_NO_FLOOR[String(fam == null ? '' : fam).trim().toLowerCase()];
+}
 // v11.70 (L-1). Ejercicios que NO son volumen de hipertrofia aunque la semilla les ponga un músculo:
 // pliometría, acondicionamiento y transporte — el mismo criterio que MOVEMENT_PATTERNS en app.js y que
 // `renderMuscleVolume` (que ya los mandaba a la fila 'Power' EN PANTALLA desde v11.48, mientras los dos
@@ -2284,6 +2583,14 @@ const VP_MVPA_FAT_LOSS_MIN = 200;
 // de 14 días del anterior. Sin esto, "el ritmo es un dial gobernado por rendimiento" era prosa.
 const VP_KCAL_STEP_MAX = 150;
 const VP_KCAL_ADJUST_DAYS = 14;
+// F-5 (auditoría 2026-09-09) · el veto de recomposición. Los mismos tres números del paso 6 del
+// prompt: grasa que baja ≥0,5 kg, magra que no cae más de 0,3 kg, y ≥21 días entre lecturas de la
+// báscula (por debajo, la bioimpedancia no separa la tendencia del agua).
+const VP_RECOMP_FAT_DROP_KG = -0.5;
+const VP_RECOMP_FFM_HOLD_KG = -0.3;
+const VP_RECOMP_MIN_SPAN_DAYS = 21;
+/** Una decisión que dice, en palabras, que baja la ingesta. La salida del modelo va en inglés. */
+const VP_LOWER_KCAL_RE = /\b(lower|reduce|cut|drop|decrease|trim)\b[^.]{0,40}\b(kcal|calorie|calories|intake|deficit)\b|\b(kcal|calorie|calories|intake)\b[^.]{0,40}\b(down|lower|cut)\b/i;
 // STR-002 (`strong`): cada patrón mayor, 2 veces por semana. Sólo se comprueba en variantes de
 // 4 días o más — con 2-3 días de fuerza la frecuencia 2× es aritméticamente imposible y el aviso
 // sería permanente.
@@ -2375,7 +2682,13 @@ function _vpNum(v, decimals) {
  *   `libraryIds`      Set/array/objeto de ids válidos
  *   `lowerSessionIds` Set/array de ids de sesión de pierna
  *   `block`           `{index, isDeload, weeksTotal}` · `isDeload` también se acepta suelto
- *   `bodyweightKg`, `goals`, `zones`, `decisions`, `briefing`
+ *   `goals`, `zones`, `decisions`, `briefing`, `todayStr`
+ *   `kcalTarget`, `kcalLastAdjustDate`, `daysSinceKcalAdjust` (opcionales, para KCAL-STEP)
+ *
+ * F-24 (auditoría 2026-09-09): `bodyweightKg` SALE del contrato. Ningún chequeo lo leía nunca —
+ * un campo documentado que nadie usa es una promesa de que el validador sabe algo que no sabe, y
+ * el llamador paga por construirlo. La proteína por kg, si algún día se valida, sale de
+ * `facts.trajectory.weight` / `facts.nutrition`, que sí viajan con su fecha y su n.
  * @returns {Array<{id, level:'hard'|'warn', text, ruleIds}>}
  */
 function validatePlanVersion(plan, ctx) {
@@ -2480,6 +2793,28 @@ function validatePlanVersion(plan, ctx) {
           ['STR-003', 'STR-001']);
       }
     }
+    // ---- F-7 (auditoría 2026-09-09) · VOL-FLOOR (STR-003, STR-001) ----
+    //
+    // El suelo de STR-003, que sólo existía como techo. Igual que `FREQ-FLOOR`, sólo en variantes
+    // de ≥4 días: con 2-3 días de fuerza, 10 series por familia es aritméticamente imposible y el
+    // aviso sería permanente. Y sólo en déficit, que es donde 10-14 es el rango declarado.
+    //
+    // Se juzgan las familias PRESENTES en el plan. Un músculo que el plan no nombra (bíceps
+    // directo, por ejemplo) no se puede contar sin una lista canónica de grupos musculares, y
+    // fabricarla aquí sería inventar el denominador: eso se ve en `plan.plannedSetsPerMuscle` y
+    // lo juzga el coach.
+    if (deficit && (_n(c.variant) == null || _n(c.variant) >= VP_FREQ_FLOOR_MIN_VARIANT)) {
+      const families = _vpMuscleFamilies(setsNow.byMuscle);
+      for (const [fam, n] of Object.entries(families)) {
+        if (!_vpFamilyHasFloor(fam)) continue;
+        if (n < VP_MIN_SETS_PER_MUSCLE) {
+          add('VOL-FLOOR', 'warn',
+            `${fam}: ${n} sets/week, below the floor of ${VP_MIN_SETS_PER_MUSCLE} (STR-003 says 10-14 in a deficit). Under the floor the muscle is not maintained, it is visited — and in a deficit that is where lean mass goes. Counted by family: ${VP_POSTERIOR_FAMILY} merges Hamstrings + Posterior + Glutes.`,
+            ['STR-003', 'STR-001']);
+        }
+      }
+    }
+
     if (setsPrev && setsPrev.total > 0) {
       const pct = ((setsNow.total - setsPrev.total) / setsPrev.total) * 100;
       if (pct > VP_LOAD_JUMP_PCT && !_vpVolumeGatesOk(facts)) {
@@ -2654,6 +2989,55 @@ function validatePlanVersion(plan, ctx) {
         add('KCAL-STEP', 'hard',
           `kcal adjustment ${daysSince} day(s) after the last one (${lastDate || 'no date'}): the gate is ${VP_KCAL_ADJUST_DAYS} days (REC-002). Two adjustments inside the same window make the slope of both unreadable.`,
           ['REC-002', 'REC-008']);
+      }
+    }
+
+    // ---- F-5 (auditoría 2026-09-09) · RECOMP-HOLD (REC-002, REC-008) ----
+    //
+    // EL FALLO QUE ESTO IMPIDE. El piloto del déficit lee la PENDIENTE DEL PESO, y el peso plano
+    // con la grasa bajando y la magra aguantando es exactamente el objetivo #1 cumpliéndose
+    // (recomposición). Sin este aviso, la báscula de composición —que el pack ya publica en
+    // `trajectory.weight.scale` desde v11.69— no tenía ningún consumidor ejecutable y el coach
+    // podía recortar kcal por un artefacto de la balanza, que es la forma más cara de perder
+    // masa magra: se cambia lo que funciona por un número que no medía lo que se quería.
+    //
+    // Los tres requisitos son los del paso 6 del prompt, ni uno menos: grasa −0,5 kg o más, FFM
+    // que no cae más de 0,3 kg y ≥21 días entre la primera y la última lectura. Con menos span
+    // la bioimpedancia no distingue una tendencia del ruido de hidratación.
+    const scale = facts.trajectory && facts.trajectory.weight && facts.trajectory.weight.scale;
+    if (scale && decisions.length) {
+      const fat = _n(scale.fatMassKgDelta28d);
+      const ffm = _n(scale.ffmKgDelta28d);
+      const span = scale.deltaFrom && scale.date ? _cfDiff(scale.deltaFrom, scale.date) : null;
+      const recomp = fat != null && ffm != null && span != null
+        && fat <= VP_RECOMP_FAT_DROP_KG && ffm >= VP_RECOMP_FFM_HOLD_KG && span >= VP_RECOMP_MIN_SPAN_DAYS;
+      if (recomp) {
+        // La referencia del "baja" es el objetivo ANTERIOR, no un suelo: bajar de 2.700 a 2.550
+        // es bajar aunque los dos estén por encima del suelo. Sin referencia de día de descanso
+        // no se compara ese número — un 2.400 de descanso al lado de un target medio de 2.600 no
+        // es un recorte, es que el día de descanso come menos.
+        const nutPrev = (c.basedOn && c.basedOn.nutrition) || {};
+        const refTraining = _n(nutPrev.kcalTraining) != null ? _n(nutPrev.kcalTraining)
+          : (_n(c.kcalTarget) != null ? _n(c.kcalTarget)
+            : _n(facts.nutrition && facts.nutrition.kcal && facts.nutrition.kcal.targetMean7));
+        const refRest = _n(nutPrev.kcalRest);
+        for (const dec of decisions) {
+          if (!dec || dec.type !== 'nutrition') continue;
+          const num = (dec.evidence && dec.evidence.numbers) || dec.numbers || {};
+          const why = [];
+          const t = _n(num.kcalTraining), r = _n(num.kcalRest);
+          if (t != null && refTraining != null && t < refTraining) why.push(`training day ${_vpNum(refTraining, 0)} → ${_vpNum(t, 0)} kcal`);
+          if (r != null && refRest != null && r < refRest) why.push(`rest day ${_vpNum(refRest, 0)} → ${_vpNum(r, 0)} kcal`);
+          if (_n(num.from) != null && _n(num.to) != null && _n(num.to) < _n(num.from) && _n(num.from) >= 1000) {
+            why.push(`${_vpNum(_n(num.from), 0)} → ${_vpNum(_n(num.to), 0)} kcal`);
+          }
+          if (_n(num.kcalDelta) != null && _n(num.kcalDelta) < 0) why.push(`${_vpNum(_n(num.kcalDelta), 0)} kcal`);
+          if (!why.length && VP_LOWER_KCAL_RE.test(`${dec.what || ''} ${dec.why || ''}`)) why.push('the decision text says it lowers intake');
+          if (!why.length) continue;
+          add('RECOMP-HOLD', 'warn',
+            `The scale says RECOMPOSITION (fat mass ${_vpNum(fat, 1)} kg, FFM ${ffm >= 0 ? '+' : ''}${_vpNum(ffm, 1)} kg over ${span} days since ${scale.deltaFrom}) and this decision still lowers intake (${why.join(' · ')}). Flat weight with fat coming down is goal #1 being met, not a stall: hold the target and move the EXPENDITURE lever (steps REC-009, easy minutes towards the ${VP_MVPA_FAT_LOSS_MIN}-300 min band of END-009).`,
+            ['REC-002', 'REC-008']);
+        }
       }
     }
 
@@ -3554,7 +3938,7 @@ if (typeof module !== 'undefined' && module.exports) {
     FACTS_TREND_PCT, FACTS_GREEN, FACTS_YELLOW, FACTS_PRESS_IDS, FACTS_CARDIO_BW,
     FACTS_TRAJ_WEEKS, FACTS_TRAJ_Z2_WEEKS, FACTS_TRAJ_FOLLOWUP, FACTS_TRAJ_MIN_WEEKS,
     FACTS_TRAJ_MIN_SLOPE_POINTS, FACTS_TRAJ_SKIP_WINDOW, FACTS_TRAJ_SKIP_MIN,
-    FACTS_BLOCK_WEEKS_DEFAULT,
+    FACTS_BLOCK_WEEKS_DEFAULT, FACTS_MVPA_BAND, FACTS_MVPA_FLOOR_MIN,
     VP_FLOORS, VP_MAX_SETS_PER_MUSCLE, VP_MAX_HARD_CARDIO, VP_MAX_BUDGET,
     VP_MAX_PRESS_EXPOSURES, VP_MAX_SESSION_MIN, VP_MAX_PLYO_CONTACTS,
     VP_MAX_STRUCTURAL_CHANGES, VP_MIN_STRENGTH_SESSIONS, VP_MIN_MOBILITY_SLOTS,
@@ -3565,10 +3949,14 @@ if (typeof module !== 'undefined' && module.exports) {
     VP_MAX_STRENGTH_DAYS, VP_VARIANT_SLACK, VP_LONG_RUN_HARD_KM, VP_MIN_MVPA_MIN,
     VP_MVPA_FAT_LOSS_MIN, VP_KCAL_STEP_MAX, VP_KCAL_ADJUST_DAYS, VP_MIN_PATTERN_EXPOSURES,
     VP_FREQ_FLOOR_MIN_VARIANT, VP_PATTERN_FAMILIES, VP_PATTERN_IDS,
+    // v11.71 / auditoría 2026-09-09: los umbrales de los 2 ids nuevos (F-5, F-7)
+    VP_MIN_SETS_PER_MUSCLE, VP_POSTERIOR_FAMILY, VP_VOLUME_FAMILY_MERGE, VP_VOLUME_NO_FLOOR,
+    VP_RECOMP_FAT_DROP_KG, VP_RECOMP_FFM_HOLD_KG, VP_RECOMP_MIN_SPAN_DAYS,
     // Internos que los tests usan para no re-implementar aritmética
     _cfShift, _cfDiff, _cfIsoWeek, _cfMonday, _durMin, _paceSec, _fmtPace,
     _slopePerWeek, _liftTrend, _z2Compliant, _sanitize, _weeksSpan, _weightDays,
-    _vpSetsPerMuscle, _vpSessionMin, _vpPlyoExercises, _vpMobilitySlots, _vpHardCardio,
+    _vpSetsPerMuscle, _vpMuscleFamily, _vpMuscleFamilies, _vpFamilyHasFloor,
+    _vpSessionMin, _vpPlyoExercises, _vpMobilitySlots, _vpHardCardio,
     _vpPatternExposures, _vpWeeklyCardioMin, _vpCardioBeforeLift, _vpHardSessionDays,
     _vpSlotIsHardCardio,
   };
@@ -3581,7 +3969,7 @@ if (typeof module !== 'undefined' && module.exports) {
 // guardia `module.exports` de app/coach-facts.js sigue exportándolos se hace aparte, y LANZA en
 // el import: si alguien quita uno de la lista de exports del fuente, la función falla al
 // arrancar en vez de saltarse el validador en silencio.
-for (const __name of ["validatePlanVersion","mergeProposal","diffPlanVersions"]) {
+for (const __name of ["validatePlanVersion","mergeProposal","diffPlanVersions","stableStringify"]) {
   if (typeof module.exports[__name] !== "function") {
     throw new Error(
       `coach-facts.generated.js: app/coach-facts.js ya no exporta \`${__name}\` por module.exports`,
@@ -3589,4 +3977,4 @@ for (const __name of ["validatePlanVersion","mergeProposal","diffPlanVersions"])
   }
 }
 
-export { validatePlanVersion, mergeProposal, diffPlanVersions };
+export { validatePlanVersion, mergeProposal, diffPlanVersions, stableStringify };

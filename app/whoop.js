@@ -153,7 +153,12 @@ async function intervalsFetchWellness() {
 
   let rows;
   try {
-    const res = await fetch(url, { headers: { Authorization: auth } });
+    // C-11 (auditoría 2026-09-09): sin `AbortSignal`, un intervals.icu colgado detrás de un
+    // portal cautivo dejaba este `await` vivo hasta el corte del sistema, y con él el pull de
+    // wellness que espera media pantalla. `fetchWithTimeout` vive en app.js (mismo documento).
+    const res = (typeof fetchWithTimeout === 'function')
+      ? await fetchWithTimeout(url, { headers: { Authorization: auth } })
+      : await fetch(url, { headers: { Authorization: auth } });
     if (!res.ok) {
       console.warn('[wellness] intervals.icu fetch failed:', res.status);
       return null;
@@ -618,21 +623,22 @@ function whoopClock(ts) {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
-async function renderWhoopRecoveryCard() {
-  const container = document.getElementById('whoop-recovery');
-  if (!container || !whoopIsConnected()) {
-    if (container) container.classList.add('hidden');
-    return;
-  }
+/**
+ * V-10 (auditoría 2026-09-09): esto era `renderWhoopRecoveryCard()`, la TERCERA tarjeta de
+ * recuperación de Stats › Today. Las tres leían el mismo `computeReadiness()`/`whoopSyncData()`
+ * y repetían el número de hoy con tres formatos distintos. Ahora devuelve HTML y no toca el DOM:
+ * `renderRecoveryBlock()` (coach.js) lo compone dentro de la ÚNICA tarjeta, plegado.
+ *
+ * Devuelve '' cuando no hay nada que enseñar (sin conexión, sin datos): un desplegable vacío es
+ * peor que ningún desplegable.
+ */
+async function whoopRecoveryBlockHtml() {
+  if (!whoopIsConnected()) return '';
 
   const data = await whoopSyncData();
   if (!data || data.recovery.length === 0) {
-    container.innerHTML = '<div class="empty-state" style="padding:16px">WHOOP connected but no recovery data yet. Try "Sync now" in Settings › Integrations.</div>';
-    container.classList.remove('hidden');
-    return;
+    return '<div class="empty-state" style="padding:16px">WHOOP connected but no recovery data yet. Try "Sync now" in Settings › Integrations.</div>';
   }
-
-  container.classList.remove('hidden');
 
   // El número grande: el de HOY si existe, y si no el último disponible pero ETIQUETADO con su
   // día (F-6). Antes cogía `recovery[length - 1]` y lo pintaba como si fuera de hoy.
@@ -663,7 +669,7 @@ async function renderWhoopRecoveryCard() {
 
   const trendRows = last7.map(r => {
     const rc = getRecoveryColor(r.score);
-    const day = r.date ? new Date(r.date + 'T12:00:00').toLocaleDateString('en', { weekday: 'short', month: 'numeric', day: 'numeric' }) : '?';
+    const day = r.date ? new Date(r.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'numeric', day: 'numeric' }) : '?';
     const sl = r.date ? sleepByDate[r.date] : null;
     const sleepTxt = sl ? sl.durationHrs + 'h' : '--';
     return `<tr class="whoop-trend-row">
@@ -703,7 +709,7 @@ async function renderWhoopRecoveryCard() {
   // V-2 (auditoría 2026-09-08): el color del anillo va en `style` y no en el atributo
   // `stroke`. Los atributos de presentación de SVG se parsean como pintura SVG, no como valor
   // CSS: `stroke="var(--accent)"` deja el anillo sin trazo, y en `style` sí resuelve.
-  container.innerHTML = `
+  return `
     <div class="whoop-card-top">
       <div class="whoop-ring-wrap">
         <svg width="88" height="88" viewBox="0 0 88 88">
@@ -756,12 +762,20 @@ async function renderWhoopRecoveryCard() {
   `;
 }
 
+// El nombre antiguo sigue vivo porque `integrations.js` lo llama tras conectar o sincronizar.
+// Repinta el bloque único de recuperación, que es donde vive ahora este contenido.
+async function renderWhoopRecoveryCard() {
+  if (typeof renderRecoveryBlock === 'function') return renderRecoveryBlock();
+  return null;
+}
+
 // Expose globally
 window.whoopIsConnected = whoopIsConnected;
 window.whoopSyncData = whoopSyncData;
 window.whoopResetCache = whoopResetCache;
 window.whoopNoteServerSync = whoopNoteServerSync;
 window.renderWhoopRecoveryCard = renderWhoopRecoveryCard;
+window.whoopRecoveryBlockHtml = whoopRecoveryBlockHtml;
 window.whoopDayLabel = whoopDayLabel;
 window.whoopClock = whoopClock;
 window.intervalsFetchWellness = intervalsFetchWellness;
@@ -770,7 +784,7 @@ window.intervalsFetchWellness = intervalsFetchWellness;
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     whoopIsConnected, whoopSyncData, whoopResetCache, whoopNoteServerSync, intervalsFetchWellness,
-    getRecoveryColor, whoopDayLabel, whoopClock, renderWhoopRecoveryCard,
+    getRecoveryColor, whoopDayLabel, whoopClock, renderWhoopRecoveryCard, whoopRecoveryBlockHtml,
     WHOOP_OWNED_KEYS, _whoopLocalDateStr, _whoopRowsEqual,
   };
 }

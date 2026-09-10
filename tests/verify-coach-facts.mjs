@@ -176,7 +176,11 @@ const WORKOUTS = [
     ],
     readout: {
       line: 'Banca 95×6/6/6 · remo 72,5 subió',
-      summary: '2 progresaron, 1 saltado',
+      // La forma REAL que sella sessionReadout (coach-engine.js) desde v11.57. Hasta v11.71
+      // este fixture llevaba un string, y por eso progress.performance no habría encontrado
+      // nada: el pack sólo lee el objeto, porque parsear una frase para sacar un número es la
+      // aritmética que este fichero existe para evitar.
+      summary: { progressed: 2, held: 0, regressed: 0, skipped: 1 },
       items: [{ exerciseId: 'bench-press', outcome: 'progressed', target: { kg: 95, source: 'rule' }, done: { topKg: 95, reps: [6, 6, 6], avgRpe: 8 }, next: { kg: 97.5 } }],
     },
   },
@@ -389,7 +393,7 @@ const facts = buildCoachFacts(mkInput(), DEPS);
 sec('meta y ventana ISO (la frontera domingo/lunes)');
 // ════════════════════════════════════════════════════════════════════════════════════
 eq(facts.meta.weekKey, SEMANA, 'weekKey = 2026-W37');
-eq(facts.meta.factsSchema, 2, 'esquema 2 del pack (trae `trajectory`)');
+eq(facts.meta.factsSchema, 3, 'esquema 3 del pack (v11.71: rendimiento, series planificadas, sueño largo, subjetivas, hidratación, misma carga, descansos y MVPA)');
 eq(facts.meta.caps.priorReviews, 6, 'el tope de revisiones previas es 6 (3 completas + 3 compactas)');
 eq(facts.meta.window.weeks.join(' '), '2026-W34 2026-W35 2026-W36 2026-W37', 'ventana de 4 semanas ISO, la actual al final');
 eq(facts.meta.window.from, '2026-08-17', 'la ventana empieza el lunes de hace 3 semanas');
@@ -915,6 +919,146 @@ ok(pr.slice(3).every(r => r.excerpt === undefined && r.decisions === undefined),
   'y sin extracto ni decisiones: sólo semana, estado y prioridades');
 ok(pr.slice(3).every(r => Array.isArray(r.priorities)), 'las prioridades sí sobreviven (es lo que se dijo, en una línea)');
 eq(pr.filter(r => r.kind === 'legacy').length, 0, 'con historial propio, la entrada legacy no entra');
+
+// ════════════════════════════════════════════════════════════════════════════════════
+sec('v11.71 · lo que la auditoría del 09-sep echó de menos en el pack');
+// ════════════════════════════════════════════════════════════════════════════════════
+// Nueve huecos, todos de la misma familia: el DATO estaba en el store y el pack no lo publicaba,
+// así que la regla que lo necesitaba no era ejecutable y el modelo acababa opinando. F-6 (la
+// mitad reactiva de LOAD-004), F-7 (las series prescritas que el validador juzga), F-9 (una sola
+// tabla de color), F-11 (sueño = duración + consistencia + deuda), F-12 (las subjetivas del
+// disparador de LEA), F-13 (hidratación de REC-006), F-18 (deriva a carga igual), F-19
+// (cumplimiento de descansos) y F-22 (MVPA hechos contra la banda de END-009).
+
+/** El mismo input del fixture con algunos stores sustituidos. */
+const withStores = (over) => { const i = mkInput(); i.stores = Object.assign({}, i.stores, over); return i; };
+
+// ---- F-6 · progress.performance ----
+const perf = facts.progress.performance;
+ok(!!perf, 'progress.performance existe');
+eq(perf.sessions.length, 1, 'sólo la sesión con lectura sellada entra (las otras cinco no la tienen)');
+eq(perf.sessions[0].date, '2026-09-01', 'con su fecha');
+eq(perf.sessions[0].progressed, 2, 'y los tres contadores del summary (2 progresaron…)');
+eq(perf.sessions[0].regressed, 0, '…0 cayeron…');
+eq(perf.sessions[0].held, 0, '…0 se mantuvieron)');
+eq(perf.regressedStreak, 0, 'con una sesión que progresó, la racha es 0');
+eq(perf.lastRegressedDate, null, 'y no hay última caída que citar');
+
+const RO = (date, session, sum) => ({
+  id: 'ro-' + date, date, session, sessionName: session, unit: 'kg', planVersion: 21,
+  duration: '60:00', family: 'strength',
+  exercises: [{ exerciseId: 'back-squat', sets: S(100, 5, 8, 3) }],
+  readout: { line: 'x', items: [], summary: sum },
+});
+const racha = buildCoachFacts(withStores({
+  workouts: [
+    RO('2026-09-07', 'lowerA', { progressed: 0, held: 1, regressed: 2, skipped: 0 }),
+    RO('2026-09-05', 'upperA', { progressed: 0, held: 0, regressed: 1, skipped: 1 }),
+    RO('2026-09-03', 'lowerB', { progressed: 3, held: 0, regressed: 0, skipped: 0 }),
+    RO('2026-09-01', 'upperB', 'dos progresaron'),
+  ],
+}), DEPS).progress.performance;
+eq(racha.regressedStreak, 2, 'dos sesiones consecutivas con caídas y ninguna subida → racha 2 (LOAD-004 reactivo)');
+eq(racha.lastRegressedDate, '2026-09-07', 'y la fecha de la última caída');
+eq(racha.sessions.length, 3, 'el summary de TEXTO (registros anteriores a v11.57) se ignora, no se parsea');
+const cortada = buildCoachFacts(withStores({
+  workouts: [
+    RO('2026-09-07', 'lowerA', { progressed: 1, held: 0, regressed: 1, skipped: 0 }),
+    RO('2026-09-05', 'upperA', { progressed: 0, held: 0, regressed: 1, skipped: 0 }),
+  ],
+}), DEPS).progress.performance;
+eq(cortada.regressedStreak, 0, 'una sesión con una caída Y una subida NO es un declive: la racha se corta');
+
+// ---- F-7 · plan.plannedSetsPerMuscle ----
+const psm = facts.plan.plannedSetsPerMuscle;
+ok(!!psm, 'plan.plannedSetsPerMuscle existe');
+eq(psm.byMuscle.Chest, 4, 'pecho 4 series prescritas/semana');
+eq(psm.byMuscle.Back, 8, 'espalda 8 (remo 4 + dominadas 4)');
+eq(psm.byMuscle.Power, 3, 'y el box jump cuenta en Power, no en Quads (L-1)');
+eq(psm.byMuscle.Quads, 7, 'cuádriceps 7 (sentadilla 4 + extensión 3), sin el box jump');
+eq(psm.families['Posterior chain'], 7, 'la cadena posterior AGREGA Hamstrings + Posterior + Glutes');
+eq(psm.families.Hamstrings, undefined, 'y la etiqueta suelta desaparece de las familias');
+eq(psm.total, 45, 'total de series prescritas de la semana');
+eq(psm.floorPerMuscle, 10, 'con el suelo…');
+eq(psm.capPerMuscle, 14, '…y el techo que el validador aplica, para que el coach vea el mismo número');
+
+// ---- F-9 · una sola tabla de color ----
+ok(Array.isArray(facts.readiness.firedSignals), 'readiness.firedSignals es un array (nunca null)');
+ok(facts.readiness.firedSignals.every(x => typeof x === 'string'), 'de ids de señal');
+ok(['green', 'yellow', 'red', 'unknown'].includes(String(facts.readiness.readinessColor)),
+  'readiness.readinessColor viene del motor: ' + facts.readiness.readinessColor);
+
+// ---- F-11 / F-12 / F-13 · sueño largo, subjetivas e hidratación ----
+eq(facts.readiness.sleep.score7.mean, 80, 'sleep.score7 sale de sleepScore (80 en el fixture)');
+eq(facts.readiness.sleep.score7.n, 7, 'con sus 7 noches');
+eq(facts.readiness.sleep.consistency7.mean, null, 'sin sleepConsistency en el store, null…');
+eq(facts.readiness.sleep.consistency7.n, 0, '…y n = 0, que es la diferencia entre "no hay dato" y "es 0"');
+eq(facts.readiness.sleep.debtHrs7.mean, null, 'sin sleepNeedSecs no hay deuda que calcular');
+eq(facts.readiness.subjective.n7, 0, 'y sin subjetivas rellenadas en intervals.icu, n7 = 0');
+eq(facts.readiness.subjective.fatigue7, null, 'con las cinco medias a null');
+eq(facts.readiness.hydration7.meanL, null, 'lo mismo con la hidratación (REC-006)');
+eq(facts.readiness.hydration7.n, 0, 'y su n');
+
+const RICO = WELLNESS.map(w => Object.assign({}, w, {
+  sleepConsistency: 78, sleepNeedSecs: w.sleepSecs + 3600,
+  fatigue: 2, soreness: 3, stress: 2, mood: 4, motivation: 3,
+  hydrationVolume: 2400,
+}));
+const rico = buildCoachFacts(withStores({ wellness: RICO }), DEPS).readiness;
+eq(rico.sleep.consistency7.mean, 78, 'con el dato, sleep.consistency7 = 78 %');
+eq(rico.sleep.consistency7.n, 7, 'sobre 7 noches');
+eq(rico.sleep.debtHrs7.mean, 1, 'deuda = media de (necesidad − dormido) = 1 h');
+eq(rico.subjective.fatigue7, 2, 'subjective.fatigue7 = 2');
+eq(rico.subjective.mood7, 4, 'subjective.mood7 = 4 (sin invertir escalas: 1 es lo mejor en fatiga y lo peor en ánimo)');
+eq(rico.subjective.n7, 7, 'y n7 cuenta los días con al menos una de las cinco');
+eq(rico.hydration7.meanL, 2.4, 'hydrationVolume en ml → 2,4 L');
+eq(rico.hydration7.n, 7, 'con sus 7 días');
+eq(buildCoachFacts(withStores({ wellness: WELLNESS.map(w => Object.assign({}, w, { hydration: 2.4 })) }), DEPS).readiness.hydration7.meanL,
+  2.4, 'y hydration en litros se toma tal cual (conversión por magnitud, no por adivinar la unidad)');
+const deudaCero = buildCoachFacts(withStores({
+  wellness: WELLNESS.map(w => Object.assign({}, w, { sleepNeedSecs: w.sleepSecs - 3600 })),
+}), DEPS).readiness.sleep.debtHrs7;
+eq(deudaCero.mean, 0, 'dormir DE MÁS no genera deuda negativa: el exceso se recorta a 0, no compensa otra noche');
+
+// ---- F-18 · lifts[id].atSameLoad ----
+const sq = facts.lifts['back-squat'].atSameLoad;
+ok(!!sq, 'back-squat trae atSameLoad (dos exposiciones a 105 kg)');
+eq(sq.kg, 105, 'la carga de top set más frecuente: 105 kg');
+eq(sq.n, 2, 'con 2 sesiones a ese peso');
+eq(sq.repsDelta, 3, 'y +3 reps de la más antigua (5) a la más reciente (8): progreso que el e1RM tapa a medias');
+eq(sq.rpeDelta, 0, 'con el RPE clavado en 8');
+eq(sq.series.length, 2, 'la serie lleva las dos exposiciones');
+eq(sq.series[0].date, '2026-09-07', 'la más reciente primero, igual que sessions');
+eq(facts.lifts['bench-press'].atSameLoad, null, 'la banca, con tres cargas distintas y ninguna repetida, va a null');
+eq(facts.lifts['box-jump'].atSameLoad, null, 'y una MEDIDA (cm de cajón) nunca tiene "misma carga"');
+
+// ---- F-19 · adherence[].restCompliancePct ----
+const semanaHoy = facts.adherence[facts.adherence.length - 1];
+eq(semanaHoy.restCompliancePct, null, 'sin blockTimings el cumplimiento de descansos es null, no 0');
+eq(semanaHoy.restComplianceN, 0, 'y su n va a 0');
+const conBloques = buildCoachFacts(withStores({
+  workouts: [Object.assign({}, WORKOUTS[WORKOUTS.length - 1], {
+    blockTimings: [
+      { blockId: 'a', label: 'Squat', estimatedSec: 600, durationSec: 540 },
+      { blockId: 'b', label: 'Superset', estimatedSec: 400, durationSec: 360 },
+      { blockId: 'c', label: 'sin estimación', estimatedSec: 0, durationSec: 300 },
+    ],
+  })],
+}), DEPS).adherence;
+const w37 = conBloques[conBloques.length - 1];
+eq(w37.restCompliancePct, 90, '900 s reales sobre 1.000 estimados → 90 % (el bloque sin estimación no cuenta)');
+eq(w37.restComplianceN, 1, 'con 1 entreno aportando bloques');
+
+// ---- F-22 · cardio.mvpaMinByWeek + banda de END-009 ----
+eq(facts.cardio.mvpaMinByWeek.length, 4, 'mvpaMinByWeek trae las 4 semanas ISO de la ventana');
+eq(facts.cardio.mvpaMinByWeek[3].weekKey, '2026-W37', 'la última es la semana en curso');
+eq(facts.cardio.mvpaMinByWeek.map(w => w.min).join(','),
+  facts.cardio.weeks.map(w => w.min).join(','),
+  'y son EXACTAMENTE los minutos de cardio.weeks[].min: un solo contador, no dos');
+eq(facts.cardio.mvpaBand.join('-'), '200-300', 'la banda de pérdida de grasa de END-009 viaja en el pack');
+eq(facts.cardio.mvpaFloorMin, 150, 'y el suelo de salud (150) al lado, para no confundirlos');
+eq(facts.cardio.weeks[2].mvpa.finisherMin, 20, 'el desglose separa los finishers de Z2 (20 min en W36)…');
+eq(facts.cardio.weeks[2].mvpa.runMin, 75, '…de los minutos de carrera (75 en W36, ya dedupeados)');
 
 // ════════════════════════════════════════════════════════════════════════════════════
 sec('stableStringify · el hash no depende del orden de las claves');

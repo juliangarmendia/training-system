@@ -10,13 +10,28 @@ import {
   RULES_VERSION,
   SYSTEM_STATIC,
 } from "./prompt.ts";
-import { type Allowed, CoachOutputSchema, enumsAreOpen } from "./schema.ts";
+import {
+  type Allowed,
+  CARDIO_SUBTYPES,
+  CHANGE_KINDS,
+  CoachOutputSchema,
+  DECISION_TYPES,
+  enumsAreOpen,
+  SLOT_TYPES,
+} from "./schema.ts";
+// C-22: `corsHeaders` y `json` compartidos con el resto de funciones (había cuatro copias).
+import { corsHeaders, json } from "../_shared/http.ts";
 // El validador de planes, generado desde `app/coach-facts.js` por `scripts/build-fn-assets.mjs`.
 // Una sola implementación: dos validadores (uno en el teléfono, otro aquí) divergirían y nadie
 // sabría cuál manda. `tests/verify-fn-assets.mjs` falla si la copia se queda atrás.
 import {
   diffPlanVersions,
   mergeProposal,
+  // C-23: había CUATRO copias de `stableStringify` (aquí, en la PWA, en el script manual y en
+  // el generador). El `factsHash` es la idempotencia de la revisión: dos implementaciones que
+  // ordenen distinto producen hashes distintos para el MISMO pack, la caché deja de acertar y
+  // el modo manual y el de API dejan de poder compararse. Una sola, la de `app/coach-facts.js`.
+  stableStringify,
   validatePlanVersion,
 } from "./coach-facts.generated.js";
 
@@ -46,12 +61,6 @@ import {
 //   ANTHROPIC_API_KEY
 //   SUPABASE_URL, SUPABASE_ANON_KEY y SUPABASE_SERVICE_ROLE_KEY los inyecta el runtime.
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
-
 const TABLE = "coach_reviews";
 // 2 = contrato v2 (2026-09-07): fases de 5 valores, `weekSummary` con una fila por sesión,
 // `focus`/`whyChanged`/`whyKept`/`lastWeekSummary` en el briefing, prompt rendimiento-primero.
@@ -72,13 +81,14 @@ const API_TIMEOUT_MS = 170_000;
 const CACHE_TTL = "5m" as const;   // 1 llamada/semana: la cache solo sirve al reintento del mismo run; 1h cuesta 2x en escritura sin ganar lecturas
 
 // Precios de Claude Opus 5, $/millón de tokens. Entrada 5, salida 25; lectura de caché 0,1x;
-// escritura de caché 1,25x con TTL de 5 min y 2x con TTL de 1 h (por eso hay dos constantes:
-// usamos la de 1 h porque `CACHE_TTL` es '1h').
+// escritura de caché 1,25x con TTL de 5 min. C-30: había una segunda constante para el TTL de
+// 1 h (2x) y un ternario que la elegía, con un comentario que decía lo contrario del código.
+// `CACHE_TTL` es `"5m" as const`, así que la rama de 1 h era inalcanzable y `deno check` la
+// marcaba como comparación imposible. Si algún día se sube el TTL, vuelven las dos.
 const PRICE_INPUT = 5.00;
 const PRICE_OUTPUT = 25.00;
 const PRICE_CACHE_READ = 0.50;
 const PRICE_CACHE_WRITE_5M = 6.25;
-const PRICE_CACHE_WRITE_1H = 10.00;
 
 // Límites de entrada.
 const MAX_FACTS_BYTES = 200_000;
@@ -116,6 +126,29 @@ const MAX_SUMMARY_LINE = 160;
 // Las 5 fases del bloque. Duplicadas a propósito respecto a `schema.ts`: el esquema restringe al
 // modelo, esto sanea lo que llegue (una revisión vieja, un enum abierto, un reintento raro).
 const PHASES = ["base", "build", "intensify", "deload", "maintenance"];
+
+// C-13 (auditoría 2026-09-09). Los otros CUATRO enums del contrato salían del saneado con un
+// `String(...)` y un valor por defecto, sin comprobar nada. El decodificador restringido no
+// puede emitir otra cosa HOY, pero el saneado también procesa lo que no viene de él: una
+// revisión guardada con un contrato viejo, un `enumsAreOpen` (cuando el vocabulario llega
+// vacío el esquema deja el campo libre) y el reintento por JSON nulo. Un `type: "cardio"` o un
+// `kind: "modify"` inventado atraviesa el servidor, se guarda en la fila y llega a la app, que
+// filtra por esos valores: la decisión no se pinta y desaparece sin que nada falle.
+//
+// `enumOr` devuelve el PRIMER valor del enum y lo anota en `sanitized[]` — recortar en silencio
+// sería peor que el fallo. `clip()` va siempre: un enum abierto puede traer 4 KB de texto.
+function enumOr(
+  raw: unknown,
+  allowedValues: readonly string[],
+  fallback: string,
+  where: string,
+  sanitized: Sanitized,
+): string {
+  const v = clip(String(raw ?? ""), 40);
+  if (allowedValues.includes(v)) return v;
+  sanitized.push(`${where}: '${v || "(empty)"}' is not a valid value; set to '${fallback}'`);
+  return fallback;
+}
 const WEEK_SUMMARY_STATUSES = ["kept", "changed", "new", "removed"];
 // La línea que se pinta cuando el coach dejó una sesión sin motivo. Se ve en la app en vez de
 // desaparecer: una sesión sin razón es un fallo del coach, no un hueco del formato. En INGLÉS
@@ -321,7 +354,14 @@ Deno.serve(async (req) => {
       return data;
     };
 
-    const todayStr = nowIso.slice(0, 10);
+    // C-14: el día del USUARIO, no el del servidor. `nowIso` es UTC: entre las 00:00 y las
+    // 02:00 de Madrid en verano el servidor ya está en el día siguiente, y `todayStr` alimenta
+    // `SUMMER-PACE` y el `ctx` del validador — un domingo por la noche la revisión razonaba
+    // sobre el lunes. El pack trae `meta.todayStr` calculado en el teléfono, que es la fecha
+    // que Julian ve. Se valida la forma antes de usarla: una cadena rara aquí desplaza la
+    // ventana entera del validador sin que nada falle.
+    const packToday = String((facts as { meta?: { todayStr?: unknown } })?.meta?.todayStr ?? "");
+    const todayStr = /^\d{4}-\d{2}-\d{2}$/.test(packToday) ? packToday : nowIso.slice(0, 10);
     const lowerIds = lowerIdsFromBody.length
       ? lowerIdsFromBody
       : deriveLowerSessionIds(currentPlan, facts, allowed);
@@ -877,7 +917,8 @@ function sanitizeOutput(
     if (!Object.keys(numbers).length) sanitized.push(`Decision ${idIn} has no evidence.numbers (G-H15)`);
     return {
       id: idIn,
-      type: String(d?.type ?? "structure"),
+      // C-13: contra DECISION_TYPES de schema.ts, no `String(...)` a pelo.
+      type: enumOr(d?.type, DECISION_TYPES, DECISION_TYPES[0], `Decision ${idIn}: type`, sanitized),
       what: clip(String(d?.what ?? ""), 400),
       why: clip(String(d?.why ?? ""), 800),
       evidence: { numbers },
@@ -976,7 +1017,8 @@ function sanitizeOutput(
 
     const changesIn: any[] = Array.isArray(s?.changes) ? s.changes : [];
     const changes = changesIn.slice(0, MAX_EX_PER_SESSION).map((c) => ({
-      kind: String(c?.kind ?? "sets"),
+      // C-13: contra CHANGE_KINDS. La app dibuja el icono del cambio por este valor.
+      kind: enumOr(c?.kind, CHANGE_KINDS, CHANGE_KINDS[0], `Session ${sid}: change.kind`, sanitized),
       exId: c?.exId ? String(c.exId).slice(0, 80) : null,
       why: clip(String(c?.why ?? ""), MAX_NOTE),
       decisionId: c?.decisionId ? String(c.decisionId).slice(0, 80) : null,
@@ -1016,7 +1058,9 @@ function sanitizeOutput(
     }
     cardio.push({
       dow,
-      subtype: String(c?.subtype ?? "zone2"),
+      // C-13: contra CARDIO_SUBTYPES. El subtipo decide el peso en el presupuesto de días duros
+      // y la banda de HR de la tarjeta: uno desconocido deja el día sin intensidad ni zona.
+      subtype: enumOr(c?.subtype, CARDIO_SUBTYPES, CARDIO_SUBTYPES[0], `Cardio slot dow ${dow}: subtype`, sanitized),
       durationMin: Math.max(0, Math.round(Number(c?.durationMin) || 0)),
       distanceKm: Number.isFinite(Number(c?.distanceKm)) ? round1(Number(c.distanceKm)) : null,
       note: clip(String(c?.note ?? ""), MAX_NOTE),
@@ -1052,7 +1096,12 @@ function sanitizeOutput(
     }
     weekTemplateChanges.push({
       dow,
-      type: String(t?.type ?? "rest"),
+      // C-13: contra SLOT_TYPES. Un tipo de hueco desconocido rompe la semana en el calendario.
+      // El respaldo NO es el primer valor del enum (`gym`) sino `rest`, que es el que ya había y
+      // el único seguro: un `gym` inventado con `sessionId` nulo programa un día de fuerza
+      // vacío en el calendario, mientras que `rest` no hace nada y el aviso queda en
+      // `sanitized[]` para que se vea. En los otros tres enums el primer valor SÍ es el neutro.
+      type: enumOr(t?.type, SLOT_TYPES, "rest", `Week-template change dow ${dow}: type`, sanitized),
       sessionId: sid,
       label: t?.label ? clip(String(t.label), 60) : null,
       why: clip(String(t?.why ?? ""), MAX_NOTE),
@@ -1246,10 +1295,10 @@ function usageOf(response: unknown, latencyMs: number) {
   const output = Number(u.output_tokens ?? 0) || 0;
   const cacheRead = Number(u.cache_read_input_tokens ?? 0) || 0;
   const cacheWrite = Number(u.cache_creation_input_tokens ?? 0) || 0;
-  const writePrice = CACHE_TTL === "1h" ? PRICE_CACHE_WRITE_1H : PRICE_CACHE_WRITE_5M;
+  // C-30: `CACHE_TTL` es `"5m"`, así que el precio de escritura es siempre el de 5 min.
   const costUsd = Math.round(
     ((input * PRICE_INPUT + output * PRICE_OUTPUT + cacheRead * PRICE_CACHE_READ +
-      cacheWrite * writePrice) / 1_000_000) * 10000,
+      cacheWrite * PRICE_CACHE_WRITE_5M) / 1_000_000) * 10000,
   ) / 10000;
   return {
     input_tokens: input,
@@ -1266,18 +1315,6 @@ function usageOf(response: unknown, latencyMs: number) {
   };
 }
 
-/** Stringify determinista: claves ordenadas en todos los niveles. Sin esto el `factsHash`
- * cambiaría según el orden en que la PWA construyó el objeto y la caché no serviría. */
-function stableStringify(v: unknown): string {
-  if (v === null || v === undefined) return "null";
-  if (typeof v === "number") return Number.isFinite(v) ? JSON.stringify(v) : "null";
-  if (typeof v !== "object") return JSON.stringify(v) ?? "null";
-  if (Array.isArray(v)) return `[${v.map(stableStringify).join(",")}]`;
-  const obj = v as Record<string, unknown>;
-  const keys = Object.keys(obj).sort();
-  return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify(obj[k])}`).join(",")}}`;
-}
-
 async function sha256Hex(s: string) {
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
   return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
@@ -1288,11 +1325,4 @@ async function sha256Hex(s: string) {
 function rowResponse(data: Record<string, unknown>) {
   const { facts: _facts, ...rest } = data;
   return { ok: data?.status !== "failed", reviewId: data?.id ?? null, ...rest };
-}
-
-function json(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
 }

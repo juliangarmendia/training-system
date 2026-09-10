@@ -20,11 +20,14 @@ import { whoopAdapter } from "./whoop.ts";
 import { withingsAdapter } from "./withings.ts";
 import {
   ConfigError,
+  PROVIDER_TIMEOUT_MS,
   ProviderFatalAuthError,
   ProviderTransientError,
   ReconnectRequired,
   RefreshInProgress,
   clip,
+  fetchWithTimeout,
+  netErrorText,
   readEnv,
 } from "./http.ts";
 
@@ -337,12 +340,15 @@ export interface ProviderResponse {
 async function rawFetch(url: string, init: RequestInit, token: string, provider: string): Promise<ProviderResponse> {
   let res: Response;
   try {
-    res = await fetch(url, {
+    // C-11: 15 s por llamada a la API del proveedor. Sin tope, un listado colgado dejaba el
+    // sync del cron ocupado hasta el límite del isolate y la pasada siguiente entraba encima.
+    res = await fetchWithTimeout(url, {
       ...init,
       headers: { ...(init.headers as Record<string, string> | undefined), Authorization: `Bearer ${token}` },
-    });
+    }, PROVIDER_TIMEOUT_MS);
   } catch (err) {
-    throw new ProviderTransientError(`[${provider}] red: ${err instanceof Error ? err.message : String(err)}`);
+    // Timeout incluido: transitorio. Nunca `needs_reconnect` — los tokens quedan intactos.
+    throw new ProviderTransientError(`[${provider}] red: ${netErrorText(err, PROVIDER_TIMEOUT_MS)}`);
   }
   const text = await res.text();
   let parsed: unknown = null;

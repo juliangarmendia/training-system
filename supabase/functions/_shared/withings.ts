@@ -9,7 +9,17 @@
 // el flujo de WHOOP, que no tiene nada que ver.
 
 import type { TokenSet } from "./tokens.ts";
-import { ConfigError, ProviderFatalAuthError, ProviderTransientError, clip, readEnvOptional } from "./http.ts";
+import {
+  ConfigError,
+  PROVIDER_TIMEOUT_MS,
+  ProviderFatalAuthError,
+  ProviderTransientError,
+  TOKEN_TIMEOUT_MS,
+  clip,
+  fetchWithTimeout,
+  netErrorText,
+  readEnvOptional,
+} from "./http.ts";
 
 export const WITHINGS_AUTH_URL = "https://account.withings.com/oauth2_user/authorize2";
 export const WITHINGS_TOKEN_URL = "https://wbsapi.withings.net/v2/oauth2";
@@ -69,9 +79,11 @@ async function postForm(url: string, body: URLSearchParams, phase: string, beare
   const headers: Record<string, string> = { "Content-Type": "application/x-www-form-urlencoded" };
   if (bearer) headers.Authorization = `Bearer ${bearer}`;
   try {
-    res = await fetch(url, { method: "POST", headers, body: body.toString() });
+    // C-11: 12 s (esto sólo sirve al endpoint de token). Un timeout es transitorio: el refresh
+    // token de Withings sobrevive intacto y se reintenta en la siguiente pasada del cron.
+    res = await fetchWithTimeout(url, { method: "POST", headers, body: body.toString() }, TOKEN_TIMEOUT_MS);
   } catch (err) {
-    throw new ProviderTransientError(`Withings ${phase}: red — ${err instanceof Error ? err.message : String(err)}`);
+    throw new ProviderTransientError(`Withings ${phase}: red — ${netErrorText(err, TOKEN_TIMEOUT_MS)}`);
   }
   const text = await res.text();
   let data: WithingsEnvelope = {};
@@ -155,14 +167,15 @@ export const withingsAdapter = {
     const callbackUrl = withingsCallbackUrl();
     if (!callbackUrl) return false;
     try {
-      const res = await fetch(`${WITHINGS_API_BASE}/notify`, {
+      // C-11: 15 s (API del proveedor). Best-effort: si expira, el token se borra igual.
+      const res = await fetchWithTimeout(`${WITHINGS_API_BASE}/notify`, {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
           Authorization: `Bearer ${accessToken}`,
         },
         body: new URLSearchParams({ action: "revoke", callbackurl: callbackUrl, appli: "1" }).toString(),
-      });
+      }, PROVIDER_TIMEOUT_MS);
       return res.ok;
     } catch {
       return false;

@@ -140,3 +140,51 @@ export function clip(text: string, max = 300): string {
   if (!text) return "";
   return text.length > max ? `${text.slice(0, max)}…` : text;
 }
+
+// ── Timeouts de red (C-11, auditoría 2026-09-09) ───────────────────────────────────────────
+//
+// EL FALLO QUE ESTO EXISTE PARA IMPEDIR. `fetch` no tiene tope por defecto: un proveedor que
+// acepta la conexión TCP y luego no contesta deja la promesa colgada hasta que el runtime mata
+// el isolate. En el modo usuario eso es un spinner eterno en el teléfono; bajo `waitUntil` es
+// peor — la instancia se queda ocupada, el cron siguiente entra encima y el evento del webhook
+// se queda en `received` para siempre (justo los huérfanos de C-12).
+//
+// UN TIMEOUT ES SIEMPRE TRANSITORIO. Cada llamador traduce el abort a `ProviderTransientError`:
+// los tokens se conservan intactos y NUNCA se marca `needs_reconnect`. Reconectar no arregla
+// una red lenta, y obligar a Julian a rehacer el OAuth por un 12 s es el peor final posible.
+
+/** Refresco/canje de token: la llamada es corta y el usuario suele estar esperando. */
+export const TOKEN_TIMEOUT_MS = 12_000;
+/** API del proveedor (listados, perfil, revoke, upserts REST): algo más de margen. */
+export const PROVIDER_TIMEOUT_MS = 15_000;
+
+/**
+ * `fetch` con tope de tiempo. `AbortSignal.timeout` aborta también la lectura del cuerpo, no
+ * sólo el handshake — que es donde de verdad se cuelgan estas APIs. El respaldo con
+ * `AbortController` cubre cualquier runtime sin el helper: la alternativa sería quedarse sin
+ * tope, y eso es exactamente lo que se está arreglando.
+ */
+export function fetchWithTimeout(
+  url: string,
+  init: RequestInit = {},
+  ms: number = TOKEN_TIMEOUT_MS,
+): Promise<Response> {
+  const hasHelper = typeof AbortSignal !== "undefined" &&
+    typeof (AbortSignal as { timeout?: unknown }).timeout === "function";
+  if (hasHelper) return fetch(url, { ...init, signal: AbortSignal.timeout(ms) });
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), ms);
+  return fetch(url, { ...init, signal: ac.signal }).finally(() => clearTimeout(timer));
+}
+
+/** ¿Este error es nuestro timeout (o un abort)? Sirve para decirlo en el mensaje del log. */
+export function isTimeoutError(err: unknown): boolean {
+  const name = (err as { name?: unknown } | null)?.name;
+  return name === "TimeoutError" || name === "AbortError";
+}
+
+/** Texto de un fallo de red para el log, distinguiendo el timeout del resto. */
+export function netErrorText(err: unknown, ms: number): string {
+  if (isTimeoutError(err)) return `timeout tras ${ms} ms`;
+  return err instanceof Error ? err.message : String(err);
+}

@@ -1,5 +1,13 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import {
+  PROVIDER_TIMEOUT_MS,
+  TOKEN_TIMEOUT_MS,
+  corsHeaders,
+  fetchWithTimeout,
+  json as jsonResponse,
+  netErrorText,
+} from "../_shared/http.ts";
 
 // Strava OAuth + activity sync proxy.
 // Three actions:
@@ -19,15 +27,23 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 const STRAVA_TOKEN_URL = "https://www.strava.com/oauth/token";
 const STRAVA_API_BASE = "https://www.strava.com/api/v3";
 
-// Keep in sync with CARDIO_TYPE_MAP in app/app.js — same type names, same modalities.
+// IDÉNTICO a CARDIO_TYPE_MAP en app/app.js. `tests/verify-strava-steps-fns.mjs` extrae los dos
+// literales y FALLA si difieren (C-7): el "keep in sync" a mano ya se había roto dos veces y de
+// las dos formas posibles, cada una silenciosa a su manera.
+//
+//   · Faltaba `VirtualSki` (el tipo que intervals.icu y Strava usan para el SkiErg de Concept2
+//     desde el 2025-10-10): toda sesión de SkiErg importada por Strava se descartaba sin ruido.
+//   · Sobraban `Walk`/`Hike`. La app NO los importa por decisión de Julian (2026-08-18): un
+//     paseo de 15 min al trabajo no es entrenamiento y ensuciaba el historial de sesiones. Por
+//     esta vía SÍ entraban, como `recovery.walk`, así que el mismo paseo contaba o no contaba
+//     según por dónde llegase. Los pasos siguen entrando por su propia vía (`steps`).
 const CARDIO_TYPE_MAP: Record<string, string> = {
   Run: "run_outdoor", TrailRun: "run_outdoor",
   VirtualRun: "treadmill", Treadmill: "treadmill",
   Ride: "bike", VirtualRide: "bike", GravelRide: "bike", MountainBikeRide: "bike", EBikeRide: "bike", Handcycle: "bike",
   Rowing: "row", VirtualRow: "row", Kayaking: "row", Canoeing: "row",
-  NordicSki: "ski", BackcountrySki: "ski", RollerSki: "ski", AlpineSki: "ski",
+  NordicSki: "ski", BackcountrySki: "ski", RollerSki: "ski", AlpineSki: "ski", VirtualSki: "ski",
   Elliptical: "elliptical", StairStepper: "elliptical",
-  Walk: "walk", Hike: "walk",
   Swim: "swim",
 };
 const RUN_MODALITIES = new Set(["run_outdoor", "treadmill"]);
@@ -35,18 +51,8 @@ const RUN_MODALITIES = new Set(["run_outdoor", "treadmill"]);
 // REDIRECT_URI must match the callback domain registered in your Strava app.
 const REDIRECT_URI = "https://juliangarmendia.github.io/training-system/app/strava-callback.html";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
-
-function jsonResponse(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
-}
+// C-22: `corsHeaders` y la respuesta JSON vienen de `_shared/http.ts` (el `json` compartido se
+// importa como `jsonResponse` para no tocar las ~20 llamadas de abajo).
 
 function formatPace(secondsPerKm: number): string {
   if (!isFinite(secondsPerKm) || secondsPerKm <= 0) return "";
@@ -81,13 +87,20 @@ Deno.serve(async (req) => {
       });
       // Strava also supports redirect_uri in the body, but it's optional for token exchange.
 
-      const res = await fetch(STRAVA_TOKEN_URL, {
+      // C-11: 12 s (canje de token). Sin tope, un endpoint de Strava colgado dejaba la
+      // pestana del callback girando hasta que iOS mataba la peticion.
+      const res = await fetchWithTimeout(STRAVA_TOKEN_URL, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: params.toString(),
-      });
-      const data = await res.json();
-      if (!res.ok) return jsonResponse({ error: data.message || "Token exchange failed", details: data }, res.status);
+      }, TOKEN_TIMEOUT_MS);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        // C-29: el cuerpo crudo de Strava al log. `details` echaba de vuelta al cliente su JSON
+        // entero, que nombra el campo de NUESTRA configuracion que esta mal (client_id/secret).
+        console.error(`[strava-sync] exchange ${res.status}: ${JSON.stringify(data).slice(0, 300)}`);
+        return jsonResponse({ error: "strava_exchange_failed", status: res.status }, res.status);
+      }
 
       return jsonResponse({
         access_token: data.access_token,
@@ -110,13 +123,17 @@ Deno.serve(async (req) => {
         refresh_token,
         grant_type: "refresh_token",
       });
-      const res = await fetch(STRAVA_TOKEN_URL, {
+      // C-11: 12 s (refresco de token).
+      const res = await fetchWithTimeout(STRAVA_TOKEN_URL, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: params.toString(),
-      });
-      const data = await res.json();
-      if (!res.ok) return jsonResponse({ error: data.message || "Refresh failed", details: data }, res.status);
+      }, TOKEN_TIMEOUT_MS);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        console.error(`[strava-sync] refresh ${res.status}: ${JSON.stringify(data).slice(0, 300)}`);
+        return jsonResponse({ error: "strava_refresh_failed", status: res.status }, res.status);
+      }
 
       return jsonResponse({
         access_token: data.access_token,
@@ -144,7 +161,8 @@ Deno.serve(async (req) => {
       // Default to last 30 days if no since provided
       const since = since_epoch || Math.floor((Date.now() - 30 * 86400000) / 1000);
       const url = `${STRAVA_API_BASE}/athlete/activities?after=${since}&per_page=30`;
-      const res = await fetch(url, { headers: { Authorization: `Bearer ${access_token}` } });
+      // C-11: 15 s (API del proveedor). Bajo `waitUntil` no lo hay, pero el usuario espera.
+      const res = await fetchWithTimeout(url, { headers: { Authorization: `Bearer ${access_token}` } }, PROVIDER_TIMEOUT_MS);
       if (!res.ok) {
         const text = await res.text();
         console.error(`[strava-sync] activities ${res.status}: ${text.substring(0, 500)}`);
@@ -207,7 +225,7 @@ Deno.serve(async (req) => {
         };
 
         const upsertUrl = `${supabaseUrl}/rest/v1/runs?on_conflict=user_id,source,source_id`;
-        const upsertRes = await fetch(upsertUrl, {
+        const upsertRes = await fetchWithTimeout(upsertUrl, {
           method: "POST",
           headers: {
             apikey: serviceKey,
@@ -223,7 +241,7 @@ Deno.serve(async (req) => {
             source_id: stravaId,
             updated_at: new Date().toISOString(),
           }),
-        });
+        }, PROVIDER_TIMEOUT_MS);
 
         if (!upsertRes.ok) {
           const text = await upsertRes.text();
@@ -246,6 +264,9 @@ Deno.serve(async (req) => {
         if (!date) continue;
         const distanceKm = Number(a.distance || 0) / 1000;
         const durationMin = Math.round(Number(a.moving_time || 0) / 60);
+        // La rama `walk` ya no se alcanza desde el 2026-09-10: `Walk`/`Hike` salieron de
+        // CARDIO_TYPE_MAP para igualarlo al de la app (C-7). Se conserva porque el mapa es un
+        // dato y la clasificación tiene que seguir siendo correcta si algún día vuelve.
         const family = modality === "walk" ? "recovery" : "cardio";
         const subtype = family === "recovery" ? "walk" : "zone2"; // Strava gives no intensity label
         const data = {
@@ -269,7 +290,7 @@ Deno.serve(async (req) => {
           source_id: stravaId,
           _updated_at: Date.now(),
         };
-        const upsertRes = await fetch(`${supabaseUrl}/rest/v1/sessions?on_conflict=user_id,record_id`, {
+        const upsertRes = await fetchWithTimeout(`${supabaseUrl}/rest/v1/sessions?on_conflict=user_id,record_id`, {
           method: "POST",
           headers: {
             apikey: serviceKey,
@@ -278,7 +299,7 @@ Deno.serve(async (req) => {
             Prefer: "resolution=merge-duplicates,return=minimal",
           },
           body: JSON.stringify({ user_id: userId, record_id: recordId, data, updated_at: new Date().toISOString() }),
-        });
+        }, PROVIDER_TIMEOUT_MS);
         if (!upsertRes.ok) {
           const text = await upsertRes.text();
           console.error(`[strava-sync] sessions upsert ${stravaId}: ${upsertRes.status} ${text.substring(0, 300)}`);
@@ -298,6 +319,8 @@ Deno.serve(async (req) => {
 
     return jsonResponse({ error: "Invalid action. Use 'exchange', 'refresh', or 'sync'" }, 400);
   } catch (err) {
-    return jsonResponse({ error: (err as Error).message }, 500);
+    // C-11/C-29: un timeout aterriza aqui. El detalle al log; al cliente, una etiqueta.
+    console.error(`[strava-sync] ${netErrorText(err, PROVIDER_TIMEOUT_MS)}`);
+    return jsonResponse({ error: "strava_sync_failed" }, 500);
   }
 });

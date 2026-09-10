@@ -559,11 +559,11 @@ const GOLDEN_V1156 = `
         <div class="set-num">1</div>
         <input type="number" class="set-input" data-field="weight" placeholder="-" inputmode="decimal" step="0.5">
         <input type="number" class="set-input" data-field="reps" placeholder="-" inputmode="numeric" step="1">
-        <select class="set-input" data-field="rpe" style="padding:8px 2px;font-size:12px">
+        <select class="set-input" data-field="rpe" style="padding:8px 2px">
           <option value="">RPE</option>
           <option value="6">6</option><option value="6.5">6.5</option><option value="7">7</option><option value="7.5">7.5</option><option value="8">8</option><option value="8.5">8.5</option><option value="9">9</option><option value="9.5">9.5</option><option value="10">10</option>
         </select>
-        <button class="set-check" data-set-check="0">✓</button>
+        <button class="set-check" data-set-check="0" aria-label="Set 1" aria-pressed="false">✓</button>
       </div>
     
       
@@ -571,11 +571,11 @@ const GOLDEN_V1156 = `
         <div class="set-num">2</div>
         <input type="number" class="set-input" data-field="weight" placeholder="-" inputmode="decimal" step="0.5">
         <input type="number" class="set-input" data-field="reps" placeholder="-" inputmode="numeric" step="1">
-        <select class="set-input" data-field="rpe" style="padding:8px 2px;font-size:12px">
+        <select class="set-input" data-field="rpe" style="padding:8px 2px">
           <option value="">RPE</option>
           <option value="6">6</option><option value="6.5">6.5</option><option value="7">7</option><option value="7.5">7.5</option><option value="8">8</option><option value="8.5">8.5</option><option value="9">9</option><option value="9.5">9.5</option><option value="10">10</option>
         </select>
-        <button class="set-check" data-set-check="1">✓</button>
+        <button class="set-check" data-set-check="1" aria-label="Set 2" aria-pressed="false">✓</button>
       </div>
     
       
@@ -583,11 +583,11 @@ const GOLDEN_V1156 = `
         <div class="set-num">3</div>
         <input type="number" class="set-input" data-field="weight" placeholder="-" inputmode="decimal" step="0.5">
         <input type="number" class="set-input" data-field="reps" placeholder="-" inputmode="numeric" step="1">
-        <select class="set-input" data-field="rpe" style="padding:8px 2px;font-size:12px">
+        <select class="set-input" data-field="rpe" style="padding:8px 2px">
           <option value="">RPE</option>
           <option value="6">6</option><option value="6.5">6.5</option><option value="7">7</option><option value="7.5">7.5</option><option value="8">8</option><option value="8.5">8.5</option><option value="9">9</option><option value="9.5">9.5</option><option value="10">10</option>
         </select>
-        <button class="set-check" data-set-check="2">✓</button>
+        <button class="set-check" data-set-check="2" aria-label="Set 3" aria-pressed="false">✓</button>
       </div>
     
         </div>
@@ -716,9 +716,11 @@ yes(/source: 'none'/.test(GWC) && /'whoop-direct'/.test(GWC), "devuelve source '
 // v11.62: el advisory y el hero de WHOOP salieron de Home (§16). Lo que hay que seguir
 // protegiendo de esta parte es que el motivo de la falta de dato viaje HASTA la pantalla: sin
 // él, "sin dato de hoy" es una afirmación sin explicación. Ahora lo consume la lista de Stats.
-const RRS12 = COACHJS.slice(COACHJS.indexOf('async function renderReadinessSignals('),
-  COACHJS.indexOf('// ==================== LÍNEA DE RECUPERACIÓN'));
-yes(/s\.reason/.test(RRS12), 'la lista de Stats pinta el motivo de cada señal sin dato');
+// v11.72 (V-10): las señales dejan de ser una tarjeta propia y pasan a ser el bloque central
+// de la ÚNICA tarjeta de recuperación (`_rsSignalsHtml`, compuesta por `renderRecoveryBlock`).
+const RRS12 = COACHJS.slice(COACHJS.indexOf('function _rsSignalsHtml(r)'),
+  COACHJS.indexOf('async function _rsPerformanceHtml('));
+yes(/sig\.reason/.test(RRS12), 'la lista de Stats pinta el motivo de cada señal sin dato');
 yes(/whoopDayLabel\(/.test(RRS12), 'y etiqueta la fecha del último dato (hoy/ayer/hace N días)');
 yes(/does not count as today/.test(RRS12), 'diciendo explícitamente que el de ayer no cuenta');
 // v11.59: la fatigue card ya no puntúa nada porque ya no existe (se comprueba en §13).
@@ -801,8 +803,8 @@ for (const [fn, label] of [
 ]) {
   yes(/invalidateReadiness\(\)/.test(fnSrc(fn)), `${label}() invalida la caché del readiness`);
 }
-yes(/invalidateReadiness\(\);[\s\S]{0,400}safeCall\('renderRecoveryLine'\)/.test(APP),
-  'y al llegar el dato de hoy en init se invalida ANTES de repintar la línea de recuperación');
+yes(/invalidateReadiness\(\);[\s\S]{0,400}safeCall\('renderRecoveryBlock'\)/.test(APP),
+  'y al llegar el dato de hoy en init se invalida ANTES de repintar el bloque de recuperación');
 
 // 13.c/d/e RETIRADOS en v11.62 — el advisory delegaba, la tarjeta pintaba dos botones y el
 // check-in pedía dos toques. Los tres se fueron con el ajuste diario: §16 comprueba que no
@@ -832,13 +834,22 @@ yes(!/function renderFatigueScore/.test(APP), 'renderFatigueScore ya NO existe e
 yes(!/Push hard/.test(APP_CODE), 'ni su consejo "Push hard" (dose-from-composite, READ-003)');
 yes(!/Moderate fatigue/.test(APP_CODE), 'ni "Moderate fatigue"');
 yes(!/fatigue-bar|fatigue-score/.test(APP_CODE), 'ni la barra ni el número del score');
-yes(/renderReadinessSignals/.test(APP), 'renderStats llama renderReadinessSignals');
-yes(/async function renderReadinessSignals\(\)/.test(COACHJS), 'que vive en coach.js');
-const RRS_SRC = COACHJS.slice(COACHJS.indexOf('async function renderReadinessSignals('),
-  COACHJS.indexOf('// ==================== LÍNEA DE RECUPERACIÓN'));
-yes(/computeReadiness\(\)/.test(RRS_SRC), 'y lee el MISMO computeReadiness que Home (una sola verdad)');
+yes(/renderRecoveryBlock/.test(APP), 'renderStats llama renderRecoveryBlock');
+yes(/async function renderRecoveryBlock\(\)/.test(COACHJS), 'que vive en coach.js');
+// V-10: los dos nombres viejos siguen existiendo porque integrations.js los llama tras
+// sincronizar, y los dos repintan el bloque único (una tarjeta, un renderer).
+yes(/async function renderReadinessSignals\(\) \{ return renderRecoveryBlock\(\); \}/.test(COACHJS)
+  && /async function renderRecoveryLine\(\) \{ return renderRecoveryBlock\(\); \}/.test(COACHJS),
+  'y los nombres antiguos delegan en él (integrations.js los sigue llamando)');
+const RRB_SRC = COACHJS.slice(COACHJS.indexOf('async function renderRecoveryBlock()'),
+  COACHJS.indexOf('async function renderReadinessSignals()'));
+yes(/computeReadiness\(\)/.test(RRB_SRC), 'y lee el MISMO computeReadiness que Home (una sola verdad)');
+yes(/whoopRecoveryBlockHtml/.test(RRB_SRC), 'y compone el detalle de WHOOP dentro de la misma tarjeta');
+yes(/Promise\.allSettled/.test(RRB_SRC), 'con allSettled: si WHOOP falla, las señales se pintan igual');
+yes(/showErrorState\(/.test(RRB_SRC), 'y un fallo de lectura pinta estado de error, no una tarjeta vacía (V-4)');
+const RRS_SRC = RRS12;
 yes(/high confidence/.test(RRS_SRC), 'muestra la confianza');
-yes(/no data/.test(RRS_SRC) && /s\.reason/.test(RRS_SRC), 'y las señales insuficientes con su motivo');
+yes(/no data/.test(RRS_SRC) && /sig\.reason/.test(RRS_SRC), 'y las señales insuficientes con su motivo');
 yes(/whoopDayLabel\(/.test(RRS_SRC), 'conserva la honestidad de v11.58: el dato de ayer, con su fecha');
 yes(!/Push hard|score|bar/i.test(RRS_SRC.replace(/whoopDayLabel|last\.score|s\.score/g, '')),
   'sin score, sin barra y sin consejo');
@@ -860,15 +871,18 @@ yes(!/Descarga recomendada/.test(APP), 'ni el banner "Descarga recomendada"');
 // 13.i Versión y CSS
 eq(vSw, vHtml, 'CACHE_NAME del service worker == versión de index.html (otra vez, tras el bump)');
 yes(vNum(vHtml) >= vNum('11.59'), `la versión (v${vHtml}) es >= v11.59`);
+// v11.72 (V-10/V-19): `.coach-recovery-line` se va con su contenedor — las dos líneas viven
+// ahora dentro de la tarjeta única, así que sus reglas cuelgan de `.crl-perf`/`.crl-trend`
+// directamente. CSS muerto es CSS que alguien vuelve a usar sin querer.
 for (const clase of ['coach-btn', 'coach-btn-primary',
-                     'coach-recovery-line', 'crl-perf', 'crl-trend',
+                     'crl-perf', 'crl-trend', 'rs-sep', 'rs-whoop',
                      'readiness-signals', 'rs-row', 'rs-fired', 'rs-none']) {
   yes(new RegExp(`\\.${clase}[\\s,{:]`).test(CSS), `.${clase} existe en style.css`);
 }
 // v11.68 (V-3): `.coach-signals*` se borro. Nunca tuvo un solo uso en app/*.js ni en
 // index.html — las señales del readiness se pintan con `.rs-*`. CSS muerto es CSS que
 // alguien vuelve a usar sin querer, asi que ahora se vigila que NO vuelva.
-for (const clase of ['coach-signals', 'coach-signals-note']) {
+for (const clase of ['coach-signals', 'coach-signals-note', 'coach-recovery-line']) {
   yes(!new RegExp(`\\.${clase}[\\s,{:]`).test(CSS), `.${clase} ya NO está en style.css`);
 }
 // Y las de la tarjeta de consejo diario no pueden quedarse de adorno: CSS muerto es CSS que
@@ -977,7 +991,9 @@ yes(/getRunsDeduped/.test(RGC_SRC), 'y las carreras dedupeadas');
 yes(/Signals for the coach/.test(RGC_SRC), 'pinta la lista de señales');
 yes(!/canvas|chart|Chart/.test(RGC_SRC), 'sin gráficos nuevos (§B.9)');
 yes(!/[A-Z]{3}-\d{3}/.test(RGC_SRC.replace(/\/\/[^\n]*/g, '')), 'y sin Rule IDs crudos en pantalla');
-yes(/renderGoalsCard/.test(fnSrc('async function renderStats(')), 'renderStats la llama');
+// v11.72 (V-5): las llamadas de Stats viven en `STATS_GROUPS`, una tanda por pestaña.
+yes(/renderGoalsCard/.test(APP.slice(APP.indexOf('const STATS_GROUPS = {'), APP.indexOf('const STATS_DEFAULT_GROUP'))),
+  'el grupo `now` de Stats la llama');
 yes(/safeCall\('renderGoalsCard'\)/.test(APP), "por safeCall (vive en otro <script>)");
 yes(/renderGoalsCard/.test(COACHJS.slice(COACHJS.indexOf('module.exports'))), 'y está exportada para los tests');
 
@@ -1217,13 +1233,19 @@ yes(/activePlan && activePlan\.author === 'coach-llm'\)\s*\n?\s*\? null/.test(CS
   || /author === 'coach-llm'[\s\S]{0,60}\? null[\s\S]{0,80}_legacyCoachTargets/.test(CST_SRC9),
   'el adaptador legacy de weekly_reviews sólo se consulta si el plan NO es del coach');
 
+// F-17 (auditoría 2026-09-09): LA FUENTE ESTABA MAL. `activePlan.running.plan[]` no lo escribe
+// ningún plan del coach (el esquema v2 da `running` como tres números y el reparto por días vive
+// en `weekTemplate[dow].cardio`), así que el botón caía SIEMPRE al store del cron retirado: el
+// reloj recibía la semana de un sistema que ya no existe, o nada.
 const PRP_SRC = fnSrc('async function pushRunningPlanToIntervalsIcu(');
-yes(/activePlan\.running\.plan/.test(PRP_SRC), 'el push lee activePlan.running.plan[]');
+yes(/_coachCardioSlot\(dow\)/.test(PRP_SRC), 'el push lee el cardio del coach de weekTemplate[dow]');
+yes(/suggestRunningWeekCached\(/.test(PRP_SRC), 'y cae a la fase de la regla en los días que el coach no tocó');
+yes(PRP_SRC.indexOf('_coachCardioSlot(dow)') < PRP_SRC.indexOf('usaRegla'),
+  'en ese orden: coach > regla > base, el mismo que pinta la pantalla');
+yes(!/weekly_reviews/.test(PRP_SRC), 'y el fallback a weekly_reviews se retira (nadie lo escribe ya)');
 yes(/_mondayOfWeekKey\(/.test(PRP_SRC), 'y resuelve las fechas desde el lunes del weekKey');
 yes(/pwa-\$\{weekKey\}-\$\{run\.id\}/.test(PRP_SRC), 'con external_id = pwa-${weekKey}-${id}');
-yes(/weekly_reviews/.test(PRP_SRC), 'manteniendo el weekly_reviews legacy como fallback');
-yes(PRP_SRC.indexOf('activePlan.running.plan') < PRP_SRC.indexOf("dbGetAll('weekly_reviews')"),
-  'y en ese orden: el plan activo primero, el legacy sólo si no hay');
+yes(/\(cc && cc\.dsl\)/.test(PRP_SRC), 'el DSL del coach viaja verbatim (un run/walk no se aplana)');
 
 // El fetch al manifiesto del cron, muerto y enterrado (comentarios incluidos: si el literal
 // sigue en el fichero, alguien puede volver a llamarlo).
@@ -1444,43 +1466,41 @@ yes(!/renderRecoveryHero|renderHardDayBudget|advisory/i.test(HOME16),
   'y sigue sin llamar al hero, al advisory ni al presupuesto');
 yes(/renderHomeStatTrio\(\)/.test(HOME16), 'lo que sí pinta es el trío (con el tile Readiness)');
 const HOME_BLOCK16 = HTML.slice(HTML.indexOf('id="view-home"'), HTML.indexOf('id="view-gym"'));
-yes(!HOME_BLOCK16.includes('id="coach-recovery-line"'),
-  'y el bloque de Home ya no tiene #coach-recovery-line');
-yes(/id="coach-recovery-line" class="coach-recovery-line" data-group="today"/.test(HTML),
-  '#coach-recovery-line vive en Stats › Today, con su data-group (sin él no se mostraría nunca)');
-yes(HTML.indexOf('id="coach-recovery-line"') > HTML.indexOf('id="hard-day-budget"'),
-  'y va DESPUÉS de la carga de la semana');
-const STATS16D = fnSrc('async function renderStats(');
-yes(/renderRecoveryLine/.test(STATS16D), 'renderStats la pinta');
-yes(/safeCall\('renderRecoveryLine'\)/.test(STATS16D), 'por safeCall (vive en coach.js)');
-yes(STATS16D.indexOf('renderHardDayBudget') < STATS16D.indexOf('renderRecoveryLine'),
-  'detrás del presupuesto, que es el orden del HTML');
+// v11.72 (V-10): el contenedor propio de la línea desaparece — su contenido es el primer bloque
+// de la tarjeta única de recuperación. Lo que sigue protegido es lo mismo: que no vuelva a Home
+// y que su renderer siga teniendo quien lo llame.
+yes(!HOME_BLOCK16.includes('id="coach-recovery-line"') && !HTML.includes('id="coach-recovery-line"'),
+  '#coach-recovery-line ya no existe: su contenido vive en la tarjeta única de Stats › Now');
+const STATS_GROUPS16 = APP.slice(APP.indexOf('const STATS_GROUPS = {'), APP.indexOf('const STATS_DEFAULT_GROUP'));
+yes(/safeCall\('renderRecoveryBlock'\)/.test(STATS_GROUPS16),
+  'el grupo `now` de Stats lo pinta por safeCall (vive en coach.js)');
 
-// 16.e El presupuesto de días duros se muda a Stats
-const STATS16 = fnSrc('async function renderStats(');
-yes(/renderHardDayBudget\(\)/.test(STATS16), 'renderStats llama renderHardDayBudget()');
-yes(STATS16.indexOf('renderReadinessSignals') < STATS16.indexOf('renderHardDayBudget'),
-  'después de las señales de recuperación');
-yes(/id="hard-day-budget" data-group="today"/.test(HTML),
-  '#hard-day-budget vive en Stats › Today (con su data-group, o no se mostraría nunca)');
-yes(HTML.indexOf('id="hard-day-budget"') > HTML.indexOf('id="readiness-signals"'),
-  'y va tras la lista de señales');
+// 16.e El presupuesto de días duros se muda a Stats (V-10: a la pestaña `week`, con el resto
+// de bloques de la semana — estaba en "Today" junto a cinco cosas más que no eran de hoy).
+yes(/renderHardDayBudget\(\)/.test(STATS_GROUPS16), 'STATS_GROUPS llama renderHardDayBudget()');
+yes(STATS_GROUPS16.indexOf('renderRecoveryBlock') < STATS_GROUPS16.indexOf('renderHardDayBudget'),
+  'el bloque de recuperación (grupo `now`) va antes que la carga (grupo `week`)');
+yes(/id="hard-day-budget" data-group="week"/.test(HTML),
+  '#hard-day-budget vive en Stats › Week (con su data-group, o no se mostraría nunca)');
 
 // 16.f La línea nueva: informa, no aconseja
-const RCL16 = COACHJS.slice(COACHJS.indexOf('// ==================== LÍNEA DE RECUPERACIÓN'),
-  COACHJS.indexOf('// ==================== OBJETIVOS'));
-yes(/async function renderRecoveryLine\(\)/.test(RCL16), 'renderRecoveryLine() vive en coach.js');
+const RCL16 = COACHJS.slice(COACHJS.indexOf('async function _rsPerformanceHtml('),
+  COACHJS.indexOf('async function renderRecoveryBlock()'));
+yes(/async function _rsPerformanceHtml\(r\)/.test(RCL16),
+  '_rsPerformanceHtml() vive en coach.js y devuelve HTML (V-10: quien pinta es el bloque)');
 yes(/performanceLine\(/.test(RCL16), 'y la primera línea es el RENDIMIENTO (performanceLine)');
-yes(RCL16.indexOf('performanceLine(') < RCL16.indexOf('computeReadiness()'),
+yes(RCL16.indexOf('performanceLine(') < RCL16.indexOf('_crlTrendBits('),
   'rendimiento ANTES que wearable (plan v2.1 §Principios 2)');
-yes(/computeReadiness\(\)/.test(RCL16), 'la segunda son las tendencias del readiness único');
+// V-10: el readiness ya no se recalcula aquí — lo calcula UNA vez `renderRecoveryBlock` y lo
+// pasa. Dos `computeReadiness()` en la misma tarjeta eran dos lecturas del mismo dato.
+yes(/_crlTrendBits\(r\.signals\)/.test(RCL16), 'la segunda son las tendencias del readiness único');
 yes(/whoopLastAvailable/.test(RCL16), 'con el último dato y SU fecha cuando falta el de hoy (F-6)');
 yes(!/<button|addEventListener/.test(RCL16), 'sin un solo botón');
 yes(!/var\(--red\)|var\(--yellow\)|var\(--accent\)/.test(RCL16), 'y sin color por estado');
 yes(/escapeHtml\(/.test(RCL16), 'escapa lo que pinta');
-yes(/if \(!perf && !trend\) return;/.test(RCL16), 'sin nada que decir deja el contenedor vacío');
-yes(COACHJS.slice(COACHJS.indexOf('module.exports')).includes('renderRecoveryLine'),
-  'y está exportada para los tests');
+yes(/if \(!perf && !trend\) return '';/.test(RCL16), 'sin nada que decir no aporta bloque');
+yes(COACHJS.slice(COACHJS.indexOf('module.exports')).includes('renderRecoveryBlock'),
+  'y el bloque está exportado para los tests');
 
 // 16.g El motor de la línea, en coach-engine.js
 yes(typeof E.performanceLine === 'function', 'coach-engine exporta performanceLine()');
@@ -1530,9 +1550,11 @@ eq(cardCtx.buildExerciseCard(EX_FIXTURE, 1, null, { data: {} }, { data: {} }, fa
 //   · Un tile sin dato que enseñe un 0, o el número de ayer: "no hay dato de hoy" es información,
 //     un cero es una lectura falsa.
 const TRIO16 = fnSrc('async function renderHomeStatTrio(');
-const TRIO_CARDS = (TRIO16.match(/\{ label: '([A-Za-z]+)'/g) || []).map(m => m.split("'")[1]);
+const TRIO_CARDS = (TRIO16.match(/\{ label: '([A-Za-z ]+)'/g) || []).map(m => m.split("'")[1]);
 eq(TRIO_CARDS.length, 4, 'renderHomeStatTrio construye exactamente 4 tarjetas');
-eq(TRIO_CARDS.join(' > '), 'Readiness > Strain > Streak > Volume', 'y en este orden');
+// v11.72 (V-23): 'Strain' pasa a 'RPE Load'. Aquí no es la escala 0-21 de WHOOP: es
+// Σ(RPE × series hechas) de la semana, y llamarlo Strain invitaba a compararlo con la app.
+eq(TRIO_CARDS.join(' > '), 'Readiness > RPE Load > Streak > Volume', 'y en este orden');
 yes(/getWhoopContext\(\)/.test(TRIO16),
   'el valor sale de getWhoopContext() — el dato de HOY o nada (F-6)');
 yes(!/wellness/.test(TRIO16), 'y NUNCA del store wellness (su última fila puede ser la de ayer)');
@@ -1646,9 +1668,12 @@ for (const id of ['training-advisory', 'recovery-hero', 'deload-reminder']) {
   yes(!HTML.includes(`id="${id}"`), `y no está en ninguna otra vista`);
 }
 yes(!HOME_HTML.includes('id="hard-day-budget"'), 'el presupuesto de días duros no vuelve a Home');
-yes(/id="hard-day-budget" data-group="today"/.test(HTML), 'sigue en Stats › Today');
+yes(/id="hard-day-budget" data-group="week"/.test(HTML), 'sigue en Stats › Week (V-10)');
 // v11.65: y la línea de rendimiento tampoco vuelve — se fue a Stats con el mismo argumento.
-yes(!HOME_HTML.includes('id="coach-recovery-line"'), 'la línea de rendimiento tampoco vuelve a Home');
+// v11.72 (V-10): su contenedor ya no existe; su contenido es el primer bloque de la tarjeta
+// única de recuperación, que vive en Stats › Now.
+yes(!HOME_HTML.includes('id="coach-recovery-line"') && !HOME_HTML.includes('id="readiness-signals"'),
+  'la línea de rendimiento tampoco vuelve a Home');
 
 // coach-facts.js en su propio sandbox, para probar el validador nuevo sin tocar el de §15.
 const F17 = (() => {
@@ -1751,16 +1776,28 @@ yes(/if \(mine\.length\) return/.test(MRW17),
 
 // 17.g El botón "Cerrar semana y pedir la próxima"
 yes(/coach-close-week/.test(COACHJS), 'existe el botón #coach-close-week');
-yes(/const COACH_CLOSE_WEEK_LABEL = 'Close the week and ask for the next'/.test(COACHJS),
-  'con el texto que pidió Julian, en inglés (V-1)');
+// v11.72 (V-12): la etiqueta es una FUNCIÓN del modo. En manual no se le pide nada a nadie —
+// se guarda el pack y se espera —, así que "…and ask for the next" era una promesa falsa.
+yes(/function COACH_CLOSE_WEEK_LABEL\(\)/.test(COACHJS), 'COACH_CLOSE_WEEK_LABEL es función del modo');
+yes(/'Close the week \(manual review\)'/.test(COACHJS), "en manual: 'Close the week (manual review)'");
+yes(/'Close the week and ask for the next'/.test(COACHJS),
+  "y con API el texto que pidió Julian, en inglés (V-1)");
 const CBW17 = COACHJS.slice(COACHJS.indexOf('function _coachBindCloseWeek('),
   COACHJS.indexOf('// ==================== TARJETA DE HOME'));
 yes(/_cTargetWeek\(today\(\)\)/.test(CBW17), 'pide la revisión PARA la semana objetivo (domingo → la siguiente)');
 yes(/b\.disabled = true/.test(CBW17) && /Closing the week…/.test(CBW17),
   'y se marca en marcha en el propio botón (60-180 s sin marca = doble pulsación)');
-yes(/coach-close-week-view/.test(COACHJS),
-  'la vista Coach usa un id propio (dos elementos con el mismo id: getElementById sólo ve uno)');
-yes(/_coachBindCloseWeek\('coach-close-week-view'\)/.test(COACHJS), 'y se cablea allí');
+// v11.72 (V-12): UNA implementación de la tarjeta para las dos pantallas. Los ids llevan
+// sufijo por contenedor, porque Home y la vista Coach conviven en el mismo documento y
+// `getElementById` sólo encontraría uno.
+yes(/const sufijo = \(!opts\.into \|\| opts\.into === 'coach-week-card'\) \? '' : '-view'/.test(COACHJS),
+  'la vista Coach usa ids con sufijo propio (dos elementos con el mismo id: getElementById sólo ve uno)');
+yes(/const bid = \(base\) => `\$\{base\}\$\{sufijo\}`/.test(COACHJS), 'con un helper único de ids');
+yes(/if \(cerrar\) _coachBindCloseWeek\(cerrar\)/.test(COACHJS), 'y se cablea allí');
+yes(/async function _coachRenderWeek\(el, review\) \{[\s\S]{0,200}renderCoachWeekCard\(\{ into: 'coach-week' \}\)/.test(COACHJS),
+  'la semana de la vista Coach delega en renderCoachWeekCard({ into }) — una sola tarjeta');
+yes(/review\.status === 'requested'/.test(RCWC_SRC),
+  'así que la vista Coach también conoce el estado `requested` (V-12: antes no)');
 yes(/coachAutoApplyMode/.test(COACHJS) && /: 'ask'/.test(COACHJS), "coachAutoApply sigue en 'ask'");
 
 // 17.h La línea de objetivo en Home

@@ -5,12 +5,11 @@ import {
   corsHeaders,
   json,
   readEnv,
-  readEnvOptional,
   ReconnectRequired,
   RefreshInProgress,
-  timingSafeEqual,
 } from "../_shared/http.ts";
-import { serviceClient, TABLE_TOKENS } from "../_shared/tokens.ts";
+import { handleCronMode } from "../_shared/cron.ts";
+import { serviceClient } from "../_shared/tokens.ts";
 import { syncWhoop } from "../_shared/whoop-sync.ts";
 
 // Volcado de WHOOP a `wellness`. DOS MODOS, y la diferencia importa:
@@ -40,27 +39,11 @@ Deno.serve(async (req) => {
     const supa = serviceClient();
 
     // ── Modo cron ────────────────────────────────────────────────────────────────────────
-    const cronHeader = req.headers.get("x-cron-secret");
-    if (cronHeader) {
-      const expected = readEnvOptional("CRON_SECRET");
-      if (!expected) return json({ error: "Función sin configurar: falta CRON_SECRET" }, 500);
-      if (!timingSafeEqual(cronHeader, expected)) {
-        console.warn("[whoop-sync] x-cron-secret inválido");
-        return json({ error: "Secreto de cron inválido" }, 401);
-      }
-
-      const { data: rows, error } = await supa
-        .from(TABLE_TOKENS)
-        .select("user_id")
-        .eq("provider", "whoop")
-        .eq("status", "active");
-      if (error) return json({ error: `integration_tokens: ${error.message}` }, 500);
-      const userIds = (rows || []).map((r) => String((r as { user_id: string }).user_id));
-
-      // 202 YA. El trabajo sigue por su cuenta.
-      EdgeRuntime.waitUntil(runForAll(userIds, days));
-      return json({ ok: true, mode: "cron", users: userIds.length, days }, 202);
-    }
+    // C-22: el bloque (secreto en tiempo constante + tokens activos + 202 + waitUntil) vive en
+    // `_shared/cron.ts`, compartido con `withings-sync`. Devuelve null si no es una llamada del
+    // cron y entonces seguimos con el modo usuario.
+    const cronRes = await handleCronMode(req, "whoop", supa, (userIds) => runForAll(userIds, days), { days });
+    if (cronRes) return cronRes;
 
     // ── Modo usuario ─────────────────────────────────────────────────────────────────────
     const authHeader = req.headers.get("Authorization") || "";

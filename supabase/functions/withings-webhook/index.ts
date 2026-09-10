@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { clip, corsHeaders, json, readEnvOptional, timingSafeEqual } from "../_shared/http.ts";
+import { closeEvent, openEvent } from "../_shared/events.ts";
 import { serviceClient, TABLE_STATUS, TABLE_TOKENS, type Supa } from "../_shared/tokens.ts";
 import { syncWithings } from "../_shared/withings-sync.ts";
 
@@ -51,34 +52,26 @@ Deno.serve(async (req) => {
     const supa = serviceClient();
     const traceId = `${externalUserId}:${startdate}:${enddate}:${appli}`;
 
-    // Deduplicación por (provider, trace_id): Withings reintenta.
-    const { data: inserted, error: insErr } = await supa
-      .from("integration_events")
-      .upsert(
-        {
-          provider: "withings",
-          type: `notify.appli${appli || "?"}`,
-          external_user_id: externalUserId,
-          external_id: null,
-          trace_id: traceId,
-          payload: { userid: externalUserId, startdate, enddate, appli },
-          status: "received",
-        },
-        { onConflict: "provider,trace_id", ignoreDuplicates: true },
-      )
-      .select("id");
-    if (insErr) {
-      console.error(`[withings-webhook] integration_events: ${insErr.message}`);
-      return json({ error: "No se pudo registrar el evento" }, 500);
-    }
-    const eventId = inserted && inserted[0] ? (inserted[0] as { id: number }).id : null;
+    // Deduplicación por (provider, trace_id): Withings reintenta. C-22: el alta compartida con
+    // `whoop-webhook` (`_shared/events.ts`); C-12: un duplicado en `error` (huérfano marcado por
+    // `integration_events_requeue_orphans`) se reabre y se procesa en vez de tragarse el aviso.
+    const opened = await openEvent(supa, "withings-webhook", {
+      provider: "withings",
+      type: `notify.appli${appli || "?"}`,
+      external_user_id: externalUserId,
+      external_id: null,
+      trace_id: traceId,
+      payload: { userid: externalUserId, startdate, enddate, appli },
+    });
+    if (opened.failed) return json({ error: "No se pudo registrar el evento" }, 500);
+    const eventId = opened.eventId;
     if (eventId === null) {
       console.log(`[withings-webhook] duplicado ${clip(traceId, 40)}`);
       return json({ ok: true, duplicate: true });
     }
 
     if (appli !== TOLERATED_APPLI) {
-      await closeEvent(supa, eventId, "ignored", `appli no manejado: ${appli}`);
+      await closeEvent(supa, "withings-webhook", eventId, "ignored", `appli no manejado: ${appli}`);
       return json({ ok: true, ignored: `appli_${appli}` });
     }
 
@@ -90,13 +83,13 @@ Deno.serve(async (req) => {
       .maybeSingle();
     const userId = tokenRow ? String((tokenRow as { user_id: string }).user_id) : null;
     if (!userId) {
-      await closeEvent(supa, eventId, "ignored", "usuario de Withings desconocido");
+      await closeEvent(supa, "withings-webhook", eventId, "ignored", "usuario de Withings desconocido");
       return json({ ok: true, ignored: "unknown_user" });
     }
 
     // 200 YA; el volcado va detrás.
     EdgeRuntime.waitUntil(process(supa, eventId, userId, startdate, enddate));
-    return json({ ok: true, queued: traceId });
+    return json({ ok: true, queued: traceId, reprocessed: opened.reprocessed });
   } catch (err) {
     console.error(`[withings-webhook] ${err instanceof Error ? err.stack || err.message : String(err)}`);
     return json({ error: "Error interno" }, 500);
@@ -119,7 +112,7 @@ async function process(
       ? { start: start - 3600, end: end + 3600 }
       : { days: 3 };
     const out = await syncWithings(userId, win, supa);
-    await closeEvent(supa, eventId, "processed", null);
+    await closeEvent(supa, "withings-webhook", eventId, "processed", null);
     await supa
       .from(TABLE_STATUS)
       .update({ last_event_at: new Date().toISOString(), updated_at: new Date().toISOString() })
@@ -129,19 +122,6 @@ async function process(
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`[withings-webhook] falló: ${msg}`);
-    await closeEvent(supa, eventId, "error", msg);
+    await closeEvent(supa, "withings-webhook", eventId, "error", msg);
   }
-}
-
-async function closeEvent(
-  supa: Supa,
-  eventId: number,
-  status: "processed" | "ignored" | "error",
-  error: string | null,
-): Promise<void> {
-  const { error: err } = await supa
-    .from("integration_events")
-    .update({ status, processed_at: new Date().toISOString(), error: error ? clip(error, 400) : null })
-    .eq("id", eventId);
-  if (err) console.warn(`[withings-webhook] no se pudo cerrar el evento ${eventId}: ${err.message}`);
 }

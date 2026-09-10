@@ -34,7 +34,12 @@ import { readFileSync } from 'node:fs';
 const SRC = 'research/evidence-to-rules.md';
 const CONSUMERS = ['engine', 'validator', 'guardrail', 'prompt', 'doc', 'none'];
 const NEEDS_NOTE = ['doc', 'none'];
-const ENGINE_FILES = ['app/coach-engine.js', 'app/nutrition.js', 'app/app.js', 'app/bloodwork.js'];
+// `coach-facts.js` entra en la lista el 2026-09-09 (F-13): el facts pack es la OTRA mitad
+// determinista del coach — no decide, pero calcula, y una regla que se consume publicando un
+// campo del pack (hidratación de REC-006, rendimiento de LOAD-004) se consume tanto como una
+// que dispara una rama. El chequeo de `validator` sigue siendo el estricto: mira sólo dentro de
+// `validatePlanVersion`.
+const ENGINE_FILES = ['app/coach-engine.js', 'app/coach-facts.js', 'app/nutrition.js', 'app/app.js', 'app/bloodwork.js'];
 const VALIDATOR_FILE = 'app/coach-facts.js';
 const PROMPT_FILE = 'supabase/functions/coach-weekly-review/prompt.ts';
 const MIN_RULES = 72;
@@ -181,6 +186,25 @@ ok(/MVPA-FLOOR/.test(vBody), 'END-009 tiene su aviso: MVPA-FLOOR está en el val
   const r = rules.find(x => x.id === 'LONG-001');
   ok(!!r && r.consumer === 'validator',
     `LONG-001 (strong, sólo-doc en la auditoría) pasa a '${r ? r.consumer : '—'}': MVPA-FLOOR la cita`);
+}
+
+sec('7 · REC-006: la regla `strong` que se declaraba huérfana teniendo el campo (F-13)');
+// La `consumerNote` decía "no hay campo de hidratación en ningún store" y sí lo hay:
+// `hydration` / `hydrationVolume` llegan de intervals.icu y `whoop.js` los persiste desde el
+// primer día. Una nota que justifica la orfandad con un hecho falso es peor que la orfandad:
+// cierra la pregunta. El test comprueba las dos mitades — la declaración y el campo.
+{
+  const r = rules.find(x => x.id === 'REC-006');
+  ok(!!r, 'REC-006 existe en el corpus');
+  if (r) {
+    eq(r.consumer, 'engine', "   y su consumer es 'engine' (el pack lo publica)");
+    ok(!/no hydration field/i.test(String(r.consumerNote || '')),
+      '   con la nota corregida: ya no dice que no exista el campo');
+    ok(/hydration7/.test(String(r.consumerNote || '')), '   y nombra el campo del pack (hydration7)');
+  }
+  const packSrc = readFileSync('app/coach-facts.js', 'utf8');
+  ok(/hydration7/.test(packSrc), 'y `facts.readiness.hydration7` existe de verdad en el pack');
+  ok(/hydrationVolume/.test(packSrc), '   leyendo `hydrationVolume` del store de wellness');
 }
 
 console.log(`\n${fail === 0 ? 'TODO OK' : `${fail} FALLOS`}`);

@@ -147,7 +147,14 @@ yes(/max_tokens:\s*(MAX_TOKENS|\d{4,6})/.test(INDEX), 'max_tokens explícito (no
 yes(/timeout:\s*API_TIMEOUT_MS|timeout:\s*1?\d{2}_?\d{3}/.test(INDEX), 'timeout por request (el tope wall-clock del plan)');
 yes(/asUser\.auth\.getUser\(\)/.test(INDEX), 'resuelve el usuario con el JWT del Authorization');
 yes(/SUPABASE_SERVICE_ROLE_KEY/.test(INDEX), 'y usa la service role sólo para escribir la fila');
-yes(/OPTIONS/.test(INDEX) && /Access-Control-Allow-Origin/.test(INDEX), 'CORS + preflight OPTIONS');
+// C-22 (2026-09-10): `corsHeaders` y `json` ya no se redefinen aquí — vienen de
+// `_shared/http.ts`, que es donde vive la única copia. La comprobación se hace en las dos
+// mitades: que la función los IMPORTE y que el módulo compartido siga trayendo la cabecera.
+yes(/OPTIONS/.test(INDEX), 'atiende el preflight OPTIONS');
+yes(/import \{ corsHeaders, json \} from "\.\.\/_shared\/http\.ts"/.test(INDEX),
+  'CORS y respuestas JSON desde _shared/http.ts (C-22: había cuatro copias del mismo par)');
+yes(/Access-Control-Allow-Origin/.test(readFileSync('supabase/functions/_shared/http.ts', 'utf8')),
+  'y el módulo compartido define Access-Control-Allow-Origin');
 
 // ── 2. El invariante que más duele: no escribe planes ────────────────────────────────
 console.log('');
@@ -180,8 +187,18 @@ yes(/EdgeRuntime\.waitUntil\(/.test(INDEX), 'EdgeRuntime.waitUntil (sin esto el 
 yes(/,\s*202\s*\)/.test(INDEX), 'devuelve 202 en modo async');
 yes(/mode\s*===?\s*["']sync["']/.test(INDEX), 'y soporta mode:"sync" para probar con un pack real');
 yes(/factsHash/.test(INDEX), 'calcula factsHash');
-yes(/function stableStringify/.test(INDEX), 'con un stringify determinista (claves ordenadas)');
-yes(/keys\s*=\s*Object\.keys\([^)]*\)\.sort\(\)/.test(INDEX), 'que efectivamente ordena las claves');
+// C-23 (2026-09-10): `stableStringify` ya no se reimplementa aquí. Se importa del validador
+// generado, que es la copia de `app/coach-facts.js` — la MISMA función que usa la PWA para
+// calcular el hash del pack que manda. Dos implementaciones que ordenaran distinto darían
+// hashes distintos para el mismo pack: la caché no acertaría nunca y nadie lo notaría.
+yes(/stableStringify,/.test(INDEX.split('from "./coach-facts.generated.js"')[0] || ''),
+  'importa stableStringify del validador generado (C-23: una sola implementación)');
+yes(!/function stableStringify/.test(INDEX), 'y no queda ninguna copia local en la función');
+{
+  const FUENTE = readFileSync('app/coach-facts.js', 'utf8');
+  yes(/function stableStringify/.test(FUENTE), 'la implementación vive en app/coach-facts.js');
+  yes(/keys\s*=\s*Object\.keys\([\s\S]{0,140}?\.sort\(\)/.test(FUENTE), 'y efectivamente ordena las claves');
+}
 yes(/crypto\.subtle\.digest\(\s*["']SHA-256["']/.test(INDEX), 'y sha256 de verdad');
 yes(/cached:\s*true/.test(INDEX), 'devuelve cached:true en vez de pagar otra revisión idéntica');
 yes(/regenerate/.test(INDEX), 'salvo que el usuario pida regenerar');
@@ -252,13 +269,56 @@ yes(/planSessionIdsOf/.test(INDEX_CODE) && /currentPlan/.test(INDEX_CODE),
 yes(/"## Why it changes"/.test(INDEX_CODE) && /"## Why it holds"/.test(INDEX_CODE),
   'y nextWeek se comprueba con las 5 secciones nuevas, en inglés');
 
+// ── 6c. Los cuatro enums del contrato y el día del usuario (C-13, C-14) ──────────────
+//
+// EL FALLO QUE ESTA SECCIÓN EXISTE PARA IMPEDIR, y son dos:
+//
+//   · **Un enum inventado que atraviesa el servidor** (C-13). `decisions[].type`,
+//     `changes[].kind`, `cardio[].subtype` y `weekTemplateChanges[].type` salían del saneado
+//     con un `String(...)` y un valor por defecto, sin comprobar nada. El decodificador
+//     restringido no puede emitir otra cosa hoy, pero el saneado también procesa lo que no
+//     viene de él: una revisión con el contrato viejo, un `enumsAreOpen` (con el vocabulario
+//     vacío el esquema deja el campo libre) y el reintento por JSON nulo. La app filtra por
+//     esos valores: un `subtype: "tempo"` no se pinta, no cuenta en el presupuesto de días
+//     duros y desaparece sin que nada falle.
+//   · **La revisión razonando sobre el día equivocado** (C-14). `todayStr` salía de
+//     `nowIso.slice(0,10)`, que es UTC. Entre las 00:00 y las 02:00 de Madrid en verano el
+//     servidor ya está en el día siguiente — y `todayStr` alimenta `SUMMER-PACE` y el `ctx`
+//     del validador. La revisión se lanza los domingos por la noche.
+console.log('');
+console.log('6c. Enums del contrato validados y `todayStr` del pack (C-13, C-14)');
+yes(/from "\.\/schema\.ts"/.test(INDEX_CODE) &&
+    ['DECISION_TYPES', 'CHANGE_KINDS', 'CARDIO_SUBTYPES', 'SLOT_TYPES']
+      .every((n) => new RegExp(`\\b${n}\\b`).test(INDEX_CODE.split('from "./schema.ts"')[0] || '')),
+  'los cuatro enums se importan de schema.ts (una sola definición, la que restringe al modelo)');
+yes(/function enumOr\(/.test(INDEX_CODE), 'hay un enumOr() que valida y anota lo que descarta');
+yes(/sanitized\.push\([\s\S]{0,120}is not a valid value/.test(INDEX_CODE),
+  'y lo que no encaja se anota en sanitized[] en vez de cambiarse en silencio');
+yes(/enumOr\(d\?\.type,\s*DECISION_TYPES/.test(INDEX_CODE), 'decisions[].type contra DECISION_TYPES');
+yes(/enumOr\(c\?\.kind,\s*CHANGE_KINDS/.test(INDEX_CODE), 'changes[].kind contra CHANGE_KINDS');
+yes(/enumOr\(c\?\.subtype,\s*CARDIO_SUBTYPES/.test(INDEX_CODE), 'cardio[].subtype contra CARDIO_SUBTYPES');
+yes(/enumOr\(t\?\.type,\s*SLOT_TYPES/.test(INDEX_CODE), 'weekTemplateChanges[].type contra SLOT_TYPES');
+// El respaldo de un hueco desconocido es `rest` y no el primer valor del enum (`gym`): un
+// `gym` con `sessionId` nulo programa un día de fuerza vacío en el calendario.
+yes(/enumOr\(t\?\.type,\s*SLOT_TYPES,\s*"rest"/.test(INDEX_CODE),
+  'y el respaldo de un hueco desconocido es `rest`, el único neutro');
+yes(/clip\(String\(raw \?\? ""\)/.test(INDEX_CODE), 'enumOr recorta la cadena venga como venga');
+yes(/meta\?\.todayStr/.test(INDEX_CODE), 'todayStr sale de facts.meta.todayStr (el día LOCAL de Julian)');
+yes(/\^\\d\{4\}-\\d\{2\}-\\d\{2\}\$/.test(INDEX_CODE), 'con su forma validada antes de usarla');
+yes(/nowIso\.slice\(0, 10\)/.test(INDEX_CODE), 'y el UTC del servidor sólo como respaldo');
+
 // ── 7. Coste medido, no estimado ─────────────────────────────────────────────────────
 console.log('');
 console.log('7. Coste y uso guardados en la fila');
 yes(/PRICE_INPUT\s*=\s*5(\.0+)?/.test(INDEX), 'precio de entrada de Opus 5: $5/MTok');
 yes(/PRICE_OUTPUT\s*=\s*25(\.0+)?/.test(INDEX), 'precio de salida: $25/MTok');
 yes(/PRICE_CACHE_READ\s*=\s*0\.50?/.test(INDEX), 'lectura de caché: $0,50/MTok');
-yes(/PRICE_CACHE_WRITE_1H\s*=\s*10(\.0+)?/.test(INDEX), 'escritura de caché con TTL 1 h: $10/MTok (2x, no 1,25x)');
+// C-30 (2026-09-10): `CACHE_TTL` es `"5m" as const`, así que la constante del TTL de 1 h y el
+// ternario que la elegía eran código muerto que `deno check` marcaba como comparación
+// imposible — y el comentario decía justo lo contrario del código. Queda el precio que se usa.
+yes(/PRICE_CACHE_WRITE_5M\s*=\s*6\.25/.test(INDEX), 'escritura de caché con TTL 5 min: $6,25/MTok (1,25x)');
+yes(/CACHE_TTL\s*=\s*"5m"\s*as const/.test(INDEX), 'y CACHE_TTL es "5m", el TTL que se pide de verdad');
+yes(!/PRICE_CACHE_WRITE_1H/.test(INDEX), 'sin la rama muerta del precio de 1 h (C-30)');
 yes(/cache_read_input_tokens/.test(INDEX) && /cache_creation_input_tokens/.test(INDEX),
   'guarda los tokens de caché (si cacheRead es 0 siempre, algo invalida el prefijo)');
 yes(/costUsd/.test(INDEX) && /latencyMs/.test(INDEX), 'costUsd y latencyMs en la fila');
@@ -625,6 +685,56 @@ if (!existsSync(RULES_PATH)) {
       }
     }
   }
+}
+
+// ── 13. Prompt v11.71: el pack manda y el modelo no recuenta (auditoría 09-sep) ──────
+console.log('');
+console.log('13. Prompt v11.71 (F-6, F-9, F-11, F-12, F-22)');
+{
+  // F-9 · UNA SOLA TABLA DE COLOR. El paso 2 llevaba su propio recuento ("Verde 0-1 · Amarillo 2
+  // · Rojo ≥3") sobre las mismas señales que el motor ya cuenta, así que el modelo podía escribir
+  // "yellow" encima de un pack que decía `red`. Dos tablas para el mismo color es una promesa de
+  // contradicción, y el usuario no tiene forma de saber cuál manda.
+  yes(/readiness\.readinessColor/.test(PROMPT), 'F-9: el paso 2 nombra `readiness.readinessColor` como EL color');
+  yes(/readiness\.firedSignals/.test(PROMPT), '…y `readiness.firedSignals` como la justificación');
+  yes(!/Verde 0-1/.test(PROMPT_TEXT), 'y el recuento competidor "Verde 0-1 · Amarillo 2 · Rojo ≥3" ya no está');
+  yes(/pain override/i.test(PROMPT), 'el override por dolor sigue, ahora como instrucción sobre la NOTA de Julian');
+  yes(/nota de Julian/i.test(PROMPT), '…y se dice de dónde sale (no hay señal de dolor en el motor)');
+
+  // F-6 · la mitad reactiva de LOAD-004 tiene un campo, no una impresión.
+  yes(/progress\.performance\.regressedStreak/.test(PROMPT),
+    'F-6: el paso 7 cita `progress.performance.regressedStreak` para el deload reactivo');
+  yes(/regressedStreak[\s\S]{0,40}≥\s*2/.test(PROMPT), '…con el umbral de 2 sesiones consecutivas');
+  yes(/LOAD-004/.test(PROMPT) && /READ-005/.test(PROMPT), '…y las reglas que lo gobiernan');
+
+  // F-11 · "mira el sueño antes de llamarlo deload" con los tres campos, no sólo la duración.
+  const paso7 = PROMPT.slice(PROMPT.indexOf('**7. Deload'), PROMPT.indexOf('**8. Colocación'));
+  yes(/sueño antes de llamarlo deload/.test(paso7), 'F-11: el paso 7 manda mirar el sueño primero');
+  for (const f of ['mean7Hrs', 'consistency7', 'debtHrs7']) {
+    yes(paso7.includes(f), `   y nombra ${f}`);
+  }
+
+  // F-12 · el disparador de LEA deja de ser inejecutable.
+  const paso6 = PROMPT.slice(PROMPT.indexOf('**6. Piloto del déficit'), PROMPT.indexOf('**7. Deload'));
+  yes(/readiness\.subjective/.test(paso6), 'F-12: el paso 6 cuenta el LEA sobre `readiness.subjective`');
+  yes(/mood7/.test(paso6) && /fatigue7/.test(paso6), '   con los campos concretos (mood7, fatigue7)');
+  yes(/libido/.test(paso6) && /nota/.test(paso6),
+    '   y dice que libido/enfermedad sólo existen si Julian los escribe en la nota');
+  yes(/REC-008/.test(paso6), '   citando REC-008');
+
+  // F-22 · el gasto tiene una medida.
+  yes(/cardio\.mvpaMinByWeek/.test(paso6), 'F-22: la palanca del gasto se mide con `cardio.mvpaMinByWeek`');
+  yes(/mvpaBand/.test(paso6), '   contra la banda del pack');
+  yes(/END-009/.test(paso6), '   y cita END-009');
+
+  // F-5 / F-7 · los dos avisos nuevos del validador viajan como guardarraíles blandos.
+  yes(/\*\*G-S21\*\*[\s\S]{0,320}10 series/.test(PROMPT), 'G-S21: el suelo de 10 series/familia (STR-003)');
+  yes(/G-S21[\s\S]{0,400}plannedSetsPerMuscle/.test(PROMPT), '   y dice dónde mirarlo en el pack');
+  yes(/\*\*G-S22\*\*[\s\S]{0,320}recomposición/.test(PROMPT), 'G-S22: no bajar kcal en recomposición (REC-002)');
+
+  // El reparto estático/dinámico no se toca: nada de esto depende del request.
+  yes(!/2026-W\d\d/.test(PROMPT.slice(PROMPT.indexOf('SYSTEM_STATIC'))),
+    'y nada request-específico se ha colado en SYSTEM_STATIC');
 }
 
 console.log('');

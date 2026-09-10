@@ -55,6 +55,7 @@ const WHOOP = readFileSync('app/whoop.js', 'utf8');
 const INTEG = readFileSync('app/integrations.js', 'utf8');
 const HTML = readFileSync('app/index.html', 'utf8');
 const ENGINE = readFileSync('app/coach-engine.js', 'utf8');
+const NUTJS = readFileSync('app/nutrition.js', 'utf8');
 
 /** El cuerpo de una función de nivel superior, por conteo de llaves. */
 function fnSrc(src, header) {
@@ -331,13 +332,23 @@ yes(!/parseFloat\(s\.rpe\) \|\| 7/.test(TRIO_CODE),
 yes(!/\|\| 7;/.test(TRIO_CODE), 'ni ningún otro fallback 7');
 yes(/Number\.isFinite\(rpe\) && rpe > 0/.test(TRIO), 'sólo suma las series con un RPE real');
 yes(/strainSets\+\+/.test(TRIO), 'y cuenta cuántas hay, para saber si el número significa algo');
-yes(/'RPE LOAD'/.test(TRIO), "el sub dice 'RPE LOAD' (no es el strain 0-21 de WHOOP)");
+// v11.72 (V-23): el tile se LLAMA 'RPE Load'. "Strain" era el nombre de una escala 0-21 de
+// WHOOP que esto no es (aquí es Σ RPE × series), y el sub que lo aclaraba ya no hace falta:
+// ahora dice la ventana ('THIS WEEK'), que es lo que faltaba.
+yes(/label: 'RPE Load'/.test(TRIO), "el tile se llama 'RPE Load', no 'Strain'");
+yes(!/label: 'Strain'/.test(TRIO), "y 'Strain' no vuelve (es el nombre de otra escala)");
+yes(/'THIS WEEK'/.test(TRIO), 'con la ventana en el sub');
 yes(/'LOG RPE'/.test(TRIO), "y sin una sola serie con RPE dice 'LOG RPE'");
 yes(/strainSets \? String\(Math\.round\(strain\)\) : '—'/.test(TRIO),
   'con "—" como valor: la ausencia de dato no se pinta como un número');
 // Los cuatro tiles y su orden no se tocan (es la petición literal del usuario en v11.65).
-const CARDS = (TRIO.match(/\{ label: '([A-Za-z]+)'/g) || []).map((m) => m.split("'")[1]);
-eq(CARDS.join(' > '), 'Readiness > Strain > Streak > Volume', 'los cuatro tiles y su orden, intactos');
+const CARDS = (TRIO.match(/\{ label: '([A-Za-z ]+)'/g) || []).map((m) => m.split("'")[1]);
+eq(CARDS.join(' > '), 'Readiness > RPE Load > Streak > Volume', 'los cuatro tiles y su orden, intactos');
+// V-23: sin WHOOP conectado el tile de Readiness ES el camino a conectarlo. Un "—" mudo en la
+// primera pantalla era el único sitio donde se veía que faltaba una integración.
+yes(/rd\.sub = 'CONNECT'/.test(TRIO) && /openSettingsAt\(b\.dataset\.statGoto\)/.test(TRIO),
+  'sin WHOOP el tile lleva a Ajustes › Integraciones');
+yes(/whoopClock/.test(TRIO), 'y con dato el sub dice a qué hora se leyó');
 
 yes(!/'Julian Garmendia'/.test(APP.replace(/\/\/.*/g, '')),
   "el literal 'Julian Garmendia' no está en el código de app.js");
@@ -395,8 +406,11 @@ yes(/function showHomeSkeletons\(/.test(APP), 'showHomeSkeletons() existe');
 yes(/function showStatsSkeletons\(/.test(APP), 'showStatsSkeletons() existe');
 yes(/showHomeSkeletons\(\)/.test(fnSrc(APP, 'async function renderHomeView(')),
   'renderHomeView pinta esqueleto antes de leer IndexedDB');
-yes(/showStatsSkeletons\(\)/.test(fnSrc(APP, 'async function renderStats(')),
-  'y renderStats también');
+// V-5 (v11.72): `renderStats` pinta UN grupo, y el esqueleto lo pone `renderStatsGroup`.
+yes(/showStatsSkeletons\(group\)/.test(fnSrc(APP, 'async function renderStatsGroup(group)')),
+  'y renderStatsGroup pinta el esqueleto de SU grupo antes de leer');
+yes(/renderStatsGroup\(_activeStatsGroup\(\)\)/.test(fnSrc(APP, 'async function renderStats(')),
+  'renderStats pinta sólo el grupo activo');
 
 yes(/function safeCall\(name, \.\.\.args\)/.test(APP), 'safeCall(name, ...args) existe');
 const SC = fnSrc(APP, 'function safeCall(name, ...args)');
@@ -404,8 +418,9 @@ yes(/typeof fn !== 'function'/.test(SC), 'sale sola si la función no está');
 yes(/console\.warn\(`\[safeCall\] \$\{name\}/.test(SC), 'y anota el throw con el nombre');
 const usos = (APP.match(/safeCall\('/g) || []).length;
 yes(usos >= 6, `safeCall se usa en ≥ 6 sitios (usos: ${usos})`);
+// v11.72 (V-10): los tres renderers de recuperación son UNO (`renderRecoveryBlock`).
 for (const fn of ['renderCoachReadout', 'renderCoachWeekCard', 'renderCoachGoalLine',
-                  'renderReadinessSignals', 'renderRecoveryLine', 'renderGoalsCard',
+                  'renderRecoveryBlock', 'renderGoalsCard',
                   'renderIntegrationsCard', 'seedFoods', 'maybeRunWeeklyCoach']) {
   yes(APP.includes(`safeCall('${fn}')`), `${fn} entra por safeCall`);
 }
@@ -500,6 +515,188 @@ yes(HTML.indexOf('id="coach-ledger"') < HTML.indexOf('id="coach-versions"'),
   'y antes de las versiones del plan');
 yes(!/[A-Z]{3}-\d{3}/.test(LEDV.replace(/\/\/.*/g, '')),
   'sin Rule IDs escritos a mano en la plantilla (§B.9: salen del dato)');
+
+// ---------------------------------------------------------------------------
+// 9 · v11.72 · UX (auditoría 2026-09-09, incremento 3)
+// ---------------------------------------------------------------------------
+// Los seis fallos de §1-§6 son sobre DRIFT. Éstos son sobre lo que la interfaz le dice al
+// usuario cuando algo va mal, cuando algo se puede tocar y cuando algo se puede leer: un fallo
+// de lectura que se ve como "no hay datos", una casilla de 32 px en la pantalla que más se
+// toca, un texto a 3,0:1 de contraste. Ninguno rompe nada, y por eso llevaban meses.
+section('9 · v11.72 · estado de error, tap targets, contraste y tokens');
+
+// V-4 · El estado de error existe y se usa en los renderers de tarjeta.
+yes(/function showErrorState\(container, msg, retryFn\)/.test(APP), 'showErrorState(container, msg, retryFn) existe');
+{
+  const SES = fnSrc(APP, 'function showErrorState(container, msg, retryFn)');
+  yes(/error-state-box/.test(SES), 'pinta el mismo cuadro que el estado vacío');
+  yes(/escapeHtml\(/.test(SES), 'y escapa el mensaje (puede venir de un error de red)');
+  yes(/error-state-retry/.test(SES) && /addEventListener\('click'/.test(SES),
+    'con un botón que reintenta LA MISMA función');
+  yes(/typeof retryFn === 'function' \?/.test(SES), 'y sin `retryFn` no pinta un Retry que no reintenta nada');
+  yes(/\.error-state-box[\s,{]/.test(CSS) && /\.error-state-retry[\s,{]/.test(CSS), 'con su CSS');
+  yes(/--red/.test(CSS.slice(CSS.indexOf('.error-state-title'), CSS.indexOf('.error-state-retry'))),
+    'y el acento en rojo (no es un estado vacío más)');
+}
+{
+  const usos = (APP.match(/showErrorState\(/g) || []).length + (COACHJS.match(/showErrorState\(/g) || []).length;
+  yes(usos >= 12, `showErrorState cableado en ≥ 12 renderers (usos: ${usos})`);
+}
+
+// V-7 · La hoja de texto sustituye a los `prompt()` nativos.
+yes(/function promptSheet\(\{ title, placeholder, multiline, confirmLabel, value \} = \{\}\)/.test(APP),
+  'promptSheet({title, placeholder, multiline, confirmLabel}) existe');
+yes(HTML.includes('id="prompt-sheet"') && HTML.includes('id="prompt-sheet-backdrop"'),
+  'con su marcado en index.html, reutilizando el chasis de .plate-sheet');
+yes(/class="plate-sheet hidden"[^>]*id="prompt-sheet"|id="prompt-sheet" class="plate-sheet hidden"/.test(HTML),
+  'y reutiliza .plate-sheet en vez de una familia nueva');
+{
+  // Se mira el CÓDIGO: los comentarios explican qué sustituye y tienen que poder nombrarlo.
+  const codigo = (src) => src.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
+  const restantes = (codigo(APP) + codigo(COACHJS)).match(/(?<![.\w])prompt\(/g) || [];
+  // El único `prompt(` que queda es el respaldo DENTRO de promptSheet/_coachAskText, por si una
+  // versión cacheada del HTML no trae la hoja.
+  yes(restantes.length <= 2, `ningún prompt() nativo suelto (quedan ${restantes.length}, los respaldos)`);
+  yes(/promptSheet\(\{/.test(APP) && /promptSheet\(\{/.test(COACHJS), 'y los llamadores usan la hoja');
+  yes(/multiline: !!multiline/.test(COACHJS) && /multiline\s*\?\s*`<textarea/.test(APP),
+    'la nota para el modelo admite varias líneas (era su fallo principal)');
+}
+
+// V-8 · El favicon existe, pesa 487 B y ahora se referencia.
+yes(/<link rel="icon" href="favicon\.svg"/.test(HTML), 'index.html referencia favicon.svg');
+yes(/<link rel="apple-touch-icon" href="app-icon\.png">/.test(HTML), 'y el apple-touch-icon sigue en el PNG (iOS no acepta SVG)');
+{
+  const MAN = JSON.parse(readFileSync('app/manifest.json', 'utf8'));
+  yes(MAN.icons.every((ic) => ic.purpose === 'any'),
+    'el manifest declara purpose "any" (un icono de 1024 no es una máscara adaptativa)');
+}
+
+// V-9 · La label sticky, sin animación de tipografía ni blur.
+{
+  const SL = CSS.slice(CSS.indexOf('.section-label {'), CSS.indexOf('.divider {'));
+  yes(!/transition:[^;]*font-size/.test(SL), 'la .section-label no anima font-size (reflow por scroll)');
+  yes(!/backdrop-filter/.test(SL), 'ni usa backdrop-filter: fondo opaco (14 labels con blur = jank medido)');
+}
+
+// V-6 / V-14 · Tap targets y tamaño de fuente de los inputs.
+{
+  const regla = (sel) => {
+    const rs = cssRules(CSS).filter((r) => r.sel.split(',').map((x) => x.trim()).includes(sel));
+    return rs.map((r) => r.body).join(';');
+  };
+  yes(/width: 40px/.test(regla('.set-check')) && /height: 40px/.test(regla('.set-check')),
+    '.set-check mide 40×40 (era 32: el control que más se toca de la app)');
+  yes(/padding: 12px 4px/.test(regla('.stats-tab')), '.stats-tab con padding 12px 4px (≈29 px de alto antes)');
+  yes(/min-height: 44px/.test(regla('.home-link-mono')), '.home-link-mono con área de 44 px');
+  yes(/min-height: 44px/.test(regla('.coach-week-open')), 'y .coach-week-open también');
+  yes(/<button type="button" class="home-link-mono" id="todays-detail">/.test(HTML)
+    && /<button type="button" class="home-link-mono" id="queue-ahead">/.test(HTML),
+    'los dos <span> clicables de Home son <button>');
+  // iOS hace zoom al enfocar cualquier input por debajo de 16 px.
+  for (const sel of ['.set-input', '.input-notes', '.text-input']) {
+    const b = regla(sel);
+    const tam = [...b.matchAll(/font-size:\s*(\d+)px/g)].map((m) => Number(m[1]));
+    yes(tam.length === 0 || tam.every((t) => t >= 16), `${sel} a 16 px o más (iOS no hace zoom)`);
+  }
+  yes(/font-size: 16px/.test(regla('.ew-set input')) || /font-size: 16px/.test(CSS.slice(CSS.indexOf('.ew-set input, .ew-set select'), CSS.indexOf('.ew-set input:focus'))),
+    '.ew-set input/select a 16 px');
+  yes(/font-size: 16px !important/.test(regla('.ew-rpe-select')), 'y .ew-rpe-select también (era 12 px)');
+}
+
+// V-16 · Una familia de tiles, no cuatro copias.
+{
+  const rs = cssRules(CSS);
+  const base = rs.find((r) => r.sel.startsWith('.stat-tile,'));
+  yes(!!base, 'existe la familia .stat-tile con sus alias');
+  if (base) {
+    for (const alias of ['.bw-stat', '.wcomp-stat', '.bc-stat', '.ws-stat']) {
+      yes(base.sel.includes(alias), `${alias} es un alias de .stat-tile, no una copia`);
+    }
+    yes(/--surface2/.test(base.body) && /--radius-sm/.test(base.body), 'con --surface2 y --radius-sm');
+  }
+  // Y las copias byte a byte no vuelven: ninguna de las cuatro tiene ya regla propia de caja.
+  for (const sel of ['.bw-stat', '.wcomp-stat']) {
+    const propias = rs.filter((r) => r.sel === sel);
+    yes(propias.length === 0, `${sel} ya no tiene una regla de caja propia`);
+  }
+  yes(!/\.mob-streak-card\s*\{\s*padding: 18px/.test(CSS), '.mob-streak-card ya no lleva su padding propio');
+}
+
+// V-17 / V-18 · Contraste y escala de tipos.
+yes(/--text3: #7c7e85/.test(CSS), '--text3 a #7c7e85 (3,0:1 → 4,5:1 sobre --bg, 158 usos)');
+yes(/--fs-2sm: 12px/.test(CSS) && /--fs-base: 14px/.test(CSS), 'la escala tiene --fs-2sm y --fs-base');
+yes(/\.setting-hint[\s,{]/.test(CSS), '.setting-hint existe');
+{
+  const ajustes = HTML.slice(HTML.indexOf('id="view-settings"'));
+  yes(!/class="muted" style="font-size:11px/.test(ajustes),
+    'y en Ajustes no queda un solo `muted` con font-size:11px a mano');
+  yes((ajustes.match(/class="setting-hint"/g) || []).length >= 8, 'con al menos 8 notas migradas');
+}
+{
+  const wcomp = CSS.slice(CSS.indexOf('.wcomp-head'), CSS.indexOf('.wcomp-more'));
+  yes(!/font-size:\s*\d+px/.test(wcomp), 'la familia .wcomp-* usa tokens, no tamaños literales');
+}
+
+// V-19 · CSS muerto y duplicado.
+{
+  const rs = cssRules(CSS);
+  for (const sel of ['.empty-state', '.chart-empty', '.ws-label']) {
+    const n = rs.filter((r) => r.sel === sel).length;
+    yes(n <= 1, `${sel} declarada como mucho una vez (era ${n === 0 ? 0 : n}; había duplicados)`);
+  }
+  yes(!/\.ws-label[\s,{:]/.test(CSS), '.ws-label se retira: la del week strip estaba muerta y chocaba con la del tile');
+  yes(/\.ws-tile-label[\s,{]/.test(CSS) && (APP.match(/class="ws-tile-label"/g) || []).length === 4,
+    'y el tile del resumen usa .ws-tile-label en sus 4 usos');
+}
+
+// V-20 / V-25 · Accesibilidad.
+yes((HTML.match(/class="modal-close-btn" aria-label="Close"/g) || []).length === 3,
+  'los tres cierres de modal tienen aria-label');
+yes(/\.hi-delete[^{]*\{/.test(CSS), '.hi-delete sigue existiendo');
+{
+  const borrar = (APP.match(/class="hi-delete"[^>]*aria-label=/g) || []).length
+    + (NUTJS.match(/class="hi-delete"[^>]*aria-label=/g) || []).length;
+  yes(borrar === 5, `los 5 botones de borrar tienen aria-label (son ${borrar})`);
+}
+yes(/aria-label="Set \$\{i \+ 1\}"/.test(APP) && /aria-pressed=/.test(APP),
+  '.set-check dice qué serie es y si está marcada (aria-label + aria-pressed)');
+yes(/^:focus-visible \{ outline: 2px solid var\(--accent\); outline-offset: 2px;? \}/m.test(CSS),
+  'hay un :focus-visible global (no había NINGUNO)');
+{
+  const codigo = (src) => src.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
+  for (const [nombre, src] of [['app.js', APP], ['whoop.js', WHOOP], ['coach.js', COACHJS]]) {
+    yes(!/toLocaleDateString\('en'/.test(codigo(src)), `${nombre} usa 'en-US', no 'en' (el corto depende de la región)`);
+  }
+}
+
+// V-21 / V-22 / V-24 · Jerarquía, opciones muertas y visibilidad.
+yes(/\.card-title[\s,{]/.test(CSS) && /class="card-title"/.test(APP),
+  '.card-title (13px/600) para el título DENTRO de una tarjeta');
+yes((HTML.match(/class="back-btn"/g) || []).length === 5, 'los cinco "Back" usan .back-btn');
+yes(!/class="btn-secondary" style="margin-bottom:12px">‹ Back</.test(HTML), 'y ninguno es un btn-secondary con margen inline');
+yes(/<option value="auto-if-clean" disabled>/.test(HTML) && /<option value="auto" disabled>/.test(HTML),
+  'las dos opciones "(coming soon)" están deshabilitadas');
+{
+  const codigo = (src) => src.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
+  for (const [nombre, src] of [['app.js', APP], ['coach.js', COACHJS], ['whoop.js', WHOOP]]) {
+    yes(!/\.style\.display\s*=/.test(codigo(src)), `${nombre} no usa style.display (hidden o .hidden)`);
+  }
+  yes(/<div id="intervals-icu-section" hidden>/.test(HTML), '#intervals-icu-section usa el atributo hidden');
+  yes(!/style="display:none"/.test(HTML.replace(/<input type="file"[^>]*>/g, '')),
+    'y en el marcado no queda un display:none inline (salvo el input de fichero)');
+}
+
+// C-11 · Timeouts de red en el cliente.
+yes(/function fetchWithTimeout\(url, opts, ms = FETCH_TIMEOUT_MS\)/.test(APP), 'fetchWithTimeout existe');
+yes(/AbortSignal\.timeout\(ms\)/.test(APP), 'y usa AbortSignal.timeout');
+{
+  const codigo = (src) => src.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
+  for (const [nombre, src] of [['app.js', APP], ['whoop.js', WHOOP], ['strava.js', readFileSync('app/strava.js', 'utf8')]]) {
+    const desnudos = (codigo(src).match(/(?<!fetchWith|_)\bawait fetch\(/g) || []).length;
+    const permitidos = nombre === 'whoop.js' ? 1 : 0;   // el respaldo si app.js no cargó
+    yes(desnudos <= permitidos, `${nombre}: ningún fetch sin timeout (desnudos: ${desnudos})`);
+  }
+}
 
 // ---------------------------------------------------------------------------
 console.log('');

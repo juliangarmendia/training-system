@@ -1254,6 +1254,9 @@ function openDB() {
 // ellos con una llamada más o una menos que en los otros. Un solo sitio.
 async function afterWorkoutSaved() {
   invalidateRenderPass();
+  // V-5: los cuatro grupos de Stats caducan a la vez — series, volumen, rachas y carga de la
+  // semana salen todos del entreno que se acaba de guardar.
+  state._statsPainted.clear();
   try { await renderRecentWorkouts(); } catch (e) { console.warn('[repaint] recent workouts:', e); }
   try { await renderWeekBanner(); } catch (e) { console.warn('[repaint] week banner:', e); }
   if (state.currentView === 'stats') {
@@ -1363,6 +1366,9 @@ function smartDelete(store, key) {
 const state = {
   currentTab: 'home',
   currentView: 'home',
+  // V-5: qué grupos de Stats ya están pintados. Efímero (no se persiste): al arrancar la app
+  // no hay nada pintado. Lo vacía `afterWorkoutSaved()`.
+  _statsPainted: new Set(),
   activeSession: null,
   // Definición de la sesión libre en curso (v11.44). Efímera; su instantánea vive en
   // settings.activeWorkout.adHoc. Nunca se escribe en el store `plans`.
@@ -2008,7 +2014,7 @@ function bindLoginEvents() {
     if (!registerMode) {
       // First click: show name field and switch to register mode
       registerMode = true;
-      nameRow.style.display = 'flex';
+      nameRow.hidden = false;
       document.getElementById('btn-register').textContent = 'Create Account';
       document.getElementById('btn-login').textContent = 'Back to Sign In';
       return;
@@ -2029,7 +2035,7 @@ function bindLoginEvents() {
       errEl.style.color = 'var(--accent)';
       errEl.textContent = 'Check your email to confirm, then sign in.';
       registerMode = false;
-      nameRow.style.display = 'none';
+      nameRow.hidden = true;
       document.getElementById('btn-register').textContent = 'Create Account';
       document.getElementById('btn-login').textContent = 'Sign In';
     }
@@ -2096,7 +2102,7 @@ async function showWelcomeScreen() {
     headsUpHTML = `
       <div class="wh-title">Today</div>
       <div class="wh-session">🧘 ${plan.label || 'Active recovery'}</div>
-      <div class="wh-meta">Mobility + core${plan.z2FinisherMin ? ` · ${plan.z2FinisherMin} min easy Z2` : ''}</div>
+      <div class="wh-meta">Mobility + core${plan.z2FinisherMin ? ` · ${plan.z2FinisherMin} min easy Z2${plan.z2FinisherModality ? ' ' + _z2ModalityLabel(plan.z2FinisherModality) : ''}` : ''}</div>
     `;
   } else {
     todayText = 'Rest day — recover well.';
@@ -2434,6 +2440,117 @@ function showEmptyState(container, icon, title, text) {
   if (!container) return;
   container.innerHTML = `<div class="empty-state-box"><div class="empty-state-icon">${icon}</div><div class="empty-state-title">${title}</div><div class="empty-state-text">${text}</div></div>`;
   morphIn(container);
+}
+
+// V-4 (auditoría 2026-09-09): EL ESTADO DE ERROR QUE NO EXISTÍA.
+//
+// La app tenía 76 `.catch(() => [])`, 51 `catch {}` y 44 `innerHTML = ''`: cuando una lectura
+// de IndexedDB o de la nube fallaba, la tarjeta se quedaba VACÍA, exactamente igual que
+// cuando no hay datos. Y de las dos, la que el usuario cree siempre es la segunda — así que
+// un fallo de lectura se leía como "esta semana no has entrenado".
+//
+// Tres cosas, y ninguna más: se dice que ha fallado, se dice qué (una frase, no un stack), y
+// se ofrece reintentar LA MISMA función. Sin `retryFn` no se pinta el botón: un "Retry" que
+// no reintenta nada es peor que no tenerlo.
+function showErrorState(container, msg, retryFn) {
+  if (!container) return;
+  container.classList.remove('hidden');
+  container.innerHTML = `<div class="error-state-box">
+      <div class="error-state-icon">!</div>
+      <div class="error-state-title">Could not load this</div>
+      <div class="error-state-text">${escapeHtml(String(msg || 'Something went wrong reading the data.'))}</div>
+      ${typeof retryFn === 'function' ? '<button type="button" class="error-state-retry">Retry</button>' : ''}
+    </div>`;
+  if (typeof retryFn === 'function') {
+    const b = container.querySelector('.error-state-retry');
+    if (b) b.addEventListener('click', () => {
+      b.disabled = true;
+      b.textContent = 'Retrying…';
+      Promise.resolve().then(retryFn).catch((e) => {
+        console.warn('[showErrorState] retry:', e);
+        showErrorState(container, (e && e.message) || 'Still failing.', retryFn);
+      });
+    });
+  }
+}
+
+// V-7 (auditoría 2026-09-09): la hoja de texto que sustituye a `prompt()`.
+//
+// `prompt()` en una PWA instalada sale como un diálogo del NAVEGADOR, con el dominio en la
+// cabecera y el tipo del sistema — la única cosa de la app que no parece de la app. Y no
+// admite varias líneas, que es justo lo que pide "¿qué debería tener en cuenta?": la nota que
+// viaja al modelo se escribía en un campo de una línea.
+//
+// Devuelve `Promise<string|null>`: `null` = cancelado (la misma semántica que `prompt()`, así
+// que los llamadores distinguen "cancelar" de "aceptar en blanco" igual que antes).
+function promptSheet({ title, placeholder, multiline, confirmLabel, value } = {}) {
+  return new Promise((resolve) => {
+    const sheet = document.getElementById('prompt-sheet');
+    const backdrop = document.getElementById('prompt-sheet-backdrop');
+    const field = document.getElementById('prompt-sheet-field');
+    const titleEl = document.getElementById('prompt-sheet-title');
+    const okBtn = document.getElementById('prompt-sheet-ok');
+    const cancelBtn = document.getElementById('prompt-sheet-cancel');
+    const closeBtn = document.getElementById('prompt-sheet-close');
+    // Sin la hoja en el DOM (una versión vieja cacheada) no se pierde el gesto: cae a prompt().
+    if (!sheet || !field || !okBtn) {
+      resolve(typeof prompt === 'function' ? prompt(title || '') : null);
+      return;
+    }
+    titleEl.textContent = title || 'Note';
+    okBtn.textContent = confirmLabel || 'OK';
+    field.innerHTML = multiline
+      ? `<textarea class="text-input prompt-sheet-input" rows="4"></textarea>`
+      : `<input type="text" class="text-input prompt-sheet-input">`;
+    const input = field.firstElementChild;
+    input.placeholder = placeholder || '';
+    input.value = value != null ? String(value) : '';
+
+    const abrir = () => {
+      sheet.classList.remove('hidden');
+      backdrop.classList.remove('hidden');
+      requestAnimationFrame(() => { sheet.classList.add('visible'); backdrop.classList.add('visible'); });
+      setTimeout(() => input.focus(), 120);
+    };
+    const cerrar = (val) => {
+      sheet.classList.remove('visible');
+      backdrop.classList.remove('visible');
+      setTimeout(() => { sheet.classList.add('hidden'); backdrop.classList.add('hidden'); }, 220);
+      okBtn.removeEventListener('click', onOk);
+      cancelBtn.removeEventListener('click', onCancel);
+      closeBtn.removeEventListener('click', onCancel);
+      backdrop.removeEventListener('click', onCancel);
+      input.removeEventListener('keydown', onKey);
+      resolve(val);
+    };
+    const onOk = () => cerrar(input.value);
+    const onCancel = () => cerrar(null);
+    const onKey = (e) => {
+      if (e.key === 'Escape') onCancel();
+      // En una línea, Enter acepta; en el textarea Enter es un salto de línea (es lo que se pide).
+      else if (e.key === 'Enter' && !multiline) { e.preventDefault(); onOk(); }
+    };
+    okBtn.addEventListener('click', onOk);
+    cancelBtn.addEventListener('click', onCancel);
+    closeBtn.addEventListener('click', onCancel);
+    backdrop.addEventListener('click', onCancel);
+    input.addEventListener('keydown', onKey);
+    abrir();
+  });
+}
+
+// C-11 (auditoría 2026-09-09): CERO timeouts de red en todo el cliente (`grep AbortSignal` = 0).
+// Un proveedor colgado —intervals.icu detrás de un portal cautivo de hotel es el caso real—
+// dejaba el `await` vivo hasta que el sistema operativo cortaba, y con él la cadena de renders
+// que lo esperaba. 12 s es holgado para las cinco llamadas que existen (la más lenta, el
+// `events/bulk` de la semana, tarda ~1 s) y corto para que la pantalla no se quede colgada.
+const FETCH_TIMEOUT_MS = 12000;
+function fetchWithTimeout(url, opts, ms = FETCH_TIMEOUT_MS) {
+  const o = Object.assign({}, opts || {});
+  if (!o.signal && typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+    o.signal = AbortSignal.timeout(ms);
+  }
+  return fetch(url, o);
 }
 
 // V-9 (auditoría 2026-09-08): UNA forma de llamar a una función de otro módulo.
@@ -3090,7 +3207,7 @@ function viewCompletedWorkout(workout) {
   });
 
   // Hide finish button, show back only
-  document.getElementById('btn-finish-workout').style.display = 'none';
+  { const f = document.getElementById('btn-finish-workout'); if (f) f.hidden = true; }
   // B-1 (auditoría 2026-09-08): aquí había un `getElementById(...).style` sobre el textarea
   // de notas del entreno, que dejó de existir hace versiones (0 apariciones en index.html).
   // Lanzaba ANTES de activar la vista, así que tocar un día ya entrenado en el calendario no
@@ -3400,7 +3517,7 @@ async function startWorkout(sessionId, opts = {}) {
   state.viewingCompleted = false;
   state.viewingCompletedFrom = null;
   { const ro = document.getElementById('wo-completed-notes'); if (ro) { ro.innerHTML = ''; ro.hidden = true; } }
-  { const fin = document.getElementById('btn-finish-workout'); if (fin) fin.style.display = ''; }
+  { const fin = document.getElementById('btn-finish-workout'); if (fin) fin.hidden = false; }
   // Preserve workoutStartTime if user is just toggling Quick mode on the same
   // session — otherwise reset to now. We treat "no startTime yet" as fresh start.
   if (!state.workoutStartTime) state.workoutStartTime = Date.now();
@@ -3651,6 +3768,8 @@ async function startWorkout(sessionId, opts = {}) {
   container.querySelectorAll('.set-check').forEach(btn => {
     btn.addEventListener('click', () => {
       btn.classList.toggle('checked');
+      // V-20: el estado también por accesibilidad, no sólo por clase.
+      btn.setAttribute('aria-pressed', btn.classList.contains('checked') ? 'true' : 'false');
       const card = btn.closest('.exercise-card');
       const row = btn.closest('.set-row');
       // ACEPTAR EL OBJETIVO CON EL CHECK (v11.57). Hasta ahora una serie marcada sin escribir
@@ -3981,6 +4100,9 @@ async function attachSessionReadout(workout, sessionDef) {
       return !!(typeof blockWeek === 'function' && blockWeek(d).isDeload);
     } catch (e) { return false; }
   })();
+  // F-27: la misma fecha de +7 días que gobierna el deload gobierna la vigencia del objetivo
+  // del coach. Una sola definición de "la próxima vez".
+  const nextExposureDs = (typeof _plusDaysStr === 'function') ? _plusDaysStr(ds, 7) : ds;
   const exDefs = {};
   const nextById = {};
   for (const we of (workout.exercises || [])) {
@@ -4016,8 +4138,26 @@ async function attachSessionReadout(workout, sessionDef) {
         })),
       });
     }
+    // F-27 (auditoría 2026-09-09): iba con `coachTarget: null` fijo, así que la línea "la
+    // próxima: 95 kg × 8" de la tarjeta post-sesión salía SIEMPRE de la regla — aunque el coach
+    // hubiese escrito un objetivo para ese ejercicio. El lunes la pantalla de la sesión decía
+    // otra cosa (ahí el objetivo del coach sí manda), y dos números distintos para el mismo set
+    // con tres días de diferencia son un sistema que no sabe lo que prescribe.
+    //
+    // La ventana es la de SIEMPRE (`coachTargetIsCurrent`), evaluada a +7 días porque ésa es la
+    // fecha de la próxima exposición: un plan de la semana pasada ya no vale para la que viene.
+    let nextCoachTarget = null;
+    if (planEx && planEx.target && activePlan && activePlan.weekKey
+        && typeof coachTargetIsCurrent === 'function'
+        && coachTargetIsCurrent(activePlan.weekKey, nextExposureDs)) {
+      nextCoachTarget = typeof planEx.target === 'string' ? parseCoachTarget(planEx.target) : planEx.target;
+      if (planEx.rpe && nextCoachTarget && !nextCoachTarget.rpe) nextCoachTarget = { ...nextCoachTarget, rpe: planEx.rpe };
+    }
     nextById[id] = suggestSetTarget(def, history, {
-      coachTarget: null, coachWeekKey: null, todayWeekKey, planCreatedAt: null,
+      coachTarget: nextCoachTarget,
+      coachWeekKey: nextCoachTarget ? activePlan.weekKey : null,
+      todayWeekKey,
+      planCreatedAt: nextCoachTarget ? (activePlan.createdAt || null) : null,
       deload: nextWeekDeload, today: ds, measureUnit: def.measureUnit,
     });
   }
@@ -4107,11 +4247,11 @@ function buildExerciseCard(ex, exIdx, previous, restSettings, exerciseNotes, del
         <div class="set-num">${i + 1}</div>
         <input type="number" class="set-input" data-field="weight" placeholder="${targetKgDisp != null ? targetKgDisp : (prevSet ? prevWeightDisp : (ex.bw ? '0' : '-'))}" inputmode="decimal" step="0.5">
         <input type="number" class="set-input" data-field="reps" placeholder="${prevSet ? prevSet.reps : '-'}" inputmode="numeric" step="1">
-        <select class="set-input" data-field="rpe" style="padding:8px 2px;font-size:12px">
+        <select class="set-input" data-field="rpe" style="padding:8px 2px">
           <option value="">RPE</option>
           ${[6,6.5,7,7.5,8,8.5,9,9.5,10].map(v => `<option value="${v}">${v}</option>`).join('')}
         </select>
-        <button class="set-check" data-set-check="${i}">✓</button>
+        <button class="set-check" data-set-check="${i}" aria-label="Set ${i + 1}" aria-pressed="false">✓</button>
       </div>
     `;
   }
@@ -4459,7 +4599,10 @@ async function restoreActiveWorkout() {
         row.style.borderLeft = `3px solid ${rpeColor(parseFloat(s.rpe))}`;
       }
       if (s.done) {
-        row.querySelector('.set-check').classList.add('checked');
+        // V-20: clase y estado accesible van juntos, o VoiceOver lee "no marcado" sobre una
+        // serie que sí lo está.
+        const chk = row.querySelector('.set-check');
+        if (chk) { chk.classList.add('checked'); chk.setAttribute('aria-pressed', 'true'); }
       }
     });
   });
@@ -4863,7 +5006,7 @@ function renderLineChart(labels, values, opts = {}) {
     });
     tooltipAttrs = ` data-tooltip="1" data-unit="${unit}" data-points='${JSON.stringify(tooltipPoints).replace(/'/g, '&#39;')}'`;
     tooltipLayer = `
-      <g class="chart-tooltip" style="display:none" pointer-events="none">
+      <g class="chart-tooltip hidden" pointer-events="none">
         <line class="ct-cross" x1="0" y1="${pad.top}" x2="0" y2="${pad.top + chartH}" stroke="var(--text3)" stroke-width="1" stroke-dasharray="3 2" opacity="0.5"/>
         <circle class="ct-dot" cx="0" cy="0" r="5" fill="${color}" stroke="var(--bg)" stroke-width="2"/>
         <rect class="ct-box" x="0" y="0" width="100" height="22" rx="4" fill="var(--bg)" stroke="var(--border)" stroke-width="1"/>
@@ -4964,14 +5107,14 @@ function bindChartTooltip(svgEl) {
     text.setAttribute('x', cx);
     text.setAttribute('y', by + 13);
     if (line2) line2.setAttribute('x', cx);
-    line2.style.display = hasLine2 ? '' : 'none';
+    if (line2) line2.classList.toggle('hidden', !hasLine2);
     cross.setAttribute('x1', nearest.x);
     cross.setAttribute('x2', nearest.x);
     dot.setAttribute('cx', nearest.x);
     dot.setAttribute('cy', nearest.y);
-    tipG.style.display = '';
+    tipG.classList.remove('hidden');
   };
-  const hide = () => { tipG.style.display = 'none'; };
+  const hide = () => { tipG.classList.add('hidden'); };
 
   hitbox.addEventListener('pointermove', (e) => { showAt(e.clientX); });
   hitbox.addEventListener('pointerdown', (e) => { showAt(e.clientX); });
@@ -4980,7 +5123,65 @@ function bindChartTooltip(svgEl) {
 }
 
 // ==================== STATS MODULE ====================
-function switchStatsGroup(group) {
+//
+// V-5 (auditoría 2026-09-09): STATS PINTA UN GRUPO, NO CUATRO.
+//
+// `renderStats()` ejecutaba los 22 renderers de las cuatro pestañas cada vez que se entraba en
+// la vista — veintidós lecturas de IndexedDB y veintidós pintados para enseñar una pestaña.
+// Ahora cada grupo es una tanda con nombre, se pinta el ACTIVO, y `switchStatsGroup` pinta el
+// nuevo la primera vez que se enseña. `state._statsPainted` recuerda cuáles ya están; se vacía
+// en `afterWorkoutSaved()`, que es el único momento en que TODOS los números cambian.
+//
+// El orden de terminación dentro de una tanda no importa: cada renderer escribe SU contenedor
+// y el orden visual lo fija `index.html`.
+const STATS_GROUPS = {
+  now: [
+    ['sync-warning', () => renderSyncWarning()],
+    ['streaks', () => renderStreaks()],
+    // V-10: UN bloque de recuperación (señales + rendimiento + detalle de WHOOP). Vive en
+    // coach.js, de ahí `safeCall`. Antes eran tres llamadas a tres tarjetas distintas.
+    ['recovery-block', () => safeCall('renderRecoveryBlock')],
+    // v11.60: peso, 10k cómodo y fuerza mantenida, con su tamaño de muestra. Por `safeCall`
+    // porque vive en coach.js. También se pinta en la vista Coach (`coach-goals-view`).
+    ['goals-card', () => safeCall('renderGoalsCard')],
+  ],
+  week: [
+    // v11.62: la carga de la semana se mudó de Home a Stats; V-10 la baja a su pestaña.
+    ['hard-day-budget', () => renderHardDayBudget()],
+    ['weekly-summary', () => renderWeeklySummary()],
+    ['weekly-coach', () => loadAndRenderWeeklyCoach()],
+    ['week-comparison', () => renderWeekComparison()],
+    ['swimlane', () => renderSwimlaneTL()],
+  ],
+  body: [
+    ['bodyweight-chart', () => renderBodyWeightChart()],
+    // E-12 (v11.66): los pasos de intervals.icu tenían renderer y no tenían sitio. V-10 los
+    // deja SÓLO aquí: estaban a la vez en Today y en Body, con dos formatos del mismo número.
+    ['steps-card', () => renderStepsCard()],
+    ['steps-history', () => renderStepsHistoryChart()],
+    ['withings-comp', () => renderWithingsComposition()],
+    ['bodycomp', () => renderBodyCompEstimator()],
+    ['protein-chart', () => renderProteinChart()],
+    ['streak-calendar', () => renderStreakCalendar()],
+    ['macro-calculator', () => { renderMacroCalculator(); return null; }],
+  ],
+  strength: [
+    ['muscle-volume', () => renderMuscleVolume()],
+    ['strength-chart', () => renderStrengthChart()],
+    ['volume-chart', () => renderVolumeChart()],
+  ],
+};
+
+const STATS_DEFAULT_GROUP = 'now';
+
+/** El grupo visible ahora mismo, o el de por defecto si aún no hay ninguno. */
+function _activeStatsGroup() {
+  const el = document.querySelector('#view-stats .view-scroll > [data-group].active-group');
+  return (el && el.dataset.group) || STATS_DEFAULT_GROUP;
+}
+
+/** Sólo el DOM: qué pestaña está activa y qué bloques se ven. No pinta nada. */
+function _showStatsGroup(group) {
   document.querySelectorAll('#stats-tabs .stats-tab').forEach(b => {
     b.classList.toggle('active', b.dataset.statsGroup === group);
   });
@@ -4991,68 +5192,39 @@ function switchStatsGroup(group) {
   if (scroll) scroll.scrollTop = 0;
 }
 
-// V-7c (auditoría 2026-09-08): eran veinte `await` en serie, o sea veinte transacciones IDB
-// una detrás de otra por cada visita a Stats, con el primer fallo dejando la pantalla a medias.
-// Ahora van en tres tandas — hoy · semana · historial — con `allSettled`.
-//
-// Por qué el orden de terminación no importa: cada renderer escribe SU contenedor, y el orden
-// visual lo fija `index.html`, no el orden de las llamadas. Las tandas se mantienen para que
-// lo que se ve primero (Today) se pinte primero, no por dependencias entre ellas.
-async function renderStats() {
-  // Ensure a stats group is active (default: today)
-  const anyActive = document.querySelector('#view-stats .view-scroll > [data-group].active-group');
-  if (!anyActive) switchStatsGroup('today');
-  // V-8: esqueleto en las tarjetas del grupo visible antes de la primera lectura de IndexedDB.
-  showStatsSkeletons();
-  const tanda = async (nombre, tareas) => {
-    const res = await Promise.allSettled(tareas.map(([, fn]) => fn()));
-    res.forEach((r, i) => {
-      if (r.status === 'rejected') console.warn(`[Stats] ${nombre}/${tareas[i][0]}:`, r.reason);
-    });
-  };
+function switchStatsGroup(group) {
+  _showStatsGroup(group);
+  // V-5: la primera vez que se enseña un grupo hay que pintarlo. Las siguientes no: el
+  // contenido sigue en el DOM y sólo lo invalida un entreno guardado.
+  if (!state._statsPainted.has(group)) {
+    renderStatsGroup(group).catch(e => console.warn(`[Stats] ${group}:`, e));
+  }
+}
+
+/** Una tanda con `allSettled`: el renderer que falla deja SU hueco y se anota; los demás pintan. */
+async function renderStatsGroup(group) {
+  const tareas = STATS_GROUPS[group];
+  if (!tareas) return;
+  state._statsPainted.add(group);
+  showStatsSkeletons(group);
   beginRenderPass();
   try {
-    await tanda('today', [
-      ['sync-warning', () => renderSyncWarning()],
-      ['streaks', () => renderStreaks()],
-      // v11.59: el score 0-100 y su "Push hard today" salieron. Lo que se pinta ahora son las
-      // señales del readiness único, con su valor y su base (audit F-5). Por `safeCall` porque
-      // vive en coach.js, que se carga por <script> aparte.
-      ['readiness-signals', () => safeCall('renderReadinessSignals')],
-      // v11.62: la carga de la semana se muda de Home a Stats. Es un dato que se consulta, no
-      // algo que haya que ver antes de entrenar.
-      ['hard-day-budget', () => renderHardDayBudget()],
-      // v11.65: la línea de rendimiento y tendencias baja de Home a Stats › Today.
-      ['recovery-line', () => safeCall('renderRecoveryLine')],
-      // E-12 (v11.66): los pasos que llegan de intervals.icu tenían renderer y no tenían sitio
-      // donde pintarse. Ahora sí: `#steps-card`, justo debajo de la línea de recuperación.
-      ['steps-card', () => renderStepsCard()],
-      // v11.60: peso, 10k cómodo y fuerza mantenida, con su tamaño de muestra. Por `safeCall`
-      // porque vive en coach.js. También se pinta en la vista Coach (`coach-goals-view`).
-      ['goals-card', () => safeCall('renderGoalsCard')],
-      ['whoop-recovery', () => safeCall('renderWhoopRecoveryCard')],
-    ]);
-    await tanda('week', [
-      ['weekly-summary', () => renderWeeklySummary()],
-      ['weekly-coach', () => loadAndRenderWeeklyCoach()],
-      ['week-comparison', () => renderWeekComparison()],
-      ['swimlane', () => renderSwimlaneTL()],
-    ]);
-    await tanda('history', [
-      ['bodyweight-chart', () => renderBodyWeightChart()],
-      ['streak-calendar', () => renderStreakCalendar()],
-      ['muscle-volume', () => renderMuscleVolume()],
-      ['withings-comp', () => renderWithingsComposition()],
-      ['bodycomp', () => renderBodyCompEstimator()],
-      ['steps-history', () => renderStepsHistoryChart()],
-      ['protein-chart', () => renderProteinChart()],
-      ['macro-calculator', () => { renderMacroCalculator(); return null; }],
-      ['strength-chart', () => renderStrengthChart()],
-      ['volume-chart', () => renderVolumeChart()],
-    ]);
+    const res = await Promise.allSettled(tareas.map(([, fn]) => fn()));
+    res.forEach((r, i) => {
+      if (r.status === 'rejected') console.warn(`[Stats] ${group}/${tareas[i][0]}:`, r.reason);
+    });
   } finally {
     endRenderPass();
   }
+}
+
+async function renderStats() {
+  // Ensure a stats group is active (default: now). Se usa `_showStatsGroup` y no
+  // `switchStatsGroup` porque el pintado lo hace la línea de abajo: con el atajo, entrar en
+  // Stats por primera vez lanzaba DOS pases sobre el mismo grupo, a la vez.
+  const anyActive = document.querySelector('#view-stats .view-scroll > [data-group].active-group');
+  if (!anyActive) _showStatsGroup(STATS_DEFAULT_GROUP);
+  await renderStatsGroup(_activeStatsGroup());
 }
 
 async function renderStreaks() {
@@ -5464,7 +5636,8 @@ async function renderSyncCard() {
       await runFullSync({ silent: false });
       await renderSyncCard();
       // Refresh visible cards
-      if (typeof renderWhoopRecoveryCard === 'function') await renderWhoopRecoveryCard();
+      // V-10: un solo bloque de recuperación (señales + rendimiento + WHOOP).
+      await safeCall('renderRecoveryBlock');
       if (typeof renderRecentWorkouts === 'function') renderRecentWorkouts();
     } finally {
       const b = document.getElementById('sync-now');
@@ -5622,7 +5795,7 @@ async function intervalsIcuSync(opts = {}) {
   const url = `https://intervals.icu/api/v1/athlete/${encodeURIComponent(athleteId)}/activities?oldest=${oldest}&newest=${newest}`;
 
   try {
-    const res = await fetch(url, { headers: { Authorization: auth } });
+    const res = await fetchWithTimeout(url, { headers: { Authorization: auth } });
     if (!res.ok) {
       console.warn('[intervals.icu] activities fetch failed:', res.status);
       return null;
@@ -5829,7 +6002,7 @@ async function fetchIntervalsIcuZones() {
   const athleteId = state.settings && state.settings.intervalsIcuAthleteId;
   if (!apiKey || !athleteId) return null;
   const auth = 'Basic ' + btoa(`API_KEY:${apiKey}`);
-  const res = await fetch(`https://intervals.icu/api/v1/athlete/${encodeURIComponent(athleteId)}`, { headers: { Authorization: auth } });
+  const res = await fetchWithTimeout(`https://intervals.icu/api/v1/athlete/${encodeURIComponent(athleteId)}`, { headers: { Authorization: auth } });
   if (!res.ok) { console.warn('[intervals.icu] athlete fetch failed:', res.status); return null; }
   const a = await res.json();
   const settings = Array.isArray(a.sportSettings) ? a.sportSettings : [];
@@ -6088,7 +6261,7 @@ async function _icuUpsertEvents(events) {
   const athleteId = state.settings && state.settings.intervalsIcuAthleteId;
   if (!apiKey || !athleteId) throw new Error('intervals.icu no configurado');
   const auth = 'Basic ' + btoa(`API_KEY:${apiKey}`);
-  const res = await fetch(`https://intervals.icu/api/v1/athlete/${encodeURIComponent(athleteId)}/events/bulk?upsert=true`, {
+  const res = await fetchWithTimeout(`https://intervals.icu/api/v1/athlete/${encodeURIComponent(athleteId)}/events/bulk?upsert=true`, {
     method: 'POST',
     headers: { 'Authorization': auth, 'Content-Type': 'application/json' },
     body: JSON.stringify(events),
@@ -6121,58 +6294,78 @@ function _mondayOfWeekKey(weekKey) {
 /**
  * Empuja la semana de carrera a intervals.icu → COROS.
  *
- * FUENTE (v11.61): `activePlan.running.plan[]`, el plan v2. Sus slots llevan `dow`, no fecha —
- * un plan aprobado el martes sigue siendo válido — así que las fechas se resuelven desde el
- * lunes del `weekKey` del plan. El `weekly_reviews` del cron retirado queda como FALLBACK de
- * sólo lectura mientras haya filas viejas en el teléfono: ésas sí traen `date` propia.
+ * F-17 (auditoría 2026-09-09). LA FUENTE ESTABA MAL. Leía `activePlan.running.plan[]`, un array
+ * de slots que NINGÚN plan del coach escribe (el esquema v2 devuelve `running` como tres números
+ * —`weeklyKmTarget`, `longRunKm`, `hardSessions`— y el reparto por días vive en
+ * `weekTemplate[dow].cardio`), así que en la práctica el botón caía SIEMPRE al fallback: el store
+ * `weekly_reviews` del cron retirado. Es decir, el reloj recibía la semana de un sistema que ya no
+ * existe, o nada.
+ *
+ * Ahora la fuente es la misma que pinta la pantalla, y en el mismo orden: **coach > regla > base**.
+ *   · `_coachCardioSlot(dow)` — lo que el coach escribió para ese día, si sigue vigente (E-4).
+ *   · `suggestRunningWeekCached` — la fase de la regla (run/walk, km, DSL) para los días que el
+ *     coach no tocó. Es lo que el usuario ve en la tarjeta del día: mandar otra cosa al reloj
+ *     sería que la pantalla y el COROS se contradijeran.
+ *   · el slot de la plantilla — duración y subtipo de la semilla.
+ * El fallback a `weekly_reviews` se va: no queda nada que lo escriba.
+ *
+ * Las fechas salen del lunes del `weekKey` del plan (los slots llevan `dow`, no fecha: un plan
+ * aprobado el martes sigue siendo válido el jueves).
  */
 async function pushRunningPlanToIntervalsIcu() {
   const apiKey = state.settings && state.settings.intervalsIcuApiKey;
   const athleteId = state.settings && state.settings.intervalsIcuAthleteId;
   if (!apiKey || !athleteId) {
-    if (typeof toast === 'function') toast('Configura intervals.icu en Settings primero');
+    if (typeof toast === 'function') toast('Set up intervals.icu in Settings first');
     return;
   }
 
-  let weekKey = null;
-  let plan = null;
-  const rp = (activePlan && activePlan.running && Array.isArray(activePlan.running.plan))
-    ? activePlan.running.plan : null;
-  if (rp && rp.length) {
-    weekKey = activePlan.weekKey || (typeof isoWeekKey === 'function' ? isoWeekKey(today()) : null);
-    const monday = _mondayOfWeekKey(weekKey);
-    plan = rp.map((run, i) => {
-      const dow = Number(run.dow);
-      // dow 0 = domingo, que en una semana ISO es el ÚLTIMO día: +6, no +0.
-      const offset = (dow >= 1 && dow <= 6) ? dow - 1 : (dow === 0 ? 6 : null);
-      const date = (monday != null && offset != null && typeof _plusDaysStr === 'function')
-        ? _plusDaysStr(monday, offset) : (run.date || null);
-      // Se traduce a los nombres que ya lee `_generateIntervalsIcuDsl` en vez de tocar esa
-      // función: la usan también las filas legacy, y un cambio ahí las rompería en silencio.
-      const st = run.subtype || 'zone2';
-      return {
-        id: run.id || `run${i + 1}`,
-        date,
-        label: run.label || run.name || cardioSubtypeLabel(st),
-        distance_km: run.distanceKm != null ? run.distanceKm : run.distance_km,
-        duration_min: run.durationMin != null ? run.durationMin : null,
-        // `dsl` del coach → `intervals`, que el generador usa VERBATIM (mismo criterio que
-        // `_generateCardioDsl` en v11.60: un bloque de trote/caminata no se puede aplanar).
-        intervals: run.dsl || run.intervals || null,
-        type: _ICU_RUN_TYPE_BY_SUBTYPE[st] || 'Z2',
-        note: run.note || null,
-      };
+  const weekKey = (activePlan && activePlan.weekKey)
+    || (typeof isoWeekKey === 'function' ? isoWeekKey(today()) : null);
+  const monday = _mondayOfWeekKey(weekKey);
+  const tpl = (activePlan && activePlan.weekTemplate) || activeWeekTemplate || {};
+
+  // La semana de la regla, una vez para los siete días (tiene caché propia, pero pedirla aquí
+  // deja claro que es UNA fuente, no una por día).
+  let rw = null;
+  try { rw = await suggestRunningWeekCached(new Date()); } catch (e) { console.warn('[intervals.icu] rule week:', e); }
+
+  const plan = [];
+  for (const dow of [1, 2, 3, 4, 5, 6, 0]) {
+    const slot = tpl[dow] || {};
+    const cc = _coachCardioSlot(dow);
+    // Sólo los días de cardio y los que el coach convirtió en uno. El finisher Z2 de un día de
+    // fuerza tiene su propio botón en la tarjeta del día (`rx-push-z2`): mandarlo también aquí
+    // duplicaría el evento en el calendario del reloj.
+    if (!cc && slot.type !== 'run') continue;
+    const st = (cc && cc.subtype) || slot.subtype || 'zone2';
+    const rs = rw ? ((rw.sessions || []).find((x) => x.dow === dow) || null) : null;
+    const usaRegla = !cc && !!rs;
+    const offset = (dow >= 1 && dow <= 6) ? dow - 1 : 6;   // dow 0 = domingo = último día ISO
+    const date = (monday && typeof _plusDaysStr === 'function') ? _plusDaysStr(monday, offset) : null;
+    const durationMin = (cc && cc.durationMin != null) ? Number(cc.durationMin)
+      : (usaRegla && rs.min != null) ? Number(rs.min)
+        : (slot.durationMin || null);
+    const distanceKm = (cc && cc.distanceKm != null) ? Number(cc.distanceKm)
+      : (usaRegla && rs.km != null) ? Number(rs.km) : null;
+    plan.push({
+      id: `dow${dow}`,
+      date,
+      label: (cc && cc.label) || slot.label || cardioSubtypeLabel(st),
+      distance_km: distanceKm,
+      duration_min: durationMin,
+      // El DSL del coach o el de la fase se manda VERBATIM: un bloque de trote/caminata no se
+      // puede aplanar a "35m Z2" sin perder la prescripción entera (mismo criterio que
+      // `_generateCardioDsl`).
+      intervals: (cc && cc.dsl) || (usaRegla ? rs.dsl : null) || null,
+      type: _ICU_RUN_TYPE_BY_SUBTYPE[st] || 'Z2',
+      note: (cc && cc.note) || (usaRegla ? rs.note : null) || null,
+      source: cc ? 'coach' : (usaRegla ? 'rule' : 'seed'),
     });
-  } else {
-    const all = await dbGetAll('weekly_reviews');
-    const latest = (all || []).slice().sort((a, b) => (b.generatedAt || 0) - (a.generatedAt || 0))[0];
-    const legacy = latest && latest.nextWeekPlan && latest.nextWeekPlan.runningPlan;
-    if (!legacy || !legacy.length) {
-      if (typeof toast === 'function') toast('The active plan has no running scheduled');
-      return;
-    }
-    weekKey = latest.weekKey;
-    plan = legacy;
+  }
+  if (!plan.length) {
+    if (typeof toast === 'function') toast('The active plan has no cardio scheduled');
+    return;
   }
 
   // external_id keeps the push idempotent, but only through the bulk upsert endpoint
@@ -6755,13 +6948,15 @@ const WAIST_MIN_DELTA_DAYS = 10; // por debajo de esto el delta es ruido, no sen
 const WCOMP_MIN_DELTA_DAYS = 7;
 const WCOMP_WINDOW_DAYS = 28;
 const WCOMP_FIELDS = [
-  { key: 'fatPct',       label: 'Body fat',       unit: '%',    d: 1, goodDown: true },
-  { key: 'fatMassKg',    label: 'Fat mass',       unit: 'kg',   d: 1, goodDown: true },
-  { key: 'ffmKg',        label: 'Lean mass',      unit: 'kg',   d: 1, goodDown: false },
-  { key: 'muscleKg',     label: 'Muscle',         unit: 'kg',   d: 1, goodDown: false },
+  { key: 'fatPct',       label: 'Body fat',       unit: '%',    d: 1, goodDown: true, primary: true },
+  { key: 'fatMassKg',    label: 'Fat mass',       unit: 'kg',   d: 1, goodDown: true, primary: true },
+  { key: 'ffmKg',        label: 'Lean mass',      unit: 'kg',   d: 1, goodDown: false, primary: true },
+  { key: 'muscleKg',     label: 'Muscle',         unit: 'kg',   d: 1, goodDown: false, primary: true },
   { key: 'waterKg',      label: 'Water',          unit: 'kg',   d: 1, goodDown: null },
   { key: 'boneKg',       label: 'Bone',           unit: 'kg',   d: 2, goodDown: null },
-  { key: 'visceralFat',  label: 'Visceral fat',   unit: '',     d: 1, goodDown: true },
+  // V-11: `visceralFat` es un ÍNDICE de Withings (1-12 sano), no kg ni %. Sin unidad, un "8,0"
+  // al lado de "18,4 %" y "16,1 kg" se lee como si fuera de la misma familia.
+  { key: 'visceralFat',  label: 'Visceral fat',   unit: 'idx',  d: 1, goodDown: true },
   { key: 'bmrKcal',      label: 'BMR',            unit: 'kcal', d: 0, goodDown: null },
   { key: 'metabolicAge', label: 'Metabolic age',  unit: 'y',    d: 0, goodDown: true },
   { key: 'heartRateBpm', label: 'Standing pulse', unit: 'bpm',  d: 0, goodDown: null },
@@ -6771,7 +6966,14 @@ async function renderWithingsComposition() {
   const el = document.getElementById('withings-comp');
   if (!el) return;
   const num = (v) => (v == null || v === '' ? null : (Number.isFinite(Number(v)) ? Number(v) : null));
-  const rows = (await dbGetAll('bodyweight').catch(() => [])) || [];
+  // V-4: `.catch(() => [])` convertía un fallo de lectura en "la báscula no ha escrito nada",
+  // que es la lectura que el usuario cree siempre. Ahora se distinguen.
+  let rows;
+  try { rows = (await dbGetAll('bodyweight')) || []; } catch (e) {
+    console.warn('[Withings] lectura:', e);
+    showErrorState(el, 'Could not read the scale history.', renderWithingsComposition);
+    return;
+  }
   const scale = rows
     .filter((r) => r && r.source === 'withings' && r.date && WCOMP_FIELDS.some((f) => num(r[f.key]) != null))
     .sort((a, b) => String(a.date).localeCompare(String(b.date)));
@@ -6788,7 +6990,10 @@ async function renderWithingsComposition() {
   const MINUS = '\u2212';
   const sg = (x, d) => (x > 0 ? '+' : (x < 0 ? MINUS : '')) + fmt(Math.abs(x), d);
 
-  const tiles = WCOMP_FIELDS.map((f) => {
+  // V-11: el "· N d" iba en LOS DIEZ tiles — la misma ventana repetida diez veces, ocupando el
+  // sitio del dato. La ventana es una propiedad de la tarjeta, no de cada métrica: sube a
+  // `.wcomp-meta`, arriba, una vez.
+  const tile = (f) => {
     const v = num(last[f.key]);
     if (v == null) return '';
     let delta = '<span class="wcomp-delta muted">no reference yet</span>';
@@ -6799,10 +7004,14 @@ async function renderWithingsComposition() {
       let color = 'var(--text3)';
       if (Math.abs(dlt) >= eps && f.goodDown !== null) color = ((dlt < 0) === f.goodDown) ? 'var(--accent)' : 'var(--red)';
       const unit = f.unit === '%' ? ' pp' : (f.unit ? ' ' + f.unit : '');
-      delta = `<span class="wcomp-delta" style="color:${color}">${sg(dlt, f.d)}${unit} · ${refDays} d</span>`;
+      delta = `<span class="wcomp-delta" style="color:${color}">${sg(dlt, f.d)}${unit}</span>`;
     }
     return `<div class="wcomp-stat"><span class="wcomp-label">${f.label}</span><span class="wcomp-val">${fmt(v, f.d)}${f.unit ? `<span class="wcomp-unit">${f.unit}</span>` : ''}</span>${delta}</div>`;
-  }).join('');
+  };
+  // V-11: cuatro tiles arriba (los que responden al objetivo 1: grasa abajo, magro arriba) y los
+  // otros seis en un desplegable. Diez rectángulos iguales no son una jerarquía: son una lista.
+  const tiles = WCOMP_FIELDS.filter((f) => f.primary).map(tile).join('');
+  const restoHtml = WCOMP_FIELDS.filter((f) => !f.primary).map(tile).filter(Boolean).join('');
 
   // Recomposición: masa grasa y FFM contra la referencia, y la media de 7 días del % de grasa
   // cuando hay ≥3 lecturas en la semana — la forma honesta de leer una bioimpedancia.
@@ -6822,111 +7031,196 @@ async function renderWithingsComposition() {
     recomp = `Need weigh-ins ${WCOMP_MIN_DELTA_DAYS}+ days apart to read the recomposition trend (n=${in28.length} in 28 d).`;
   }
   if (avg7 != null) recomp += ` 7-day fat average <b>${avg7.toFixed(1)} %</b> (n=${in7.length}).`;
+  // V-11: la grasa visceral es el único índice de la tarjeta y su escala no es evidente.
+  const vf = num(last.visceralFat);
+  if (vf != null) recomp += ` Visceral fat <b>${vf.toFixed(1)} idx</b> (1-12 healthy).`;
 
   el.classList.remove('hidden');
   el.innerHTML = `
     <div class="wcomp-head">
       <span class="wcomp-title"><span class="bw-source-pill">Withings</span> Body Smart</span>
-      <span class="wcomp-meta">last ${formatDate(last.date)}${num(last.weight) != null ? ` · ${num(last.weight).toFixed(1)} kg` : ''} · ${in28.length} weigh-in${in28.length === 1 ? '' : 's'} / 28 d</span>
+      <span class="wcomp-meta">last ${formatDate(last.date)}${num(last.weight) != null ? ` · ${num(last.weight).toFixed(1)} kg` : ''} · ${in28.length} weigh-in${in28.length === 1 ? '' : 's'} / 28 d${refDays ? ` · deltas vs ${refDays} d ago` : ''}</span>
     </div>
     <div class="wcomp-grid">${tiles}</div>
+    ${restoHtml ? `<details class="wcomp-more"><summary>All scale metrics</summary><div class="wcomp-grid">${restoHtml}</div></details>` : ''}
     <div class="wcomp-recomp">${recomp}</div>`;
 }
 
+/**
+ * F-14 (auditoría 2026-09-09): la CINTURA es el veto del piloto de calorías —y hasta hoy sólo se
+ * podía guardar rellenando los CUATRO campos de la calculadora Navy. Medirla y no tener el
+ * cuello a mano significaba no guardarla. Y `wellness.abdomen`, que intervals.icu ya persiste,
+ * no entraba en la serie: había medidas que el sistema tenía y no usaba.
+ *
+ * La serie de cintura que se pinta y sobre la que se calcula el delta MEZCLA las dos fuentes: la
+ * manual manda por día, y donde no la hay entra `abdomen`. La mezcla es de SÓLO LECTURA — no se
+ * escribe en `bodyweight`, porque duplicar un dato que ya vive en `wellness` es cómo se acaba con
+ * dos historiales que se contradicen.
+ */
+function _waistSeries(bodyweightRows, wellnessRows) {
+  const n = (v) => (v == null || v === '' ? null : (Number.isFinite(Number(v)) ? Number(v) : null));
+  const byDate = new Map();
+  for (const r of (wellnessRows || [])) {
+    const w = r && r.date ? n(r.abdomen) : null;
+    if (w != null && w > 0) byDate.set(r.date, { date: r.date, waist: w, source: 'intervals.icu' });
+  }
+  for (const r of (bodyweightRows || [])) {
+    const w = r && r.date ? n(r.waist) : null;
+    if (w != null && w > 0) byDate.set(r.date, Object.assign({}, r, { source: 'manual' }));
+  }
+  return [...byDate.values()].sort((a, b) => String(a.date).localeCompare(String(b.date)));
+}
+
+/**
+ * ¿Manda la báscula? Mismo criterio que `renderWithingsComposition`, calculado sobre el DATO y no
+ * sobre el DOM: las dos tarjetas se pintan en la misma tanda con `allSettled` y el orden de
+ * terminación no está garantizado. El estado del contenedor se mira además por si el renderer de
+ * la báscula ya pasó (es la fuente de verdad cuando existe).
+ */
+function _withingsCompositionPresent(rows) {
+  const el = document.getElementById('withings-comp');
+  if (el && el.innerHTML && !el.classList.contains('hidden')) return true;
+  const n = (v) => (v == null || v === '' ? null : (Number.isFinite(Number(v)) ? Number(v) : null));
+  return (rows || []).some((r) => r && r.source === 'withings' && r.date
+    && WCOMP_FIELDS.some((f) => n(r[f.key]) != null));
+}
+
+/**
+ * DECISIÓN DE JULIAN (2026-09-10, V-11): **Navy sólo cuando no hay báscula.**
+ *
+ * La tarjeta de Withings da un % de grasa por bioimpedancia y esta calculadora daba OTRO por
+ * circunferencias, los dos bajo la etiqueta "Body Fat" y a dos dedos de distancia. Dos números
+ * distintos para lo mismo no son dos estimaciones: son un sistema que no sabe cuánto pesas. Con
+ * báscula manda la báscula, y esta tarjeta se queda con lo único que la báscula NO mide: la
+ * cintura. Sin báscula (viaje, avería) vuelve la estimación Navy completa.
+ *
+ * V-15: rejilla 2×2 con `label for=` de verdad, `class="text-input"` (16 px: por debajo iOS hace
+ * zoom al enfocar) y sin la cadena de CSS en línea que había.
+ */
 async function renderBodyCompEstimator() {
   const container = document.getElementById('bodycomp-section');
   if (!container) return;
 
-  const rows = (await dbGetAll('bodyweight').catch(() => [])) || [];
-  const sorted = rows.slice().sort((a, b) => String(a.date).localeCompare(String(b.date)));
-  const waistLog = sorted.filter(e => Number(e.waist) > 0);
+  let rows = [];
+  let wellness = [];
+  try {
+    [rows, wellness] = await Promise.all([dbGetAll('bodyweight'), dbGetAll('wellness')]);
+  } catch (e) {
+    console.warn('[Cintura] lectura:', e);
+    showErrorState(container, 'Could not read the waist history.', renderBodyCompEstimator);
+    return;
+  }
+  const waistLog = _waistSeries(rows, wellness);
   const last = waistLog.length ? waistLog[waistLog.length - 1] : null;
+  const lastManual = [...waistLog].reverse().find((e) => e.source === 'manual') || null;
   const pesadas = _bwWeighIns(rows);
   const lastWeighIn = pesadas.length ? pesadas[pesadas.length - 1] : null;
+  const navy = !_withingsCompositionPresent(rows);
 
   // Prefill: cuello y altura no cambian entre mediciones; el peso viene del ultimo pesaje.
   const pfWeight = (lastWeighIn && Number(lastWeighIn.weight)) || '';
   const pfWaist = (last && Number(last.waist)) || '';
-  const pfNeck = (last && Number(last.neck)) || '';
-  const pfHeight = (last && Number(last.heightCm)) || 182;
-  const inputCss = 'width:100%;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:14px;padding:8px 10px';
+  const pfNeck = (lastManual && Number(lastManual.neck)) || '';
+  const pfHeight = (lastManual && Number(lastManual.heightCm)) || 182;
+
+  const campo = (id, label, value, step, ph) => `
+      <div class="waist-field">
+        <label for="${id}">${label}</label>
+        <input type="number" id="${id}" class="text-input" inputmode="decimal" step="${step}" value="${value}" placeholder="${ph}">
+      </div>`;
 
   container.innerHTML = `
-    <div class="section-label" style="margin-bottom:8px">Waist and composition</div>
-    <div style="display:flex;gap:8px;margin-bottom:10px">
-      <div style="flex:1"><label class="muted" style="font-size:11px">Weight (kg)</label><input type="number" id="bc-weight" inputmode="decimal" step="0.1" value="${pfWeight}" placeholder="87" style="${inputCss}"></div>
-      <div style="flex:1"><label class="muted" style="font-size:11px">Waist (cm)</label><input type="number" id="bc-waist" inputmode="decimal" step="0.5" value="${pfWaist}" placeholder="92" style="${inputCss}"></div>
-      <div style="flex:1"><label class="muted" style="font-size:11px">Neck (cm)</label><input type="number" id="bc-neck" inputmode="decimal" step="0.5" value="${pfNeck}" placeholder="39" style="${inputCss}"></div>
-      <div style="flex:1"><label class="muted" style="font-size:11px">Height (cm)</label><input type="number" id="bc-height" inputmode="decimal" step="1" value="${pfHeight}" placeholder="182" style="${inputCss}"></div>
+    <div class="card-title">${navy ? 'Waist and composition' : 'Waist'}</div>
+    <div class="waist-form">
+      ${navy ? campo('bc-weight', 'Weight (kg)', pfWeight, '0.1', '87') : ''}
+      ${campo('bc-waist', 'Waist (cm)', pfWaist, '0.5', '92')}
+      ${campo('bc-neck', `Neck (cm)${navy ? '' : ' · optional'}`, pfNeck, '0.5', '39')}
+      ${campo('bc-height', `Height (cm)${navy ? '' : ' · optional'}`, pfHeight, '1', '182')}
     </div>
-    <button id="btn-calc-bf" class="btn-secondary" style="width:100%;text-align:center">Calculate and save</button>
+    <button id="btn-calc-bf" class="btn-secondary btn-full">${navy ? 'Calculate and save' : 'Save waist'}</button>
     <div id="bc-result" style="margin-top:10px">${renderWaistSummary(waistLog)}</div>
-    <p class="muted" style="margin:10px 0 0;font-size:11px;line-height:1.5">Sunday morning, fasted. Standing and relaxed, tape at navel height, at the end of a normal exhale, snug without compressing. Take two measurements and average them.</p>
+    <p class="setting-hint">${navy
+      ? 'No scale connected, so body fat is estimated from circumferences (US Navy). Sunday morning, fasted.'
+      : 'The scale owns body fat; this card owns the waist, which it cannot measure.'}
+      Standing and relaxed, tape at navel height, at the end of a normal exhale, snug without compressing. Take two measurements and average them.</p>
   `;
 
   document.getElementById('btn-calc-bf').addEventListener('click', async () => {
-    const weight = parseFloat(document.getElementById('bc-weight').value);
     const waist = parseFloat(document.getElementById('bc-waist').value);
     const neck = parseFloat(document.getElementById('bc-neck').value);
     const height = parseFloat(document.getElementById('bc-height').value);
+    const weightEl = document.getElementById('bc-weight');
+    const weight = weightEl ? parseFloat(weightEl.value) : NaN;
     const resultEl = document.getElementById('bc-result');
 
-    if (!weight || !waist || !neck || !height) {
-      resultEl.innerHTML = '<span class="muted">Fill in all four fields</span>';
+    if (!waist) {
+      resultEl.innerHTML = '<span class="muted">Enter the waist measurement</span>';
       return;
     }
-    // El logaritmo de Navy explota si la cintura no supera al cuello.
-    if (waist <= neck) {
-      resultEl.innerHTML = '<span class="muted">The waist must be larger than the neck</span>';
-      return;
+    let bfPct = null, leanMass = null, fatMass = null, category = null;
+    if (navy) {
+      if (!weight || !neck || !height) {
+        resultEl.innerHTML = '<span class="muted">Fill in all four fields</span>';
+        return;
+      }
+      // El logaritmo de Navy explota si la cintura no supera al cuello.
+      if (waist <= neck) {
+        resultEl.innerHTML = '<span class="muted">The waist must be larger than the neck</span>';
+        return;
+      }
+      // US Navy method (male)
+      const bf = 495 / (1.0324 - 0.19077 * Math.log10(waist - neck) + 0.15456 * Math.log10(height)) - 450;
+      bfPct = Math.round(bf * 10) / 10;
+      leanMass = Math.round(weight * (1 - bfPct / 100) * 10) / 10;
+      fatMass = Math.round(weight * (bfPct / 100) * 10) / 10;
+      if (bfPct < 6) category = 'Essential';
+      else if (bfPct < 14) category = 'Athletic';
+      else if (bfPct < 18) category = 'Fitness';
+      else if (bfPct < 25) category = 'Average';
+      else category = 'Above average';
     }
-
-    // US Navy method (male)
-    const bf = 495 / (1.0324 - 0.19077 * Math.log10(waist - neck) + 0.15456 * Math.log10(height)) - 450;
-    const bfPct = Math.round(bf * 10) / 10;
-    const leanMass = Math.round(weight * (1 - bfPct / 100) * 10) / 10;
-    const fatMass = Math.round(weight * (bfPct / 100) * 10) / 10;
-
-    let category;
-    if (bfPct < 6) category = 'Essential';
-    else if (bfPct < 14) category = 'Athletic';
-    else if (bfPct < 18) category = 'Fitness';
-    else if (bfPct < 25) category = 'Average';
-    else category = 'Above average';
 
     // Merge sobre la fila del dia: no pisar el peso que ya escribio la balanza, ni los
     // campos `source`/`measured` que trae intervals.icu.
     const d = today();
     let existing = null;
     try { existing = await dbGet('bodyweight', d); } catch (e) { console.warn('[Peso] fila del día:', e); }
+    const fila = Object.assign({}, existing || {}, {
+      date: d,
+      waist,
+      measured: true,
+      timestamp: Date.now(),
+    });
+    // Opcionales: sólo si vienen. Un cuello en blanco no puede borrar el de la semana pasada.
+    if (Number.isFinite(neck) && neck > 0) fila.neck = neck;
+    if (Number.isFinite(height) && height > 0) fila.heightCm = height;
+    // F-14 + V-11: sin báscula el Navy escribe su `bfPct`; CON báscula NO se recalcula nunca —
+    // el % de grasa de la tarjeta de Withings es el que manda y pisarlo aquí lo contradiría.
+    if (navy) {
+      fila.weight = weight;
+      fila.bfPct = bfPct;
+    }
     try {
-      await smartPut('bodyweight', {
-        ...(existing || {}),
-        date: d,
-        weight,
-        waist,
-        neck,
-        heightCm: height,
-        bfPct,
-        measured: true,
-        timestamp: Date.now(),
-      });
+      await smartPut('bodyweight', fila);
     } catch (e) {
       // V-9: la medida de cintura es de las que cuestan un metro y dos minutos.
       console.warn('[Peso] guardar cintura:', e);
       toast(`Something went wrong saving the measurement: ${(e && e.message) || 'storage error'}`);
       return;
     }
-    _bwCache = weight; // igual que logBodyWeight(): refresca el peso de las estimaciones
+    if (navy) _bwCache = weight; // igual que logBodyWeight(): refresca el peso de las estimaciones
 
-    resultEl.innerHTML = `
+    resultEl.innerHTML = navy
+      ? `
       <div class="bc-result-grid">
         <div class="bc-stat"><span class="bc-val">${bfPct}%</span><span class="bc-label">Body Fat</span></div>
         <div class="bc-stat"><span class="bc-val">${leanMass} kg</span><span class="bc-label">Lean Mass</span></div>
         <div class="bc-stat"><span class="bc-val">${fatMass} kg</span><span class="bc-label">Fat Mass</span></div>
         <div class="bc-stat"><span class="bc-val">${category}</span><span class="bc-label">Category</span></div>
       </div>
-    `;
+    `
+      : renderWaistSummary(_waistSeries(
+        (rows || []).filter((r) => r.date !== d).concat([fila]), wellness));
     toast(`Waist ${waist} cm saved`);
     try { await renderBodyWeightChart(); } catch (e) { console.warn('[Peso] gráfico:', e); }
   });
@@ -6957,7 +7251,10 @@ function renderWaistSummary(waistLog) {
 
   const recent = waistLog.slice(-6).reverse().map(e => {
     const bf = Number(e.bfPct) > 0 ? ` &middot; ${Number(e.bfPct).toFixed(1)}%` : '';
-    return `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:12px"><span class="muted">${e.date}</span><span>${Number(e.waist).toFixed(1)} cm${bf}</span></div>`;
+    // F-14: de dónde sale la medida. `abdomen` de intervals.icu cuenta para la serie, pero el
+    // usuario tiene que poder distinguir lo que midió él de lo que llegó del reloj.
+    const src = e.source === 'intervals.icu' ? ' <span class="muted">· icu</span>' : '';
+    return `<div style="display:flex;justify-content:space-between;padding:3px 0;font-size:12px"><span class="muted">${e.date}</span><span>${Number(e.waist).toFixed(1)} cm${bf}${src}</span></div>`;
   }).join('');
 
   return `
@@ -6974,8 +7271,15 @@ async function renderWeeklySummary() {
   const container = document.getElementById('weekly-summary');
   if (!container) return;
 
-  const workouts = await dbGetAll('workouts');
-  const runs = await getRunsDeduped();
+  let workouts, runs;
+  try {
+    workouts = await dbGetAll('workouts');
+    runs = await getRunsDeduped();
+  } catch (e) {
+    console.warn('[Semana] resumen:', e);
+    showErrorState(container, 'Could not read this week\'s sessions.', renderWeeklySummary);
+    return;
+  }
 
   // Filter by ISO-week date range (Mon-Sun) instead of the saved w.week
   // field. Retroactive logs and program-week vs ISO-week mismatches were
@@ -7007,10 +7311,10 @@ async function renderWeeklySummary() {
 
   container.innerHTML = `
     <div class="ws-grid">
-      <div class="ws-stat"><span class="ws-val">${adherence}/${planned}</span><span class="ws-label">Sessions</span></div>
-      <div class="ws-stat"><span class="ws-val">${totalSets}</span><span class="ws-label">Total Sets</span></div>
-      <div class="ws-stat"><span class="ws-val">${Math.round(totalVolume / 1000)}k</span><span class="ws-label">Volume (${state.settings.unit})</span></div>
-      <div class="ws-stat"><span class="ws-val">${totalKm.toFixed(1)}</span><span class="ws-label">Run km</span></div>
+      <div class="ws-stat"><span class="ws-val">${adherence}/${planned}</span><span class="ws-tile-label">Sessions</span></div>
+      <div class="ws-stat"><span class="ws-val">${totalSets}</span><span class="ws-tile-label">Total Sets</span></div>
+      <div class="ws-stat"><span class="ws-val">${Math.round(totalVolume / 1000)}k</span><span class="ws-tile-label">Volume (${state.settings.unit})</span></div>
+      <div class="ws-stat"><span class="ws-val">${totalKm.toFixed(1)}</span><span class="ws-tile-label">Run km</span></div>
     </div>
   `;
 }
@@ -7476,7 +7780,7 @@ async function renderSessionHistory() {
       </div>
       <div class="hi-right">
         ${sess.perceivedEffort ? `<div><div class="hi-stat">${sess.perceivedEffort}/5</div><div class="hi-stat-sub">feel</div></div>` : ''}
-        <button class="hi-delete" data-delete-session="${sess.id}">&times;</button>
+        <button class="hi-delete" data-delete-session="${sess.id}" aria-label="Delete session">&times;</button>
       </div>
     </div>`;
   }).join('');
@@ -7634,7 +7938,7 @@ async function renderMobilityHistory() {
             <div class="hi-stat bt-delta ${painCls}">${painLabel}</div>
             <div class="hi-stat-sub">pain</div>
           </div>
-          <button class="hi-delete" data-delete-mob="${s.id}">&times;</button>
+          <button class="hi-delete" data-delete-mob="${s.id}" aria-label="Delete mobility session">&times;</button>
         </div>
       </div>
     `;
@@ -8185,9 +8489,14 @@ function showHomeSkeletons() {
 }
 
 // Idem en Stats: las tarjetas del grupo activo, que son las que el usuario está mirando.
-function showStatsSkeletons() {
-  const bloques = ['streak-row', 'readiness-signals', 'weekly-coach-card', 'weekly-summary'];
-  for (const id of bloques) {
+function showStatsSkeletons(group) {
+  const POR_GRUPO = {
+    now: ['streak-row', 'readiness-signals', 'coach-goals'],
+    week: ['hard-day-budget', 'weekly-summary', 'weekly-coach-card'],
+    body: ['bw-metrics', 'steps-card', 'withings-comp'],
+    strength: ['muscle-volume'],
+  };
+  for (const id of (POR_GRUPO[group] || POR_GRUPO.now)) {
     const el = document.getElementById(id);
     if (el && !el.innerHTML) showSkeleton(el, 2, 'line');
   }
@@ -8658,7 +8967,7 @@ async function getPlannedSessionForDate(date) {
     const z2Base = (slot.type === 'gym' && customSchedule[ds] === undefined) ? (slot.z2FinisherMin || null) : null;
     const z2 = await prog(z2Base, z2Base ? _coachCardioMin(jsDay, 'z2FinisherMin') : null, 'finisher');
     const exs = s ? resolveSessionExercises(sessionId, s.exercises) : [];
-    return { type: 'gym', date: ds, sessionId, name: s ? s.name : sessionId, subtitle: s ? s.subtitle : '', exercises: exs || [], z2FinisherMin: z2.min, z2BaseMin: z2Base, z2Source: z2.source, z2Note: z2.note, block: blk };
+    return { type: 'gym', date: ds, sessionId, name: s ? s.name : sessionId, subtitle: s ? s.subtitle : '', exercises: exs || [], z2FinisherMin: z2.min, z2BaseMin: z2Base, z2Source: z2.source, z2Note: z2.note, z2FinisherModality: slot.z2FinisherModality || null, block: blk };
   }
   if (customSchedule[ds] === undefined) {
     if (slot.type === 'run') { // cardio day (internal type stays 'run' for compatibility)
@@ -8690,7 +8999,7 @@ async function getPlannedSessionForDate(date) {
     if (slot.type === 'recovery') {
       const rBase = slot.z2FinisherMin || null;
       const r = await prog(rBase, rBase ? _coachCardioMin(jsDay, 'z2FinisherMin') : null, 'finisher');
-      return { type: 'recovery', date: ds, name: slot.label || 'Active recovery', subtitle: 'Mobility + easy Z2', z2FinisherMin: r.min, z2BaseMin: rBase, z2Source: r.source, z2Note: r.note, block: blk };
+      return { type: 'recovery', date: ds, name: slot.label || 'Active recovery', subtitle: 'Mobility + easy Z2', z2FinisherMin: r.min, z2BaseMin: rBase, z2Source: r.source, z2Note: r.note, z2FinisherModality: slot.z2FinisherModality || null, block: blk };
     }
   }
   return { type: 'rest', date: ds, name: 'Rest', block: blk };
@@ -8974,7 +9283,11 @@ async function renderHardDayBudget() {
   const container = document.getElementById('hard-day-budget');
   if (!container) return;
   let b;
-  try { b = await computeHardDayBudget(); } catch (e) { console.warn('[carga] falló', e); container.innerHTML = ''; return; }
+  try { b = await computeHardDayBudget(); } catch (e) {
+    console.warn('[carga] falló', e);
+    showErrorState(container, 'The weekly load could not be computed.', renderHardDayBudget);
+    return;
+  }
   // La barra usa EL MISMO tope que el cálculo (`b.cap` = `VP_MAX_BUDGET`, E-9). Sigue sin ser
   // un límite —no hay barra roja ni avisos, y el número no entra en ninguna decisión—, pero la
   // escala es una sola: con un divisor de 8 aquí y un tope de 6 allí, 6 puntos se pintaban al
@@ -9025,7 +9338,7 @@ const IDEAL_BLOCK_V1 = {
         { dow: 1, kind: 'strength', subtype: 'full', bw: 1.5, planRef: 'travelA', title: 'Travel A', summary: 'Bulgarians + push-ups + pull-ups + glute + plank', why: 'A complete session with no equipment; keeps the patterns.', ruleIds: ['STR-002', 'STR-004'], alt: 'strength_upper' },
         { dow: 3, kind: 'cardio', subtype: 'zone2', bw: 0.5, durationMin: 30, title: 'Free Z2 cardio', summary: '30 min easy: run, brisk walk, or the hotel gym', why: 'The aerobic minimum without depending on kit.', ruleIds: ['END-001'], alt: 'hard_cardio' },
         { dow: 5, kind: 'strength', subtype: 'full', bw: 1.5, planRef: 'travelB', title: 'Travel B', summary: 'Single-leg RDL + pike + band row + nordic + dead bug', why: 'Hinge and vertical pattern, what A does not cover.', ruleIds: ['STR-002', 'STR-007'], alt: 'strength_upper' },
-        { dow: 0, kind: 'recovery', subtype: 'mobility', bw: 0, z2Finisher: 20, title: 'Active recovery', summary: 'Mobility + walk', why: 'Travelling piles up sitting hours; mobility matters more, not less.', ruleIds: ['ATH-003', 'ATH-006'], alt: null },
+        { dow: 0, kind: 'recovery', subtype: 'mobility', bw: 0, z2Finisher: 20, z2FinisherModality: 'walk', title: 'Active recovery', summary: 'Mobility + walk', why: 'Travelling piles up sitting hours; mobility matters more, not less.', ruleIds: ['ATH-003', 'ATH-006'], alt: null },
       ],
     },
     3: {
@@ -9050,41 +9363,48 @@ const IDEAL_BLOCK_V1 = {
       label: 'Reduced · 4 days',
       note: 'Adds one aerobic day over the 3-day one; strength is identical (2 full-body). Maintains.',
       days: [
-        { dow: 1, kind: 'strength', subtype: 'full', bw: 2, planRef: 'fullA', z2Finisher: 15, title: 'Full Body A', summary: 'Squat + press + row + core', why: 'Full-body covers everything; + a short Z2 at the end.', ruleIds: ['STR-002', 'STR-005'], alt: 'strength_lower' },
+        { dow: 1, kind: 'strength', subtype: 'full', bw: 2, planRef: 'fullA', z2Finisher: 15, z2FinisherModality: 'bike', title: 'Full Body A', summary: 'Squat + press + row + core', why: 'Full-body covers everything; + a short Z2 at the end.', ruleIds: ['STR-002', 'STR-005'], alt: 'strength_lower' },
         { dow: 2, kind: 'cardio', subtype: 'zone2', bw: 0.5, durationMin: 35, title: 'Cardio Z2', summary: '30-40 min easy', why: 'Low-impact aerobic work.', ruleIds: ['END-001', 'INT-002'], alt: 'hard_cardio' },
-        { dow: 4, kind: 'strength', subtype: 'full', bw: 2, planRef: 'fullB', z2Finisher: 15, title: 'Full Body B', summary: 'Deadlift + OHP + pull-ups + core', why: 'Hinge + vertical pattern; + a short Z2.', ruleIds: ['STR-002', 'STR-007'], alt: 'strength_upper' },
+        { dow: 4, kind: 'strength', subtype: 'full', bw: 2, planRef: 'fullB', z2Finisher: 15, z2FinisherModality: 'ski', title: 'Full Body B', summary: 'Deadlift + OHP + pull-ups + core', why: 'Hinge + vertical pattern; + a short Z2.', ruleIds: ['STR-002', 'STR-007'], alt: 'strength_upper' },
         { dow: 6, kind: 'cardio', subtype: 'long_easy', bw: 1, durationMin: 45, title: 'Long Z2 cardio', summary: 'Easy long session, building ~10%/wk', why: 'Progress the aerobic base away from legs.', ruleIds: ['END-003', 'END-001'], alt: 'hard_cardio' },
       ],
     },
     5: {
-      // v11.35 (D3): this used to be lower/upper/UPPER — dropping from 6 to 5 days removed
-      // `lowerB`, so the SUMO DEADLIFT (a "never rotate" anchor) vanished from the week
-      // entirely and the posterior chain lost its only dedicated day. Now it drops `upperB`
-      // instead, leaving lower/upper/lower. Cost: no OHP (vertical press) in this variant —
-      // acceptable, and cheaper than losing the hinge. Vertical PULL survives because D2 put
-      // Lat Pulldown into upperA. See assessments/2026-08-16_system-audit.md, A2/D3.
+      // HISTORIA DE ESTA VARIANTE, porque ha cambiado dos veces y las dos por una razón real:
+      //   · Hasta v11.35 era lower/upper/UPPER. D3 la cambió a lower/upper/LOWER porque al bajar
+      //     de 6 a 5 días desaparecía `lowerB` y con él el PESO MUERTO SUMO, un ancla declarada
+      //     "nunca rotar", y la cadena posterior se quedaba sin día propio.
+      //   · v11.72 (F-8, decisión de Julian 2026-09-10) la devuelve a lower/upper/UPPER. Lo que
+      //     D3 no vio es que lower/upper/lower incumple STR-002 en LAS DOS mitades del tren
+      //     superior: empuje y tirón se quedaban a 1×/semana (el mínimo de la casa es 2×), y la
+      //     variante existe para semanas de 5 días, no para semanas de descarga. El coste que D3
+      //     temía se paga por otra vía: la BISAGRA no se pierde, la cubre el RDL de `lowerA`
+      //     (3×8-10 @7), que es la misma cadena posterior con menos carga axial. Lo que sí se
+      //     acepta es que el sumo pesado no está en esta variante — 5 días no dan para todo, y
+      //     entre "un patrón a la mitad de dosis" y "dos patrones a la mitad de dosis" gana el
+      //     primero. La variante ACTIVA sigue siendo la de 6 días, donde `lowerB` está entero.
       label: 'High · 5 days',
-      note: '3 strength (lower/upper/lower) + 2 cardio + recovery. Keeps the squat and the deadlift.',
+      note: '3 strength (lower/upper/upper) + 2 cardio + recovery. Push and pull twice a week; the hinge rides on the RDL in Lower A.',
       days: [
-        { dow: 1, kind: 'strength', subtype: 'lower', bw: 2, planRef: 'lowerA', z2Finisher: 15, title: 'Lower A · Squat', why: 'Heavy legs at the start, while fresh.', ruleIds: ['STR-005', 'INT-001'], alt: 'strength_lower' },
-        { dow: 2, kind: 'strength', subtype: 'upper', bw: 1, planRef: 'upperA', z2Finisher: 15, title: 'Upper A · Press/Row/Pull-up', why: 'Covers push and pull, horizontal and vertical; + a short Z2.', ruleIds: ['STR-002'], alt: 'strength_upper' },
+        { dow: 1, kind: 'strength', subtype: 'lower', bw: 2, planRef: 'lowerA', z2Finisher: 15, z2FinisherModality: 'bike', title: 'Lower A · Squat + RDL', why: 'Heavy legs at the start, while fresh; the RDL carries the hinge in this variant.', ruleIds: ['STR-005', 'STR-007', 'INT-001'], alt: 'strength_lower' },
+        { dow: 2, kind: 'strength', subtype: 'upper', bw: 1, planRef: 'upperA', z2Finisher: 15, z2FinisherModality: 'treadmill', title: 'Upper A · Press/Row/Pull-up', why: 'Horizontal push and pull, plus vertical pull; + a short Z2.', ruleIds: ['STR-002'], alt: 'strength_upper' },
         { dow: 3, kind: 'cardio', subtype: 'zone2', bw: 0.5, durationMin: 35, title: 'Cardio Z2', summary: '30-40 min easy + mobility', why: 'Low-impact aerobic work.', ruleIds: ['END-001', 'INT-002'], alt: 'hard_cardio' },
-        { dow: 5, kind: 'strength', subtype: 'lower', bw: 2, planRef: 'lowerB', z2Finisher: 15, title: 'Lower B · Hinge', why: 'Deadlift: the hinge anchor is not lost when days drop.', ruleIds: ['STR-005', 'STR-007'], alt: 'strength_lower' },
-        { dow: 6, kind: 'cardio', subtype: 'long_easy', bw: 1, durationMin: 45, title: 'Z2 quality cardio', summary: 'Long / Z2-Z3 progression', why: 'The only quality session of the week.', ruleIds: ['END-003', 'END-004'], alt: 'hard_cardio' },
-        { dow: 0, kind: 'recovery', subtype: 'mobility', bw: 0, z2Finisher: 20, title: 'Active recovery', summary: 'Mobility + core + 20 min easy Z2', why: 'Active recovery with an aerobic stimulus.', ruleIds: ['ATH-003', 'READ-007'], alt: null },
+        { dow: 5, kind: 'strength', subtype: 'upper', bw: 1, planRef: 'upperB', z2Finisher: 15, z2FinisherModality: 'treadmill', title: 'Upper B · Pull-ups/OHP', why: 'Second upper stimulus: vertical press and pull, so push and pull reach 2x/week (STR-002).', ruleIds: ['STR-002', 'STR-007'], alt: 'strength_upper' },
+        { dow: 6, kind: 'cardio', subtype: 'long_easy', bw: 1, durationMin: 45, title: 'Z2 quality cardio', summary: 'Long / Z2-Z3 progression', why: 'The only quality session of the week, and the day furthest from heavy legs.', ruleIds: ['END-003', 'END-004'], alt: 'hard_cardio' },
+        { dow: 0, kind: 'recovery', subtype: 'mobility', bw: 0, z2Finisher: 20, z2FinisherModality: 'walk', title: 'Active recovery', summary: 'Mobility + core + 20 min easy Z2', why: 'Active recovery with an aerobic stimulus.', ruleIds: ['ATH-003', 'READ-007'], alt: null },
       ],
     },
     6: {
       label: 'Full · ideal',
       note: 'THE IDEAL: 4 strength (Upper/Lower 2×, all 6 patterns) + daily Z2 + 1 quality + recovery. A stimulus all 7 days. Quick-mode when time is short.',
       days: [
-        { dow: 1, kind: 'strength', subtype: 'lower', bw: 2, planRef: 'lowerA', z2Finisher: 20, title: 'Lower A · Squat', why: 'Heavy legs at the start, while fresh. +20 min easy Z2 at the end.', ruleIds: ['STR-005', 'INT-001'], alt: 'strength_lower' },
-        { dow: 2, kind: 'strength', subtype: 'upper', bw: 1, planRef: 'upperA', z2Finisher: 20, title: 'Upper A · Press/Row', why: 'Horizontal push/pull. +20 min easy Z2.', ruleIds: ['STR-002'], alt: 'strength_upper' },
+        { dow: 1, kind: 'strength', subtype: 'lower', bw: 2, planRef: 'lowerA', z2Finisher: 20, z2FinisherModality: 'bike', title: 'Lower A · Squat', why: 'Heavy legs at the start, while fresh. +20 min easy Z2 at the end.', ruleIds: ['STR-005', 'INT-001'], alt: 'strength_lower' },
+        { dow: 2, kind: 'strength', subtype: 'upper', bw: 1, planRef: 'upperA', z2Finisher: 20, z2FinisherModality: 'treadmill', title: 'Upper A · Press/Row', why: 'Horizontal push/pull. +20 min easy Z2.', ruleIds: ['STR-002'], alt: 'strength_upper' },
         { dow: 3, kind: 'cardio', subtype: 'zone2', bw: 0.5, durationMin: 40, title: 'Cardio Z2 + mobility', summary: '35-45 min easy (bike/row/treadmill) + mobility/core', why: 'A dedicated aerobic day between strength stimuli.', ruleIds: ['END-001', 'END-003'], alt: 'hard_cardio' },
-        { dow: 4, kind: 'strength', subtype: 'lower', bw: 2, planRef: 'lowerB', z2Finisher: 20, title: 'Lower B · Hinge', why: 'Hinge (deadlift) — 2nd leg stimulus. +20 min Z2.', ruleIds: ['STR-005', 'STR-007'], alt: 'strength_lower' },
-        { dow: 5, kind: 'strength', subtype: 'upper', bw: 1, planRef: 'upperB', z2Finisher: 20, title: 'Upper B · Pull-ups/OHP', why: 'Vertical pattern (pull-ups + overhead press). +20 min Z2.', ruleIds: ['STR-002', 'STR-007'], alt: 'strength_upper' },
+        { dow: 4, kind: 'strength', subtype: 'lower', bw: 2, planRef: 'lowerB', z2Finisher: 20, z2FinisherModality: 'ski', title: 'Lower B · Hinge', why: 'Hinge (deadlift) — 2nd leg stimulus. +20 min Z2.', ruleIds: ['STR-005', 'STR-007'], alt: 'strength_lower' },
+        { dow: 5, kind: 'strength', subtype: 'upper', bw: 1, planRef: 'upperB', z2Finisher: 20, z2FinisherModality: 'treadmill', title: 'Upper B · Pull-ups/OHP', why: 'Vertical pattern (pull-ups + overhead press). +20 min Z2.', ruleIds: ['STR-002', 'STR-007'], alt: 'strength_upper' },
         { dow: 6, kind: 'cardio', subtype: 'long_easy', bw: 1, durationMin: 50, title: 'Z2 quality cardio', summary: 'Easy long session, or swap it for the sled + SkiErg hybrid', why: 'Builds the aerobic engine; away from legs. The hybrid is an alternative, not an extra day.', ruleIds: ['END-003', 'END-005'], alt: 'hard_cardio' },
-        { dow: 0, kind: 'recovery', subtype: 'mobility', bw: 0, z2Finisher: 20, title: 'Active recovery', summary: 'Mobility + core + walk/easy Z2 20 min', why: 'Active recovery; a gentle stimulus all 7 days.', ruleIds: ['ATH-003', 'READ-007'], alt: null },
+        { dow: 0, kind: 'recovery', subtype: 'mobility', bw: 0, z2Finisher: 20, z2FinisherModality: 'walk', title: 'Active recovery', summary: 'Mobility + core + walk/easy Z2 20 min', why: 'Active recovery; a gentle stimulus all 7 days.', ruleIds: ['ATH-003', 'READ-007'], alt: null },
       ],
     },
   },
@@ -9102,12 +9422,21 @@ const IDEAL_BLOCK_V1 = {
 //
 // Ver assessments/2026-08-16_system-audit.md (A11, punto 5).
 
+// F-15: el nombre visible de la modalidad del finisher. Los ids son los de `_ICU_TYPE_BY_MODALITY`
+// (el mismo vocabulario que viaja a intervals.icu), así que no hay un tercer diccionario.
+const _Z2_MODALITY_LABEL = {
+  bike: 'Bike', ski: 'SkiErg', row: 'Row', treadmill: 'Treadmill',
+  run_outdoor: 'Easy run', walk: 'Walk', elliptical: 'Elliptical', swim: 'Swim',
+};
+function _z2ModalityLabel(id) { return _Z2_MODALITY_LABEL[id] || String(id || ''); }
+
 // T5: the chosen day-count (3/4/5/6) and per-session duration persist in settings (synced).
 // T5.1: default to the full IDEAL (variant 6 "Completa"). Selector flexes down to 3/4/5.
 function _idealVariant() { const v = state.settings && state.settings.idealVariant; return (v === 0 || v === 3 || v === 4 || v === 5 || v === 6) ? v : 6; }
 
 // T5.1: derive a week template ({0..6: slot}) from the chosen ideal variant.
-// strength → gym (+z2FinisherMin) · cardio → run (subtype + durationMin) · recovery → recovery (+z2FinisherMin) · gap → rest.
+// strength → gym (+z2FinisherMin/+z2FinisherModality) · cardio → run (subtype + durationMin) ·
+// recovery → recovery (+z2FinisherMin/+z2FinisherModality) · gap → rest.
 function buildWeekTemplateFromIdeal(variantNum) {
   const variant = IDEAL_BLOCK_V1.variants[variantNum] || IDEAL_BLOCK_V1.variants[6];
   const tpl = {};
@@ -9116,11 +9445,14 @@ function buildWeekTemplateFromIdeal(variantNum) {
     if (day.kind === 'strength' && day.planRef) {
       tpl[day.dow] = { type: 'gym', session: day.planRef };
       if (day.z2Finisher) tpl[day.dow].z2FinisherMin = day.z2Finisher;
+      // F-15: la modalidad del finisher es prescripción, no adorno (INT-002/SEL-004).
+      if (day.z2FinisherModality) tpl[day.dow].z2FinisherModality = day.z2FinisherModality;
     } else if (day.kind === 'cardio') {
       tpl[day.dow] = { type: 'run', label: day.title, subtype: day.subtype || 'zone2', durationMin: day.durationMin || null, summary: day.summary || null };
     } else if (day.kind === 'recovery') {
       tpl[day.dow] = { type: 'recovery', label: day.title || 'Active recovery', subtype: day.subtype || 'mobility' };
       if (day.z2Finisher) tpl[day.dow].z2FinisherMin = day.z2Finisher;
+      if (day.z2FinisherModality) tpl[day.dow].z2FinisherModality = day.z2FinisherModality;
     }
   }
   return tpl;
@@ -9143,7 +9475,10 @@ function buildWeekTemplateFromIdeal(variantNum) {
 //     bracing en lowerB, tobillo en lowerA; los pogo hops pasan de ejercicio a calentamiento).
 // 9 = v11.70 (box jump y sled push pasan de 'Quads' a 'Power': el validador contaba 16 series de
 //     cuádriceps a la semana cuando eran 13 y disparaba VOL-CAP en rojo en cada propuesta del coach).
-const PLAN_REV = 9;
+// 10 = v11.72 (F-8: la variante de 5 días vuelve a lower/upper/upper — empuje y tirón a 2x/semana,
+//     STR-002, con la bisagra en el RDL de lowerA. F-15: `z2FinisherModality` en los días con
+//     finisher, para que "20' Z2" diga TAMBIÉN en qué — bici/ski tras pierna, cinta tras torso).
+const PLAN_REV = 10;
 
 async function applyIdealPlan({ force = false } = {}) {
   const n = _idealVariant();
@@ -9728,38 +10063,52 @@ async function renderHomeStatTrio() {
 
   // El WHOOP de HOY, o nada. `whoopIsConnected`/`integrationsIsActive` con `typeof` porque
   // viven en whoop.js/integrations.js, que se cargan por <script> aparte.
-  let rd = { value: '—', sub: 'NO DATA', tone: 'var(--text3)' };
+  // V-23 (auditoría 2026-09-09): el tile decía "— / WHOOP OFF" y ahí se acababa. Es la
+  // primera pantalla de la app y el único sitio donde se ve que falta una integración: ahora
+  // ES el botón que lleva a conectarla. Y con dato, el sub dice DE CUÁNDO es la lectura, que
+  // es la mitad de la información en un número que caduca cada mañana.
+  let rd = { value: '—', sub: 'NO DATA', tone: 'var(--text3)', action: null };
   try {
     const wc = await getWhoopContext();
     if (wc && wc.score != null) {
+      const hhmm = (typeof whoopClock === 'function' && wc.fetchedAt) ? whoopClock(wc.fetchedAt) : '';
       rd = {
         value: String(Math.round(wc.score)),
-        sub: 'RECOVERY',
+        sub: hhmm ? `TODAY ${hhmm}` : 'TODAY',
         tone: wc.score >= 67 ? 'var(--accent)' : (wc.score >= 34 ? 'var(--yellow)' : 'var(--red)'),
+        action: null,
       };
     } else {
       const conectado = (typeof whoopIsConnected === 'function')
         ? whoopIsConnected()
         : ((typeof integrationsIsActive === 'function') ? integrationsIsActive('whoop') : true);
-      if (!conectado) rd.sub = 'WHOOP OFF';
+      if (!conectado) { rd.sub = 'CONNECT'; rd.action = 'integrations-card'; }
+      else if (wc && wc.lastAvailable && wc.lastAvailable.date) {
+        rd.sub = String((typeof whoopDayLabel === 'function' ? whoopDayLabel(wc.lastAvailable.date, today()) : wc.lastAvailable.date)).toUpperCase();
+      }
     }
   } catch (e) { /* el tile ya dice "—": no hay nada que inventar */ }
 
   const cards = [
-    { label: 'Readiness', value: rd.value, sub: rd.sub, tone: rd.tone },
-    { label: 'Strain', value: strainSets ? String(Math.round(strain)) : '—', sub: strainSets ? 'RPE LOAD' : 'LOG RPE', tone: strainSets ? 'var(--blue)' : 'var(--text3)' },
+    { label: 'Readiness', value: rd.value, sub: rd.sub, tone: rd.tone, action: rd.action },
+    // "Strain" era el nombre de WHOOP para una escala 0-21 que esto no es: aquí es
+    // Σ(RPE × series hechas) de la semana. Se llama por su nombre.
+    { label: 'RPE Load', value: strainSets ? String(Math.round(strain)) : '—', sub: strainSets ? 'THIS WEEK' : 'LOG RPE', tone: strainSets ? 'var(--blue)' : 'var(--text3)' },
     { label: 'Streak', value: String(streak), sub: streak === 1 ? 'WEEK' : 'WEEKS', tone: 'var(--yellow)' },
     { label: 'Volume', value: volTxt, sub: 'KG', tone: 'var(--accent)' },
   ];
   container.innerHTML = `
     <div class="stat-trio">
       ${cards.map(c => `
-        <div class="stat-card">
+        <${c.action ? 'button type="button"' : 'div'} class="stat-card"${c.action ? ` data-stat-goto="${c.action}"` : ''}>
           <div class="stat-card-label">${c.label}</div>
           <div class="stat-card-val" style="color:${c.tone}">${c.value}</div>
           <div class="stat-card-sub">${c.sub}</div>
-        </div>`).join('')}
+        </${c.action ? 'button' : 'div'}>`).join('')}
     </div>`;
+  container.querySelectorAll('[data-stat-goto]').forEach((b) => {
+    b.addEventListener('click', () => openSettingsAt(b.dataset.statGoto));
+  });
 }
 
 // V-3/V-4: `_homeTypeTone` y `_homeCover` se van con las filas de la cola.
@@ -9858,7 +10207,7 @@ async function renderWeekCalendar() {
 
 // Day tap → pick modality (gym / running / mobility); gym chains to the muscle-group picker
 async function pickDayActivity(ds, jsDay) {
-  const dayLabel = new Date(ds + 'T12:00:00').toLocaleDateString('en', { weekday: 'long', month: 'short', day: 'numeric' });
+  const dayLabel = new Date(ds + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
   const choice = await showActionSheet(dayLabel, [
     { value: 'gym', label: 'Gym — strength', icon: '🏋️' },
     { value: 'run', label: 'Cardio', icon: '🏃' },
@@ -10007,7 +10356,7 @@ async function renderTodaysPlan() {
         ${_blockEyebrowHtml(planned.block)}
         <div class="cardio-rx-row"><span>Duration</span><b>${_cardioDurLabel(rMin, planned.z2BaseMin, planned.z2Source, planned.block)}</b></div>
         <div class="cardio-rx-row"><span>Intensity</span><b>${rHr ? `HR ${rHr}` : cardioIntensityGuide('zone2')}</b></div>
-        <div class="cardio-rx-row"><span>What to do</span><b>Walk, easy bike or easy row</b></div>
+        <div class="cardio-rx-row"><span>What to do</span><b>${planned.z2FinisherModality ? _z2ModalityLabel(planned.z2FinisherModality) : 'Walk, easy bike or easy row'} — conversational</b></div>
         <div class="cardio-rx-actions">
           <button class="btn-secondary" id="rx-log-z2">${rDone ? 'Log another' : 'Log Z2'}</button>
           <button class="btn-secondary" id="rx-push-z2">Send to COROS</button>
@@ -10060,7 +10409,7 @@ async function renderTodaysPlan() {
     if (exCount) parts.push(`${exCount} exercises`);
     if (planSets) parts.push(`${planSets} sets`);
     parts.push('60-75 min');
-    if (planned.z2FinisherMin) parts.push(`+${planned.z2FinisherMin}' Z2`);
+    if (planned.z2FinisherMin) parts.push(`+${planned.z2FinisherMin}' Z2${planned.z2FinisherModality ? ' ' + _z2ModalityLabel(planned.z2FinisherModality) : ''}`);
     const blkTxt = _blockEyebrow(planned.block);
     if (blkTxt) parts.push(blkTxt);
     eyebrow = parts.join(' · ');
@@ -10130,7 +10479,7 @@ async function renderTodaysPlan() {
       ${_blockEyebrowHtml(planned.block)}
       <div class="cardio-rx-row"><span>Duration</span><b>${_cardioDurLabel(z2Min, planned.z2BaseMin, planned.z2Source, planned.block)}</b></div>
       <div class="cardio-rx-row"><span>Intensity</span><b>${intensity}</b></div>
-      <div class="cardio-rx-row"><span>What to do</span><b>Bike, row or treadmill — conversational</b></div>
+      <div class="cardio-rx-row"><span>What to do</span><b>${planned.z2FinisherModality ? _z2ModalityLabel(planned.z2FinisherModality) : 'Bike, row or treadmill'} — conversational</b></div>
       <div class="cardio-rx-actions">
         <button class="btn-secondary" id="rx-log-z2">${z2Done ? 'Log another' : 'Log Z2'}</button>
         <button class="btn-secondary" id="rx-push-z2">Send to COROS</button>
@@ -10262,7 +10611,7 @@ async function renderRunHistory() {
           <div class="hi-stat">${r.feel}/5</div>
           <div class="hi-stat-sub">feel</div>
         </div>
-        <button class="hi-delete" data-delete-run="${r.id}">&times;</button>
+        <button class="hi-delete" data-delete-run="${r.id}" aria-label="Delete cardio session">&times;</button>
       </div>
     </div>
   `;
@@ -10474,7 +10823,7 @@ async function syncStepsFromCloud() {
     const url = `${SUPABASE_URL}/rest/v1/steps?user_id=eq.${user.id}&record_id=gte.${since}&select=record_id,data`;
     const sess = await supabaseClient.auth.getSession();
     const token = sess?.data?.session?.access_token || SUPABASE_ANON_KEY;
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${token}` },
     });
     if (!res.ok) {
@@ -10489,6 +10838,24 @@ async function syncStepsFromCloud() {
   } catch (e) {
     console.warn('[Steps] sync failed', e);
   }
+}
+
+/**
+ * F-23 (auditoría 2026-09-09): EL SUELO DE PASOS, UNA SOLA VEZ.
+ *
+ * Estaba escrito dos veces como `settings.stepsTarget || 8000` (la tarjeta y el histórico) y una
+ * tercera, distinta, en los objetivos del coach (`goals.constraints.stepsFloor`), que es la que
+ * viaja en el facts pack y sobre la que razona la revisión semanal. Manda el objetivo: el número
+ * de Ajustes es el respaldo para quien no tenga objetivos, y 8.000 el suelo de la casa.
+ */
+function stepsFloor() {
+  const g = ((state.settings || {}).goals || {}).constraints || {};
+  const cands = [g.stepsFloor, (state.settings || {}).stepsTarget, 8000];
+  for (const v of cands) {
+    const n = Number(v);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return 8000;
 }
 
 async function getStepsToday() {
@@ -10508,7 +10875,7 @@ async function postStepsToCloud(stepsValue, dateStrOverride) {
   const secret = state.settings && state.settings.stepsSecret;
   if (!secret) return { error: 'No secret configured. Generate one in Settings → Daily Steps.' };
   try {
-    const res = await fetch(STEPS_INGEST_URL, {
+    const res = await fetchWithTimeout(STEPS_INGEST_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -10540,9 +10907,16 @@ async function logStepsManual(stepsValue) {
 async function renderStepsCard() {
   const el = document.getElementById('steps-card');
   if (!el) return;
-  const target = (state.settings && state.settings.stepsTarget) || 8000;
-  const today_ = await getStepsToday();
-  const avg7 = await getStepsAvg7d();
+  const target = stepsFloor();
+  let today_, avg7;
+  try {
+    today_ = await getStepsToday();
+    avg7 = await getStepsAvg7d();
+  } catch (e) {
+    console.warn('[Steps] tarjeta:', e);
+    showErrorState(el, 'Could not read your steps.', renderStepsCard);
+    return;
+  }
   // Estado vacío (v11.66): sin ninguna lectura, un anillo a 0 y un "0 / 8.000" leen como
   // "no has andado nada hoy", que es distinto de "no hay dato". Se dice cuál de las dos es.
   if (!today_ && !avg7) {
@@ -10551,8 +10925,8 @@ async function renderStepsCard() {
       + 'or you can log today by hand.</div></div>'
       + '<button class="steps-edit" id="steps-manual-btn" aria-label="Log steps manually">\u270E</button></div>';
     const b0 = document.getElementById('steps-manual-btn');
-    if (b0) b0.addEventListener('click', () => {
-      const v = prompt('Steps today (manual):', '');
+    if (b0) b0.addEventListener('click', async () => {
+      const v = await promptSheet({ title: 'Steps today', placeholder: 'e.g. 9500', confirmLabel: 'Save' });
       if (v !== null && v.trim() !== '') logStepsManual(v.trim());
     });
     return;
@@ -10578,9 +10952,11 @@ async function renderStepsCard() {
     </div>
   `;
   const btn = document.getElementById('steps-manual-btn');
-  if (btn) btn.addEventListener('click', () => {
-    const cur = today_ || '';
-    const v = prompt('Steps today (manual override):', String(cur));
+  if (btn) btn.addEventListener('click', async () => {
+    const v = await promptSheet({
+      title: 'Steps today', placeholder: 'e.g. 9500', confirmLabel: 'Save',
+      value: today_ || '',
+    });
     if (v !== null && v.trim() !== '') logStepsManual(v.trim());
   });
 }
@@ -10596,7 +10972,7 @@ async function renderStepsHistoryChart() {
   await syncStepsFromCloud().catch(() => {});
 
   const all = (await dbGetAll('steps')).sort((a, b) => a.date.localeCompare(b.date));
-  const target = (state.settings && state.settings.stepsTarget) || 8000;
+  const target = stepsFloor();
 
   if (all.length === 0) {
     if (statsRow) statsRow.innerHTML = '<div class="muted" style="font-size:13px">No steps logged yet. Steps sync automatically from Apple Health via intervals.icu Companion.</div>';
@@ -10911,7 +11287,12 @@ async function renderBodyWeightChart() {
   const nudgeEl = document.getElementById('bw-nudge');
   const etaEl = document.getElementById('bw-eta');
   const plateauEl = document.getElementById('bw-plateau');
-  const entries = _bwWeighIns(await dbGetAll('bodyweight'));
+  let entries;
+  try { entries = _bwWeighIns(await dbGetAll('bodyweight')); } catch (e) {
+    console.warn('[Peso] gráfico:', e);
+    showErrorState(container, 'Could not read your weigh-ins.', renderBodyWeightChart);
+    return;
+  }
 
   if (entries.length === 0) {
     currentEl.textContent = '--';
@@ -11353,7 +11734,12 @@ async function renderMuscleVolume() {
 
   const weekDates = getWeekDates();
   const weekStrs = weekDates.map(d => dateStr(d));
-  const workouts = (await dbGetAll('workouts')).filter(w => weekStrs.includes(w.date));
+  let workouts;
+  try { workouts = (await dbGetAll('workouts')).filter(w => weekStrs.includes(w.date)); } catch (e) {
+    console.warn('[Volumen] series por músculo:', e);
+    showErrorState(container, 'Could not read this week\'s sets.', renderMuscleVolume);
+    return;
+  }
 
   if (workouts.length === 0) {
     showEmptyState(container, '📊', 'No data yet', 'Complete workouts to see your volume heatmap');
@@ -11883,7 +12269,7 @@ function bindEvents() {
     if (state.viewingCompleted) {
       // Viewing saved workout: just go back, no prompt needed
       state.viewingCompleted = false;
-      document.getElementById('btn-finish-workout').style.display = '';
+      { const f = document.getElementById('btn-finish-workout'); if (f) f.hidden = false; }
       // B-1: la tercera referencia al textarea de notas inexistente vivía aquí, y era la
       // que mataba el botón de volver de un entreno completado.
       const roNotes = document.getElementById('wo-completed-notes');
@@ -12087,7 +12473,7 @@ function bindEvents() {
 
   // Data recovery buttons (Settings)
   const recoveryOut = document.getElementById('recovery-output');
-  const showOut = (txt) => { recoveryOut.style.display = 'block'; recoveryOut.textContent = txt; };
+  const showOut = (txt) => { recoveryOut.hidden = false; recoveryOut.textContent = txt; };
   document.getElementById('btn-recover-data').addEventListener('click', async () => {
     showOut('Scanning…');
     const lines = [];
@@ -12650,7 +13036,7 @@ async function init() {
   {
     Promise.resolve(safeCall('whoopSyncData')).then((d) => {
       if (state.currentTab !== 'home') return;
-      safeCall('renderWhoopRecoveryCard');
+      safeCall('renderRecoveryBlock');
       // v11.58: si esta sincronización trajo el dato de HOY (ruta directa de WHOOP, o intervals
       // que ya lo tiene), el Home se repinta solo. Sin esto, la tarjeta se quedaría con el "Sin
       // dato de hoy" del primer render aunque el dato hubiese llegado dos segundos después.
@@ -12658,7 +13044,7 @@ async function init() {
       // recalcularlo, o la tarjeta se queda con el "sin dato de hoy" del primer render.
       invalidateReadiness();
       if (d && d.todaySource && d.todaySource !== 'missing') {
-        Promise.resolve(safeCall('renderRecoveryLine')).catch(() => {});
+        Promise.resolve(safeCall('renderRecoveryBlock')).catch(() => {});
         // v11.65: y el tile Readiness, que es donde se ve el número de hoy desde este incremento.
         renderHomeStatTrio().catch(() => {});
       }

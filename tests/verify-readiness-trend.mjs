@@ -277,6 +277,32 @@ const trio = run({
 });
 eq(trio.deloadHint, true, 'HRV + FC reposo + calidad ≤2 → deloadHint (READ-008)');
 
+// ── 11.b (F-9) · `firedSignals`: la justificación del color, en un solo sitio ──────────
+console.log('');
+console.log('11.b firedSignals (F-9, auditoría 2026-09-09)');
+// EL FALLO QUE IMPIDE. El prompt del coach llevaba SU PROPIO recuento del color ("Verde 0-1 ·
+// Amarillo 2 · Rojo ≥3") sobre señales que el modelo contaba a ojo leyendo el pack. Dos tablas
+// para el mismo color: el modelo podía escribir "yellow" encima de un pack que decía `red`, y el
+// usuario veía dos veredictos del mismo día sin saber cuál manda. El motor exporta la LISTA de
+// ids que dispararon; el pack la publica y el prompt sólo la lee.
+{
+  const rojo = run({
+    wellness: wellness(35, (age) => (age <= 6 ? { hrv: 62, restingHR: 55 } : null)),
+    whoopToday: { score: 74, source: 'intervals' },
+  });
+  yes(Array.isArray(rojo.firedSignals), 'computeReadinessFrom devuelve `firedSignals` como array');
+  eq(rojo.firedSignals.length, rojo.fired, 'con tantos ids como señales disparadas (`fired`)');
+  eq(rojo.firedSignals.slice().sort().join(','), 'hrv7v28,rhr7v28', 'y son los ids que dispararon');
+  eq(rojo.color, 'red', 'dos señales concordantes → rojo');
+  yes(rojo.firedSignals.every(id => rojo.signals.some(s => s.id === id && s.fired)),
+    'todo id de `firedSignals` existe y está `fired` en `signals`: no se puede citar una señal inventada');
+  const verde = run({ whoopToday: { score: 74, source: 'intervals' } });
+  eq(verde.color, 'green', 'sin señales el color es verde…');
+  eq(verde.firedSignals.length, 0, '…y `firedSignals` va vacío, no null');
+  eq(E.computeReadinessFrom({ today: TODAY }).firedSignals.length, 0,
+    'con inputs vacíos tampoco revienta: array vacío');
+}
+
 // ── 12. Los umbrales están declarados y son los del corpus ────────────────────────────
 console.log('');
 console.log('12. Umbrales declarados (no repartidos por el render)');

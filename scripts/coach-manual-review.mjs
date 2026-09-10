@@ -254,12 +254,22 @@ async function buildPack(week) {
   return { week, row, rows, facts, currentPlan, allowed, priorReviews, lowerSessionIds, userNote, source };
 }
 
+// C-14 (auditoría 2026-09-09): el HOY del pack, no el del reloj de quien ejecuta el script.
+// `new Date().toISOString()` es UTC: ejecutar esto a las 00:30 de Madrid en verano daba el día
+// siguiente, y `todayStr` alimenta `SUMMER-PACE` y toda la ventana del validador. El pack trae
+// `meta.todayStr` calculado en el teléfono — la fecha que Julian ve. Se valida la forma: una
+// cadena rara desplaza la ventana entera sin que nada falle.
+function packToday(facts) {
+  const t = String(facts?.meta?.todayStr ?? '');
+  return /^\d{4}-\d{2}-\d{2}$/.test(t) ? t : new Date().toISOString().slice(0, 10);
+}
+
 async function cmdPack() {
   const week = mustWeek();
   const pack = await buildPack(week);
   const dir = outDir(week);
   const P = await import(pathToFileURL(path.join(FN_DIR, 'prompt.ts')).href);
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = packToday(pack.facts);
   const prompt = [
     '# ===== SYSTEM (estático, cacheable) =====', P.SYSTEM_STATIC,
     '# ===== SYSTEM (dinámico) =====', P.buildDynamicSystem({ allowed: pack.allowed, todayStr, weekKey: week }),
@@ -352,12 +362,17 @@ function sanitizeLite(raw, pack) {
 }
 
 // ── Validación: contrato + validador de la función ───────────────────────────────────
+// Memoizado (C-23): ahora lo piden dos sitios —`runValidator` y el `factsHash` de `cmdWrite`—
+// y copiar 200 KB a un temporal dos veces por ejecución no aporta nada.
+let _validator = null;
 async function loadValidator() {
+  if (_validator) return _validator;
   const src = readFileSync(path.join(FN_DIR, 'coach-facts.generated.js'), 'utf8');
   const dir = mkdtempSync(path.join(tmpdir(), 'coach-manual-gen-'));
   const tmp = path.join(dir, 'coach-facts.generated.mjs');
   writeFileSync(tmp, src);
-  return import(pathToFileURL(tmp).href);
+  _validator = await import(pathToFileURL(tmp).href);
+  return _validator;
 }
 
 function contractIssues(output, pack, ruleIds) {
@@ -467,7 +482,7 @@ async function runValidator(output, pack) {
     goals: f?.goals ?? null,
     zones: f?.cardio?.z2Ceiling ?? null,
     decisions, briefing,
-    todayStr: new Date().toISOString().slice(0, 10),
+    todayStr: packToday(f),
   };
   const out = V.validatePlanVersion(candidate, ctx);
   const guardrails = (Array.isArray(out) ? out : []).filter((g) => g && g.id && (g.level === 'hard' || g.level === 'warn'));
@@ -497,14 +512,10 @@ async function validate(week) {
   return { output, pack, P, cHard, soft, guardrails, hard, warn, structural };
 }
 
-function stableStringify(v) {
-  if (v === null || v === undefined) return 'null';
-  if (typeof v === 'number') return Number.isFinite(v) ? JSON.stringify(v) : 'null';
-  if (typeof v !== 'object') return JSON.stringify(v) ?? 'null';
-  if (Array.isArray(v)) return `[${v.map(stableStringify).join(',')}]`;
-  const keys = Object.keys(v).sort();
-  return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify(v[k])}`).join(',')}}`;
-}
+// C-23: `stableStringify` sale del módulo generado (la misma función de `app/coach-facts.js`
+// que usa la edge function). Había cuatro copias, y el `factsHash` que produce es la
+// idempotencia de la revisión: si la copia de este script ordenara distinto, la fila escrita a
+// mano llevaría un hash que la función jamás reproduciría y la caché dejaría de acertar.
 const sha256 = (s) => createHash('sha256').update(s, 'utf8').digest('hex');
 
 async function cmdWrite() {
@@ -518,6 +529,7 @@ async function cmdWrite() {
   const id = (r.pack.row && r.pack.row.record_id) || `${week}#${r.pack.rows.length + 1}`;
   const attempt = Number(String(id).split('#')[1]) || 1;
   const sanitized = r.soft.map((s) => (s.startsWith('sanitized: ') ? s.slice('sanitized: '.length) : `voice: ${s}`));
+  const { stableStringify } = await loadValidator();   // C-23: la misma que usa la función
   const data = {
     id, weekKey: week, attempt, status: 'proposed',
     createdAt: prev?.createdAt ?? nowIso, updatedAt: nowIso, requestedAt: prev?.requestedAt ?? null,

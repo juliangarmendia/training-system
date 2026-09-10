@@ -3,6 +3,8 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import Anthropic from "npm:@anthropic-ai/sdk@0.123.0";
 import { zodOutputFormat } from "npm:@anthropic-ai/sdk@0.123.0/helpers/zod";
 import { z } from "npm:zod@^3.25.0";
+// C-22: `corsHeaders` y `json` compartidos. Había cuatro copias divergentes del mismo par.
+import { corsHeaders, json } from "../_shared/http.ts";
 
 // Convierte la foto de un plato en items estructurados con gramos.
 //
@@ -27,11 +29,32 @@ import { z } from "npm:zod@^3.25.0";
 //   ANTHROPIC_API_KEY
 //   SUPABASE_URL y SUPABASE_SERVICE_ROLE_KEY los inyecta el runtime.
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-};
+// ── Configuración del modelo (C-21, auditoría 2026-09-09) ──────────────────────────────────
+// Estaban clavadas dentro de la llamada. El modelo, sobre todo: la PWA calcula el coste con su
+// propia constante (`NUT_AI_MODEL`) y, con el nombre enterrado en el cuerpo del request, los
+// dos podían separarse sin que nada avisara — el coste mostrado sería el de otro modelo.
+const MODEL = "claude-opus-5";
+const MAX_TOKENS = 16000;
+// `medium` y no `low`: la percepción no mejora con más esfuerzo, pero la estimación de
+// cantidad sí tiene razonamiento — qué hay debajo de la capa de arriba, si el plato lleva
+// aceite invisible, cruzar el tamaño contra el tenedor. Y decidir entre componentes / plato /
+// etiqueta es justo el paso que más afecta a la precisión. Coste: ~1,5x y algo más de latencia.
+// El gramaje es el único dato que el sistema no puede derivar de ninguna otra fuente.
+// El valor vive dentro del objeto (que es la forma exacta que la API recibe) y `EFFORT` es el
+// nombre con el que se usa: un solo sitio que cambiar si algún día se sube o se baja.
+const REASONING = { effort: "medium" } as const;
+const EFFORT = REASONING.effort;
+// Versión del SYSTEM de abajo. Viaja en la respuesta para que una comida registrada con un
+// prompt viejo se pueda distinguir cuando el prompt cambie (mismo criterio que
+// `PROMPT_VERSION` en coach-weekly-review, donde además entra en el hash de caché).
+const PROMPT_VERSION = 1;
+
+// Precios de Claude Opus 5, $/millón de tokens. Copiados de `coach-weekly-review/index.ts` a
+// propósito: importar `index.ts` de otra función arrastraría su `Deno.serve` a este bundle.
+const PRICE_INPUT = 5.00;
+const PRICE_OUTPUT = 25.00;
+const PRICE_CACHE_READ = 0.50;
+const PRICE_CACHE_WRITE_5M = 6.25;
 
 const BUCKET = "meal-photos";
 const SIGNED_URL_TTL = 120;      // segundos: sólo tiene que vivir lo que dura la llamada
@@ -213,16 +236,10 @@ Deno.serve(async (req) => {
     const anthropic = new Anthropic({ apiKey });
 
     const response = await anthropic.messages.parse({
-      model: "claude-opus-5",
-      max_tokens: 16000,
+      model: MODEL,
+      max_tokens: MAX_TOKENS,
       thinking: { type: "adaptive" },
-      // `medium` y no `low`: la percepción no mejora con más esfuerzo, pero la estimación
-      // de cantidad sí tiene razonamiento — qué hay debajo de la capa de arriba, si el
-      // plato lleva aceite invisible, cruzar el tamaño contra el tenedor. Y decidir entre
-      // componentes / plato / etiqueta es justo el paso que más afecta a la precisión.
-      // Coste: ~1,5x y algo más de latencia. El gramaje es el único dato que el sistema
-      // no puede derivar de ninguna otra fuente, así que ahí se paga.
-      output_config: { effort: "medium", format: zodOutputFormat(MealSchema) },
+      output_config: { effort: EFFORT, format: zodOutputFormat(MealSchema) },
       system: SYSTEM,
       messages: [{
         role: "user",
@@ -347,10 +364,10 @@ ${libraryText}
         kcal: items.reduce((s, i) => s + i.kcal, 0),
         protein: Math.round(items.reduce((s, i) => s + i.protein, 0)),
       },
-      usage: {
-        input: response.usage?.input_tokens ?? null,
-        output: response.usage?.output_tokens ?? null,
-      },
+      // C-21: el coste se calcula AQUÍ, donde se conocen el modelo y los tokens reales. La PWA
+      // lo recalculaba con su propia tabla de precios y su propia idea del modelo; con `usage`
+      // completo puede guardarlo tal cual y el número deja de depender de dos sitios.
+      usage: usageOf(response),
     });
   } catch (err) {
     console.error("[parse-meal-photo]", err);
@@ -378,9 +395,16 @@ function clampNova(v: unknown) {
   return n >= 1 && n <= 4 ? n : 3;
 }
 
-function json(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
+/** Tokens, coste y de qué modelo/prompt salieron. Gemelo del de `coach-weekly-review`. */
+function usageOf(response: unknown) {
+  const u = (response as { usage?: Record<string, unknown> })?.usage || {};
+  const input = Number(u.input_tokens ?? 0) || 0;
+  const output = Number(u.output_tokens ?? 0) || 0;
+  const cacheRead = Number(u.cache_read_input_tokens ?? 0) || 0;
+  const cacheWrite = Number(u.cache_creation_input_tokens ?? 0) || 0;
+  const costUsd = Math.round(
+    ((input * PRICE_INPUT + output * PRICE_OUTPUT + cacheRead * PRICE_CACHE_READ +
+      cacheWrite * PRICE_CACHE_WRITE_5M) / 1_000_000) * 10000,
+  ) / 10000;
+  return { input, output, cacheRead, cacheWrite, costUsd, model: MODEL, promptVersion: PROMPT_VERSION };
 }

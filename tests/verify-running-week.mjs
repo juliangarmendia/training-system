@@ -351,6 +351,78 @@ eq(soloUnSlot.sessions.length, 1, 'variante de viaje (1 slot) → 1 sesión, sin
 eq(byDow(soloUnSlot, 3).min, 35, "y progresa desde la base del slot (30' → 35'), no desde 40'");
 
 
+// ── v11.71 (F-10) · la semana 1 de un bloque NO rampa ────────────────────────────────
+console.log('');
+console.log('v11.71 · F-10: semana 1 del bloque = repetir el volumen (CLAUDE.md)');
+// EL FALLO QUE ESTA SECCIÓN IMPIDE. CLAUDE.md lleva desde el primer día diciendo "no aumentar el
+// volumen de carrera durante las primeras 2-3 semanas de un programa nuevo o de un déficit", y el
+// motor rampaba +10 % igual en la semana 1 del bloque — justo la semana en que la fuerza estrena
+// esquema, cargas y (a veces) día. Subir dos cosas a la vez es cómo se pierde la atribución de la
+// fatiga: si la semana sale mal, no hay forma de saber cuál de las dos la rompió.
+const BLOCK1 = E.blockWeekFromDates('2026-09-09', ANCHOR, 5);
+eq(BLOCK1.index, 1, 'el 9-sep-2026 es la semana 1/5 del bloque anclado al 7-sep');
+{
+  const w1km = call({ history4w: BASE, slots: SLOTS2, block: BLOCK1 });
+  eq(w1km.phase, 'base', 'con la base de la sección 3 la fase sigue siendo `base`');
+  eq(w1km.weeklyKmTarget, 12, 'y el objetivo semanal REPITE los 12 km de referencia (no 13,5)');
+  eq(w1km.weeklyKmTarget, w1km.gates.rampFromKm, 'weeklyKmTarget === rampFromKm, exactamente');
+  eq(w1km.gates.blockWeek, 1, 'gates.blockWeek = 1');
+  eq(w1km.gates.blockWeek1Hold, true, 'gates.blockWeek1Hold = true: la puerta se NOMBRA, no se adivina');
+  yes(/week 1 of the block/i.test(w1km.reason), `la razón lo dice: "${w1km.reason}"`);
+  yes(/no ramp/i.test(w1km.reason) && /CLAUDE\.md/.test(w1km.reason), '…y cita de dónde sale la regla');
+  yes(w1km.sessions.reduce((s, x) => s + (x.km || 0), 0) <= 12 + 1e-9,
+    'la suma de las sesiones tampoco pasa del volumen repetido');
+
+  // La semana 2 del MISMO bloque sí rampa: la retención es de la semana 1, no del bloque entero.
+  const w2km = call({ history4w: BASE, slots: SLOTS2, block: E.blockWeekFromDates('2026-09-16', ANCHOR, 5) });
+  eq(w2km.gates.blockWeek, 2, 'el 16-sep es la semana 2 del bloque');
+  eq(w2km.gates.blockWeek1Hold, false, 'y ahí no hay retención');
+  eq(w2km.weeklyKmTarget, 13.5, 'así que rampa a 13,5 km como siempre');
+
+  // Sin carrera la semana pasada no hay nada que repetir: la referencia viene de dos semanas
+  // atrás y la rampa normal (que es la que gobierna la vuelta) sigue mandando.
+  const sinUltima = call({
+    history4w: [
+      { date: '2026-09-09', km: 6.0, min: 43, avgHR: 141 },
+      { date: '2026-09-12', km: 6.0, min: 43, avgHR: 142 },
+    ],
+    slots: SLOTS2, block: BLOCK1,
+  });
+  eq(sinUltima.gates.lastWeekKm, 0, 'cero km la semana pasada');
+  eq(sinUltima.gates.rampFromKm, 12, 'pero la referencia sigue siendo 12 km');
+  eq(sinUltima.gates.blockWeek1Hold, false, 'sin nada que repetir, no hay retención');
+  eq(sinUltima.weeklyKmTarget, 13.5, 'y el motor rampa como en cualquier otra semana');
+
+  // La descarga manda sobre la retención: repetir en una semana de descarga sería SUBIR.
+  const dlW1 = call({
+    history4w: BASE, slots: SLOTS2,
+    block: { index: 1, weeksTotal: 5, isDeload: true, weeksIntoBlock: 0 },
+  });
+  eq(dlW1.gates.blockWeek1Hold, false, 'en descarga la retención de la semana 1 no aplica…');
+  eq(dlW1.weeklyKmTarget, 8.5, '…porque la descarga ya baja el volumen (−30 %), y repetir sería subir');
+
+  // En run/walk no hay km que congelar: la fase manda y sigue prescribiendo minutos.
+  const rwW1 = call({ history4w: REAL, block: BLOCK1 });
+  eq(rwW1.phase, 'run_walk', 'la fase run/walk no cambia por la semana del bloque');
+  eq(rwW1.weeklyKmTarget, null, 'y sigue sin prescribir kilómetros');
+  eq(rwW1.gates.blockWeek1Hold, false, 'la retención sólo existe donde hay un número que repetir');
+
+  // El LARGO tampoco crece en la semana 1: con `build` el largo tiene su propia rampa (+10 % o
+  // +1 km) y era la puerta trasera por la que el volumen subía igual.
+  const buildW1 = call({ history4w: BUILD, slots: SLOTS2, block: BLOCK1 });
+  eq(buildW1.phase, 'build', 'con la base construida la fase es `build`…');
+  eq(buildW1.weeklyKmTarget, 16.5, '…y aun así repite los 16,5 km');
+  eq(byDow(buildW1, 6).km, 8, 'el largo se queda en el reparto (8 km) y NO crece a 9');
+
+  // `_rwBlockWeek`: el índice 1-based dentro del bloque, derivado si sólo hay `weeksIntoBlock`.
+  eq(E._rwBlockWeek({ block: { index: 3 } }), 3, '_rwBlockWeek usa block.index cuando está');
+  eq(E._rwBlockWeek({ block: { weeksIntoBlock: 5, weeksTotal: 5 } }), 1,
+    'y deriva la semana 1 desde weeksIntoBlock (que cuenta desde el ANCLA, no dentro del bloque)');
+  eq(E._rwBlockWeek({ block: { weeksIntoBlock: 6, weeksTotal: 5 } }), 2, 'weeksIntoBlock 6 → semana 2');
+  eq(E._rwBlockWeek({ block: {} }), null, 'y sin nada, null (no se inventa una semana)');
+  eq(E.RW_BLOCK_WEEK1, 1, 'el umbral está declarado, no escrito a mano en la condición');
+}
+
 // ── v11.70 (L-2) · aplicar un plan del coach NO apaga el motor de run/walk ────────────────
 console.log('');
 console.log('v11.70 · la puerta del fallback de carrera: coach por DÍA, regla si no, `running.plan[]` para la semana entera');

@@ -175,12 +175,19 @@ function silent(res, id, label) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════════════
-sec('El plan limpio sólo dispara HARD-BUDGET (7,5 sobre 6, informativo)');
+sec('El plan limpio: HARD-BUDGET (7,5 sobre 6) y el suelo de series de una semana de 4 sesiones');
 // ════════════════════════════════════════════════════════════════════════════════════
+// Hasta v11.70 este fixture disparaba UN aviso. Desde v11.71 dispara dos ids: `HARD-BUDGET` y
+// `VOL-FLOOR` (F-7), y el segundo también es un HECHO del plan, no un defecto del test — la
+// semana ideal de 4 sesiones deja pecho en 4 series, hombro en 4, cadena posterior en 7 y
+// cuádriceps en 7, todos por debajo del 10 que STR-003 declara como suelo en déficit. Que nadie
+// lo dijera durante meses es exactamente lo que la auditoría del 09-sep fue a buscar: el
+// validador tenía el techo (14) y no el suelo, así que "no pasarse" pasaba por "estar bien".
 const base = run();
-eq(ids(base).sort().join(','), 'HARD-BUDGET', 'el ideal real produce exactamente un aviso, y es el del presupuesto');
-eq(base[0].level, 'warn', 'y es BLANDO: BUD-001 es informativo');
-ok(/7\.5/.test(base[0].text), `el texto lleva el número (${base[0].text})`);
+eq([...new Set(ids(base))].sort().join(','), 'HARD-BUDGET,VOL-FLOOR', 'el ideal real produce dos ids: presupuesto y suelo de series');
+ok(base.every(r => r.level === 'warn'), 'y los dos son BLANDOS: BUD-001 es informativo y el suelo se discute, no bloquea');
+const budget = pick(base, 'HARD-BUDGET')[0];
+ok(/7\.5/.test(budget.text), `el texto del presupuesto lleva el número (${budget.text})`);
 // Un template ligero baja el presupuesto: el aviso desaparece.
 const light = run({
   weekTemplate: {
@@ -251,6 +258,112 @@ const volTotalGated = run({ sessions: Object.assign(clone(PLAN_OK.sessions), {
 }) });
 ok(pick(volTotalGated, 'VOL-CAP').every(x => x.text.indexOf('Volumen total') === -1),
   'con los tres gates cumplidos (adherencia, verde, nutrición) el +10 % total NO avisa');
+
+// ════════════════════════════════════════════════════════════════════════════════════
+sec('F-7 · VOL-FLOOR (warn) — STR-003: el SUELO de series, no sólo el techo');
+// ════════════════════════════════════════════════════════════════════════════════════
+// EL FALLO QUE ESTE BLOQUE IMPIDE. STR-003 dice 10-14 series/músculo/semana en déficit y el
+// validador sólo miraba el 14. Un plan podía dejar el hombro en 4 series y la cadena posterior
+// repartida en tres etiquetas (`Hamstrings` 3 + `Posterior` 4 + `Glutes` 4) sin que nada dijera
+// nada: por debajo del suelo el músculo no se mantiene, se visita — y en déficit ahí es donde se
+// va la masa magra, que es el objetivo #2 declarado.
+{
+  const volFloor = pick(base, 'VOL-FLOOR');
+  ok(volFloor.length > 0, 'el ideal de 4 sesiones dispara el suelo');
+  ok(volFloor.every(r => r.level === 'warn'), 'y siempre BLANDO: se discute, no bloquea');
+  const chest = volFloor.find(r => /^Chest/.test(r.text));
+  ok(!!chest, 'pecho, con 4 series/semana, está entre los avisados');
+  if (chest) {
+    for (const n of ['Chest', '4 sets/week', '10']) {
+      ok(chest.text.indexOf(n) !== -1, `   el texto lleva "${n}" — ${chest.text}`);
+    }
+    eq(chest.ruleIds.join(','), 'STR-003,STR-001', '   y cita STR-003 (el que declara el 10-14)');
+  }
+  // Ni pliometría ni core tienen suelo: ATH-003 gobierna el core por PATRÓN (anti-rotación /
+  // anti-extensión), no por series, y el box jump no es volumen de hipertrofia (L-1, v11.70).
+  ok(!volFloor.some(r => /^Power/.test(r.text)), "la fila 'Power' nunca tiene suelo");
+  ok(!volFloor.some(r => /^Core/.test(r.text)), "ni 'Core': lo gobierna ATH-003 por patrón");
+  ok(!volFloor.some(r => /^otros/.test(r.text)), "ni 'otros', que es 'la semilla no dijo músculo'");
+
+  // La cadena posterior, agregada: 3 + 4 + 4 = 11 series, por encima del suelo. Sin la fusión
+  // saldrían TRES avisos por debajo de 10 sobre un estímulo que está bien dosificado.
+  const post = run({ sessions: Object.assign(clone(PLAN_OK.sessions), {
+    lowerA: { id: 'lowerA', name: 'Lower A', mobilityMin: 8, exercises: [EX.boxJump, EX.squat, Object.assign({}, EX.legCurl, { muscle: 'Hamstrings', sets: 3 })] },
+    lowerB: { id: 'lowerB', name: 'Lower B', mobilityMin: 8, exercises: [Object.assign({}, EX.trap, { muscle: 'Posterior', sets: 4 }), EX.legExt, EX.abWheel, Object.assign({}, EX.legCurl, { muscle: 'Glutes', sets: 4 })] },
+  }) });
+  ok(!pick(post, 'VOL-FLOOR').some(r => /^Posterior chain:/.test(r.text)),
+    `la cadena posterior agregada (11 series) NO avisa — avisan: ${pick(post, 'VOL-FLOOR').map(r => r.text.split(':')[0]).join(', ')}`);
+  ok(!pick(post, 'VOL-FLOOR').some(r => /^(Hamstrings|Glutes|Posterior):/.test(r.text)),
+    'y ninguna de las tres etiquetas sueltas avisa por su cuenta');
+
+  // Por encima del suelo, silencio.
+  const chestOk = run({ sessions: Object.assign(clone(PLAN_OK.sessions), {
+    upperA: { id: 'upperA', name: 'Upper A', exercises: [Object.assign({}, EX.bench, { sets: 10 }), EX.row, EX.facePull, EX.pallof] },
+  }) });
+  ok(!pick(chestOk, 'VOL-FLOOR').some(r => /^Chest/.test(r.text)), 'pecho con 10 series exactas: en el suelo, no por debajo');
+
+  // Las dos puertas: variante <4 y mantenimiento.
+  silent(run(null, { variant: 3 }), 'VOL-FLOOR',
+    'variante de 3 días (10 series/familia es aritméticamente imposible)');
+  silent(run(null, { goals: { primary: { type: 'maintenance' }, constraints: { proteinG: 185 } } }), 'VOL-FLOOR',
+    'fuera de déficit (el 10-14 de STR-003 es el rango del déficit)');
+  eq(F.VP_MIN_SETS_PER_MUSCLE, 10, 'el suelo está declarado como constante exportada');
+  eq(F.VP_POSTERIOR_FAMILY, 'Posterior chain', 'y el nombre de la familia agregada también');
+  eq(F._vpMuscleFamily('Glutes'), 'Posterior chain', '_vpMuscleFamily fusiona Glutes…');
+  eq(F._vpMuscleFamily('hamstrings'), 'Posterior chain', '…y Hamstrings sin importar mayúsculas');
+  eq(F._vpMuscleFamily('Chest'), 'Chest', 'y deja el resto como está');
+  eq(F._vpFamilyHasFloor('Power'), false, '_vpFamilyHasFloor: Power no');
+  eq(F._vpFamilyHasFloor('Chest'), true, '   Chest sí');
+}
+
+// ════════════════════════════════════════════════════════════════════════════════════
+sec('F-5 · RECOMP-HOLD (warn) — REC-002/REC-008: la báscula veta el recorte');
+// ════════════════════════════════════════════════════════════════════════════════════
+// EL FALLO QUE ESTE BLOQUE IMPIDE. El piloto del déficit lee la pendiente del PESO. Con el peso
+// plano, la grasa bajando y la magra aguantando —que es literalmente el objetivo #1 cumpliéndose—
+// el piloto leía "estancamiento" y recortaba kcal. Cambiar lo que funciona por un artefacto de la
+// balanza es la forma más cara de perder masa magra, y el dato para no hacerlo llevaba en el pack
+// desde v11.69 (`trajectory.weight.scale`) sin ningún consumidor ejecutable.
+{
+  const SCALE_RECOMP = { date: '2026-09-06', deltaFrom: '2026-08-10', fatMassKgDelta28d: -0.9, ffmKgDelta28d: -0.1 };
+  const factsWith = (scale) => Object.assign({}, FACTS_OK, { trajectory: { weight: { scale } } });
+  const DEC_LOWER = [{ id: 'n1', type: 'nutrition', what: 'Lower training-day kcal', why: 'Weight flat for two weeks', ruleIds: ['REC-002'], evidence: { numbers: { kcalTraining: 2550 } } }];
+
+  const recomp = run(null, { facts: factsWith(SCALE_RECOMP), decisions: DEC_LOWER });
+  fires(recomp, 'RECOMP-HOLD', 'warn', ['2700', '2550', 'RECOMPOSITION', '-0.9'],
+    'grasa −0,9 kg con FFM −0,1 kg en 27 días y una decisión que baja las kcal');
+  ok(pick(recomp, 'RECOMP-HOLD')[0].text.indexOf('EXPENDITURE') !== -1,
+    '   y dice cuál es la palanca que sí existe: el gasto');
+  eq(pick(recomp, 'RECOMP-HOLD')[0].ruleIds.join(','), 'REC-002,REC-008', '   con las reglas del piloto');
+
+  // El texto también cuenta: una decisión sin números que dice que recorta.
+  const porTexto = run(null, {
+    facts: factsWith(SCALE_RECOMP),
+    decisions: [{ id: 'n2', type: 'nutrition', what: 'Cut intake by 150 kcal', why: 'Slope flat', ruleIds: ['REC-002'], evidence: { numbers: { weeks: 2 } } }],
+  });
+  fires(porTexto, 'RECOMP-HOLD', 'warn', ['RECOMPOSITION'], 'una decisión que lo dice con palabras');
+
+  // Los tres requisitos, uno a uno. Ninguno se rellena.
+  silent(run(null, { facts: factsWith(Object.assign({}, SCALE_RECOMP, { fatMassKgDelta28d: -0.2 })), decisions: DEC_LOWER }),
+    'RECOMP-HOLD', 'grasa que sólo baja 0,2 kg (bajo el umbral de 0,5)');
+  silent(run(null, { facts: factsWith(Object.assign({}, SCALE_RECOMP, { ffmKgDelta28d: -0.8 })), decisions: DEC_LOWER }),
+    'RECOMP-HOLD', 'FFM cayendo 0,8 kg: eso NO es recomposición, y el recorte puede ser correcto');
+  silent(run(null, { facts: factsWith(Object.assign({}, SCALE_RECOMP, { deltaFrom: '2026-08-25' })), decisions: DEC_LOWER }),
+    'RECOMP-HOLD', '12 días entre lecturas (<21): la bioimpedancia no separa tendencia de agua');
+  silent(run(null, { facts: factsWith(null), decisions: DEC_LOWER }),
+    'RECOMP-HOLD', 'sin báscula de composición no hay veto que aplicar');
+
+  // Subir kcal con la misma señal no se toca: el veto es DIRECCIONAL.
+  silent(run(null, {
+    facts: factsWith(SCALE_RECOMP),
+    decisions: [{ id: 'n3', type: 'nutrition', what: 'Raise training-day kcal', why: 'Losing too fast', ruleIds: ['REC-002'], evidence: { numbers: { kcalTraining: 2850 } } }],
+  }), 'RECOMP-HOLD', 'una decisión que SUBE las kcal');
+  // Y una decisión que no es de nutrición tampoco.
+  silent(run(null, { facts: factsWith(SCALE_RECOMP) }), 'RECOMP-HOLD', 'sin decisiones de nutrición');
+  eq(F.VP_RECOMP_FAT_DROP_KG, -0.5, 'el umbral de grasa está declarado (−0,5 kg)');
+  eq(F.VP_RECOMP_FFM_HOLD_KG, -0.3, 'el de FFM también (−0,3 kg)');
+  eq(F.VP_RECOMP_MIN_SPAN_DAYS, 21, 'y el span mínimo entre lecturas (21 días)');
+}
 
 // ════════════════════════════════════════════════════════════════════════════════════
 sec('G-H3 · DELOAD-VOLUME (hard) — LOAD-004');
@@ -754,7 +867,7 @@ sec('G-S14 · WEEK-SUMMARY (warn) — el contrato v2, v11.65');
 }
 
 // ════════════════════════════════════════════════════════════════════════════════════
-sec('El catálogo de ids: 39 y ni uno suelto');
+sec('El catálogo de ids: 41 y ni uno suelto');
 // ════════════════════════════════════════════════════════════════════════════════════
 // Cuenta los ids que el validador puede emitir, leyendo su propio fuente. Sirve para dos
 // cosas: que añadir un aviso obligue a mirar esta línea (y a etiquetarlo en `COACH_GUARD_LABEL`),
@@ -770,9 +883,12 @@ sec('El catálogo de ids: 39 y ni uno suelto');
     ...[...cuerpo.matchAll(/add\('([A-Z0-9-]+)'/g)].map(m => m[1]),
     ...[...cuerpo.matchAll(/out\.push\(\{ id: '([A-Z0-9-]+)'/g)].map(m => m[1]),
   ]);
-  eq(emitidos.size, 39, `el validador emite 39 ids distintos (${[...emitidos].sort().join(', ')})`);
+  eq(emitidos.size, 41, `el validador emite 41 ids distintos (${[...emitidos].sort().join(', ')})`);
   for (const id of ['ORDER-SAME-DAY', 'FREQ-FLOOR', 'RECOVERY-ONLY', 'KCAL-STEP', 'MVPA-FLOOR', 'PLYO-CONTACTS']) {
     ok(emitidos.has(id), `${id} está en el catálogo (nuevo en fn v4)`);
+  }
+  for (const id of ['VOL-FLOOR', 'RECOMP-HOLD']) {
+    ok(emitidos.has(id), `${id} está en el catálogo (nuevo en v11.71, auditoría 09-sep)`);
   }
   ok(emitidos.has('WEEK-SUMMARY'), 'y WEEK-SUMMARY sigue ahí');
   // Cada id lleva Rule IDs del corpus: un aviso sin regla es una opinión con formato de regla.
@@ -785,7 +901,13 @@ sec('El catálogo de ids: 39 y ni uno suelto');
   ok(citados.length >= 38, `se encontraron ${citados.length} avisos con Rule IDs en el fuente`);
   // Todos traducidos en la pantalla: un id crudo en un chip no se entiende.
   const coachjs = readFileSync('app/coach.js', 'utf8');
-  const sinTraducir = [...emitidos].filter(id => !new RegExp(`'${id}':|\\b${id}:`).test(coachjs));
+  //
+  // SIN LISTA DE PENDIENTES. Un id que el validador emite y la pantalla no sabe traducir sale
+  // como chip crudo en la tarjeta del coach ("VOL-FLOOR"), y eso no se entiende. La
+  // comprobación es total a propósito: cada id nuevo obliga a su etiqueta en el mismo
+  // incremento. Fue el caso de VOL-FLOOR y RECOMP-HOLD al integrar v11.71 con v11.72.
+  const tieneEtiqueta = (id) => new RegExp(`'${id}':|\\b${id}:`).test(coachjs);
+  const sinTraducir = [...emitidos].filter(id => !tieneEtiqueta(id));
   eq(sinTraducir.join(', ') || 'ninguno', 'ninguno', 'y todos tienen etiqueta en COACH_GUARD_LABEL');
 }
 

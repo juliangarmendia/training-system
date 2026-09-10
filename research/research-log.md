@@ -14,6 +14,15 @@ incumplida en la variante 5 (decisión: Lower/Upper/Upper); READ-006/LONG-004 pi
 publica duración; el disparador de LEA de REC-008 es inejecutable con los campos actuales; REC-006 tiene consumidor posible
 (hidratación ya persistida). Y un duro falso del validador: el box jump contaba como cuádriceps (16 > 14).
 
+**Resuelto el 2026-09-10 (v11.70 → v11.72).** El paso 6 del prompt ya dice que en el suelo la palanca es el gasto
+(REC-009, END-009) y que la báscula veta un recorte cuando la grasa baja con la masa magra intacta; el validador lo
+respalda con `RECOMP-HOLD`. STR-003 deja de ser sólo techo: `VOL-FLOOR` avisa por debajo de 10 series/semana sobre
+familias agregadas, y el pack publica `plannedSetsPerMuscle` para que el coach vea el mismo número que se juzga. La
+mitad reactiva de LOAD-004 se calcula (`progress.performance.regressedStreak`, 2 sesiones consecutivas). READ-006 y
+LONG-004 reciben consistencia, deuda y score de sueño; el disparador de LEA de REC-008 es ejecutable con
+`readiness.subjective`; REC-006 pasa a `consumer: engine` con la hidratación de 7 días en el pack. STR-002 se cumple en
+la variante de 5 días (Lower A · Upper A · Upper B). Y el box jump es `Power`: el duro falso desapareció.
+
 ## App audit and remediation plan (2026-09-08)
 
 Full audit of the app after the v11.55 → v11.65 sprint (weekly coach, removal of the daily readiness

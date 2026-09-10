@@ -51,7 +51,14 @@ const OUT_SHA = path.join(OUT_DIR, 'coach-facts.generated.sha');
 // Lo único que la función necesita del fichero. `buildCoachFacts` NO: el pack se calcula en la
 // PWA (una sola implementación del dedupe y de las unidades, con sus tests) y viaja en el
 // request. Aquí sólo se AUDITA lo que el modelo devolvió.
-const EXPORTS = ['validatePlanVersion', 'mergeProposal', 'diffPlanVersions'];
+//
+// `stableStringify` desde el 2026-09-10 (C-23): había CUATRO copias de la misma función (la
+// PWA, `coach-weekly-review/index.ts`, `scripts/coach-manual-review.mjs` y este generador). No
+// es una utilidad cualquiera — produce el `factsHash`, que ES la idempotencia de la revisión.
+// Dos implementaciones que ordenen distinto dan hashes distintos para el MISMO pack: la caché
+// deja de acertar, se paga otra llamada, y una revisión escrita a mano lleva un hash que la
+// función jamás reproduce.
+const EXPORTS = ['validatePlanVersion', 'mergeProposal', 'diffPlanVersions', 'stableStringify'];
 
 const check = process.argv.includes('--check');
 

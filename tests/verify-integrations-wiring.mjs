@@ -79,6 +79,9 @@ const CRONSQL = read('supabase/migrations/20260908_integrations_cron.sql');
 const WISYNC = read('supabase/functions/_shared/withings-sync.ts');
 const WISYNCFN = read('supabase/functions/withings-sync/index.ts');
 const WIHOOKFN = read('supabase/functions/withings-webhook/index.ts');
+const EVENTS = read('supabase/functions/_shared/events.ts');
+const CRON = read('supabase/functions/_shared/cron.ts');
+const ORPHANSQL = read('supabase/migrations/20260910_integration_events_orphans.sql');
 
 let failed = 0;
 const ok = (m) => console.log(`  ok   ${m}`);
@@ -371,12 +374,12 @@ yes(/Math\.abs\(need\.need_from_recent_nap_milli/.test(WWELL),
 
 // ── 13. whoop-sync (la función) ────────────────────────────────────────────────────────────
 console.log('13. whoop-sync: dos modos');
-yes(/x-cron-secret/.test(SYNCFN), 'modo cron por la cabecera x-cron-secret');
-yes(/timingSafeEqual\(cronHeader, expected\)/.test(SYNCFN), 'comparado en tiempo constante');
-yes(/EdgeRuntime\.waitUntil\(runForAll/.test(SYNCFN) && /\}, 202\)/.test(SYNCFN),
-    'el cron responde 202 y trabaja bajo waitUntil (pg_net corta a los 5 s)');
-yes(/\.eq\("provider", "whoop"\)[\s\S]{0,80}\.eq\("status", "active"\)/.test(SYNCFN),
-    'el cron recorre sólo los tokens activos de whoop');
+// C-22 (2026-09-10): el bloque del cron es idéntico en las dos funciones y vive en
+// `_shared/cron.ts`. Aquí se comprueba que la función lo USE con su proveedor; el bloque en sí
+// se comprueba una vez, en la sección 13b.
+yes(/handleCronMode\(req, "whoop", supa, \(userIds\) => runForAll\(userIds, days\)/.test(SYNCFN),
+    'modo cron delegado en handleCronMode con provider "whoop" y su runForAll');
+yes(/from "\.\.\/_shared\/cron\.ts"/.test(SYNCFN), 'importado de _shared/cron.ts');
 yes(/auth\.getUser\(\)/.test(SYNCFN), 'el modo usuario saca el usuario del JWT');
 yes(/status: "needs_reconnect"/.test(SYNCFN) && /ReconnectRequired/.test(SYNCFN),
     'ReconnectRequired → 200 {ok:false, status:needs_reconnect}, no un 500');
@@ -384,6 +387,22 @@ yes(/status: "refresh_in_progress" \}, 503\)/.test(SYNCFN), 'RefreshInProgress �
 yes(/MAX_DAYS = 30/.test(SYNCFN), 'days con tope de 30');
 yes(/for \(const userId of userIds\)[\s\S]{0,400}catch/.test(SYNCFN),
     'un usuario que falla no tumba el sync de los demás');
+
+// ── 13b. _shared/cron.ts (C-22) ────────────────────────────────────────────────────────────
+// EL FALLO QUE ESTA SECCIÓN EXISTE PARA IMPEDIR: que el arreglo se aplique a una sola de las
+// dos copias. `whoop-sync` y `withings-sync` son gemelas a propósito (la PWA las llama igual y
+// espera lo mismo), así que una divergencia aquí se convierte en un `if (provider === ...)` en
+// el cliente — o, peor, en un secreto comparado en tiempo constante en una y con `===` en la otra.
+console.log('13b. _shared/cron.ts: el modo cron, una sola vez');
+yes(/x-cron-secret/.test(CRON), 'lee la cabecera x-cron-secret');
+yes(/timingSafeEqual\(cronHeader, expected\)/.test(CRON), 'comparado en tiempo constante');
+yes(/EdgeRuntime\.waitUntil\(run\(userIds\)\)/.test(CRON) && /\}, 202\)/.test(CRON),
+    'responde 202 y trabaja bajo waitUntil (pg_net corta a los 5 s)');
+yes(/\.eq\("provider", provider\)[\s\S]{0,80}\.eq\("status", "active"\)/.test(CRON),
+    'y recorre sólo los tokens ACTIVOS del proveedor que se le pasa');
+yes(/if \(!cronHeader\) return null/.test(CRON),
+    'sin la cabecera devuelve null: el llamador sigue con el modo usuario');
+yes(/CRON_SECRET/.test(CRON) && /\}, 500\)/.test(CRON), 'sin CRON_SECRET configurado, 500 explícito');
 
 // ── 14. whoop-webhook ──────────────────────────────────────────────────────────────────────
 console.log('14. whoop-webhook: firma, deduplicación y 200 inmediato');
@@ -398,9 +417,11 @@ yes(/timingSafeEqual\(expected, sig\)/.test(HOOKFN), 'comparación en tiempo con
 yes(/TOLERANCE_MS = 5 \* 60 \* 1000/.test(HOOKFN), 'ventana de 5 minutos');
 yes(/MILISEGUNDOS/.test(HOOKFN), 'el timestamp está documentado como milisegundos');
 yes(/MAX_BODY_BYTES = 16 \* 1024/.test(HOOKFN) && /413/.test(HOOKFN), 'tope de 16 KB → 413');
-yes(/integration_events/.test(HOOKFN), 'todo evento queda en integration_events');
-yes(/onConflict: "provider,trace_id", ignoreDuplicates: true/.test(HOOKFN),
-    'deduplicación por (provider, trace_id): WHOOP reintenta cinco veces');
+// C-22: el alta y el cierre del evento viven en `_shared/events.ts` (eran byte a byte iguales
+// en los dos webhooks). Sección 14b para el módulo.
+yes(/openEvent\(supa, "whoop-webhook"/.test(HOOKFN), 'todo evento queda en integration_events (openEvent)');
+yes(/provider: "whoop"/.test(HOOKFN) && /trace_id: traceId/.test(HOOKFN),
+    'con su provider y su trace_id sintético');
 yes(/duplicate: true/.test(HOOKFN), 'un duplicado responde 200 y no trabaja');
 yes(/EdgeRuntime\.waitUntil\(process\(/.test(HOOKFN), 'el sync va bajo waitUntil');
 const idx200 = HOOKFN.indexOf('EdgeRuntime.waitUntil(process(');
@@ -490,8 +511,8 @@ yes(/action: "subscribe"/.test(WISYNC) && /appli: "1"/.test(WISYNC), 'notify sub
 
 // ── 18. A-5 · withings-sync y withings-webhook ─────────────────────────────────────────────
 console.log('18. Las funciones de Withings');
-yes(/x-cron-secret/.test(WISYNCFN) && /\}, 202\)/.test(WISYNCFN), 'withings-sync: modo cron con 202');
-yes(/EdgeRuntime\.waitUntil\(runForAll/.test(WISYNCFN), 'y waitUntil');
+yes(/handleCronMode\(\s*req,\s*"withings"/.test(WISYNCFN), 'withings-sync: modo cron por handleCronMode');
+yes(/runForAll\(userIds, days, resubscribe\)/.test(WISYNCFN), 'con su propio runForAll (resubscribe incluido)');
 yes(/status: "needs_reconnect"/.test(WISYNCFN) && /status: "refresh_in_progress" \}, 503\)/.test(WISYNCFN),
     'mismas respuestas de estado que whoop-sync (la PWA no necesita un if por proveedor)');
 yes(/resubscribe/.test(WISYNCFN) && /subscribeWithingsNotify\(/.test(WISYNCFN),
@@ -504,9 +525,7 @@ yes(/timingSafeEqual\(t, expected\)/.test(WIHOOKFN), 'comparado en tiempo consta
 yes(/appli/.test(WIHOOKFN) && /TOLERATED_APPLI = "1"/.test(WIHOOKFN), 'sólo appli=1 (pesadas)');
 yes(/external_user_id/.test(WIHOOKFN) && /ignored: "unknown_user"/.test(WIHOOKFN),
     'el userid tiene que existir como external_user_id; si no, 200 + ignored');
-yes(/integration_events/.test(WIHOOKFN) &&
-    /onConflict: "provider,trace_id", ignoreDuplicates: true/.test(WIHOOKFN),
-    'evento registrado y deduplicado');
+yes(/openEvent\(supa, "withings-webhook"/.test(WIHOOKFN), 'evento registrado y deduplicado (openEvent)');
 yes(/trace_id: traceId/.test(WIHOOKFN) &&
     /\$\{externalUserId\}:\$\{startdate\}:\$\{enddate\}:\$\{appli\}/.test(WIHOOKFN),
     'trace_id = userid:startdate:enddate:appli');
@@ -689,6 +708,83 @@ console.log('v11.70 · strava-sync no confía en body.user_id; strava.js llama c
   yes(/payload\.trace_id\s*\?\s*String\(payload\.trace_id\)\s*:\s*`\$\{type\}:\$\{externalUserId\}:/.test(HOOKFN),
     'whoop-webhook: sin trace_id, clave sintética type:user:id (cinco reintentos = una fila)');
 }
+
+// ── fn v5 · C-11 timeouts · C-12 huérfanos · C-22 events.ts ───────────────────────────────
+//
+// EL FALLO QUE ESTA SECCIÓN EXISTE PARA IMPEDIR. Tres, y los tres son de los que no fallan hoy:
+//
+//   · **Un `fetch` sin tope** (C-11). Un proveedor que acepta la conexión y luego no contesta
+//     deja la promesa colgada hasta que el runtime mata el isolate: en modo usuario es un
+//     spinner eterno; bajo `waitUntil` la instancia se queda ocupada, el cron siguiente entra
+//     encima y el evento del webhook se queda en `received` para siempre.
+//   · **Un timeout tratado como fallo de auth**. Si el abort escapara de la clasificación y
+//     acabara en `markNeedsReconnect`, una red lenta obligaría a Julian a rehacer el OAuth —
+//     que es justo lo que no lo arregla. Un timeout es SIEMPRE `ProviderTransientError`.
+//   · **El evento huérfano** (C-12). El evento se inserta `received` antes de procesar porque
+//     hay que responder 2xx ya. Si el `waitUntil` muere, la fila se queda ahí para siempre: el
+//     reintento del proveedor cae en `ignoreDuplicates` y responde 200 sin hacer nada, y el GC
+//     la borra a los 60 días sin procesarla. El reintento, que era la segunda oportunidad, se
+//     convierte en la garantía de que el dato no entra nunca.
+console.log('');
+console.log('19. C-11 · ningún fetch de servidor sin timeout');
+yes(/export function fetchWithTimeout/.test(HTTP), '_shared/http.ts exporta fetchWithTimeout');
+yes(/AbortSignal\.timeout\(ms\)/.test(HTTP), 'con AbortSignal.timeout (aborta también el cuerpo, no sólo el handshake)');
+yes(/new AbortController\(\)/.test(HTTP), 'y un respaldo con AbortController donde el helper no exista');
+yes(/TOKEN_TIMEOUT_MS = 12_000/.test(HTTP), 'refresco/canje de token: 12 s');
+yes(/PROVIDER_TIMEOUT_MS = 15_000/.test(HTTP), 'API del proveedor: 15 s');
+yes(/export function isTimeoutError/.test(HTTP) && /export function netErrorText/.test(HTTP),
+    'y un par de ayudas para decir en el log que fue un timeout');
+// Ni un solo `fetch(` crudo en el servidor: el grep es la comprobación, no la lista de sitios.
+for (const [name, src] of [
+  ['_shared/whoop.ts', WHOOP], ['_shared/withings.ts', WITHINGS], ['_shared/tokens.ts', TOKENS],
+  ['strava-sync/index.ts', read('supabase/functions/strava-sync/index.ts')],
+]) {
+  const crudos = (src.match(/(?<!WithTimeout)(?<![A-Za-z])fetch\(/g) || []).length;
+  eq(crudos, 0, `${name}: cero fetch() sin tope`);
+}
+// El timeout tiene que aterrizar en la rama TRANSITORIA, nunca en needs_reconnect.
+yes(/ProviderTransientError\([\s\S]{0,120}netErrorText\(err/.test(TOKENS),
+    'tokens.ts: el fallo de red (timeout incluido) se lanza como ProviderTransientError');
+yes(/ProviderTransientError\([\s\S]{0,140}netErrorText\(err, TOKEN_TIMEOUT_MS\)/.test(WHOOP),
+    'whoop.ts: igual en el endpoint de token — un timeout no quema el refresh token');
+yes(/ProviderTransientError\([\s\S]{0,140}netErrorText\(err, TOKEN_TIMEOUT_MS\)/.test(WITHINGS),
+    'withings.ts: igual');
+yes(!/markNeedsReconnect/.test(WHOOP) && !/markNeedsReconnect/.test(WITHINGS),
+    'y ningún adaptador marca needs_reconnect por su cuenta (eso es de tokens.ts)');
+
+console.log('');
+console.log('20. C-22 · _shared/events.ts: el alta y el cierre del evento, una sola vez');
+yes(/export async function openEvent/.test(EVENTS) && /export async function closeEvent/.test(EVENTS),
+    'openEvent y closeEvent exportados');
+yes(/onConflict: "provider,trace_id", ignoreDuplicates: true/.test(EVENTS),
+    'deduplicación por (provider, trace_id): los proveedores reintentan');
+yes(/from "\.\.\/_shared\/events\.ts"/.test(HOOKFN) && /from "\.\.\/_shared\/events\.ts"/.test(WIHOOKFN),
+    'los dos webhooks lo importan');
+yes(!/async function closeEvent\(/.test(HOOKFN) && !/async function closeEvent\(/.test(WIHOOKFN),
+    'y ninguno conserva su copia local (eran byte a byte iguales)');
+yes(/opened\.failed/.test(HOOKFN) && /opened\.failed/.test(WIHOOKFN),
+    'un fallo del alta sigue siendo un 500, no un 200 silencioso');
+
+console.log('');
+console.log('21. C-12 · los eventos huérfanos se reencolan');
+yes(/status: "received", error: null, processed_at: null/.test(EVENTS),
+    'un duplicado en `error` se REABRE a received (el reintento vuelve a servir para algo)');
+yes(/\.eq\("id", prev\.id\)[\s\S]{0,80}\.eq\("status", "error"\)/.test(EVENTS),
+    'con un reclamo atómico condicionado a status=error: dos reintentos a la vez no sincronizan dos veces');
+yes(/prev\.status !== "error"/.test(EVENTS),
+    'y `processed`/`ignored`/`received` NO se tocan (ya se hizo, o hay otra instancia dentro)');
+yes(ORPHANSQL.length > 0, 'existe la migración 20260910_integration_events_orphans.sql');
+yes(/create or replace function public\.integration_events_requeue_orphans/.test(ORPHANSQL),
+    'define integration_events_requeue_orphans()');
+yes(/status = 'received'[\s\S]{0,200}interval '30 minutes'/.test(ORPHANSQL),
+    'marca los `received` de más de 30 minutos');
+yes(/'orphan: processing never finished'/.test(ORPHANSQL), 'con el motivo escrito en la fila');
+yes(/security definer/.test(ORPHANSQL) && /revoke execute on function public\.integration_events_requeue_orphans/.test(ORPHANSQL),
+    'security definer con EXECUTE revocado (la bitácora no la escribe un cliente anon)');
+yes(/cron\.schedule\('integration-events-orphans', '\*\/30 \* \* \* \*'/.test(ORPHANSQL),
+    'programado cada 30 minutos');
+yes(/cron\.unschedule/.test(ORPHANSQL),
+    'y desprogramado antes por nombre: reaplicar la migración no puede dejar dos jobs iguales');
 
 console.log(failed === 0 ? '\nTODO OK' : `\n${failed} FALLOS`);
 process.exit(failed === 0 ? 0 : 1);

@@ -82,8 +82,18 @@ console.log('');
 console.log('4. La tarjeta de Home y la caducidad');
 const card = body(COACH, 'async function renderCoachWeekCard(');
 yes(/review\.status === 'requested'/.test(card), "renderCoachWeekCard tiene el estado 'requested'");
-yes(/waiting for the manual review from Claude Code/.test(card), 'y dice que la semana está cerrada y espera a Claude Code');
-yes(/id="coach-week-ask-api"/.test(card) && /on\('coach-week-ask-api'/.test(card), 'con el botón "Ask the model instead" cableado');
+// v11.72 (V-25): el texto ya no nombra "Claude Code". Cómo se escribe la revisión es una
+// interioridad del taller; lo que el usuario necesita saber es que la semana está cerrada, que
+// el pack está guardado y que la propuesta aparecerá aquí.
+yes(/the manual review is being written/.test(card), 'y dice que la semana está cerrada y que la revisión se está escribiendo');
+// Se mira el CÓDIGO, no los comentarios: el comentario que explica qué texto se retiró tiene
+// que poder citarlo.
+const sinComentarios = (src) => src.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join(' ');
+yes(!/Claude Code/.test(sinComentarios(card)), 'sin nombrar la herramienta en la interfaz (V-25)');
+yes(!/toast\([^)]*Claude Code/.test(sinComentarios(COACH)), 'y ningún toast la nombra tampoco');
+// v11.72 (V-12): los ids llevan sufijo por contenedor (Home y la vista Coach comparten tarjeta).
+yes(/id="\$\{bid\('coach-week-ask-api'\)\}"/.test(card) && /on\('coach-week-ask-api'/.test(card),
+  'con el botón "Ask the model instead" cableado');
 yes(/force: true/.test(card.slice(card.indexOf("on('coach-week-ask-api'"))), 'que llama con force (decisión explícita de gastar)');
 const expire = body(COACH, 'async function _coachExpireIfStale(');
 yes(/review\.status !== 'requested'/.test(expire), 'una requested de una semana pasada caduca como una proposed');

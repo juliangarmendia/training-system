@@ -1521,7 +1521,13 @@ function computeReadinessFrom(inputs = {}) {
     || isFired('rpe2')
     || (isFired('hrv7v28') && isFired('rhr7v28') && isFired('quality2'));
 
-  return { color, signals, fired, confidence, deloadHint, ruleIds: READ_RULE_IDS.slice() };
+  // F-9 (auditoría 2026-09-09) · UNA SOLA TABLA DE COLOR. El prompt del coach llevaba su propio
+  // recuento ("Verde 0-1 · Amarillo 2 · Rojo ≥3") sobre señales que él mismo contaba a ojo, así
+  // que el modelo podía escribir "yellow" encima de un pack que decía `red`. La justificación del
+  // color no se recuenta en ningún sitio: sale de aquí, con los ids que dispararon, y el pack la
+  // publica en `readiness.firedSignals`.
+  const firedSignals = signals.filter(s => s.fired).map(s => s.id);
+  return { color, signals, fired, firedSignals, confidence, deloadHint, ruleIds: READ_RULE_IDS.slice() };
 }
 
 // ==================== LÍNEA DE RENDIMIENTO ====================
@@ -1746,6 +1752,8 @@ const RW_RAMP = 1.10;            // END-003, tope blando
 const RW_RAMP_HARD = 1.20;       // tope duro
 const RW_RAMP_MIN_KM = 1;        // con volúmenes bajos, +10 % es +0,8 km: no se nota
 const RW_DELOAD_FACTOR = 0.7;
+// F-10 · la semana del bloque en la que el volumen de carrera se REPITE (CLAUDE.md).
+const RW_BLOCK_WEEK1 = 1;
 /**
  * Techos de la fase run/walk, en minutos, para los slots de carrera ordenados de menor a
  * mayor base. Arrancan POR DEBAJO de la base del slot (40'/50' en el ideal) porque en
@@ -1951,6 +1959,24 @@ function _rwGates(runs, opts) {
 }
 
 /**
+ * La semana DENTRO del bloque, 1-based (1..weeksTotal), o null si no se sabe.
+ *
+ * F-10 (auditoría 2026-09-09). `block.index` ya viene 1-based de `blockWeekFromDates`; cuando el
+ * llamador sólo pasa `weeksIntoBlock` (que cuenta desde el ANCLA, no dentro del bloque) se deriva
+ * con el módulo. Son dos nombres para dos magnitudes distintas y confundirlos es lo que haría que
+ * la retención de la semana 1 se disparase cada 5 semanas en el sitio equivocado.
+ */
+function _rwBlockWeek(o) {
+  const b = (o && o.block) || {};
+  const idx = Number(b.index);
+  if (isFinite(idx) && idx > 0) return idx;
+  const wib = Number(o && o.weeksIntoBlock != null ? o.weeksIntoBlock : b.weeksIntoBlock);
+  if (!isFinite(wib) || wib < 0) return null;
+  const total = Number(b.weeksTotal) > 0 ? Number(b.weeksTotal) : 5;
+  return (wib % total) + 1;
+}
+
+/**
  * En qué fase está la carrera. Cuatro estados y un orden estricto: primero las puertas que
  * mandan de vuelta a `run_walk` (son las que protegen), después las que ascienden.
  */
@@ -1977,7 +2003,16 @@ function _rwPhase(gates, opts) {
   // señal de fatiga: una dura ahí no es calidad, es la gota.
   const qualityUnlocked = !needRunWalk && !deload
     && gates.baseWeeks >= RW_BASE_WEEKS_FOR_QUALITY;
-  return { phase, qualityUnlocked, deload, hold, needRunWalk };
+  // F-10 · LA SEMANA 1 DE UN BLOQUE NO RAMPA. CLAUDE.md lo dice desde el principio ("no aumentar
+  // el volumen de carrera en las primeras 2-3 semanas de un programa nuevo") y no existía en
+  // código: el motor rampaba +10 % la misma semana en que la fuerza estrena bloque, que es cuando
+  // más cambia todo lo demás. Se repite el volumen de referencia, ni se sube ni se baja.
+  // Sólo si la semana anterior HUBO carrera: sin nada que repetir, la rampa desde 0 no es rampa,
+  // es el arranque que ya gobiernan las puertas de `run_walk`.
+  const blockWeek = _rwBlockWeek(o);
+  const blockWeek1Hold = !needRunWalk && !deload
+    && blockWeek === RW_BLOCK_WEEK1 && Number(gates.lastWeekKm) > 0;
+  return { phase, qualityUnlocked, deload, hold, needRunWalk, blockWeek, blockWeek1Hold };
 }
 
 /** Los slots de carrera de la semana, normalizados y ordenados: largo primero. */
@@ -2031,7 +2066,11 @@ function _rwMinDsl(min) { return `- ${Math.round(Number(min))}m Z2 HR`; }
  * @param {Array}  input.history4w  Carreras dedupeadas de 4 semanas (`{date, km, min, avgHR,
  *                                  decoupling?, avgHRHalves?, pctZ2?, modality?}`).
  *                                  Bici/remo/ski se descartan aquí dentro, no fuera.
- * @param {object} input.block      Salida de `blockWeekFromDates`.
+ * @param {object} input.block      Salida de `blockWeekFromDates`. `block.index` (1-based dentro
+ *                                  del bloque) gobierna la retención de la semana 1 (F-10); si
+ *                                  falta, se deriva de `weeksIntoBlock`.
+ * @param {number} [input.weeksIntoBlock] Alternativa a `block.weeksIntoBlock` cuando el llamador
+ *                                  no tiene el objeto entero.
  * @param {object} input.readiness  `{deloadHint}` de `computeReadiness()`. **Sólo informa**:
  *                                  desde v11.67 no cambia ni un kilómetro ni abre o cierra la
  *                                  calidad (E-7). Se conserva en la firma para poder NOMBRAR
@@ -2053,7 +2092,7 @@ function suggestRunningWeek(input) {
   const block = inp.block || {};
   const runs = _rwNormalizeRuns(inp.history4w);
   const gates = _rwGates(runs, { z2max, todayStr });
-  const ph = _rwPhase(gates, { block, readiness: inp.readiness });
+  const ph = _rwPhase(gates, { block, readiness: inp.readiness, weeksIntoBlock: inp.weeksIntoBlock });
   const slots = _rwSlots(inp.slots);
   const goals = inp.goals || COACH_GOALS_DEFAULT;
   const targetKm = Number(((goals.secondary || {}).run10k || {}).targetKm) || 10;
@@ -2115,6 +2154,9 @@ function suggestRunningWeek(input) {
     const last = gates.rampFromKm;
     if (ph.deload) {
       weeklyKmTarget = _rwCeilHalf(last * RW_DELOAD_FACTOR);
+    } else if (ph.blockWeek1Hold) {
+      // F-10: el mismo volumen, sin redondear hacia arriba. "Repetir" es repetir el número.
+      weeklyKmTarget = last;
     } else {
       weeklyKmTarget = Math.min(
         _rwCeilHalf(Math.max(last * RW_RAMP, last + RW_RAMP_MIN_KM)),
@@ -2124,7 +2166,7 @@ function suggestRunningWeek(input) {
     const shares = _rwShares(slots.ordered.length);
     let longKm = _rwFloorHalf(weeklyKmTarget * shares[0]);
     if ((ph.phase === 'build' || ph.phase === 'ready10k') && gates.lastWeekLongKm > 0
-        && !ph.deload) {
+        && !ph.deload && !ph.blockWeek1Hold) {
       // El largo es el que manda en build: crece +10 % o +1 km, el MENOR de los dos, y el
       // reparto sigue siendo su techo (nunca más del 40-50 % de la semana).
       const grow = Math.min(gates.lastWeekLongKm * RW_RAMP, gates.lastWeekLongKm + 1);
@@ -2167,6 +2209,9 @@ function suggestRunningWeek(input) {
     if (ph.deload) {
       ruleIds.push('LOAD-004');
       reason = `Deload week: ${_rwFmt(weeklyKmTarget)} km (−30 % on ${_rwFmt(last)}), the long run comes down with it`;
+    } else if (ph.blockWeek1Hold) {
+      ruleIds.push('LOAD-001');
+      reason = `Week 1 of the block: repeat ${_rwFmt(weeklyKmTarget)} km, no ramp (CLAUDE.md: no running-volume increase in the first 2-3 weeks)`;
     } else if (ph.phase === 'ready10k') {
       reason = `${_rwFmt(gates.longestZ2Km)} km long run in Z2 with drift under control and ${_rwFmt(last)} km/wk: a comfortable 10 km is within reach`;
     } else if (ph.phase === 'build') {
@@ -2215,6 +2260,10 @@ function suggestRunningWeek(input) {
       runCount: gates.runCount,
       decouplingOk: gates.decouplingOk,
       decouplingNote: gates.decouplingNote,
+      // F-10: la semana del bloque y si por eso se repitió el volumen. Va en `gates` porque es
+      // una PUERTA, no una fase: no cambia el tipo de sesión, sólo congela el número.
+      blockWeek: ph.blockWeek,
+      blockWeek1Hold: ph.blockWeek1Hold,
     },
     reason,
     ruleIds,
@@ -2679,6 +2728,8 @@ if (typeof module !== 'undefined' && module.exports) {
     RW_READY_WEEK_KM,
     RW_DECOUPLING_MAX,
     RW_PATTERNS,
+    RW_BLOCK_WEEK1,
+    _rwBlockWeek,
     RW_PHASE_LABEL,
     _rwCeilHalf,
     _rwFloorHalf,

@@ -53,8 +53,13 @@ const HTML_IDS = new Set([...HTML.matchAll(/\sid="([^"]+)"/g)].map((m) => m[1]))
 
 // Ids creados dinámicamente y consultados desde OTRO fichero. Cada uno, justificado.
 const DYNAMIC_ID_ALLOWLIST = {
-  // (vacío a propósito: hoy ningún renderer consulta un id creado por otro fichero. Si añadís
-  // uno, ponlo aquí con el motivo — no relajes la regla.)
+  // v11.72 (V-15): los cuatro campos del formulario de cintura los fabrica el propio
+  // `renderBodyCompEstimator` con un helper (`id="${id}"`), así que la búsqueda de ids
+  // literales no los ve. Los crea y los lee la MISMA función, que es el caso legítimo.
+  'bc-waist': 'renderBodyCompEstimator lo crea con el helper `campo()` (V-15)',
+  'bc-neck': 'idem',
+  'bc-height': 'idem',
+  'bc-weight': 'idem (sólo en modo Navy, sin báscula)',
 };
 
 function renderersOf(src) {
@@ -94,10 +99,18 @@ yes(orphanCount === 0, `cero renderers huérfanos (encontrados: ${orphanCount})`
 
 // Los contenedores que el incremento añade o rescata.
 yes(HTML_IDS.has('steps-card'), '#steps-card existe en index.html (E-12: los pasos ya se ven)');
-yes(/id="steps-card"[^>]*data-group="today"/.test(HTML),
-  '#steps-card está en el grupo `today` de Stats');
-yes(HTML.indexOf('id="steps-card"') > HTML.indexOf('id="coach-recovery-line"'),
-  '#steps-card va después de #coach-recovery-line');
+// v11.72 (V-10, decisión de Julian): los pasos estaban en Today Y en Body, con dos formatos
+// del mismo número. Ahora viven SÓLO en Body, junto a su gráfico y su histórico.
+yes(/id="steps-card"[^>]*data-group="body"/.test(HTML),
+  '#steps-card está en el grupo `body` de Stats');
+yes((HTML.match(/id="steps-card"/g) || []).length === 1, 'y sólo hay uno');
+yes(HTML.indexOf('id="steps-card"') > HTML.indexOf('>Daily Steps<'),
+  '#steps-card va bajo la etiqueta "Daily Steps"');
+// V-10: los tres contenedores de recuperación son UNO.
+yes(!HTML.includes('id="coach-recovery-line"') && !HTML.includes('id="whoop-recovery"'),
+  '#coach-recovery-line y #whoop-recovery ya no existen: un solo bloque de recuperación');
+yes(/id="readiness-signals"[^>]*data-group="now"/.test(HTML),
+  'y el que queda vive en el grupo `now`');
 yes(HTML_IDS.has('wo-completed-notes'),
   '#wo-completed-notes existe (B-1: notas de un entreno guardado, de sólo lectura)');
 
@@ -133,7 +146,8 @@ const STATS_SRC = (() => {
   return APP.slice(i, APP.indexOf('\n}\n', i));
 })();
 yes(STATS_SRC.length > 0, 'renderStats() localizable');
-yes(/renderStepsCard\(\)/.test(STATS_SRC), 'renderStats() llama a renderStepsCard()');
+yes(/renderStepsCard\(\)/.test(APP.slice(APP.indexOf('const STATS_GROUPS = {'), APP.indexOf('const STATS_DEFAULT_GROUP'))),
+  'renderStepsCard() está en el grupo `body` de STATS_GROUPS');
 yes(/No steps yet/.test(APP), 'renderStepsCard() tiene estado vacío ("No steps yet") y no pinta un 0 como si fuera un dato');
 
 // ---------------------------------------------------------------------------
@@ -159,9 +173,49 @@ yes(!/await Promise\.all\(\[/.test(HOME_SRC), 'y ya no usa Promise.all');
 yes(/console\.warn\(`\[Home\] /.test(HOME_SRC), 'y anota por bloque rechazado');
 yes(/renderHomeView\(\)\.catch\(/.test(APP), 'switchTab() atrapa el fallo de renderHomeView()');
 yes(/renderStats\(\)\.catch\(/.test(APP), 'switchTab() atrapa el fallo de renderStats()');
-yes(/Promise\.allSettled\(/.test(STATS_SRC), 'renderStats() usa allSettled');
-yes((STATS_SRC.match(/await tanda\(/g) || []).length === 3,
-  'renderStats() va en TRES tandas (today · week · history), no en veinte awaits en serie');
+// V-5 (v11.72): `renderStats` pinta UN grupo. Los 22 renderers de las cuatro pestañas se
+// ejecutaban enteros por cada visita a la vista, para enseñar una sola.
+const GROUP_SRC = (() => {
+  const i = APP.indexOf('async function renderStatsGroup(group) {');
+  return i < 0 ? '' : APP.slice(i, APP.indexOf('\n}\n', i));
+})();
+yes(GROUP_SRC.length > 0, 'renderStatsGroup(group) existe');
+yes(/Promise\.allSettled\(/.test(GROUP_SRC), 'y usa allSettled dentro del grupo');
+yes(/state\._statsPainted\.add\(group\)/.test(GROUP_SRC), 'marca el grupo como pintado');
+yes(/renderStatsGroup\(_activeStatsGroup\(\)\)/.test(STATS_SRC),
+  'renderStats() pinta SÓLO el grupo activo');
+{
+  const SW_SRC = (() => {
+    const i = APP.indexOf('function switchStatsGroup(group) {');
+    return i < 0 ? '' : APP.slice(i, APP.indexOf('\n}\n', i));
+  })();
+  yes(/state\._statsPainted\.has\(group\)/.test(SW_SRC) && /renderStatsGroup\(group\)/.test(SW_SRC),
+    'switchStatsGroup pinta un grupo la primera vez que se enseña');
+}
+{
+  const AWS = (() => {
+    const i = APP.indexOf('async function afterWorkoutSaved() {');
+    return i < 0 ? '' : APP.slice(i, APP.indexOf('\n}\n', i));
+  })();
+  yes(/state\._statsPainted\.clear\(\)/.test(AWS),
+    'y guardar un entreno invalida los cuatro (todos los números cambian)');
+}
+// Los cuatro grupos existen y ninguno se queda sin renderers.
+{
+  const G = APP.slice(APP.indexOf('const STATS_GROUPS = {'), APP.indexOf('const STATS_DEFAULT_GROUP'));
+  for (const g of ['now:', 'week:', 'body:', 'strength:']) {
+    yes(G.includes('  ' + g), `STATS_GROUPS tiene el grupo ${g.replace(':', '')}`);
+  }
+  const tabs = [...HTML.matchAll(/data-stats-group="(\w+)"/g)].map((m) => m[1]);
+  yes(tabs.join(',') === 'now,week,body,strength',
+    `las pestañas de Stats son Now/Week/Body/Strength (son: ${tabs.join(',')})`);
+  // Ningún renderer se pierde en la mudanza: cada id de contenedor de Stats sigue teniendo quien
+  // lo pinte, y cada pestaña sigue teniendo contenido.
+  for (const id of ['macro-calc-section', 'plate-calc-input', 'week-compare', 'swimlane-timeline',
+                    'weekly-coach-card', 'hard-day-budget', 'muscle-volume', 'streak-calendar']) {
+    yes(HTML.includes(`id="${id}"`), `#${id} sobrevive a la reorganización de pestañas (V-10)`);
+  }
+}
 
 // ---------------------------------------------------------------------------
 // 4 · B-6 · nada del modelo de fotos entra sin escapar
@@ -264,7 +318,8 @@ yes(/_renderPass/.test(DGA_SRC), 'dbGetAll() consulta el pase activo');
 yes(/\.slice\(\)/.test(DGA_SRC), 'y devuelve una COPIA por llamador (media app hace .sort() sobre el resultado)');
 yes(/function _dbGetAllRaw\(store\)/.test(APP), 'la lectura sin memo sigue disponible (_dbGetAllRaw) para fuera del pase');
 yes(/beginRenderPass\(\)/.test(HOME_SRC) && /endRenderPass\(\)/.test(HOME_SRC), 'renderHomeView() abre y cierra el pase');
-yes(/beginRenderPass\(\)/.test(STATS_SRC) && /endRenderPass\(\)/.test(STATS_SRC), 'renderStats() abre y cierra el pase');
+yes(/beginRenderPass\(\)/.test(GROUP_SRC) && /endRenderPass\(\)/.test(GROUP_SRC),
+  'renderStatsGroup() abre y cierra el pase');
 
 yes(/async function afterWorkoutSaved\(\)/.test(APP), 'afterWorkoutSaved() existe (V-7d)');
 yes((APP.match(/await afterWorkoutSaved\(\)/g) || []).length >= 4,

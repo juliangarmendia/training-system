@@ -8,7 +8,8 @@
   <meta name="theme-color" content="#08090b">
   <title>Training</title>
   <link rel="manifest" href="manifest.json">
-  <link rel="icon" type="image/png" href="app-icon.png">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="alternate icon" href="app-icon.png" type="image/png">
   <link rel="apple-touch-icon" href="app-icon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -38,7 +39,7 @@
       </section>
 
       <div id="login-form" class="login-form">
-        <div class="login-field login-row" id="login-name-row" style="display:none">
+        <div class="login-field login-row" id="login-name-row" hidden>
           <label for="login-name">Your name</label>
           <input type="text" id="login-name" placeholder="Julian" autocomplete="given-name">
         </div>
@@ -92,7 +93,7 @@
     <div class="modal-content">
       <div class="modal-header">
         <h3 id="ew-title">Edit Workout</h3>
-        <button id="ew-close" class="modal-close-btn">&times;</button>
+        <button id="ew-close" class="modal-close-btn" aria-label="Close">&times;</button>
       </div>
       <div class="form-row"><label>Date</label><input type="date" id="ew-date" class="text-input"></div>
       <div class="form-row"><label>Quality (1-5)</label><input type="number" id="ew-quality" class="text-input" min="1" max="5" inputmode="numeric"></div>
@@ -116,7 +117,7 @@
     <div class="modal-content">
       <div class="modal-header">
         <h3>Review the meal</h3>
-        <button id="nut-confirm-close" class="modal-close-btn">&times;</button>
+        <button id="nut-confirm-close" class="modal-close-btn" aria-label="Close">&times;</button>
       </div>
       <div id="nut-confirm-notes" class="nut-ai-notes"></div>
       <div id="nut-confirm-items" class="nut-items"></div>
@@ -139,7 +140,7 @@
     <div class="modal-content">
       <div class="modal-header">
         <h3 id="modal-ex-name">Exercise</h3>
-        <button id="modal-close" class="modal-close-btn">&times;</button>
+        <button id="modal-close" class="modal-close-btn" aria-label="Close">&times;</button>
       </div>
       <div id="modal-1rm" class="modal-1rm"></div>
       <div class="section-label" style="margin-top:12px">Est. 1RM Progression</div>
@@ -187,7 +188,7 @@
           <div id="coach-goal-line"></div>
           <div class="home-sec-row" style="margin-top:24px">
             <h2 class="home-h2">Today's session</h2>
-            <span class="home-link-mono" id="todays-detail">Detail</span>
+            <button type="button" class="home-link-mono" id="todays-detail">Detail</button>
           </div>
           <div id="coach-readout" class="hidden"></div>
           <div id="todays-plan-card"></div>
@@ -197,7 +198,7 @@
           <div id="home-stat-trio"></div>
           <div class="home-sec-row" style="margin-top:28px">
             <h2 class="home-h2">This week</h2>
-            <span class="home-link-mono" id="queue-ahead"></span>
+            <button type="button" class="home-link-mono" id="queue-ahead"></button>
           </div>
           <div id="home-queue"></div>
         </div>
@@ -307,6 +308,25 @@
           </div>
         </div>
         <div id="plate-sheet-result"></div>
+      </div>
+
+      <!-- Prompt Bottom Sheet (V-7): sustituye a `prompt()`, que en una PWA instalada sale
+           como un diálogo del navegador y no admite varias líneas — y la nota que va al modelo
+           es justo eso. Reutiliza el CSS de `.plate-sheet`. -->
+      <div id="prompt-sheet-backdrop" class="plate-sheet-backdrop hidden"></div>
+      <div id="prompt-sheet" class="plate-sheet hidden" role="dialog" aria-modal="true" aria-labelledby="prompt-sheet-title">
+        <div class="plate-sheet-handle"></div>
+        <div class="plate-sheet-header">
+          <span class="plate-sheet-title" id="prompt-sheet-title">Note</span>
+          <button id="prompt-sheet-close" class="plate-sheet-close" aria-label="Close">&times;</button>
+        </div>
+        <div class="prompt-sheet-body">
+          <div id="prompt-sheet-field"></div>
+          <div class="prompt-sheet-actions">
+            <button type="button" id="prompt-sheet-cancel" class="btn-secondary">Cancel</button>
+            <button type="button" id="prompt-sheet-ok" class="btn-primary">OK</button>
+          </div>
+        </div>
       </div>
 
       <!-- Cardio (unified logger: run / treadmill / bike / row / ski / walk) -->
@@ -463,39 +483,43 @@
       <!-- Stats -->
       <section id="view-stats" class="view">
         <div class="view-scroll">
-          <!-- Stats sub-tabs -->
+          <!-- Stats sub-tabs.
+               V-10 (auditoría 2026-09-09, decisión de Julian): las pestañas eran
+               Today / Body / Strength / Tools y "Today" tenía CINCO bloques de semana
+               (carga, resumen, timeline, comparación, revisión del coach), TRES renderers
+               de recuperación hablando de lo mismo y los pasos repetidos con Body. Ahora
+               son NOW (lo de hoy) / WEEK (la semana) / BODY / STRENGTH: sólo cambian los
+               `data-group` y las tandas de `renderStats`, ningún renderer se pierde.
+               Las herramientas (macro y discos) bajan al final de Body y de Strength. -->
           <div class="stats-tabs" id="stats-tabs">
-            <button class="stats-tab active" data-stats-group="today">Today</button>
+            <button class="stats-tab active" data-stats-group="now">Now</button>
+            <button class="stats-tab" data-stats-group="week">Week</button>
             <button class="stats-tab" data-stats-group="body">Body</button>
             <button class="stats-tab" data-stats-group="strength">Strength</button>
-            <button class="stats-tab" data-stats-group="tools">Tools</button>
           </div>
 
-          <!-- ===== TODAY ===== -->
-          <div id="sync-warning" class="hidden" data-group="today"></div>
-          <div class="streak-row" id="streak-row" data-group="today"></div>
-          <div class="card readiness-signals" id="readiness-signals" data-group="today"></div>
-          <!-- La carga de la semana vivía en Home hasta v11.61. Es un dato que se consulta,
-               no algo que haya que ver antes de entrenar: se queda en Stats, tras las señales. -->
-          <div id="hard-day-budget" data-group="today"></div>
-          <!-- Rendimiento (anclas + última carrera) y tendencias de 7 días. Vivía en Home hasta
-               v11.64; es contexto que se consulta, no algo que haya que leer antes de entrenar,
-               y como texto suelto rompía el dashboard. Aquí es una tarjeta más, junto a las
-               señales y a la carga de la semana. Sin color de estado y sin botones. -->
-          <div id="coach-recovery-line" class="coach-recovery-line" data-group="today"></div>
-          <!-- E-12 (v11.66): `renderStepsCard()` existía y no tenía dónde pintar, así que los
-               pasos que llegan de intervals.icu se perdían. Aquí es donde se ven. -->
-          <div class="card" id="steps-card" data-group="today"></div>
-          <div class="card coach-goals" id="coach-goals" data-group="today"></div>
-          <div class="section-label" data-group="today">This Week</div>
-          <div class="card" id="weekly-summary" data-group="today"></div>
-          <div class="section-label" data-group="today">Weekly Timeline</div>
-          <div class="card" id="swimlane-timeline" data-group="today"></div>
-          <div id="whoop-recovery" class="card hidden" data-group="today"></div>
-          <div class="section-label" data-group="today">Coach Review</div>
-          <div class="card weekly-coach-card hidden" id="weekly-coach-card" data-group="today"></div>
-          <div class="section-label" data-group="today">Week vs Week</div>
-          <div id="week-compare" class="week-compare" data-group="today"></div>
+          <!-- ===== NOW ===== -->
+          <div id="sync-warning" class="hidden" data-group="now"></div>
+          <div class="streak-row" id="streak-row" data-group="now"></div>
+          <!-- V-10: UN bloque de recuperación. Antes eran tres tarjetas seguidas —las señales
+               del readiness, la línea de rendimiento/tendencias y la tarjeta de WHOOP— que
+               leían el MISMO `computeReadiness()` y el mismo `whoopSyncData()` y repetían el
+               dato de hoy tres veces con tres formatos. `renderRecoveryBlock()` (coach.js) las
+               compone en una sola tarjeta: señales, rendimiento y el detalle de WHOOP plegado. -->
+          <div class="card readiness-signals" id="readiness-signals" data-group="now"></div>
+          <div class="card coach-goals" id="coach-goals" data-group="now"></div>
+
+          <!-- ===== WEEK ===== -->
+          <div class="section-label" data-group="week">Weekly Load</div>
+          <div id="hard-day-budget" data-group="week"></div>
+          <div class="section-label" data-group="week">This Week</div>
+          <div class="card" id="weekly-summary" data-group="week"></div>
+          <div class="section-label" data-group="week">Weekly Timeline</div>
+          <div class="card" id="swimlane-timeline" data-group="week"></div>
+          <div class="section-label" data-group="week">Coach Review</div>
+          <div class="card weekly-coach-card hidden" id="weekly-coach-card" data-group="week"></div>
+          <div class="section-label" data-group="week">Week vs Week</div>
+          <div id="week-compare" class="week-compare" data-group="week"></div>
 
           <!-- ===== BODY ===== -->
           <div class="section-label" data-group="body">Body Weight</div>
@@ -519,6 +543,7 @@
           <div class="bw-chart-legend" id="bw-chart-legend" data-group="body"></div>
           <div class="bw-history" id="bw-history" data-group="body"></div>
           <div class="section-label" data-group="body">Daily Steps</div>
+          <div class="card" id="steps-card" data-group="body"></div>
           <div class="card" data-group="body">
             <div class="steps-stats-row" id="steps-stats-row"></div>
           </div>
@@ -531,6 +556,8 @@
           <div class="chart-box" id="protein-chart" data-group="body"></div>
           <div class="section-label" data-group="body">Activity Calendar</div>
           <div class="card" id="streak-calendar" data-group="body"></div>
+          <div class="section-label" data-group="body">Macro Calculator</div>
+          <div class="card" id="macro-calc-section" data-group="body"></div>
 
           <!-- ===== STRENGTH ===== -->
           <div class="section-label" data-group="strength">Weekly Sets by Muscle</div>
@@ -541,11 +568,9 @@
           <div class="section-label" data-group="strength">Weekly Volume (kg)</div>
           <div class="chart-box" id="volume-chart" data-group="strength"></div>
 
-          <!-- ===== TOOLS ===== -->
-          <div class="section-label" data-group="tools">Macro Calculator</div>
-          <div class="card" id="macro-calc-section" data-group="tools"></div>
-          <div class="section-label" data-group="tools">Plate Calculator</div>
-          <div class="card" data-group="tools">
+          <!-- ===== TOOLS (V-10: dentro de Strength; la de macros vive en Body) ===== -->
+          <div class="section-label" data-group="strength">Plate Calculator</div>
+          <div class="card" data-group="strength">
             <div class="plate-input-row">
               <input type="number" id="plate-calc-input" class="text-input" placeholder="Target weight" inputmode="decimal" step="0.5">
               <div id="plate-unit-toggle" class="toggle-group">
@@ -629,7 +654,7 @@
            Cada sección la pinta app/coach.js con su propio try/catch. -->
       <section id="view-coach" class="view">
         <div class="view-scroll">
-          <button id="coach-back" class="btn-secondary" style="margin-bottom:12px">‹ Back</button>
+          <button id="coach-back" class="back-btn">&larr; Back</button>
           <div id="coach-week"></div>
           <div id="coach-briefing"></div>
           <div id="coach-proposal"></div>
@@ -650,7 +675,7 @@
       <!-- Ideal Plan Preview (T4) -->
       <section id="view-ideal-preview" class="view">
         <div class="view-scroll">
-          <button id="ip-back" class="btn-secondary" style="margin-bottom:12px">‹ Back</button>
+          <button id="ip-back" class="back-btn">&larr; Back</button>
           <div id="ideal-preview-body"></div>
         </div>
       </section>
@@ -658,7 +683,7 @@
       <!-- Analítica de sangre (v11.43) -->
       <section id="view-analytics" class="view">
         <div class="view-scroll">
-          <button id="an-back" class="btn-secondary" style="margin-bottom:12px">‹ Back</button>
+          <button id="an-back" class="back-btn">&larr; Back</button>
           <div id="analytics-body"></div>
         </div>
       </section>
@@ -700,8 +725,8 @@
               <label for="setting-coach-auto-apply">How the weekly proposal is applied</label>
               <select id="setting-coach-auto-apply" class="text-input">
                 <option value="ask">Proposes, I approve</option>
-                <option value="auto-if-clean">Automatic if there are no warnings (coming soon)</option>
-                <option value="auto">Always automatic (coming soon)</option>
+                <option value="auto-if-clean" disabled>Automatic if there are no warnings (coming soon)</option>
+                <option value="auto" disabled>Always automatic (coming soon)</option>
               </select>
             </div>
             <div class="form-row">
@@ -711,10 +736,10 @@
                 <option value="manual">Manual: Claude Code writes it, no API cost</option>
               </select>
             </div>
-            <p class="muted" style="font-size:11px;margin:4px 0 0">In manual mode, "Close the week" saves this week's facts and waits: the proposal shows up here once the review is written from the session. "Regenerate" always asks the model.</p>
+            <p class="setting-hint" style="margin-top:4px">In manual mode, "Close the week" saves this week's facts and waits: the proposal shows up here once the review is written from the session. "Regenerate" always asks the model.</p>
             <button id="btn-open-coach" class="btn-secondary btn-full" style="text-align:center;margin-top:10px">Open Coach</button>
             <button id="btn-export-facts" class="btn-secondary btn-full" style="text-align:center;margin-top:8px">Export facts JSON</button>
-            <p class="muted" style="font-size:11px;margin-top:6px">Copies the facts the coach receives to the clipboard (no raw rows). Useful to check what it sees before asking for a review.</p>
+            <p class="setting-hint">Copies the facts the coach receives to the clipboard (no raw rows). Useful to check what it sees before asking for a review.</p>
             <div id="coach-facts-out" class="hidden" style="margin-top:8px"></div>
           </div>
 
@@ -727,12 +752,12 @@
           <div class="section-label" style="margin-top:24px">Daily Steps</div>
           <div class="card">
             <div class="form-row"><label>Daily target</label><input type="number" id="setting-steps-target" class="text-input" min="0" max="50000" step="500" placeholder="8000"></div>
-            <p class="muted" style="font-size:11px;margin-top:6px">Steps sync automatically from Apple Health via intervals.icu Companion. NEAT (steps + daily activity) drives most fat loss during a deficit — 8-10k is a good baseline.</p>
+            <p class="setting-hint">Steps sync automatically from Apple Health via intervals.icu Companion. NEAT (steps + daily activity) drives most fat loss during a deficit — 8-10k is a good baseline.</p>
           </div>
 
           <details class="setup-details" style="margin-top:24px">
             <summary class="section-label" style="cursor:pointer">Legacy connections (advanced)</summary>
-            <p class="muted" style="font-size:11px;margin:8px 0 12px">Pre-intervals.icu setup. Kept for fallback only — the unified Sync card above replaces all of these. Don't enable unless intervals.icu fails.</p>
+            <p class="setting-hint" style="margin:8px 0 12px">Pre-intervals.icu setup. Kept for fallback only — the unified Sync card above replaces all of these. Don't enable unless intervals.icu fails.</p>
 
             <div class="section-label" style="margin-top:8px">Strava (legacy COROS bridge)</div>
             <div class="card" id="strava-section">
@@ -741,7 +766,7 @@
 
             <div class="section-label" style="margin-top:16px">Daily Steps via iOS Shortcut (legacy)</div>
             <div class="card">
-              <p class="muted" style="font-size:11px;margin-top:0">Steps now flow via intervals.icu Companion. This Shortcut path is kept for backfill only.</p>
+              <p class="setting-hint" style="margin-top:0">Steps now flow via intervals.icu Companion. This Shortcut path is kept for backfill only.</p>
               <div class="form-row"><label>Endpoint URL</label><input type="text" id="steps-endpoint-url" class="text-input" readonly></div>
               <div class="form-row"><label>Secret</label><input type="password" id="steps-secret" class="text-input" readonly placeholder="(no secret yet)"></div>
               <div class="steps-btn-row">
@@ -749,12 +774,12 @@
                 <button id="btn-steps-copy-payload" class="btn-secondary">Copy Sample JSON</button>
                 <button id="btn-steps-test" class="btn-secondary">Test connection</button>
               </div>
-              <pre id="steps-test-output" class="muted" style="font-size:11px;margin-top:10px;white-space:pre-wrap"></pre>
+              <pre id="steps-test-output" class="setting-hint" style="margin-top:10px;white-space:pre-wrap"></pre>
             </div>
           </details>
 
           <!-- Hidden inputs kept for legacy renderIntervalsIcuUI() compatibility (the unified Sync card writes through different handlers but reads the same state.settings keys) -->
-          <div id="intervals-icu-section" style="display:none">
+          <div id="intervals-icu-section" hidden>
             <input type="text" id="setting-intervals-athlete">
             <input type="password" id="setting-intervals-api-key">
             <button id="btn-save-intervals"></button>
@@ -763,14 +788,14 @@
           <div class="section-label" style="margin-top:24px">Program</div>
           <div class="card">
             <div class="form-row"><label>Program start date</label><input type="date" id="setting-start-date" class="date-input"></div>
-            <p class="muted" style="font-size:11px;margin-top:6px">Used to calculate current week, deloads, and running progression.</p>
+            <p class="setting-hint">Used to calculate current week, deloads, and running progression.</p>
           </div>
           <div class="section-label" style="margin-top:24px">Data</div>
           <div class="card">
             <button id="btn-export-json" class="btn-secondary btn-full">Full backup (JSON)</button>
             <button id="btn-backup" class="btn-secondary btn-full" style="margin-top:8px">Workouts, runs and nutrition only (JSON)</button>
             <button id="btn-export-csv" class="btn-secondary btn-full" style="margin-top:8px">Export data (CSV)</button>
-            <p class="muted" style="font-size:11px;margin:6px 0 0">Backups never include your secrets (steps secret, intervals.icu API key).</p>
+            <p class="setting-hint">Backups never include your secrets (steps secret, intervals.icu API key).</p>
             <div style="height:12px"></div>
             <label class="btn-secondary btn-full" style="text-align:center;cursor:pointer">Import Backup<input type="file" id="file-restore" accept=".json" style="display:none"></label>
           </div>
@@ -787,7 +812,7 @@
             <div class="form-row"><label>Calories · training day</label><input type="number" id="setting-calorie-target-training" step="50" min="0" value="2700" inputmode="numeric"></div>
             <div class="form-row"><label>Calories · rest day</label><input type="number" id="setting-calorie-target-rest" step="50" min="0" value="2400" inputmode="numeric"></div>
             <div class="form-row"><label>Goal weight (kg)</label><input type="number" id="setting-goal-weight" step="0.5" min="20" max="300" placeholder="e.g. 78" inputmode="decimal"></div>
-            <p class="muted" style="font-size:11px;margin-top:-6px">Used to project ETA and progress on the Body card.</p>
+            <p class="setting-hint" style="margin-top:-6px">Used to project ETA and progress on the Body card.</p>
             <button id="btn-save-settings" class="btn-primary">Save Settings</button>
           </div>
           <div class="section-label" style="margin-top:24px">Notifications</div>
@@ -795,11 +820,11 @@
             <div class="form-row inline"><label>Training reminders</label>
               <div class="toggle-group"><button id="notif-on" class="toggle-btn">On</button><button id="notif-off" class="toggle-btn selected">Off</button></div>
             </div>
-            <p class="muted" style="font-size:11px;margin-top:6px">Get reminded on training days and to track protein.</p>
+            <p class="setting-hint">Get reminded on training days and to track protein.</p>
             <div class="form-row inline" style="margin-top:12px"><label>Rest timer sound</label>
               <div class="toggle-group"><button id="audio-on" class="toggle-btn selected">On</button><button id="audio-off" class="toggle-btn">Off</button></div>
             </div>
-            <p class="muted" style="font-size:11px;margin-top:6px">Beep when rest period ends. Plus a 1-second green flash on screen as backup. <strong>iOS caveat:</strong> the side <strong>silent switch</strong> mutes web audio. If you don't hear the beep, flip the silent switch off (or rely on the visual flash). The green flash always works regardless.</p>
+            <p class="setting-hint">Beep when rest period ends. Plus a 1-second green flash on screen as backup. <strong>iOS caveat:</strong> the side <strong>silent switch</strong> mutes web audio. If you don't hear the beep, flip the silent switch off (or rely on the visual flash). The green flash always works regardless.</p>
           </div>
           <div class="section-label" style="margin-top:24px">Trash (2-day recovery)</div>
           <div class="card">
@@ -811,11 +836,11 @@
             <p class="muted" style="margin:0 0 10px;font-size:12px">Scans sync queue + cloud to restore anything missing locally.</p>
             <button id="btn-recover-data" class="btn-secondary btn-full" style="text-align:center;margin-bottom:8px">Scan &amp; Recover</button>
             <button id="btn-scan-cloud" class="btn-secondary btn-full" style="text-align:center">List Cloud Workouts</button>
-            <pre id="recovery-output" class="muted" style="font-size:10px;margin-top:10px;white-space:pre-wrap;max-height:240px;overflow:auto;display:none;background:var(--bg);padding:8px;border-radius:6px;border:1px solid var(--border)"></pre>
+            <pre id="recovery-output" class="muted" style="font-size:10px;margin-top:10px;white-space:pre-wrap;max-height:240px;overflow:auto;background:var(--bg);padding:8px;border-radius:6px;border:1px solid var(--border)" hidden></pre>
           </div>
           <div class="section-label" style="margin-top:24px">App</div>
           <div class="card">
-            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v11.70<br>Data stored locally + cloud sync.<br>Works offline.</p>
+            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v11.72<br>Data stored locally + cloud sync.<br>Works offline.</p>
             <button id="btn-force-update" class="btn-secondary btn-full" style="text-align:center">Force Update App</button>
           </div>
         </div>

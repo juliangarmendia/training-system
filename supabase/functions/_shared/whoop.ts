@@ -3,7 +3,17 @@
 // Quién persiste qué y quién marca `needs_reconnect` es cosa de `tokens.ts`.
 
 import type { TokenSet } from "./tokens.ts";
-import { ConfigError, ProviderFatalAuthError, ProviderTransientError, clip, readEnv } from "./http.ts";
+import {
+  ConfigError,
+  PROVIDER_TIMEOUT_MS,
+  ProviderFatalAuthError,
+  ProviderTransientError,
+  TOKEN_TIMEOUT_MS,
+  clip,
+  fetchWithTimeout,
+  netErrorText,
+  readEnv,
+} from "./http.ts";
 
 export const WHOOP_AUTH_URL = "https://api.prod.whoop.com/oauth/oauth2/auth";
 export const WHOOP_TOKEN_URL = "https://api.prod.whoop.com/oauth/oauth2/token";
@@ -75,14 +85,16 @@ async function readTokenResponse(res: Response, phase: string): Promise<TokenSet
 async function postToken(body: URLSearchParams, phase: string): Promise<TokenSet> {
   let res: Response;
   try {
-    res = await fetch(WHOOP_TOKEN_URL, {
+    // C-11: con tope de 12 s. Un endpoint de token colgado bloqueaba el lease de refresco los
+    // 30 s enteros y toda petición que esperaba detrás moría con `RefreshInProgress`.
+    res = await fetchWithTimeout(WHOOP_TOKEN_URL, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: body.toString(),
-    });
+    }, TOKEN_TIMEOUT_MS);
   } catch (err) {
-    // Fallo de red: transitorio SIEMPRE. Nunca se toca el refresh token por un timeout.
-    throw new ProviderTransientError(`WHOOP ${phase}: red — ${err instanceof Error ? err.message : String(err)}`);
+    // Fallo de red o timeout: transitorio SIEMPRE. Nunca se toca el refresh token por esto.
+    throw new ProviderTransientError(`WHOOP ${phase}: red — ${netErrorText(err, TOKEN_TIMEOUT_MS)}`);
   }
   return await readTokenResponse(res, phase);
 }
@@ -136,9 +148,16 @@ export const whoopAdapter = {
 
   /** `user_id` de WHOOP: la clave con la que llegan los webhooks. */
   async fetchExternalUserId(accessToken: string): Promise<string | null> {
-    const res = await fetch(`${WHOOP_API_BASE}/v2/user/profile/basic`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    });
+    let res: Response;
+    try {
+      // C-11: 15 s. El fallo de red se clasifica como transitorio en vez de propagarse crudo;
+      // el callback que lo llama ya distingue transitorio de fatal.
+      res = await fetchWithTimeout(`${WHOOP_API_BASE}/v2/user/profile/basic`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      }, PROVIDER_TIMEOUT_MS);
+    } catch (err) {
+      throw new ProviderTransientError(`WHOOP perfil: red — ${netErrorText(err, PROVIDER_TIMEOUT_MS)}`);
+    }
     if (!res.ok) {
       console.warn(`[whoop] perfil → ${res.status}`);
       return null;
@@ -151,10 +170,11 @@ export const whoopAdapter = {
   /** Best-effort: si falla, el token se borra igual de nuestra base. */
   async revoke(accessToken: string): Promise<boolean> {
     try {
-      const res = await fetch(`${WHOOP_API_BASE}/v2/user/access`, {
+      // C-11: 15 s. Es best-effort, pero sin tope un revoke colgado retrasaba el borrado local.
+      const res = await fetchWithTimeout(`${WHOOP_API_BASE}/v2/user/access`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${accessToken}` },
-      });
+      }, PROVIDER_TIMEOUT_MS);
       return res.ok;
     } catch {
       return false;

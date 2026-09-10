@@ -104,8 +104,11 @@ async function renderCoachReadout() {
   } catch (e) {
     // Cada sección de Home tiene su propio try/catch (patrón de `renderHomeView`): un resumen
     // no puede tumbar la pantalla principal.
+    // V-4: el readout es lo ÚNICO que se enseña tras cerrar una sesión; esconderlo en silencio
+    // hace creer que la sesión no se guardó.
     console.warn('[Coach] renderCoachReadout:', e);
-    el.classList.add('hidden');
+    if (typeof showErrorState === 'function') showErrorState(el, 'The session readout could not be built.', renderCoachReadout);
+    else el.classList.add('hidden');
   }
 }
 
@@ -127,76 +130,23 @@ async function renderCoachReadout() {
 // Ahora esta tarjeta MUESTRA las señales de `computeReadiness()` —el mismo objeto que decide en
 // Home— con su valor y su base. Sin número, sin barra, sin consejo. Lo que hay que hacer con
 // ellas está en la tarjeta de Home, que es donde se decide el entreno.
-async function renderReadinessSignals() {
-  const el = document.getElementById('readiness-signals');
-  if (!el) return;
-  let r;
-  try { r = await computeReadiness(); } catch (e) { console.warn('[readiness] card:', e); el.innerHTML = ''; return; }
-
-  const LABEL = { green: 'green', yellow: 'yellow', red: 'red', unknown: 'no data today' };
-  const COL = { green: 'var(--accent)', yellow: 'var(--yellow)', red: 'var(--red)', unknown: 'var(--text3)' };
-  const CONF = { high: 'high confidence', medium: 'medium confidence', low: 'low confidence' };
-  const color = COL[r.color] || 'var(--text3)';
-
-  const rows = (r.signals || []).map(s => {
-    const cls = s.status === 'insufficient' ? 'rs-none' : (s.fired ? 'rs-fired' : 'rs-ok');
-    const txt = s.status === 'insufficient'
-      ? `${s.label || s.id}: no data — ${s.reason || ''}`
-      : s.text;
-    const dot = s.status === 'insufficient' ? '○' : '●';
-    return `<div class="rs-row ${cls}"><span class="rs-dot"${s.fired ? ` style="color:${color}"` : ''}>${dot}</span><span class="rs-text">${escapeHtml(String(txt))}</span></div>`;
-  }).join('');
-
-  // La honestidad de v11.58: si hay un dato pero NO es de hoy, se dice de cuándo es. Nunca se
-  // pinta el de ayer como si fuera de hoy (F-6).
-  const last = r.whoopLastAvailable;
-  const whoopSig = (r.signals || []).find(s => s.id === 'whoop') || {};
-  const lastLine = (whoopSig.status === 'insufficient' && last && last.score != null)
-    ? `<div class="rs-foot">Last WHOOP reading: ${last.score}% (${(typeof whoopDayLabel === 'function' ? whoopDayLabel(last.date, today()) : last.date)}) — it does not count as today.</div>`
-    : '';
-
-  el.innerHTML = `
-    <div class="rs-head">
-      <span class="rs-title">Recovery</span>
-      <span class="rs-color" style="color:${color}">${LABEL[r.color] || r.color}</span>
-      <span class="rs-conf">${CONF[r.confidence] || ''}</span>
-    </div>
-    <div class="rs-rows">${rows}</div>
-    ${lastLine}`;
-}
-
-// ==================== LÍNEA DE RECUPERACIÓN (Stats › Today, v11.62 · v11.65) ====================
+// ==================== BLOQUE DE RECUPERACIÓN (Stats › Now) ====================
 //
-// QUÉ SUSTITUYE. En Home había tres cosas hablando de recuperación: el hero de WHOOP (anillo
-// gigante + "Your body is ready for high strain today"), la tarjeta de consejo diario con sus
-// botones, y el banner reactivo de descarga. Julian las retiró el 2026-09-07: *"nada de ajustar
-// el entrenamiento del día por WHOOP; eso es muy subjetivo; voy a ser yo y mi cuerpo el que
-// decida skipear un ejercicio o bajar los pesos"*.
+// V-10 (auditoría 2026-09-09, decisión de Julian). ERAN TRES TARJETAS SEGUIDAS diciendo lo mismo
+// con tres formatos: la lista de señales del readiness, la línea de rendimiento + tendencias de
+// 7 días, y la tarjeta de WHOOP con su anillo y su tabla. Las tres leían el MISMO
+// `computeReadiness()` y el MISMO `whoopSyncData()`, y las tres repetían el número de hoy — una
+// como señal, otra como "WHOOP today 71 %", la tercera como anillo. Tres pantallazos del mismo
+// dato no son tres perspectivas: son la pantalla diciendo que no sabe cuál es la buena.
 //
-// LO QUE QUEDA SON DOS LÍNEAS APAGADAS, y el orden importa:
+// Ahora es UN renderer y UNA tarjeta, en este orden, que es el del plan v2.1 §Principios 2:
+//   1. RENDIMIENTO primero — el top set, las reps a la misma carga, el pulso a Z2. La
+//      recuperación se mide sobre todo en los entrenamientos.
+//   2. las SEÑALES del readiness con su valor y su base (sin score, sin barra, sin consejo).
+//   3. el detalle de WHOOP (anillo, sueño, tabla de 7 días) PLEGADO: es el contexto del contexto.
 //
-//   Rendimiento: banca 95×8 ↑ · sentadilla 105×8 → · Z2 5,1 km @141
-//   HRV estable (−3 %) · RHR 44 · sueño 7,4 h · WHOOP hoy 71 %
-//
-// **Rendimiento primero** (plan v2.1 §Principios 2): la recuperación se mira sobre todo en los
-// entrenamientos —el top set, las reps a la misma carga, el pulso a Z2— y el wearable es
-// contexto en tendencia de 7 días, nunca un día suelto y nunca una dosis.
-//
-// SIN COLOR POR ESTADO Y SIN BOTONES, a propósito. Un rojo aquí volvería a ser un consejo por
-// la puerta de atrás. Quien quiera el detalle lo tiene en Stats › Today, con cada señal, su
-// valor y su base.
-//
-// El contenedor queda VACÍO si no hay nada que decir: una etiqueta "Recuperación" sobre tres
-// guiones no es información, es un hueco con nombre.
-//
-// DÓNDE VIVE (v11.65). Nació en Home, entre la sesión del día y el trío de estadísticas, y ahí
-// se veía como lo que era: dos párrafos de texto plano en medio de un dashboard de tarjetas
-// —*"está feo, sin nada que ver con la UX"*—. Se muda a **Stats › Today**, detrás de las señales
-// y de la carga de la semana, y se pinta como una tarjeta más. El dato que sí tenía que estar en
-// Home —el WHOOP de hoy— se fue al tile `Readiness` de `renderHomeStatTrio`, que es un número
-// en una fila de números. Un fallo mudo, de paso: las reglas de `.coach-recovery-line` colgaban
-// de una clase que el contenedor no tenía (sólo `id`), así que NUNCA se aplicaron y el texto
-// salía a tamaño de párrafo. El div lleva ahora también la clase.
+// Sin color de estado en la tarjeta y sin botones, igual que antes: un rojo aquí volvería a ser
+// el consejo diario que Julian retiró el 2026-09-07 por la puerta de atrás.
 
 /** Ventana de la línea de rendimiento: dos semanas. Más atrás ya no describe "cómo vengo". */
 const RECOVERY_LINE_DAYS = 14;
@@ -223,64 +173,117 @@ function _crlTrendBits(signals) {
   return bits;
 }
 
-async function renderRecoveryLine() {
-  const el = document.getElementById('coach-recovery-line');
-  if (!el) return;
-  el.innerHTML = '';
-  try {
-    const ds = today();
-    const desde = dateStr(new Date(Date.parse(ds + 'T12:00:00') - RECOVERY_LINE_DAYS * 86400000));
+/** El encabezado y las señales del readiness. Antes era `renderReadinessSignals()` entera. */
+function _rsSignalsHtml(r) {
+  if (!r) return '';
+  const LABEL = { green: 'green', yellow: 'yellow', red: 'red', unknown: 'no data today' };
+  const COL = { green: 'var(--accent)', yellow: 'var(--yellow)', red: 'var(--red)', unknown: 'var(--text3)' };
+  const CONF = { high: 'high confidence', medium: 'medium confidence', low: 'low confidence' };
+  const color = COL[r.color] || 'var(--text3)';
 
-    // ---- Línea 1: rendimiento ------------------------------------------------------------
-    let perf = '';
-    if (typeof performanceLine === 'function') {
-      const [workouts, runs] = await Promise.all([
-        dbGetAll('workouts').catch(() => []),
-        (typeof getRunsDeduped === 'function' ? getRunsDeduped() : dbGetAll('runs')).catch(() => []),
-      ]);
-      const zonas = (typeof _runningZones === 'function') ? _runningZones() : null;
-      perf = performanceLine(
-        (workouts || []).filter(w => w && w.date && w.date >= desde && w.date <= ds),
-        (runs || []).filter(r => r && r.date && r.date >= desde && r.date <= ds),
-        { z2Ceiling: (zonas && zonas.z2 && zonas.z2[1]) || null },
-      );
-    }
+  const rows = (r.signals || []).map(sig => {
+    const cls = sig.status === 'insufficient' ? 'rs-none' : (sig.fired ? 'rs-fired' : 'rs-ok');
+    const txt = sig.status === 'insufficient'
+      ? `${sig.label || sig.id}: no data — ${sig.reason || ''}`
+      : sig.text;
+    const dot = sig.status === 'insufficient' ? '○' : '●';
+    return `<div class="rs-row ${cls}"><span class="rs-dot"${sig.fired ? ` style="color:${color}"` : ''}>${dot}</span><span class="rs-text">${escapeHtml(String(txt))}</span></div>`;
+  }).join('');
 
-    // ---- Línea 2: tendencias de 7 días + el dato de hoy -----------------------------------
-    let trend = '';
-    let r = null;
-    try { r = await computeReadiness(); } catch (e) { r = null; }
-    if (r) {
-      const bits = _crlTrendBits(r.signals);
-      // El dato de HOY o su ausencia, con la fecha del último (F-6): nunca el de ayer como si
-      // fuera de hoy. Sin `%` de recomendación al lado: es un número, no una instrucción.
-      const whoop = (r.signals || []).find(s => s && s.id === 'whoop') || {};
-      if (whoop.status === 'ok' && whoop.value != null) {
-        bits.push(`WHOOP today ${whoop.value} %`);
-      } else {
-        const last = r.whoopLastAvailable;
-        bits.push((last && last.score != null)
-          ? `no data today (last: ${last.score} % ${(typeof whoopDayLabel === 'function' ? whoopDayLabel(last.date, ds) : last.date)})`
-          : 'no data today');
-      }
-      trend = bits.join(' · ');
-    }
+  // La honestidad de v11.58: si hay un dato pero NO es de hoy, se dice de cuándo es. Nunca se
+  // pinta el de ayer como si fuera de hoy (F-6).
+  const last = r.whoopLastAvailable;
+  const whoopSig = (r.signals || []).find(sig => sig.id === 'whoop') || {};
+  const lastLine = (whoopSig.status === 'insufficient' && last && last.score != null)
+    ? `<div class="rs-foot">Last WHOOP reading: ${last.score}% (${(typeof whoopDayLabel === 'function' ? whoopDayLabel(last.date, today()) : last.date)}) — it does not count as today.</div>`
+    : '';
 
-    if (!perf && !trend) return;
-    // Tarjeta, no párrafo: `card t3-card` + eyebrow, las mismas que la carga de la semana
-    // justo encima. La ventana la dice el propio título (RECOVERY_LINE_DAYS = 14 d).
-    el.innerHTML =
-      `<section class="card t3-card">
-        <div class="t3-head"><span class="t3-eyebrow">Performance · ${RECOVERY_LINE_DAYS} d</span></div>
-        ${perf ? `<div class="crl-perf">${escapeHtml(perf)}</div>` : ''}
-        ${trend ? `<div class="crl-trend">${escapeHtml(trend)}</div>` : ''}
-      </section>`;
-  } catch (e) {
-    // Patrón `renderHomeView`: cada sección con su try/catch. Una línea no tumba Home.
-    console.warn('[Coach] renderRecoveryLine:', e);
-    el.innerHTML = '';
-  }
+  return `
+    <div class="rs-head">
+      <span class="rs-title">Recovery</span>
+      <span class="rs-color" style="color:${color}">${LABEL[r.color] || r.color}</span>
+      <span class="rs-conf">${CONF[r.confidence] || ''}</span>
+    </div>
+    <div class="rs-rows">${rows}</div>
+    ${lastLine}`;
 }
+
+/**
+ * Rendimiento (2 semanas) + tendencias de 7 días. Antes era `renderRecoveryLine()`; ahora
+ * devuelve HTML y no toca el DOM, porque quien pinta es el bloque.
+ */
+async function _rsPerformanceHtml(r) {
+  const ds = today();
+  const desde = dateStr(new Date(Date.parse(ds + 'T12:00:00') - RECOVERY_LINE_DAYS * 86400000));
+
+  // ---- Línea 1: rendimiento ----
+  let perf = '';
+  if (typeof performanceLine === 'function') {
+    const [workouts, runs] = await Promise.all([
+      dbGetAll('workouts').catch(() => []),
+      (typeof getRunsDeduped === 'function' ? getRunsDeduped() : dbGetAll('runs')).catch(() => []),
+    ]);
+    const zonas = (typeof _runningZones === 'function') ? _runningZones() : null;
+    perf = performanceLine(
+      (workouts || []).filter(w => w && w.date && w.date >= desde && w.date <= ds),
+      (runs || []).filter(x => x && x.date && x.date >= desde && x.date <= ds),
+      { z2Ceiling: (zonas && zonas.z2 && zonas.z2[1]) || null },
+    );
+  }
+
+  // ---- Línea 2: tendencias de 7 días + el dato de hoy ----
+  let trend = '';
+  if (r) {
+    const bits = _crlTrendBits(r.signals);
+    // El dato de HOY o su ausencia, con la fecha del último (F-6): nunca el de ayer como si
+    // fuera de hoy. Sin `%` de recomendación al lado: es un número, no una instrucción.
+    const whoop = (r.signals || []).find(sig => sig && sig.id === 'whoop') || {};
+    if (whoop.status === 'ok' && whoop.value != null) {
+      bits.push(`WHOOP today ${whoop.value} %`);
+    } else {
+      const last = r.whoopLastAvailable;
+      bits.push((last && last.score != null)
+        ? `no data today (last: ${last.score} % ${(typeof whoopDayLabel === 'function' ? whoopDayLabel(last.date, ds) : last.date)})`
+        : 'no data today');
+    }
+    trend = bits.join(' · ');
+  }
+
+  if (!perf && !trend) return '';
+  return `<div class="t3-head"><span class="t3-eyebrow">Performance · ${RECOVERY_LINE_DAYS} d</span></div>
+      ${perf ? `<div class="crl-perf">${escapeHtml(perf)}</div>` : ''}
+      ${trend ? `<div class="crl-trend">${escapeHtml(trend)}</div>` : ''}`;
+}
+
+/** LA tarjeta de recuperación de Stats › Now. Un contenedor, un renderer, tres bloques. */
+async function renderRecoveryBlock() {
+  const el = document.getElementById('readiness-signals');
+  if (!el) return;
+  let r = null;
+  try { r = await computeReadiness(); } catch (e) {
+    console.warn('[readiness] card:', e);
+    // V-4: un fallo de lectura NO es "hoy no hay señales".
+    if (typeof showErrorState === 'function') showErrorState(el, 'Recovery signals could not be read.', renderRecoveryBlock);
+    else el.innerHTML = '';
+    return;
+  }
+  const partes = await Promise.allSettled([
+    _rsPerformanceHtml(r),
+    (typeof whoopRecoveryBlockHtml === 'function') ? whoopRecoveryBlockHtml() : Promise.resolve(''),
+  ]);
+  const perf = partes[0].status === 'fulfilled' ? partes[0].value : '';
+  const whoop = partes[1].status === 'fulfilled' ? partes[1].value : '';
+  if (partes[0].status === 'rejected') console.warn('[readiness] performance:', partes[0].reason);
+  if (partes[1].status === 'rejected') console.warn('[readiness] whoop:', partes[1].reason);
+
+  el.innerHTML = `${perf}${perf ? '<div class="rs-sep"></div>' : ''}${_rsSignalsHtml(r)}${
+    whoop ? `<details class="rs-whoop"><summary>WHOOP detail</summary>${whoop}</details>` : ''}`;
+}
+
+// Los dos nombres antiguos siguen existiendo porque `integrations.js` los llama después de
+// sincronizar (y ese fichero no se toca en este incremento): los dos repintan el bloque único.
+async function renderReadinessSignals() { return renderRecoveryBlock(); }
+async function renderRecoveryLine() { return renderRecoveryBlock(); }
 
 // ==================== OBJETIVOS (Stats › Today, v11.60) ====================
 //
@@ -451,7 +454,8 @@ async function renderGoalsCard(containerId = 'coach-goals') {
   } catch (e) {
     // Patrón `renderHomeView`: cada sección con su try/catch. Un resumen no tumba la pestaña.
     console.warn('[Coach] renderGoalsCard:', e);
-    el.innerHTML = '';
+    if (typeof showErrorState === 'function') showErrorState(el, 'Goal progress could not be computed.', () => renderGoalsCard(containerId));
+    else el.innerHTML = '';
   }
 }
 
@@ -568,7 +572,7 @@ async function renderCoachGoalLine() {
 // LA VERSIÓN DE LA APP viaja al servidor (`clientVersion`) y al pack (`meta.appVersion`), que
 // es lo que permite luego saber qué código produjo una revisión rara.
 // `verify-coach-wiring.mjs` comprueba que coincide con la de index.html y con `CACHE_NAME`.
-const COACH_APP_VERSION = 'v11.70';
+const COACH_APP_VERSION = 'v11.72';
 
 const COACH_MAX_SESSION_IDS = 12;   // el tope que valida la edge function
 const COACH_MAX_EXERCISE_IDS = 150; // idem
@@ -631,6 +635,11 @@ const COACH_GUARD_LABEL = {
   'KCAL-STEP': 'kcal step',                       // G-H14, REC-002
   'MVPA-FLOOR': 'cardio minutes',                 // G-S20, END-009
   'PLYO-CONTACTS': 'plyo contacts',               // G-S16, ATH-001
+  // v11.71 (auditoría 2026-09-09): los dos suelos que faltaban. `VOL-FLOOR` es el gemelo
+  // inferior de `VOL-CAP` (10-14 series/músculo/semana era sólo techo) y `RECOMP-HOLD` frena
+  // un recorte de kcal cuando la composicion ya se esta moviendo a favor.
+  'VOL-FLOOR': 'set floor',                       // G-S21, STR-003
+  'RECOMP-HOLD': 'recomposition in progress',     // G-S22, REC-002
 };
 const COACH_DOW_LABEL = { 0: 'Sun', 1: 'Mon', 2: 'Tue', 3: 'Wed', 4: 'Thu', 5: 'Fri', 6: 'Sat' };
 
@@ -1804,10 +1813,19 @@ async function _coachPreviewGuardrails(review, prev, merged) {
 // El estado `running` va en el propio botón (texto + `disabled`) y no en un spinner aparte:
 // la respuesta tarda 60-180 s y sin marca visible el usuario pulsa dos veces.
 
-const COACH_CLOSE_WEEK_LABEL = 'Close the week and ask for the next';
+// V-12 (auditoría 2026-09-09): el botón decía "…and ask for the next" TAMBIÉN en modo manual,
+// donde no se pregunta a nadie: se guarda el pack y se espera a que la revisión se escriba a
+// mano. Prometer una llamada que no se va a hacer es la clase de mentira pequeña que hace que
+// el usuario deje de creerse el resto de la pantalla.
+function COACH_CLOSE_WEEK_LABEL() {
+  const modo = (typeof coachReviewMode === 'function') ? coachReviewMode() : 'api';
+  return modo === 'manual'
+    ? 'Close the week (manual review)'
+    : 'Close the week and ask for the next';
+}
 
 function _coachCloseWeekBtn(id, label) {
-  return `<button class="coach-btn coach-close-week" id="${id || 'coach-close-week'}">${_cEsc(label || COACH_CLOSE_WEEK_LABEL)}</button>`;
+  return `<button class="coach-btn coach-close-week" id="${id || 'coach-close-week'}">${_cEsc(label || COACH_CLOSE_WEEK_LABEL())}</button>`;
 }
 
 function _coachBindCloseWeek(id) {
@@ -1844,9 +1862,17 @@ function _coachBindCloseWeek(id) {
 // review.id`), del `coachBrief` que se estampó al aplicar; si no, del `output` de la revisión
 // con el fallback para v1. El plan manda porque es lo que está vigente: la revisión se puede
 // podar y el plan no.
+// V-12: `into` es el contenedor. La vista Coach pintaba su PROPIA tarjeta —sin foco, sin diff,
+// sin guardrails y, lo grave, sin el estado `requested`— así que en modo manual la vista que
+// existe para el coach era la única que no sabía que la semana estaba cerrada. Ahora las dos
+// pantallas llaman a esta función y sólo cambian de contenedor.
 async function renderCoachWeekCard(opts = {}) {
-  const el = document.getElementById('coach-week-card');
+  const el = document.getElementById(opts.into || 'coach-week-card');
   if (!el) return;
+  // Los ids de los botones son únicos por contenedor: las dos tarjetas pueden convivir en el
+  // mismo documento y `getElementById` sólo encontraría una.
+  const sufijo = (!opts.into || opts.into === 'coach-week-card') ? '' : '-view';
+  const bid = (base) => `${base}${sufijo}`;
   try {
     el.classList.remove('hidden');
     const objetivo = _cTargetWeek(today());
@@ -1862,10 +1888,23 @@ async function renderCoachWeekCard(opts = {}) {
 
     const wkTxt = _cEsc(_cWeekShort((review && review.weekKey) || objetivo));
     const plan = (typeof activePlan !== 'undefined' && activePlan) ? activePlan : null;
+    // En la propia vista Coach el botón "Coach ›" no lleva a ningún sitio nuevo: se omite.
+    const enVista = !!sufijo;
     const head = (extra, abrir) => `<div class="coach-week-head">
         <span class="coach-week-title">Coach · ${wkTxt}${extra || ''}</span>
-        <button class="coach-week-open" id="coach-week-open">${_cEsc(abrir || 'Coach ›')}</button>
+        ${enVista ? '' : `<button class="coach-week-open" id="coach-week-open">${_cEsc(abrir || 'Coach ›')}</button>`}
       </div>`;
+
+    // V-12: la línea del bloque venía de la tarjeta propia de la vista Coach y es información
+    // real (en qué semana del bloque estamos y cuándo cae la descarga), así que se queda — en
+    // LAS DOS pantallas. Lo que no vuelve es el color de recuperación que aquella pintaba: la
+    // recuperación tiene su bloque en Stats › Now y un color junto a un botón de "Aplicar" es
+    // el consejo diario que Julian retiró el 2026-09-07, por la puerta de atrás.
+    const blk = (typeof blockWeek === 'function') ? blockWeek() : null;
+    const totalSem = (typeof DELOAD_BLOCK_WEEKS !== 'undefined') ? DELOAD_BLOCK_WEEKS : ((blk && blk.weeksTotal) || 5);
+    const bloqueLinea = (blk && blk.index)
+      ? `<div class="coach-week-line">Week ${blk.index}/${totalSem} · ${_cEsc(blk.label || '')}${blk.deloadMonday ? ` · deload on ${_cEsc(blk.deloadMonday)}` : ''}</div>`
+      : '';
 
     let cabecera = head();
     let cuerpo = '';
@@ -1875,15 +1914,15 @@ async function renderCoachWeekCard(opts = {}) {
     if (!review) {
       // ESTADO `none` — la primera semana, y el único sitio desde el que se puede arrancar.
       cuerpo = '<div class="coach-week-line">First week with the coach. On Sunday it closes the week, reads the trajectory and proposes the next one. Until then the routine does not change.</div>';
-      acciones = _coachCloseWeekBtn('coach-close-week', 'Close the week now');
-      cerrar = 'coach-close-week';
+      acciones = _coachCloseWeekBtn(bid('coach-close-week'), 'Close the week now');
+      cerrar = bid('coach-close-week');
     } else if (review.status === 'running') {
       const desde = (_coachPoll && _coachPoll.reviewId === review.id) ? _coachPoll.started : Number(review.createdAt || Date.now());
       const rendido = _coachPollGaveUp === review.id;
       cuerpo = rendido
         ? '<div class="coach-week-line">Still running; come back later. The review will arrive with the next sync.</div>'
         : `<div class="coach-week-line">The coach is reviewing ${wkTxt}… <span id="coach-week-elapsed" class="coach-week-mono">${_coachElapsed(desde)}</span></div>`;
-      if (rendido) acciones = '<button class="coach-btn" id="coach-week-regen">Regenerate</button>';
+      if (rendido) acciones = `<button class="coach-btn" id="${bid('coach-week-regen')}">Regenerate</button>`;
       else if (!_coachPoll || _coachPoll.reviewId !== review.id) pollCoachReview(review.id);
     } else if (review.status === 'requested') {
       // ESTADO `requested` (v11.69, modo manual): la semana está cerrada y su pack guardado; la
@@ -1891,8 +1930,12 @@ async function renderCoachWeekCard(opts = {}) {
       // propósito: pedírsela al modelo en vez de esperar.
       const cuando = review.requestedAt ? String(review.requestedAt).slice(0, 10) : null;
       const fecha = (cuando && typeof formatDate === 'function') ? formatDate(cuando) : cuando;
-      cuerpo = `<div class="coach-week-line">Week ${wkTxt} closed${fecha ? ` on ${_cEsc(fecha)}` : ''} · waiting for the manual review from Claude Code. The facts pack is saved; the proposal will show up here once it is written.</div>`;
-      acciones = '<button class="coach-btn" id="coach-week-ask-api">Ask the model instead</button>';
+      // V-25: el texto decía "waiting for the manual review from Claude Code". El nombre de la
+      // herramienta con la que Julian escribe la revisión es una interioridad del taller, no
+      // información para quien mira la pantalla: lo que importa es que la semana está cerrada,
+      // que el pack está guardado y que la propuesta aparecerá aquí.
+      cuerpo = `<div class="coach-week-line">Week ${wkTxt} closed${fecha ? ` on ${_cEsc(fecha)}` : ''} · the manual review is being written. It will show up here.</div>`;
+      acciones = `<button class="coach-btn" id="${bid('coach-week-ask-api')}">Ask the model instead</button>`;
     } else if (review.status === 'proposed') {
       const prev = plan || {};
       const merged = (typeof mergeProposal === 'function') ? mergeProposal(prev, (review.output || {}).proposal || {}) : null;
@@ -1914,9 +1957,9 @@ async function renderCoachWeekCard(opts = {}) {
       // NINGÚN BOTÓN DESHABILITADO, tampoco con avisos duros: los duros restringen al coach,
       // no al usuario (principio 4 del plan).
       acciones = `
-        <button class="coach-btn coach-btn-primary" id="coach-week-apply">Apply</button>
-        <button class="coach-btn" id="coach-week-reject">Reject</button>
-        <button class="coach-btn" id="coach-week-regen-note">Regenerate with a note</button>`;
+        <button class="coach-btn coach-btn-primary" id="${bid('coach-week-apply')}">Apply</button>
+        <button class="coach-btn" id="${bid('coach-week-reject')}">Reject</button>
+        <button class="coach-btn" id="${bid('coach-week-regen-note')}">Regenerate with a note</button>`;
     } else if (review.status === 'applied') {
       const ver = (plan && plan.version != null) ? plan.version : null;
       // El brief del PLAN si el plan salió de esta revisión; si no, el de la revisión (con el
@@ -1927,52 +1970,71 @@ async function renderCoachWeekCard(opts = {}) {
       cabecera = head(ver != null ? ` · plan v${ver}` : '', 'See all ›');
       cuerpo = _coachAppliedHtml(brief, plan, review);
       const volver = (plan && plan.basedOn) || null;
-      if (volver) acciones = `<button class="coach-btn" id="coach-week-undo" data-plan="${_cEsc(volver)}">Undo</button>`;
+      if (volver) acciones = `<button class="coach-btn" id="${bid('coach-week-undo')}" data-plan="${_cEsc(volver)}">Undo</button>`;
     } else if (review.status === 'failed') {
       const kind = (review.error && review.error.kind) || 'api';
       cuerpo = `<div class="coach-week-line coach-week-bad">The ${wkTxt} review failed: ${_cEsc(COACH_ERROR_LABEL[kind] || kind)}.</div>`;
-      acciones = '<button class="coach-btn" id="coach-week-regen">Regenerate</button>';
+      acciones = `<button class="coach-btn" id="${bid('coach-week-regen')}">Regenerate</button>`;
     } else if (review.status === 'expired' || review.status === 'rejected') {
       cuerpo = `<div class="coach-week-line">Proposal for ${wkTxt} ${review.status === 'expired' ? 'expired (it was from an earlier week)' : 'rejected'}.</div>`;
-      acciones = `${_coachCloseWeekBtn('coach-close-week')}<button class="coach-btn" id="coach-week-regen">Regenerate</button>`;
-      cerrar = 'coach-close-week';
+      acciones = `${_coachCloseWeekBtn(bid('coach-close-week'))}<button class="coach-btn" id="${bid('coach-week-regen')}">Regenerate</button>`;
+      cerrar = bid('coach-close-week');
     } else {
       cuerpo = '<div class="coach-week-line">No usable review for this week.</div>';
-      acciones = _coachCloseWeekBtn('coach-close-week');
-      cerrar = 'coach-close-week';
+      acciones = _coachCloseWeekBtn(bid('coach-close-week'));
+      cerrar = bid('coach-close-week');
     }
 
     el.innerHTML = `<div class="card coach-week-card">
       ${cabecera}
+      ${bloqueLinea}
       ${cuerpo}
       ${acciones ? `<div class="coach-actions">${acciones}</div>` : ''}
     </div>`;
 
-    const on = (id, fn) => { const b = document.getElementById(id); if (b) b.addEventListener('click', fn); };
+    const on = (base, fn) => { const b = document.getElementById(bid(base)); if (b) b.addEventListener('click', fn); };
     on('coach-week-open', () => openCoachView());
     if (cerrar) _coachBindCloseWeek(cerrar);
     if (review) {
       on('coach-week-apply', async () => { await applyCoachProposal(review); });
       on('coach-week-reject', async () => {
-        const why = (typeof prompt === 'function') ? prompt('Why are you rejecting it? (optional)') : null;
+        // V-7: `prompt()` nativo en una PWA instalada es un diálogo del navegador con el dominio
+        // en la cabecera. `promptSheet` devuelve la misma semántica (`null` = cancelar).
+        const why = await _coachAskText('Why are you rejecting it?', 'Optional — it goes into the decision log', false, 'Reject');
         if (why === null) return;   // Cancelar no rechaza
         await rejectCoachProposal(review, (why || '').trim() || null);
       });
       on('coach-week-regen', () => runWeeklyCoach({ weekKey: _cTargetWeek(today()), regenerate: true }));
       on('coach-week-ask-api', () => runWeeklyCoach({ weekKey: review.weekKey || _cTargetWeek(today()), force: true }));
-      on('coach-week-regen-note', () => {
-        const nota = (typeof prompt === 'function') ? prompt('What should it take into account? (one or two sentences)') : null;
-        if (!nota) return;
+      on('coach-week-regen-note', async () => {
+        const nota = await _coachAskText('What should it take into account?', 'One or two sentences', true, 'Regenerate');
+        if (!nota || !nota.trim()) return;
         return runWeeklyCoach({ weekKey: _cTargetWeek(today()), userNote: nota.trim(), regenerate: true });
       });
       on('coach-week-undo', (e) => rollbackPlanVersion(e.currentTarget.dataset.plan));
     }
   } catch (e) {
-    // Patrón `renderHomeView`: cada sección con su try/catch.
+    // V-4: la tarjeta del coach es el bloque más caro de Home; esconderla en silencio hace
+    // creer que no hay revisión, que es justo la conclusión contraria a la verdadera.
     console.warn('[Coach] renderCoachWeekCard:', e);
-    el.classList.add('hidden');
-    el.innerHTML = '';
+    if (typeof showErrorState === 'function') showErrorState(el, 'The weekly review could not be read.', () => renderCoachWeekCard(opts));
+    else { el.classList.add('hidden'); el.innerHTML = ''; }
   }
+}
+
+/**
+ * V-7 · El texto que el usuario le escribe al coach.
+ *
+ * Dos de los cuatro `prompt()` que había eran la NOTA que viaja al modelo, y `prompt()` no
+ * admite varias líneas: la instrucción más importante que el usuario puede dar se escribía en un
+ * campo de una sola línea. `promptSheet` vive en app.js (mismo documento); el `prompt()` queda
+ * como red por si una versión cacheada del HTML no trae la hoja.
+ */
+async function _coachAskText(title, placeholder, multiline, confirmLabel) {
+  if (typeof promptSheet === 'function') {
+    return promptSheet({ title, placeholder, multiline: !!multiline, confirmLabel });
+  }
+  return (typeof prompt === 'function') ? prompt(title) : null;
 }
 
 /** El nombre visible de una sesión, del plan activo o del propio id. */
@@ -2083,58 +2145,58 @@ function openCoachView() {
   renderCoachView().catch((e) => console.warn('[Coach] view:', e));
 }
 
-/** Seis secciones, cada una con su try/catch: un fallo en una no vacía el resto del scroll. */
+/**
+ * V-13 (auditoría 2026-09-09): SIETE SECCIONES EN SERIE Y FUERA DEL PASE DE RENDER.
+ *
+ * Cada `await seccion(...)` esperaba a la anterior aunque no dependieran entre sí, y cada una
+ * abría sus propias transacciones de IndexedDB — `decisions` se leía dos veces, `coach_reviews`
+ * tres. Home y Stats ya iban con `beginRenderPass`/`allSettled` desde v11.66; esta vista se
+ * quedó fuera y era la más lenta de las tres.
+ *
+ * `allSettled` además es lo correcto aquí: cada sección tiene su try/catch, así que una que
+ * falle deja SU hueco y las demás pintan.
+ */
 async function renderCoachView() {
   const review = await _coachExpireIfStale(await _coachLatestReview());
   const seccion = async (id, fn) => {
     const el = document.getElementById(id);
     if (!el) return;
-    try { await fn(el); } catch (e) { console.warn(`[Coach] ${id}:`, e); el.innerHTML = ''; }
+    // V-4: el catch ya no vacía el contenedor en silencio.
+    try { await fn(el); } catch (e) {
+      console.warn(`[Coach] ${id}:`, e);
+      if (typeof showErrorState === 'function') showErrorState(el, 'This section could not be loaded.', () => renderCoachView());
+      else el.innerHTML = '';
+    }
   };
-  await seccion('coach-week', (el) => _coachRenderWeek(el, review));
-  await seccion('coach-briefing', (el) => _coachRenderBriefing(el, review));
-  await seccion('coach-proposal', (el) => _coachRenderProposal(el, review));
-  await seccion('coach-goals-view', () => (typeof renderGoalsCard === 'function' ? renderGoalsCard('coach-goals-view') : null));
-  await seccion('coach-decisions', (el) => _coachRenderDecisions(el));
-  // R-11 (auditoría 2026-09-08): el ledger va DEBAJO del log de decisiones porque es su
-  // agregado — primero qué se decidió, después qué reglas lo sostienen y cómo les va.
-  await seccion('coach-ledger', (el) => _coachRenderLedger(el));
-  await seccion('coach-versions', (el) => _coachRenderVersions(el));
+  if (typeof beginRenderPass === 'function') beginRenderPass();
+  try {
+    await Promise.allSettled([
+      // V-12: la MISMA tarjeta que Home, en el contenedor de la vista. La que había aquí era
+      // una copia peor: sin foco, sin diff, sin guardrails y sin el estado `requested`.
+      seccion('coach-week', () => _coachRenderWeek()),
+      seccion('coach-briefing', (el) => _coachRenderBriefing(el, review)),
+      seccion('coach-proposal', (el) => _coachRenderProposal(el, review)),
+      seccion('coach-goals-view', () => (typeof renderGoalsCard === 'function' ? renderGoalsCard('coach-goals-view') : null)),
+      seccion('coach-decisions', (el) => _coachRenderDecisions(el)),
+      // R-11 (auditoría 2026-09-08): el ledger va DEBAJO del log de decisiones porque es su
+      // agregado — primero qué se decidió, después qué reglas lo sostienen y cómo les va.
+      seccion('coach-ledger', (el) => _coachRenderLedger(el)),
+      seccion('coach-versions', (el) => _coachRenderVersions(el)),
+    ]);
+  } finally {
+    if (typeof endRenderPass === 'function') endRenderPass();
+  }
 }
 
-async function _coachRenderWeek(el, review) {
-  const blk = (typeof blockWeek === 'function') ? blockWeek() : null;
-  const lunes = blk && blk.deloadMonday ? blk.deloadMonday : null;
-  const total = (typeof DELOAD_BLOCK_WEEKS !== 'undefined') ? DELOAD_BLOCK_WEEKS : (blk && blk.weeksTotal) || 5;
-  const bloque = (blk && blk.index)
-    ? `Week ${blk.index}/${total} · ${_cEsc(blk.label || '')}${lunes ? ` · deload on ${_cEsc(lunes)}` : ''}`
-    : 'No block anchor';
-
-  let recu = '';
-  try {
-    const r = (typeof computeReadiness === 'function') ? await computeReadiness() : null;
-    if (r) {
-      const LABEL = { green: 'green', yellow: 'yellow', red: 'red', unknown: 'no data today' };
-      const COL = { green: 'var(--accent)', yellow: 'var(--yellow)', red: 'var(--red)', unknown: 'var(--text3)' };
-      recu = `<span class="coach-week-readiness" style="color:${COL[r.color] || 'var(--text3)'}">recovery ${_cEsc(LABEL[r.color] || r.color)}</span>`;
-    }
-  } catch (e) { recu = ''; }
-
-  const prios = ((((review || {}).output) || {}).briefing || {}).priorities || [];
-  el.innerHTML = `<div class="card coach-week-card">
-    <div class="coach-week-head">
-      <span class="coach-week-title">${_cEsc(review && review.weekKey ? _cWeekShort(review.weekKey) : _cWeekShort(_cWeekKey(today())))}</span>
-      ${recu}
-    </div>
-    <div class="coach-week-line">${bloque}</div>
-    ${review ? `<div class="coach-week-status">Review ${_cEsc(COACH_STATUS_LABEL[review.status] || review.status || '—')}${review.attempt ? ` · attempt ${review.attempt}` : ''}</div>` : '<div class="coach-week-status">No review for this week yet.</div>'}
-    ${prios.length ? `<ol class="coach-week-prios">${prios.slice(0, 3).map((p) => `<li>${_cEsc(p)}</li>`).join('')}</ol>` : ''}
-    <div class="coach-actions">${_coachCloseWeekBtn('coach-close-week-view')}</div>
-  </div>`;
-  // Id propio y no `coach-close-week`: la tarjeta de Home vive en el mismo documento y dos
-  // elementos con el mismo id harían que `getElementById` sólo encontrase uno. La clase
-  // `.coach-close-week` es la que comparten.
-  _coachBindCloseWeek('coach-close-week-view');
+/**
+ * V-12: la semana de la vista Coach. Era una SEGUNDA implementación de la tarjeta —peor: sin
+ * foco, sin las prioridades del brief, sin diff, sin guardrails y sin el estado `requested`, que
+ * es justo el que el modo manual necesita ver. Ahora delega en la única implementación.
+ * El parámetro `review` ya no se usa: la tarjeta lee la revisión ella misma (y aplica su propia
+ * caducidad), así que pasarle una segunda copia sólo abría la puerta a que discreparan.
+ */
+async function _coachRenderWeek(el, review) {   // eslint-disable-line no-unused-vars
+  return renderCoachWeekCard({ into: 'coach-week' });
 }
 
 async function _coachRenderBriefing(el, review) {
@@ -2215,13 +2277,13 @@ async function _coachRenderProposal(el, review) {
   const on = (id, fn) => { const b = document.getElementById(id); if (b) b.addEventListener('click', fn); };
   on('coach-view-apply', async () => { await applyCoachProposal(review); });
   on('coach-view-reject', async () => {
-    const why = (typeof prompt === 'function') ? prompt('Why are you rejecting it? (optional)') : null;
+    const why = await _coachAskText('Why are you rejecting it?', 'Optional — it goes into the decision log', false, 'Reject');
     if (why === null) return;
     await rejectCoachProposal(review, (why || '').trim() || null);
   });
-  on('coach-view-regen', () => {
-    const nota = (typeof prompt === 'function') ? prompt('What should it take into account? (one or two sentences)') : null;
-    if (!nota) return;
+  on('coach-view-regen', async () => {
+    const nota = await _coachAskText('What should it take into account?', 'One or two sentences', true, 'Regenerate');
+    if (!nota || !nota.trim()) return;
     return runWeeklyCoach({ weekKey: _cTargetWeek(today()), userNote: nota.trim(), regenerate: true });
   });
 }
@@ -2418,7 +2480,7 @@ async function setCoachReviewMode(mode) {
   state.settings = Object.assign({}, state.settings, { coachReviewMode: v });
   await smartPut('settings', { key: 'userSettings', data: state.settings });
   if (typeof toast === 'function') {
-    toast(v === 'manual' ? 'Manual mode: closing the week saves the facts for Claude Code' : 'The app will ask the model');
+    toast(v === 'manual' ? 'Manual mode: closing the week saves the facts for the manual review' : 'The app will ask the model');
   }
 }
 
@@ -2463,14 +2525,14 @@ async function requestManualCoachReview({ weekKey, userNote } = {}) {
   await smartPut('coach_reviews', row);
   try { await renderCoachWeekCard(); } catch (e) {}
   try { if (state && state.currentView === 'coach') await renderCoachView(); } catch (e) {}
-  if (typeof toast === 'function') toast('Week closed. The review is waiting for Claude Code.');
+  if (typeof toast === 'function') toast('Week closed. The manual review is pending.');
   return row;
 }
 
 // Exports para los tests (Node los carga con `vm`); en el navegador no estorba.
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
-    renderCoachReadout, renderReadinessSignals, renderRecoveryLine, renderGoalsCard,
+    renderCoachReadout, renderRecoveryBlock, renderReadinessSignals, renderRecoveryLine, renderGoalsCard,
     renderCoachGoalLine, _coachGoalProgressFromStores,
     COACH_APP_VERSION, COACH_RULE_LABEL, COACH_EVIDENCE_LABEL, COACH_GUARD_LABEL, COACH_STATUS_LABEL,
     COACH_PHASES, COACH_WS_STATUS_LABEL, COACH_CLOSE_WEEK_LABEL,

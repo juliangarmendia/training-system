@@ -5,12 +5,11 @@ import {
   corsHeaders,
   json,
   readEnv,
-  readEnvOptional,
   ReconnectRequired,
   RefreshInProgress,
-  timingSafeEqual,
 } from "../_shared/http.ts";
-import { serviceClient, TABLE_TOKENS } from "../_shared/tokens.ts";
+import { handleCronMode } from "../_shared/cron.ts";
+import { serviceClient } from "../_shared/tokens.ts";
 import { subscribeWithingsNotify, syncWithings } from "../_shared/withings-sync.ts";
 
 // Gemela de `whoop-sync`: mismos dos modos, misma forma de respuesta. La PWA llama a las dos
@@ -37,26 +36,15 @@ Deno.serve(async (req) => {
     const supa = serviceClient();
 
     // ── Modo cron ────────────────────────────────────────────────────────────────────────
-    const cronHeader = req.headers.get("x-cron-secret");
-    if (cronHeader) {
-      const expected = readEnvOptional("CRON_SECRET");
-      if (!expected) return json({ error: "Función sin configurar: falta CRON_SECRET" }, 500);
-      if (!timingSafeEqual(cronHeader, expected)) {
-        console.warn("[withings-sync] x-cron-secret inválido");
-        return json({ error: "Secreto de cron inválido" }, 401);
-      }
-
-      const { data: rows, error } = await supa
-        .from(TABLE_TOKENS)
-        .select("user_id")
-        .eq("provider", "withings")
-        .eq("status", "active");
-      if (error) return json({ error: `integration_tokens: ${error.message}` }, 500);
-      const userIds = (rows || []).map((r) => String((r as { user_id: string }).user_id));
-
-      EdgeRuntime.waitUntil(runForAll(userIds, days, resubscribe));
-      return json({ ok: true, mode: "cron", users: userIds.length, days, resubscribe }, 202);
-    }
+    // C-22: mismo bloque compartido que `whoop-sync` (`_shared/cron.ts`).
+    const cronRes = await handleCronMode(
+      req,
+      "withings",
+      supa,
+      (userIds) => runForAll(userIds, days, resubscribe),
+      { days, resubscribe },
+    );
+    if (cronRes) return cronRes;
 
     // ── Modo usuario ─────────────────────────────────────────────────────────────────────
     const authHeader = req.headers.get("Authorization") || "";

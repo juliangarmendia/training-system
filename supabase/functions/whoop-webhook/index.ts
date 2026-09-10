@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { clip, corsHeaders, hmacBase64, json, readEnvOptional, timingSafeEqual } from "../_shared/http.ts";
+import { closeEvent, openEvent } from "../_shared/events.ts";
 import { serviceClient, TABLE_STATUS, TABLE_TOKENS, type Supa } from "../_shared/tokens.ts";
 import { syncWhoopSleep } from "../_shared/whoop-sync.ts";
 
@@ -88,27 +89,18 @@ Deno.serve(async (req) => {
 
     // Deduplicación: `on conflict (provider, trace_id) do nothing` + `.select()`. Si vuelve
     // vacío es que ya lo habíamos recibido — WHOOP reintenta, y procesarlo dos veces
-    // dispararía dos syncs del mismo sueño.
-    const { data: inserted, error: insErr } = await supa
-      .from("integration_events")
-      .upsert(
-        {
-          provider: "whoop",
-          type,
-          external_user_id: externalUserId,
-          external_id: externalId,
-          trace_id: traceId,
-          payload,
-          status: "received",
-        },
-        { onConflict: "provider,trace_id", ignoreDuplicates: true },
-      )
-      .select("id");
-    if (insErr) {
-      console.error(`[whoop-webhook] integration_events: ${insErr.message}`);
-      return json({ error: "No se pudo registrar el evento" }, 500);
-    }
-    const eventId = (inserted && inserted[0] ? (inserted[0] as { id: number }).id : null);
+    // dispararía dos syncs del mismo sueño. C-22: el alta vive en `_shared/events.ts`, y con
+    // ella C-12 — un duplicado cuya fila quedó en `error` (huérfana) SÍ se reabre y se procesa.
+    const opened = await openEvent(supa, "whoop-webhook", {
+      provider: "whoop",
+      type,
+      external_user_id: externalUserId,
+      external_id: externalId,
+      trace_id: traceId,
+      payload,
+    });
+    if (opened.failed) return json({ error: "No se pudo registrar el evento" }, 500);
+    const eventId = opened.eventId;
     if (eventId === null) {
       console.log(`[whoop-webhook] duplicado ${type} trace=${clip(traceId || "", 20)}`);
       return json({ ok: true, duplicate: true });
@@ -126,20 +118,20 @@ Deno.serve(async (req) => {
     // Usuario desconocido → 200 + `ignored`. Un 404 aquí sería un oráculo: diría desde fuera
     // qué cuentas de WHOOP están conectadas a este proyecto.
     if (!userId) {
-      await closeEvent(supa, eventId, "ignored", "usuario de WHOOP desconocido");
+      await closeEvent(supa, "whoop-webhook", eventId, "ignored", "usuario de WHOOP desconocido");
       return json({ ok: true, ignored: "unknown_user" });
     }
 
     if (!HANDLED.has(type) || !externalId) {
       // `workout.*` no se importa: las carreras entran por intervals.icu y duplicarlas aquí
       // rompería `runs`. `*.deleted` tampoco: no borramos días del diario por un evento.
-      await closeEvent(supa, eventId, "ignored", `tipo no manejado: ${type}`);
+      await closeEvent(supa, "whoop-webhook", eventId, "ignored", `tipo no manejado: ${type}`);
       return json({ ok: true, ignored: type });
     }
 
     // 200 YA; el sync va detrás.
     EdgeRuntime.waitUntil(process(supa, eventId, userId, externalId, type));
-    return json({ ok: true, queued: type });
+    return json({ ok: true, queued: type, reprocessed: opened.reprocessed });
   } catch (err) {
     console.error(`[whoop-webhook] ${err instanceof Error ? err.stack || err.message : String(err)}`);
     return json({ error: "Error interno" }, 500);
@@ -156,7 +148,7 @@ async function process(
   try {
     // En v2 el `id` de `sleep.updated` Y el de `recovery.updated` son el UUID del SUEÑO.
     const out = await syncWhoopSleep(userId, sleepId, supa);
-    await closeEvent(supa, eventId, "processed", out.skipped ? `omitido: ${out.skipped}` : null);
+    await closeEvent(supa, "whoop-webhook", eventId, "processed", out.skipped ? `omitido: ${out.skipped}` : null);
     await supa
       .from(TABLE_STATUS)
       .update({ last_event_at: new Date().toISOString(), updated_at: new Date().toISOString() })
@@ -166,19 +158,6 @@ async function process(
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`[whoop-webhook] ${type} falló: ${msg}`);
-    await closeEvent(supa, eventId, "error", msg);
+    await closeEvent(supa, "whoop-webhook", eventId, "error", msg);
   }
-}
-
-async function closeEvent(
-  supa: Supa,
-  eventId: number,
-  status: "processed" | "ignored" | "error",
-  error: string | null,
-): Promise<void> {
-  const { error: err } = await supa
-    .from("integration_events")
-    .update({ status, processed_at: new Date().toISOString(), error: error ? clip(error, 400) : null })
-    .eq("id", eventId);
-  if (err) console.warn(`[whoop-webhook] no se pudo cerrar el evento ${eventId}: ${err.message}`);
 }

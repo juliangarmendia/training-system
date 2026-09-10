@@ -1185,7 +1185,7 @@ async function renderNutMeals(date) {
             <div class="hi-stat">${nutFmt(agg.calories)}</div>
             <div class="hi-stat-sub">${Math.round(agg.protein)} g P</div>
           </div>
-          <button class="hi-delete" data-del-meal="${m.id}">&times;</button>
+          <button class="hi-delete" data-del-meal="${m.id}" aria-label="Delete meal">&times;</button>
         </div>
       </div>`;
   }).join('');
@@ -1471,7 +1471,7 @@ function renderNutConfirmItems() {
                    value="${Math.round(it.grams)}" data-grams="${i}" class="text-input sm">
             <span class="nut-item-unit">g</span>
           </div>
-          <button class="hi-delete" data-del-item="${i}">&times;</button>
+          <button class="hi-delete" data-del-item="${i}" aria-label="Remove item">&times;</button>
         </div>`;
     }).join('');
   }

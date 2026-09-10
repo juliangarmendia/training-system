@@ -6,6 +6,13 @@ incremento 9) y quien escriba **la edge function** (`supabase/functions/coach-we
 incremento 8). Las reglas citadas (`STR-*`, `END-*`…) viven en
 [`../../research/evidence-to-rules.md`](../../research/evidence-to-rules.md), única fuente de verdad.
 
+> **`FACTS_SCHEMA = 3`** (v11.71, remediación de la [auditoría del 2026-09-09](../audits/2026-09-09-app-audit.md)).
+> Respecto al esquema 2, todo **aditivo**: `progress.performance` (F-6), `plan.plannedSetsPerMuscle`
+> (F-7), `readiness.sleep.{consistency7, debtHrs7, score7}` (F-11), `readiness.subjective` (F-12),
+> `readiness.hydration7` (F-13), `lifts[id].atSameLoad` (F-18), `adherence[].restCompliancePct`
+> (F-19) y `cardio.mvpaMinByWeek` / `mvpaBand` (F-22). Y `readiness.firedSignals` pasa a venir
+> HECHA del motor (F-9), en vez de recalcularse aquí.
+>
 > **`FACTS_SCHEMA = 2`** (incremento B-2 de
 > [`coach-v2.1-implementation-plan.md`](coach-v2.1-implementation-plan.md) §B.2). Respecto al
 > esquema 1: sección **[`trajectory`](#trajectory--todo-el-recorrido-esquema-2)** con todo el
@@ -173,8 +180,19 @@ no están sembrados.
   running: { longRun4wKm: 6, longRun4wDate, kmPerWeek: [4.5,5,11,0], kmPerWeekMean: 5.1,
              paceAtZ2: '7:00', nRuns4w: 4, nZ2Compliant4w: 3,
              tenKReadiness: { verdict: 'far off', longestKm, longestZ2Compliant, driftBpm: null,
-                              criteria: {…}, basis: 'Only distance and mean HR can be measured…' } } }
+                              criteria: {…}, basis: 'Only distance and mean HR can be measured…' } },
+  performance: { regressedStreak: 0, lastRegressedDate: null,
+                 sessions: [{ date, session, progressed, held, regressed }], note } }
 ```
+
+`performance` (F-6, v11.71) es **la mitad reactiva de LOAD-004**, que hasta v11.70 no calculaba
+nadie: `deloadHint` mira RPE, calidad y wearable — todo menos el rendimiento. Sale del `readout`
+que cada entreno sella al cerrarse (`sessionReadout` en `coach-engine.js`), cuyo `summary` compara
+lo prescrito con lo hecho ejercicio a ejercicio. `regressedStreak` = sesiones MÁS RECIENTES
+consecutivas con `regressed ≥ 1` y `progressed === 0`; una sesión con una caída **y** una subida
+corta la racha, porque eso no es un declive. Los `summary` de TEXTO (registros anteriores a
+v11.57) se ignoran: parsear una frase para sacar un número es la aritmética que este pack existe
+para evitar. El paso 7 del prompt lo cita como EL disparador del deload reactivo (`≥ 2`).
 
 **La pendiente sólo mira pesadas MEDIDAS** (`bodyweight.measured === true` o
 `wellness.weightMeasured`). El valor suavizado de intervals.icu es un forward-fill: una línea recta
@@ -335,8 +353,22 @@ Plan activo compacto: identidad (`id`, `version`, `schema`, `status`, `author`, 
 `reviewId`, `basedOn`, `seedRev`), `block`, `running`, `idealVariant`, `weekTemplate[0..6]`
 (`{type, session, label, subtype, durationMin, z2FinisherMin, cardio}`), `sessions[id]`
 (`{name, subtitle, focus, exercises:[{id, name, muscle, sets, reps, rpe, order, optional, superset, db, bw, compound, measure, measureUnit, target}]}`)
-y `overrides` (`exercises` = `settings.exerciseOverrides`, `futureSchedule` = overrides de
-`weekSchedule` con fecha ≥ hoy).
+`plannedSetsPerMuscle` (F-7, v11.71), y `overrides` (`exercises` = `settings.exerciseOverrides`,
+`futureSchedule` = overrides de `weekSchedule` con fecha ≥ hoy).
+
+```js
+plannedSetsPerMuscle: {
+  byMuscle: { Chest: 4, Back: 8, Shoulders: 4, Quads: 7, Hamstrings: 7, Core: 9, Power: 3 },
+  families: { …, 'Posterior chain': 7 },      // Hamstrings + Posterior + Glutes, agregados
+  total: 45, floorPerMuscle: 10, capPerMuscle: 14, note }
+```
+
+Series **prescritas** × las veces que la sesión aparece en `weekTemplate`, con el MISMO contador
+(`_vpSetsPerMuscle`) que el validador usa en `VOL-CAP` y `VOL-FLOOR` — el coach ve el número por el
+que se le juzga. Hasta v11.70 sólo viajaban las series HECHAS (`readiness.setsPerMuscle`) y las
+prescritas había que sumarlas del plan a mano. `families` agrega la cadena posterior, que la
+semilla reparte en tres etiquetas y hacía leer "9 series de isquios" sobre 14 de cadena posterior;
+`Power`, `Core` y `otros` quedan fuera del juicio de hipertrofia.
 
 **Esta sección es el vocabulario de la edge function**: `deriveAllowedFromFacts()`
 (`supabase/functions/coach-weekly-review/index.ts`) construye `allowed.sessionIds` y
@@ -351,8 +383,16 @@ no persiste campos arbitrarios. Sin ese flag el modelo podría prescribir "box j
   cardio:   { planned: 2, plannedToDate: 0, done: 1, km: 0, min: 20, hard: 0 },
   recovery: { planned: 1, done: 0 },
   durationsMin: [64], avgDurationMin: 64,
+  restCompliancePct: 90 | null, restComplianceN: 1,
   plannedSource: 'plan-activo' | 'plantilla-actual (aproximado)' }
 ```
+`restCompliancePct` (F-19, v11.71) = Σ`durationSec` / Σ`estimatedSec` × 100 sobre los
+`blockTimings` de los entrenos de la semana (los bloques sin estimación no cuentan), con
+`restComplianceN` = cuántos entrenos aportaron bloques. Por debajo del 100 % la sesión va con
+prisa, y la prisa en un básico es carga que no se levanta. **No** es una medida de descanso set a
+set — nadie cronometra eso —, es ritmo de sesión: por eso viaja con su `n` y `null` (no 0) cuando
+ningún entreno trae bloques.
+
 `plannedSource` es honesto a propósito: lo planificado de una semana pasada sólo se conoce si los
 registros de esa semana llevan el `planVersion` del plan activo. Si no, se proyecta la plantilla
 actual hacia atrás y se declara — en la fila **y** en `dataGaps`.
@@ -363,6 +403,7 @@ actual hacia atrás y se declara — en la fila **y** en `dataGaps`.
   id, name, muscle: 'Chest', pattern: 'horizontal-press', kind: 'load'|'bw'|'measure',
   measureUnit: null, daysSinceLast: 6, nSessions: 3, trend: 'up'|'flat'|'down'|'insufficient',
   skipRate4w: 0, exposures4w: 3, pausedOver21d: false,
+  atSameLoad: { kg: 95, n: 2, series: [{date, reps, avgRpe}], repsDelta: 2, rpeDelta: -0.5, note } | null,
   sessions: [ { date, session, setsDone, setsPlanned, topKg: 95, topReps: 6, topRpe: 8,
                 avgRpe: 8, repsPerSet: [6,6,6], e1rm: 114, loggedUnit: 'kg',
                 targetShown: { kg, reps, rpe, source }, outcome: 'progressed' } ] }
@@ -374,6 +415,12 @@ actual hacia atrás y se declara — en la fila **y** en `dataGaps`.
 * `kind: 'bw'` (dominadas, ab wheel): `addedKg` es el **lastre**; `e1rm: null`, porque la Epley sobre
   el lastre describe una fuerza que no es la del atleta.
 * `trend`: newest vs oldest e1RM de las ≤4 sesiones, umbral **±2 %**. Con <2 e1RM → `'insufficient'`.
+* `atSameLoad` (F-18, v11.71): la carga de top set **más frecuente** de las últimas exposiciones
+  (con ≥2; si no, `null`), con las reps y el RPE medio de cada una. Los deltas son **la más
+  reciente menos la más antigua** a esa carga, en el mismo orden descendente que `sessions`. Es la
+  señal que el e1RM tapa: tres semanas a 95 kg subiendo de 6 a 8 reps con el RPE bajando es la
+  doble progresión funcionando y el e1RM apenas se mueve; las mismas reps al mismo kg con el RPE
+  subiendo es fatiga acumulándose antes de que caiga ningún número. En `kind: 'measure'` → `null`.
 
 ### `skipped`
 `[{ id, name, skips, exposures, rate, action: 'reordenar antes o quitar (no recordar)' }]` — sólo con
@@ -382,7 +429,9 @@ actual hacia atrás y se declara — en la fila **y** en `dataGaps`.
 ### `cardio`
 ```js
 { z2Ceiling: { bpm: 143, source: 'icuZones'|'declared', lthr, maxHr }, z2Tolerance: 2,
-  weeks: [{ weekKey, km, min, sessions, hard, finishers }],
+  weeks: [{ weekKey, km, min, sessions, hard, finishers,
+            mvpa: { runMin, sessionMin, finisherMin } }],
+  mvpaMinByWeek: [{ weekKey, min }], mvpaBand: [200, 300], mvpaFloorMin: 150,
   runs: [{ date, km, min, avgHR, maxHR, pace, gapPace, subtype, z2Compliant: true|false|null,
            pctZ2, pctAboveZ2, decoupling, hrDrift: null, source, sport, trainingLoad }],
   daysSinceLastRun, daysSinceLastCardio, z2CompliancePct4w, maxWeekKm4w, note: 'Carreras … DEDUPEADAS…' }
@@ -393,12 +442,21 @@ actual hacia atrás y se declara — en la fila **y** en `dataGaps`.
   mira la regla ("≤10 % del tiempo sobre Z2"). Sin `hrZoneTimes` → `null`, no se estima.
 * `hrDrift` es **siempre `null` hoy**: hace falta el stream de FC y los registros no lo traen. Va
   declarado en `dataGaps`. `decoupling` viaja si intervals.icu lo precalculó.
+* `mvpaMinByWeek` (F-22, v11.71) son los MISMOS minutos de `weeks[].min` (carrera + cardio +
+  finishers de Z2), publicados aparte porque el paso 6 del prompt manda mover el GASTO cuando la
+  ingesta ya está en el suelo, y "más minutos fáciles" sin un número no es una prescripción.
+  `mvpaBand` es la banda de pérdida de grasa de END-009 (ACSM 2024) y `mvpaFloorMin` el suelo de
+  salud (150): son cosas distintas y viajan separadas para que no se confundan.
 * La carrera del **domingo** cuenta en SU semana ISO, no en la siguiente.
 
 ### `readiness`
 ```js
 { hrv: { mean7, mean28, n7, n28, deltaPct, deltaAbs },
-  restingHR: {…}, sleep: { mean7Hrs, mean28Hrs, nightsUnder6h5_7, nightsUnder6h_7, n7, n28 },
+  restingHR: {…},
+  sleep: { mean7Hrs, mean28Hrs, nightsUnder6h5_7, nightsUnder6h_7, n7, n28,
+           consistency7: { mean, n }, score7: { mean, n }, debtHrs7: { mean, n } },
+  subjective: { fatigue7, soreness7, stress7, mood7, motivation7, n7, note },
+  hydration7: { meanL, n, note },
   score: { mean7, mean28, deltaPts, green7, yellow7, red7, n7, n28, cutoffs: { green: 67, yellow: 34 } },
   today: { date, readiness, color, hrv, restingHR, sleepHrs, source } | { …, readiness: null, color: 'unknown', note },
   lastDataDate: '2026-09-07',
@@ -418,7 +476,25 @@ actual hacia atrás y se declara — en la fila **y** en `dataGaps`.
 * `anomalies` lleva el contexto de C.4 (sueño de esa noche, alcohol del día, carga del día anterior)
   para poder distinguir un **evento puntual** (READ-007, cambia el día) de una **semana mala**
   (READ-002, cambia la semana).
+* `sleep.consistency7` / `score7` / `debtHrs7` (F-11, v11.71): WHOOP persiste consistencia, score
+  y NECESIDAD de sueño (`sleepNeedSecs`) desde v11.69 y el pack sólo publicaba la duración, así que
+  READ-006 y LONG-004 —que piden "duración **y** consistencia"— no eran ejecutables. `debtHrs7` es
+  la media de `max(0, sleepNeedSecs − sleepSecs)` en horas: dormir de más **no** compensa una noche
+  corta, así que el exceso se recorta a 0 en vez de restarse.
+* `subjective` (F-12, v11.71): las cinco de intervals.icu (`fatigue`, `soreness`, `stress`, `mood`,
+  `motivation`), media de 7 días, con `n7` = días con al menos una. Sin normalizar ni invertir
+  escalas (1 es lo mejor en `fatigue` y lo peor en `mood`): darles un signo común sería inventar
+  una semántica que el store no tiene. Es lo que hace ejecutable el disparador de LEA de REC-008;
+  **libido y enfermedad no están en ningún store** y sólo cuentan si Julian los escribe en la nota.
+* `hydration7` (F-13, v11.71): `hydrationVolume` (ml) o `hydration` (L) de wellness, convertidos
+  por MAGNITUD (≥100 ⇒ ml) porque el store no lleva unidad. Da consumidor a REC-006, que se
+  declaraba huérfana "porque no hay campo de hidratación" cuando lo había.
 * **Nunca** viajan filas crudas de `wellness`.
+* `firedSignals` viene **hecho del motor** desde v11.71 (F-9): `computeReadinessFrom` devuelve la
+  lista de ids que dispararon y el pack la copia. El paso 2 del prompt dice que el color ES
+  `readinessColor` y la justificación ES `firedSignals`, y el recuento competidor que el prompt
+  llevaba ("Verde 0-1 · Amarillo 2 · Rojo ≥3") se ha borrado: dos tablas para el mismo color sólo
+  pueden producir una contradicción.
 * `deloadHint`, `firedSignals` y `readinessColor` (esquema 2) son el veredicto de
   **`computeReadinessFrom`** (`coach-engine.js`, puro), el mismo que pinta Stats — no una
   segunda lectura del pack: si el pack recalculase el declive por su cuenta, la app y el coach
@@ -519,7 +595,9 @@ ctx = {
   exerciseLibrary,   // mapa {id: {movementPattern}} — mejora la detección de core/press
   block,             // { index, weeksTotal, isDeload }
   isDeload,          // opcional; si no, se deduce de block/plan.phase
-  bodyweightKg, goals, zones, decisions, briefing, todayStr,
+  goals, zones, decisions, briefing, todayStr,
+  // F-24 (2026-09-09): `bodyweightKg` SALE del contrato. Ningún chequeo lo leía; un campo
+  // documentado que nadie usa es una promesa de que el validador sabe algo que no sabe.
   // fn v4 (2026-09-08): opcionales, para KCAL-STEP. Si no llegan se leen de
   // `facts.progress.weight.validWindow` (`lastAdjustDate`, `daysSinceLastAdjust`) y de
   // `facts.nutrition.kcal.targetMean7`; si tampoco están, el chequeo se salta.
@@ -545,6 +623,8 @@ deducido del plan por músculo/patrón, y `exerciseLibrary` **no viaja** (el pac
 | `RUN-BEFORE-LEGS` | **hard** | dura/híbrido en `d` y pierna en `d+1` (**domingo → lunes** incluido), con la misma definición ampliada de "dura" | INT-001, HYB-002 | G-H5 |
 | `ANCHOR-SWAP` | **hard** | ancla sustituida fuera de {trap bar ↔ sumo/conv, barbell row ↔ chest-supported} | STR-010, LOAD-003 | G-H6 |
 | `VOL-CAP` | **hard** | > 14 series/músculo en déficit; o total > +10 % sin [adh ≥75 %, verde, nutr ≥10/14] | STR-003, STR-001 | G-H7 |
+| `VOL-FLOOR` | warn | una familia muscular con **< 10 series/semana** en déficit y variante ≥ 4 (STR-003 dice 10-14: hasta v11.70 sólo existía el techo). Se cuenta sobre familias agregadas — `Hamstrings` + `Posterior` + `Glutes` = `Posterior chain` — y `Power` / `Core` / `otros` no tienen suelo (v11.71 · F-7) | STR-003, STR-001 | G-S21 |
+| `RECOMP-HOLD` | warn | una decisión de `nutrition` que BAJA kcal mientras `trajectory.weight.scale` dice recomposición (`fatMassKgDelta28d ≤ −0,5`, `ffmKgDelta28d ≥ −0,3`, ≥21 días de span). El peso plano con la grasa bajando es el objetivo #1 cumpliéndose, no un estancamiento (v11.71 · F-5) | REC-002, REC-008 | G-S22 |
 | `KM-JUMP` | **hard** | km/sem > máx 4 sem × 1,2; o > 8 km tras ≥14 días sin correr ("reentrada") | END-003, LOAD-001 | G-H8 |
 | `KM-JUMP` | warn | km/sem > `max(prev × 1,10, prev + 1)` — el 10 % es heurística no validada (Buist 2008) | END-003, LOAD-001 | G-S1 |
 | `PROTEIN-FLOOR` | **hard** | proteína < 185 g (o `goals.constraints.proteinG`), en cabecera **o** en una decisión | REC-001, REC-008 | G-H9 |
@@ -581,7 +661,11 @@ deducido del plan por músculo/patrón, y `exerciseLibrary` **no viaja** (el pac
 | `WEEK-SUMMARY` | warn | sesión del plan sin fila en `coachBrief.weekSummary` — sólo cuando hay `coachBrief` (v11.65, contrato v2: también lo que se mantiene lleva su motivo) | GEN-001 | G-S14 |
 | `VALIDATOR-ERROR` | warn | el propio validador falló: los avisos pueden estar incompletos | — | — |
 
-**39 ids** (33 hasta v11.65; los 6 de fn v4 son `SESSION-COUNT` duro —el id existía, el nivel no—,
+**41 ids** (33 hasta v11.65; 39 con fn v4; `VOL-FLOOR` y `RECOMP-HOLD` los añade v11.71 con la
+auditoría del 09-sep. Sus etiquetas de `COACH_GUARD_LABEL` llegan con el incremento de UX v11.72,
+que es quien posee `app/coach.js`; hasta entonces `verify-plan-validator` los lleva en una lista
+`LABEL_PENDING` que falla sola en cuanto la etiqueta existe. Los 6 de fn v4 son `SESSION-COUNT`
+duro —el id existía, el nivel no—,
 `ORDER-SAME-DAY`, `FREQ-FLOOR`, `RECOVERY-ONLY`, `KCAL-STEP`, `MVPA-FLOOR` y `PLYO-CONTACTS`). Todos
 con etiqueta en `COACH_GUARD_LABEL` (`app/coach.js`) y todos con Rule IDs del corpus:
 `tests/verify-plan-validator.mjs` cuenta los ids leyendo el fuente y comprueba que ninguno cita una
@@ -596,6 +680,11 @@ Umbrales de fn v4, también exportados: `VP_MAX_STRENGTH_DAYS` (5), `VP_VARIANT_
 `VP_LONG_RUN_HARD_KM` (10), `VP_MIN_MVPA_MIN` (150), `VP_MVPA_FAT_LOSS_MIN` (200),
 `VP_KCAL_STEP_MAX` (150), `VP_KCAL_ADJUST_DAYS` (14), `VP_MIN_PATTERN_EXPOSURES` (2),
 `VP_FREQ_FLOOR_MIN_VARIANT` (4), `VP_PATTERN_FAMILIES`, `VP_PATTERN_IDS`.
+
+Umbrales de v11.71, también exportados: `VP_MIN_SETS_PER_MUSCLE` (10), `VP_POSTERIOR_FAMILY`
+('Posterior chain'), `VP_VOLUME_FAMILY_MERGE`, `VP_VOLUME_NO_FLOOR`, `VP_RECOMP_FAT_DROP_KG`
+(−0,5), `VP_RECOMP_FFM_HOLD_KG` (−0,3), `VP_RECOMP_MIN_SPAN_DAYS` (21), y del pack
+`FACTS_MVPA_BAND` ([200, 300]) y `FACTS_MVPA_FLOOR_MIN` (150).
 
 Umbrales exportados para los tests (no reescribirlos en el llamador): `VP_FLOORS`,
 `VP_MAX_SETS_PER_MUSCLE`, `VP_MAX_HARD_CARDIO`, `VP_MAX_BUDGET`, `VP_MAX_PRESS_EXPOSURES`,

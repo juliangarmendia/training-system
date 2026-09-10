@@ -7,7 +7,7 @@
 //
 //   node scripts/build-rules-compact.mjs
 //
-// sourceSha256: 8222692765c569fec90afd5015d10c5c617ebe6d920d635416a186097d93fa9b
+// sourceSha256: 8a98e64e0636bd16ec82512fa3d17cfb93831077f157fcf32a6bf9a407d0238a
 // count: 72
 //
 // POR QUÉ EXISTE. La vista Coach escribe "Rule STR-001 (strong evidence): <texto>" debajo de

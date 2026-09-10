@@ -34,7 +34,10 @@ const GEN = `${DIR}/coach-facts.generated.js`;
 const GEN_SHA = `${DIR}/coach-facts.generated.sha`;
 const INDEX = `${DIR}/index.ts`;
 const SCRIPT = 'scripts/build-fn-assets.mjs';
-const EXPORTS = ['validatePlanVersion', 'mergeProposal', 'diffPlanVersions'];
+// `stableStringify` desde el 2026-09-10 (C-23): produce el `factsHash`, que es la idempotencia
+// de la revisión. Con una copia en cada sitio, dos que ordenaran distinto darían hashes
+// distintos para el mismo pack y la caché dejaría de acertar sin que nada fallara.
+const EXPORTS = ['validatePlanVersion', 'mergeProposal', 'diffPlanVersions', 'stableStringify'];
 const MAX_ATTEMPTS = 2;   // 1 propuesta + 1 regeneración
 
 let fail = 0;

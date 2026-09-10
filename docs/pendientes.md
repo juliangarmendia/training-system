@@ -6,7 +6,7 @@
 > El *por qué* de cada cosa vive en [`../assessments/2026-08-16_system-audit.md`](../assessments/2026-08-16_system-audit.md).
 > Aquí está el *qué sigue*.
 >
-> Última actualización: **2026-09-08** (auditoría de la app: incrementos 1 · v11.66, 2 · v11.67, 3 · fn v4, 4 · v11.67 inglés y 5 · v11.68 hechos — P0, rendimiento, motores, guardarraíles en el servidor, corpus, UI en inglés, visual/UX y ledger de evidencia)
+> Última actualización: **2026-09-10** (auditoría 2026-09-09: v11.70 P0 + datos + seguridad, y v11.71 + v11.72 + fn v5 — motores y pack, UX, servidor. Queda v11.73 código y tests, y A-7)
 
 ## Regla de trabajo
 
@@ -639,3 +639,60 @@ semana objetivo y el modo manual retoma el polling (F-16); el script manual SANE
 prompt: en el suelo la palanca es el gasto y la báscula veta por recomposición (F-4/F-5). **Pendiente:** v11.71 motores y
 pack · v11.72 UX · fn v5 servidor · v11.73 código y tests, en ese orden, según el informe. La comprobación en vivo de
 `strava-sync` con la anon key (esperado 401) no se ejecutó desde la sesión: hacerla desde el iPhone o con curl.
+
+## Auditoría 2026-09-09 → v11.71 + v11.72 + fn v5 (2026-09-10) — motores, UX y servidor
+
+Los tres incrementos se integraron en el mismo push (etiqueta de app **v11.72**) porque comparten
+tests: el catálogo del validador vive en `coach-facts.js` y sus etiquetas en `coach.js`, y el activo
+generado depende de los dos. 36 ficheros de test en verde.
+
+**v11.71 · motores y pack.** El pack pasa a `FACTS_SCHEMA 3` y publica lo que el procedimiento del
+coach ya le pedía y no tenía: `progress.performance` con la racha de sesiones en retroceso (la mitad
+reactiva de LOAD-004 que nadie calculaba, F-6), `plan.plannedSetsPerMuscle` por músculo y por familia
+(F-7), `readiness.sleep` con consistencia, deuda y score (F-11), `readiness.subjective` con las cinco
+medias de 7 días que hacen ejecutable el disparador de LEA (F-12), `readiness.hydration7` (F-13),
+`readiness.firedSignals` como única justificación del color (F-9), `lifts[id].atSameLoad` para ver la
+deriva de RPE a carga igual (F-18), `adherence[].restCompliancePct` desde los `blockTimings` (F-19) y
+`cardio.mvpaMinByWeek` contra la banda 200-300 de END-009 (F-22). Dos guardarraíles nuevos, 41 en
+total: **`VOL-FLOOR`** (una familia por debajo de 10 series/semana en déficit; 10-14 era sólo techo) y
+**`RECOMP-HOLD`** (bajar kcal cuando la grasa cae y la masa magra aguanta). El motor de carrera ya no
+sube kilómetros en la semana 1 de un bloque (F-10, CLAUDE.md). El prompt: el color de recuperación
+**es** el del pack y su explicación son las señales que dispararon, sin recuento paralelo; el deload
+reactivo se justifica con la racha y con el sueño entero, no sólo con la duración.
+
+**v11.72 · UX.** Stats pasa a cuatro pestañas **Now / Week / Body / Strength** y pinta sólo el grupo
+visible (V-5/V-10); las tres tarjetas de recuperación son una sola, con el detalle de WHOOP plegado.
+Hay estado de error con Retry en doce tarjetas: un fallo de lectura ya no se ve igual que "hoy no hay
+datos" (V-4). Las notas que van al modelo se escriben en una hoja inferior con textarea, no en el
+`prompt()` del navegador (V-7). Con báscula, el formulario de composición es **Waist** y guarda la
+cintura sola sin recalcular el % de grasa; el Navy sólo aparece si no hay báscula, y la serie de
+cintura incorpora el `abdomen` de intervals.icu cuando no hay medida manual (V-11 + F-14, decisión de
+Julian). La tarjeta Withings enseña cuatro tiles y el resto en un desplegable. Inputs a 16 px (iOS ya
+no hace zoom al enfocar una serie), `.set-check` de 40 px, `--text3` con contraste 4,5:1, una sola
+familia `.stat-tile`, `:focus-visible` global y `aria-label` en modales, borrados y casillas de serie.
+La variante de 5 días pasa a **Lower A · Upper A · Upper B** (`PLAN_REV` 10) y el finisher Z2 lleva
+modalidad (bici/ski en días de pierna, cinta en los de tren superior).
+
+**fn v5 · servidor.** Ninguna llamada de red sin límite de tiempo: `fetchWithTimeout` en
+`_shared/http.ts`, 15 s para las APIs de los proveedores y 12 s para el refresco de tokens, y un
+timeout se trata como error transitorio, nunca como "reconecta" (C-11). Los eventos huérfanos de
+`integration_events` dejan de perderse: un job cada 30 minutos marca como `error` lo que lleva media
+hora en `received`, y el reintento del proveedor **reabre** esa fila en vez de chocar contra el índice
+único (C-12, migración `20260910_integration_events_orphans.sql`). `sanitizeOutput` valida los cuatro
+enums que puede inventarse el modelo (C-13); el día del pack manda sobre el UTC del servidor (C-14);
+`_shared/events.ts` y `_shared/cron.ts` acaban con las copias byte a byte entre WHOOP y Withings
+(C-22); `stableStringify` sale del módulo generado y no de cuatro copias (C-23); `parse-meal-photo`
+devuelve `usage` con coste (C-21); `steps-ingest` compara el secreto en tiempo constante (C-20).
+`CARDIO_TYPE_MAP` del servidor y de la app se comparan en un test (C-7) y con eso el SkiErg virtual
+empieza a importarse y los paseos dejan de entrar por Strava, que es la decisión del 18 de agosto.
+
+**Pendiente:** v11.73 (flujo de actualización del SW, claves locales fuera del sync, tres semanas ISO,
+`APP_SHELL` derivado, código muerto, F-20/F-21/F-25/F-26/F-28) y A-7 (los tokens de intervals.icu y
+Strava al servidor). Sin cerrar de v11.70: la comprobación en vivo de `strava-sync` con la anon key y
+un `user_id` ajeno, que debe devolver 401.
+
+**Para Julian, en el iPhone:** las cuatro pestañas de Stats y que no falte ningún bloque (pasos sólo en
+Body, calculadora de discos en Strength, revisión del coach en Week); una sola tarjeta de recuperación
+en Now; enfocar peso/reps/RPE sin zoom; "Regenerate with a note" abriendo la hoja y no el diálogo del
+navegador; el formulario Waist con báscula; y con el móvil en avión, tarjetas que dicen "Could not load
+this" con Retry.
