@@ -141,6 +141,26 @@ export function clip(text: string, max = 300): string {
   return text.length > max ? `${text.slice(0, max)}…` : text;
 }
 
+/**
+ * INDICIO de un secreto para la interfaz: `••••1234`. A-7 lo necesita para la API key de
+ * intervals.icu, que entra una vez y NO vuelve a salir nunca — pero la tarjeta de Ajustes tiene
+ * que poder decir "hay una clave guardada, y es ésta y no otra".
+ *
+ * Reglas, y las dos importan:
+ *   · Con un secreto CORTO no se enseña nada. Devolver `••••cd` de una clave de 6 caracteres
+ *     filtra un tercio de la credencial; un indicio que revela parte del secreto es peor que
+ *     no tener indicio.
+ *   · El número de puntos es FIJO (cuatro), no proporcional a la longitud. Un `•` por carácter
+ *     publica la longitud de la clave, que es justo lo que un ataque por fuerza bruta quiere
+ *     saber primero.
+ */
+export function maskSecret(secret: string | null | undefined, keep = 4): string {
+  const s = String(secret == null ? "" : secret);
+  if (!s) return "";
+  if (s.length <= keep * 2) return "••••";
+  return `••••${s.slice(-keep)}`;
+}
+
 // ── Timeouts de red (C-11, auditoría 2026-09-09) ───────────────────────────────────────────
 //
 // EL FALLO QUE ESTO EXISTE PARA IMPEDIR. `fetch` no tiene tope por defecto: un proveedor que

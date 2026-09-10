@@ -20,6 +20,7 @@
 // Ejecutar desde la raíz del repo: node tests/verify-coach-manual-mode.mjs
 
 import { readFileSync, existsSync } from 'node:fs';
+import vm from 'node:vm';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -36,6 +37,7 @@ let failed = 0;
 const ok = (m) => console.log(`  ok   ${m}`);
 const bad = (m) => { console.log(`  FAIL ${m}`); failed++; };
 const yes = (cond, m) => (cond ? ok(m) : bad(m));
+const eq = (got, want, m) => (String(got) === String(want) ? ok(m) : bad(`${m} — esperaba ${want}, obtuve ${got}`));
 // El cuerpo de una función por emparejado de llaves, empezando en el `) {` que cierra los
 // parámetros (no en el primer `{`, que en `runWeeklyCoach({ weekKey, … } = {})` es el destructuring).
 const body = (src, name) => {
@@ -77,6 +79,103 @@ yes(/await smartPut\('coach_reviews', row\)/.test(req), 'se escribe con smartPut
 yes(/id: `\$\{wk\}#\$\{rows\.length \+ 1\}`/.test(req), 'attempt = filas de la semana + 1, la numeración de la función');
 yes(/prompt: \{ model: 'manual-claude'/.test(req), "prompt.model 'manual-claude' para distinguirla");
 yes(/r\.status === 'requested'/.test(req), 'no duplica: si ya hay una requested, la reutiliza');
+
+// ── 3.b C-19 · la fila `requested`, EJECUTADA ──────────────────────────────────────
+//
+// EL FALLO QUE ESTA PARTE EXISTE PARA IMPEDIR. Todo lo de arriba es regex sobre el texto de
+// la función: comprueba que las cadenas están escritas, no que la fila que se escribe las
+// contenga. Un `if` mal puesto, un `facts` que se queda en `undefined` porque el pack falló,
+// un `request` construido pero no asignado — todo eso pasa el test de arriba en verde y deja
+// a la sesión del domingo sin nada que leer. Y el fallo más caro no es una cadena que falte:
+// es que el camino manual escriba en `plans`. La propuesta manual pasa por `proposed` y la
+// aplica Julian; si esta función tocase el plan, lo cambiaría sin que nadie lo aprobase.
+//
+// Así que se EJECUTA en un sandbox, con los colaboradores fingidos, y se afirma la fila.
+console.log('');
+console.log('3.b C-19 · requestManualCoachReview() ejecutada en un sandbox');
+{
+  const src = COACH.slice(COACH.indexOf('async function requestManualCoachReview('));
+  const fin = src.indexOf('\n}\n');
+  const lower = COACH.slice(COACH.indexOf('function _coachLowerSessionIds() {'));
+  const escrituras = [];
+  const crudas = [];
+  const toasts = [];
+  let reviews = [];
+  const box = {
+    console, Date,
+    today: () => '2026-09-13',
+    _cWeekKey: (ds) => '2026-W37',
+    dbGetAll: (store) => Promise.resolve(store === 'coach_reviews' ? reviews : []),
+    smartPut: (store, row) => { escrituras.push([store, row]); return Promise.resolve(); },
+    dbPut: (store, row) => { crudas.push([store, row]); return Promise.resolve(); },
+    toast: (m) => toasts.push(m),
+    renderCoachWeekCard: () => Promise.resolve(),
+    renderCoachView: () => Promise.resolve(),
+    openCoachView: () => {},
+    buildCoachFactsFromStores: (o) => Promise.resolve({ meta: { weekKey: o && o.weekKey, todayStr: '2026-09-13' } }),
+    _coachCurrentPlan: () => ({ id: 'plan-v26', version: 26 }),
+    _coachAllowed: () => ({ exercises: ['squat'] }),
+    _coachPriorReviews: (rows) => rows.map((r) => r.id),
+    sessionClassMap: () => ({
+      lowerA: { family: 'strength', subtype: 'lower' },
+      upperA: { family: 'strength', subtype: 'upper' },
+      hyroxA: { family: 'hybrid', subtype: 'conditioning' },
+    }),
+    state: { currentView: 'home', settings: {} },
+    COACH_MAX_USER_NOTE: 1200,
+    COACH_APP_VERSION: 'v11.73',
+  };
+  vm.createContext(box);
+  vm.runInContext(`${lower.slice(0, lower.indexOf('\n}\n') + 3)}\n${src.slice(0, fin + 2)}\n`
+    + 'globalThis.__req = requestManualCoachReview;', box);
+
+  const row = await box.__req({ weekKey: '2026-W37', userNote: 'la rodilla' });
+
+  yes(!!row, 'devuelve la fila que ha escrito');
+  eq(escrituras.length, 1, 'y hace UNA escritura');
+  eq(crudas.length, 0, 'ninguna con dbPut (la fila es del usuario y tiene que subir)');
+  if (escrituras.length) {
+    const [store, r] = escrituras[0];
+    eq(store, 'coach_reviews', 'al store coach_reviews');
+    eq(r.status, 'requested', "status 'requested'");
+    eq(r.id, '2026-W37#1', 'id = semana#intento, la numeración de la función');
+    eq(r.attempt, 1, 'attempt 1 sin filas previas');
+    eq(r.weekKey, '2026-W37', 'con la semana objetivo');
+    yes(!!r.facts && !!r.facts.meta, 'lleva el pack de hechos, no undefined');
+    eq(r.facts.meta.weekKey, '2026-W37', '…construido PARA esa semana');
+    yes(!!r.request, 'lleva `request`, el resto del body que viajaría a la función');
+    for (const k of ['currentPlan', 'allowed', 'priorReviews', 'lowerSessionIds']) {
+      yes(r.request && Object.prototype.hasOwnProperty.call(r.request, k), `request.${k} presente`);
+    }
+    eq(r.request.currentPlan.version, 26, 'currentPlan es el plan vigente de verdad');
+    eq((r.request.lowerSessionIds || []).sort().join(','), 'hyroxA,lowerA',
+      'lowerSessionIds sale de _coachLowerSessionIds() (lower + hybrid, no upper)');
+    eq(r.userNote, 'la rodilla', 'la nota del usuario viaja');
+    eq(r.prompt.model, 'manual-claude', "prompt.model 'manual-claude' para distinguirla");
+    eq(r.clientVersion, 'v11.73', 'y la versión del cliente que la escribió');
+    yes(!!r.requestedAt && !!r.createdAt, 'con marcas de tiempo');
+  }
+  eq(escrituras.filter(([st]) => st === 'plans').length, 0,
+    'NUNCA escribe en `plans`: la propuesta manual pasa por `proposed` y la aplica Julian');
+  eq(crudas.filter(([st]) => st === 'plans').length, 0, '…ni con dbPut');
+  yes(toasts.some((t) => /Week closed/.test(t)), 'y avisa de que la semana está cerrada');
+
+  // Con una `requested` ya en la semana no duplica: reutiliza la que hay.
+  escrituras.length = 0;
+  toasts.length = 0;
+  reviews = [{ id: '2026-W37#1', weekKey: '2026-W37', status: 'requested' }];
+  const otra = await box.__req({ weekKey: '2026-W37' });
+  eq(escrituras.length, 0, 'con una requested viva no escribe una segunda');
+  eq(otra.id, '2026-W37#1', '…devuelve la que ya había');
+  yes(toasts.some((t) => /already closed/.test(t)), '…y lo dice');
+
+  // Con un intento anterior fallido/rechazado, el `attempt` sigue la cuenta de la función.
+  escrituras.length = 0;
+  reviews = [{ id: '2026-W37#1', weekKey: '2026-W37', status: 'rejected' }];
+  await box.__req({ weekKey: '2026-W37' });
+  eq(escrituras.length, 1, 'con la anterior rechazada sí escribe');
+  eq(escrituras[0][1].id, '2026-W37#2', '…como intento 2, el mismo id que usaría la función');
+}
 
 console.log('');
 console.log('4. La tarjeta de Home y la caducidad');

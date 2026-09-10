@@ -774,11 +774,6 @@ function sessionFamily(t) {
   return null;
 }
 
-// Is this a training (non-rest) session type? Legacy-safe.
-function isTrainingType(t) {
-  return sessionFamily(t) !== null;
-}
-
 // Canonical tone color per family: strength→blue, cardio→accent/green, recovery→purple.
 // (V-4 retiró `_homeTypeTone`, que era un envoltorio sin llamadores sobre esta función.)
 function typeTone(family) {
@@ -1352,8 +1347,73 @@ function dbDelete(store, key) {
   });
 }
 
+// ==================== SECRETOS QUE NO SINCRONIZAN (C-8) ====================
+//
+// `settings/userSettings` viaja a Supabase entero, y dentro llevaba dos secretos operativos:
+// con `stepsSecret` cualquiera escribe en `steps` a través de `steps-ingest`, y con la API key
+// de intervals.icu se lee todo el histórico del atleta. v11.70 (S-2) los quitó del BACKUP; esto
+// los quita de la FILA, que es la mitad que faltaba.
+//
+// Dónde viven ahora: `localStorage`, por dispositivo. Es la decisión correcta mientras el
+// destino final (A-7: `integration_tokens` en el servidor, como WHOOP y Withings) no exista —
+// una API key no es preferencia de usuario, es una credencial, y una credencial no se replica
+// a todos los dispositivos por comodidad.
+//
+// Se leen por UN accesor cada una (`intervalsApiKey()`, `stepsSecret()`), que además MIGRA el
+// valor que ya esté en la fila la primera vez que se lee: nadie tiene que volver a teclear la
+// clave, y en la siguiente escritura de `userSettings` desaparece de la fila.
+const LOCAL_ONLY_KEYS = ['intervalsIcuApiKey', 'stepsSecret'];
+const LOCAL_ONLY_PREFIX = 'training_secret_';
+
+function _localOnlyRead(key) {
+  let v = null;
+  try { v = localStorage.getItem(LOCAL_ONLY_PREFIX + key); } catch (e) { v = null; }
+  if (v) return v;
+  // Migración perezosa desde la fila sincronizada. `state.settings` la conserva en memoria
+  // hasta la próxima escritura; a partir de ahí el único sitio es localStorage.
+  const heredado = (state && state.settings) ? state.settings[key] : null;
+  if (typeof heredado === 'string' && heredado.trim()) {
+    _localOnlyWrite(key, heredado.trim());
+    return heredado.trim();
+  }
+  return '';
+}
+
+function _localOnlyWrite(key, value) {
+  const v = (value == null) ? '' : String(value).trim();
+  try {
+    if (v) localStorage.setItem(LOCAL_ONLY_PREFIX + key, v);
+    else localStorage.removeItem(LOCAL_ONLY_PREFIX + key);
+  } catch (e) { console.warn('[secretos] no se pudo guardar', key, e); }
+  // Y fuera de la fila: `state.settings` es lo que se serializa en cada `smartPut`.
+  if (state && state.settings) delete state.settings[key];
+}
+
+/** La API key de intervals.icu. '' si no hay. Único lector permitido. */
+function intervalsApiKey() { return _localOnlyRead('intervalsIcuApiKey'); }
+function setIntervalsApiKey(v) { _localOnlyWrite('intervalsIcuApiKey', v); }
+/** El secreto compartido con `steps-ingest`. '' si no hay. */
+function stepsSecret() { return _localOnlyRead('stepsSecret'); }
+function setStepsSecret(v) { _localOnlyWrite('stepsSecret', v); }
+
+/** Copia de `userSettings` sin los secretos. No muta la entrada. */
+function _stripLocalOnly(data) {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return data;
+  if (!LOCAL_ONLY_KEYS.some((k) => k in data)) return data;
+  const out = Object.assign({}, data);
+  for (const k of LOCAL_ONLY_KEYS) delete out[k];
+  return out;
+}
+
 // ==================== SYNCED DB HELPERS ====================
 function smartPut(store, data) {
+  // C-8: el filtro va AQUÍ y no en los ~20 llamadores. `smartPut('settings', {key:
+  // 'userSettings', data: state.settings})` aparece en app.js y en coach.js; filtrar en cada
+  // sitio garantiza que el próximo incremento se olvide de uno.
+  if (store === 'settings' && data && data.key === 'userSettings') {
+    const limpio = _stripLocalOnly(data.data);
+    if (limpio !== data.data) data = Object.assign({}, data, { data: limpio });
+  }
   if (window.syncedPut) return window.syncedPut(store, data);
   return dbPut(store, data);
 }
@@ -1540,9 +1600,29 @@ function formatDuration(seconds) {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
+// C-28 (auditoría 2026-09-09): la causa en el toast, cuando es corta y no filtra nada.
+//
+// "Error restoring backup" obliga a abrir la consola de Safari en el móvil, o sea a no
+// enterarse: un JSON de otra versión, un store que no existe y un disco lleno daban el mismo
+// texto. Se recorta a 90 caracteres (el toast mide 340 px) y se colapsa el espacio en blanco,
+// para que un stack multilínea no rompa la caja.
+//
+// Lo que NO pasa por aquí: el texto crudo de PostgREST (C-29, del lado del servidor). Esto es
+// para errores del navegador, que son de este dispositivo y no describen la base de datos.
+const ERR_TEXT_MAX = 90;
+function errText(e, fallback) {
+  const raw = (e && (e.message || e.error_description || e.error)) || e || '';
+  const s = String(raw).replace(/\s+/g, ' ').trim();
+  if (!s || s === '[object Object]') return fallback || 'unknown error';
+  return s.length > ERR_TEXT_MAX ? s.slice(0, ERR_TEXT_MAX - 1) + '…' : s;
+}
+
 let _toastTimeout = null;
 function toast(msg, action) {
-  let el = document.querySelector('.toast');
+  // `:not(.toast-sticky)`: el chip de versión nueva (C-6) es un `.toast` persistente con su
+  // propio id, y sin este filtro el primer `toast()` de la sesión lo reutilizaría como
+  // contenedor y borraría el aviso de actualización.
+  let el = document.querySelector('.toast:not(.toast-sticky)');
   if (!el) {
     el = document.createElement('div');
     el.className = 'toast';
@@ -1771,26 +1851,32 @@ function _appWeekNumFor(ds) {
   return Math.max(1, Math.floor(days / 7) + 1);
 }
 
+// C-24: el lunes lo decide `mondayOf()` del motor (UTC, domingo = último día de SU semana) y
+// los seis días siguientes `addDays()`. Antes esta función tenía su propia aritmética de lunes
+// —una de las cinco de la app— y contaba en hora local, así que un domingo por la noche podía
+// devolver una semana distinta de la que usaba el pack del coach.
+//
+// Devuelve Date y no cadenas porque sus once llamadores hacen `dateStr(d)` y `d.getDay()`.
+// Mediodía local: la hora no se usa para nada, y a las 12:00 ningún desfase de zona horaria
+// cambia el día.
 function getWeekDates() {
-  const now = new Date();
-  const day = now.getDay();
-  const monday = new Date(now);
-  monday.setDate(now.getDate() - ((day + 6) % 7));
-  const dates = [];
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(monday);
-    d.setDate(monday.getDate() + i);
-    dates.push(d);
-  }
-  return dates;
+  const monday = mondayOf(today());
+  return Array.from({ length: 7 }, (_, i) => new Date(addDays(monday, i) + 'T12:00:00'));
 }
 
+// C-25: LA ÚNICA fecha local de la app. `whoop.js` tenía su propio `_whoopLocalDateStr` byte a
+// byte igual salvo en la tolerancia a la entrada, "porque whoop.js se carga antes que app.js".
+// El orden de los <script> no importa aquí: ninguna de esas llamadas ocurre en tiempo de
+// evaluación, así que cuando se ejecutan este global ya existe. La firma se ensancha con lo que
+// aportaba la copia (sin argumento = ahora, entrada inválida = null), que es un superconjunto.
 function dateStr(d) {
   // Local YYYY-MM-DD — must NOT use toISOString() (it converts to UTC and drops
   // evening workouts into the wrong day for any non-UTC user).
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
+  const dt = (d instanceof Date) ? d : (d != null ? new Date(d) : new Date());
+  if (isNaN(dt.getTime())) return null;
+  const y = dt.getFullYear();
+  const m = String(dt.getMonth() + 1).padStart(2, '0');
+  const day = String(dt.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
 }
 
@@ -2575,6 +2661,23 @@ function safeCall(name, ...args) {
   }
 }
 
+// C-27 (auditoría 2026-09-09): "llama y no esperes, pero que se sepa si falló".
+//
+// `safeCall` captura el throw SÍNCRONO. Si la función es async —y casi todos los renderers lo
+// son— devuelve una promesa, y en los sitios donde nadie la espera el rechazo moría en un
+// `unhandledrejection` que en el iPhone no se ve. Eran cuatro: el punto del topbar tras un
+// reintento de sync, `openMobilityView` desde la cola de Home y los dos repintados de la
+// tarjeta de recuperación al llegar el dato de WHOOP — uno de ellos con `.catch(() => {})`,
+// que es peor porque parece manejado.
+//
+// No devuelve nada A PROPÓSITO: quien quiera el resultado usa `safeCall` y lo espera.
+function safeCallVoid(name, ...args) {
+  const r = safeCall(name, ...args);
+  if (r && typeof r.then === 'function') {
+    r.then(undefined, (e) => console.warn(`[safeCall] ${name}:`, e));
+  }
+}
+
 function morphIn(container) {
   container.classList.remove('morph-in');
   void container.offsetWidth; // force reflow
@@ -3081,14 +3184,14 @@ async function logPastWorkout() {
   openEditWorkout(workout.id);
 }
 
-// ISO week key for a Date — Mon-Sun buckets matching renderStreaks() logic.
-function _isoWeekKeyFor(d) {
-  const dt = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  dt.setDate(dt.getDate() + 4 - (dt.getDay() || 7)); // ISO week Thursday
-  const yearStart = new Date(dt.getFullYear(), 0, 1);
-  const wn = Math.ceil((((dt - yearStart) / 86400000) + 1) / 7);
-  return `${dt.getFullYear()}-W${String(wn).padStart(2, '0')}`;
-}
+// C-10 (auditoría 2026-09-09): AQUÍ VIVÍA `_isoWeekKeyFor`, la tercera semana ISO de la app.
+// Había tres implementaciones: ésta, una `isoWeekKey` LOCAL dentro de `renderStreaks` que
+// sombreaba al global, y la del motor (`coach-engine.js`). Las dos de app.js contaban en hora
+// LOCAL con la fórmula del 1-ene; la del motor cuenta en UTC con la del 4-ene, que es la
+// definición ISO 8601. Discrepan en las fronteras de año (2027-01-03 es 2026-W53, no 2027-W01)
+// y en el cambio de horario, así que las rachas de Stats podían decir una semana y el pack del
+// coach otra sobre el mismo entreno. Ahora hay UNA: `isoWeekKey(dateStr)` del motor, que recibe
+// una CADENA 'YYYY-MM-DD' (no un Date) y se carga antes que app.js.
 
 // ==================== SESSION PROGRESS ====================
 function updateSessionProgress() {
@@ -4096,13 +4199,13 @@ async function attachSessionReadout(workout, sessionDef) {
   // esto no es una estimación: es el mismo cálculo que hará la tarjeta de ese día.
   const nextWeekDeload = (() => {
     try {
-      const d = new Date(Date.parse(ds + 'T12:00:00') + 7 * 86400000);
+      const d = new Date(addDays(ds, 7) + 'T12:00:00');
       return !!(typeof blockWeek === 'function' && blockWeek(d).isDeload);
     } catch (e) { return false; }
   })();
   // F-27: la misma fecha de +7 días que gobierna el deload gobierna la vigencia del objetivo
   // del coach. Una sola definición de "la próxima vez".
-  const nextExposureDs = (typeof _plusDaysStr === 'function') ? _plusDaysStr(ds, 7) : ds;
+  const nextExposureDs = addDays(ds, 7) || ds;
   const exDefs = {};
   const nextById = {};
   for (const we of (workout.exercises || [])) {
@@ -5233,25 +5336,21 @@ async function renderStreaks() {
   const runs = (await getRunsDeduped()).sort((a, b) => b.date.localeCompare(a.date));
   const nutrition = (await dbGetAll('nutrition')).sort((a, b) => b.date.localeCompare(a.date));
 
-  // Gym streak: consecutive completed weeks with ≥4 training days (Mon-Sun
-  // ISO weeks, bucketed by actual workout date — NOT by the saved w.week
-  // field, which can be stale for retroactively-logged sessions).
-  function isoWeekKey(d) {
-    const dt = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-    dt.setDate(dt.getDate() + 4 - (dt.getDay() || 7)); // ISO week Thursday
-    const yearStart = new Date(dt.getFullYear(), 0, 1);
-    const wn = Math.ceil((((dt - yearStart) / 86400000) + 1) / 7);
-    return `${dt.getFullYear()}-W${String(wn).padStart(2, '0')}`;
-  }
-  const weekDays = {}; // weekKey → Set of distinct date strings (workout days)
+  // Gym streak: consecutive completed weeks with >= 4 training days (Mon-Sun ISO weeks,
+  // bucketed by actual workout date - NOT by the saved w.week field, which can be stale for
+  // retroactively-logged sessions).
+  //
+  // C-10: aquí había una `isoWeekKey` LOCAL que SOMBREABA al global del motor — misma firma,
+  // otra aritmética (hora local, fórmula del 1-ene). Quien leía esta función creía estar
+  // llamando a la del motor. Ahora se llama al global de verdad, con la fecha como cadena.
+  const weekDays = {}; // weekKey -> Set of distinct date strings (workout days)
   workouts.forEach(w => {
     if (!w.date) return;
-    const d = new Date(w.date + 'T12:00:00');
-    const key = isoWeekKey(d);
+    const key = isoWeekKey(w.date);
     if (!weekDays[key]) weekDays[key] = new Set();
     weekDays[key].add(w.date);
   });
-  const currentKey = isoWeekKey(new Date());
+  const currentKey = isoWeekKey(today());
   // Walk back from this week. Skip current (in progress). Count consecutive
   // completed weeks with ≥ 4 distinct training days.
   let gymStreak = 0;
@@ -5391,85 +5490,13 @@ async function loadAndRenderWeeklyCoach() {
   }
 }
 
-// Render the structured next-week plan (per session, per exercise targets).
-// Returns empty string if no nextWeekPlan in the latest review.
-function renderNextWeekPlan(nwp) {
-  if (!nwp || !nwp.sessions || nwp.sessions.length === 0) return '';
-  const phaseChip = nwp.phase ? `<span class="wcc-nwp-phase wcc-nwp-phase-${escapeHtml(nwp.phase)}">${escapeHtml(nwp.phase)}</span>` : '';
-  const sessionsHtml = nwp.sessions.map((s, i) => {
-    const exHtml = (s.exercises || []).map(ex => {
-      const noteHtml = ex.note ? `<div class="wcc-nwp-ex-note">${escapeHtml(ex.note)}</div>` : '';
-      const rpeBit = ex.rpe ? ` <span class="wcc-nwp-ex-rpe">@ RPE ${escapeHtml(String(ex.rpe))}</span>` : '';
-      return `<div class="wcc-nwp-ex">
-        <div class="wcc-nwp-ex-row">
-          <span class="wcc-nwp-ex-name">${escapeHtml(ex.name || ex.id || '')}</span>
-          <span class="wcc-nwp-ex-target">${escapeHtml(ex.target || '—')}${rpeBit}</span>
-        </div>
-        ${noteHtml}
-      </div>`;
-    }).join('');
-    const focusHtml = s.focus ? `<div class="wcc-nwp-session-focus">${escapeHtml(s.focus)}</div>` : '';
-    return `<details class="wcc-nwp-session"${i === 0 ? ' open' : ''}>
-      <summary class="wcc-nwp-session-summary">
-        <span class="wcc-nwp-session-label">${escapeHtml(s.label || s.id || '')}</span>
-      </summary>
-      ${focusHtml}
-      <div class="wcc-nwp-exercises">${exHtml}</div>
-    </details>`;
-  }).join('');
-
-  const mobLine = nwp.mobility ? `<div class="wcc-nwp-aux"><strong>Mobility:</strong> ${escapeHtml(nwp.mobility)}</div>` : '';
-  const runLine = nwp.running ? `<div class="wcc-nwp-aux"><strong>Running:</strong> ${escapeHtml(nwp.running)}</div>` : '';
-  const summaryLine = nwp.summary ? `<div class="wcc-nwp-summary">${escapeHtml(nwp.summary)}</div>` : '';
-  return `
-    <div class="wcc-nwp">
-      <div class="wcc-nwp-header">
-        <span class="wcc-nwp-title">${escapeHtml(nwp.weekLabel || `Week ${nwp.weekNumber || ''}`)}</span>
-        ${phaseChip}
-      </div>
-      ${summaryLine}
-      <div class="wcc-nwp-sessions">${sessionsHtml}</div>
-      ${mobLine}
-      ${runLine}
-      ${renderRunningPlanCard(nwp.runningPlan)}
-    </div>
-  `;
-}
-
-// Structured per-day running plan rendered below the gym sessions. Includes
-// "Push to COROS" button when intervals.icu is configured.
-function renderRunningPlanCard(runningPlan) {
-  if (!runningPlan || !Array.isArray(runningPlan) || runningPlan.length === 0) return '';
-  const hasApiKey = !!(state.settings && state.settings.intervalsIcuApiKey);
-  const runs = runningPlan.map(r => {
-    const noteHtml = r.note ? `<div class="wcc-rp-note">${escapeHtml(r.note)}</div>` : '';
-    const targetBits = [];
-    if (r.distance_km) targetBits.push(`${r.distance_km} km`);
-    if (r.target_hr_max) targetBits.push(`HR &lt; ${r.target_hr_max}`);
-    if (r.target_pace_min_per_km) targetBits.push(`pace ${escapeHtml(String(r.target_pace_min_per_km))}/km`);
-    const intervalsHtml = r.intervals ? `<div class="wcc-rp-intervals">${escapeHtml(r.intervals)}</div>` : '';
-    return `<div class="wcc-rp-run">
-      <div class="wcc-rp-run-row">
-        <span class="wcc-rp-label">${escapeHtml(r.label || r.id || '')}</span>
-        <span class="wcc-rp-target">${targetBits.join(' · ')}</span>
-      </div>
-      ${intervalsHtml}
-      ${noteHtml}
-    </div>`;
-  }).join('');
-  const pushBtn = hasApiKey
-    ? `<button id="btn-push-coros" class="btn-secondary btn-full" style="margin-top:10px">Push to COROS via intervals.icu</button>`
-    : `<p class="muted" style="font-size:11px;margin-top:8px">Set up intervals.icu in Settings to push straight to the PACE 4.</p>`;
-  return `
-    <div class="wcc-rp">
-      <div class="wcc-rp-header">Running plan — programmed runs</div>
-      <div class="wcc-rp-runs">${runs}</div>
-      ${pushBtn}
-    </div>
-  `;
-}
-
 // ==================== STRAVA SETTINGS UI ====================
+//
+// A-7 (2026-09-10). Strava se fue ENTERA al servidor: `strava.js` son cinco envoltorios sobre
+// `integrations.js` y el estado sale de `integration_status`, no de `localStorage`. Esta tarjeta
+// legacy sobrevive porque conectar/sincronizar desde dos sitios distintos no molesta, pero la
+// superficie buena es la de Integraciones: aquí ya no se lee ni una marca de tiempo local
+// (`strava_last_sync` era del cliente que hacía el volcado; ahora lo hace el cron).
 function renderStravaUI() {
   const container = document.getElementById('strava-section');
   if (!container) return;
@@ -5477,6 +5504,7 @@ function renderStravaUI() {
     container.innerHTML = '<p class="muted" style="font-size:13px;margin:0">Strava not loaded</p>';
     return;
   }
+  const row = (typeof integrationsStatusOf === 'function') ? integrationsStatusOf('strava') : null;
   if (window.stravaNeedsReconnect && window.stravaNeedsReconnect()) {
     container.innerHTML = `
       <div class="form-row inline">
@@ -5485,26 +5513,25 @@ function renderStravaUI() {
       <p class="muted" style="font-size:11px;margin:4px 0 8px">Reconnect to resume pulling runs from your COROS PACE 4 (via Strava).</p>
       <button id="btn-strava-reconnect" class="btn-secondary btn-full" style="border-color:var(--red);color:var(--red)">Reconnect Strava</button>
     `;
-    document.getElementById('btn-strava-reconnect').addEventListener('click', stravaConnect);
+    document.getElementById('btn-strava-reconnect').addEventListener('click', () => { stravaConnect(); });
     return;
   }
   if (window.stravaIsConnected()) {
-    const lastSync = parseInt(localStorage.getItem('strava_last_sync') || '0');
-    const lastSyncStr = lastSync ? new Date(lastSync).toLocaleString() : 'Never';
-    const name = localStorage.getItem('strava_athlete_name') || '';
+    const lastSyncStr = (row && row.last_sync_at) ? new Date(row.last_sync_at).toLocaleString() : 'Never';
     container.innerHTML = `
       <div class="form-row inline">
-        <label style="font-size:13px;color:var(--accent)">Strava Connected${name ? ' · ' + escapeHtml(name) : ''}</label>
+        <label style="font-size:13px;color:var(--accent)">Strava Connected</label>
         <button id="btn-strava-disconnect" class="btn-secondary" style="width:auto;padding:8px 16px">Disconnect</button>
       </div>
-      <p class="muted" style="font-size:11px;margin:6px 0 8px">Last sync: ${lastSyncStr}</p>
+      <p class="muted" style="font-size:11px;margin:6px 0 8px">Last server sync: ${escapeHtml(lastSyncStr)}</p>
       <button id="btn-strava-sync" class="btn-secondary btn-full">Sync Now</button>
-      <p class="muted" style="font-size:11px;margin-top:6px">Pulls Run activities (auto-synced from COROS) into your runs database.</p>
+      <p class="muted" style="font-size:11px;margin-top:6px">The server pulls your activities (auto-synced from COROS) every day. This is the shortcut.</p>
     `;
-    document.getElementById('btn-strava-disconnect').addEventListener('click', () => {
-      stravaDisconnect();
+    document.getElementById('btn-strava-disconnect').addEventListener('click', async () => {
+      // `integrationsDisconnect` ya pide confirmación, repinta la tarjeta de Integraciones y
+      // avisa: aquí no se duplica ni el confirm ni el toast.
+      await stravaDisconnect();
       renderStravaUI();
-      if (typeof toast === 'function') toast('Strava disconnected');
     });
     document.getElementById('btn-strava-sync').addEventListener('click', async () => {
       const btn = document.getElementById('btn-strava-sync');
@@ -5512,11 +5539,12 @@ function renderStravaUI() {
       btn.disabled = true;
       const result = await stravaSync();
       if (result) {
-        if (typeof toast === 'function') toast(`Synced ${result.synced || 0} run${result.synced === 1 ? '' : 's'}`);
+        const n = Number(result.runs || 0) + Number(result.sessions || 0);
+        if (typeof toast === 'function') toast(`Synced ${n} activit${n === 1 ? 'y' : 'ies'}`);
         renderStravaUI();
         renderRecentWorkouts();
       } else {
-        if (typeof toast === 'function') toast('Strava sync failed — check connection');
+        if (typeof toast === 'function') toast(`Strava sync failed: ${errText(safeCall('stravaLastError'), 'check the connection')}`);
         btn.textContent = 'Sync Now';
         btn.disabled = false;
       }
@@ -5524,10 +5552,67 @@ function renderStravaUI() {
   } else {
     container.innerHTML = `
       <button id="btn-strava-connect" class="btn-secondary btn-full" style="border-color:var(--brand-strava);color:var(--brand-strava)">Connect Strava</button>
-      <p class="muted" style="font-size:11px;margin-top:6px">Pulls runs from your COROS PACE 4 via Strava (already auto-syncing). One-time OAuth.</p>
+      <p class="muted" style="font-size:11px;margin-top:6px">Pulls runs from your COROS PACE 4 via Strava (already auto-syncing). One-time OAuth, tokens stay on the server.</p>
     `;
-    document.getElementById('btn-strava-connect').addEventListener('click', stravaConnect);
+    document.getElementById('btn-strava-connect').addEventListener('click', () => { stravaConnect(); });
   }
+}
+
+// ==================== LA CREDENCIAL DE INTERVALS.ICU ====================
+//
+// UN SOLO CAMINO DE GUARDADO, para los dos formularios que la piden (esta tarjeta Sync y la fila
+// de intervals.icu en la tarjeta de Integraciones). Dos caminos acabarían con una clave en el
+// servidor y otra en el dispositivo, y el síntoma sería "el cron no trae nada" una semana
+// después de haberla cambiado en el sitio equivocado.
+//
+// El guardado tiene DOS MITADES, y las dos hacen falta hoy (A-7):
+//   1. **Servidor** (`intervals-sync {action:'set_key'}`): valida la clave contra intervals.icu
+//      ANTES de guardarla y la deja en `integration_tokens` (sólo service role). Es lo que hace
+//      que el cron diario, `push_events` y `athlete` funcionen sin abrir la app.
+//   2. **Dispositivo** (`setIntervalsApiKey`, C-8 → `localStorage`, NUNCA la fila sincronizada):
+//      es lo que sigue alimentando el import de cliente, que es la vía viva de `wellness`,
+//      `steps`, `bodyweight` y la mayoría de `runs`.
+//
+// PUNTO DE RETIRADA. Cuando el import de servidor lleve dos semanas escribiendo los cinco stores
+// sin huecos, se borra la mitad 2 de aquí, el accesor `intervalsApiKey()`/`setIntervalsApiKey()`,
+// `intervalsIcuSync()` y `intervalsFetchWellness()` (whoop.js), y esta función se queda sólo con
+// la llamada al servidor. Hasta entonces la clave está en el dispositivo A PROPÓSITO — pero
+// fuera de la fila sincronizada y fuera del backup exportable, que es lo que C-8 pedía.
+//
+// El id de atleta NO es secreto (es `i12345`): sigue en `state.settings`, sincronizado, porque
+// las URLs del import de cliente lo necesitan.
+async function saveIntervalsCredentials(apiKey, athleteId) {
+  const clave = String(apiKey == null ? '' : apiKey).trim();
+  const atleta = String(athleteId == null ? '' : athleteId).trim();
+  if (!clave) return { ok: false, error: 'Paste the API key first' };
+
+  // Mitad servidor primero: valida contra intervals.icu, así que un fallo aquí significa que la
+  // clave no sirve y no hay por qué escribirla en el dispositivo.
+  let srv = { ok: false, status: 'offline' };
+  if (typeof integrationsSetIntervalsKey === 'function') {
+    srv = await integrationsSetIntervalsKey(clave, atleta);
+  }
+  const resuelto = (srv && srv.ok && srv.athleteId) ? String(srv.athleteId) : atleta;
+
+  // Mitad dispositivo. Se hace también cuando el servidor no contesta (`offline`): sin red, el
+  // import de cliente es lo único que hay, y bloquear el guardado por eso dejaría la app sin
+  // datos hasta que vuelva la cobertura.
+  const sinServidor = !!(srv && srv.status === 'offline');
+  const guardable = !!(srv && srv.ok) || sinServidor;
+  if (guardable) {
+    state.settings = state.settings || {};
+    if (resuelto) state.settings.intervalsIcuAthleteId = resuelto;
+    setIntervalsApiKey(clave);
+    await saveSettings();
+  }
+  return {
+    ok: guardable,
+    serverOk: !!(srv && srv.ok),
+    athleteId: resuelto,
+    keyHint: (srv && srv.keyHint) || '',
+    code: (srv && srv.code) || null,
+    error: (srv && !srv.ok && !sinServidor) ? (srv.error || 'The server rejected the key') : null,
+  };
 }
 
 // ==================== UNIFIED SYNC CARD (v10.28) ====================
@@ -5540,15 +5625,37 @@ function _maskApiKey(k) {
 
 let _syncCardEditMode = false;
 
+// A-7: `{status, athleteId, keyHint, lastError}` de la credencial que hay EN EL SERVIDOR. En
+// memoria: la tarjeta se repinta a menudo y esto es una llamada a una edge function, no un
+// `getItem`. `null` = todavía no se ha preguntado, o no hay credencial de servidor.
+let _syncServerInfo = null;
+// Y si ya se preguntó. Sin esta bandera, un servidor SIN credencial deja `_syncServerInfo` en
+// null para siempre y la tarjeta invoca la edge function en cada repintado.
+let _syncServerAsked = false;
+
 async function renderSyncCard() {
   const container = document.getElementById('sync-section');
   if (!container) return;
 
-  const apiKey = (state.settings && state.settings.intervalsIcuApiKey) || '';
+  const apiKey = intervalsApiKey();
   const athleteId = (state.settings && state.settings.intervalsIcuAthleteId) || '';
   const configured = !!(apiKey && athleteId);
   const lastRuns = localStorage.getItem('intervalsicu_last_sync') || null;
   const lastRunsDate = lastRuns ? new Date(parseInt(lastRuns)).toLocaleString() : 'Never';
+
+  // `{action:'status'}` en el render: es la ÚNICA vía para saber si el servidor tiene la clave y
+  // CUÁL (el indicio `••••1234`). `integration_status` dice si está activa, pero no el indicio:
+  // eso es dato del token y el token no sale de `integration_tokens`.
+  if (typeof integrationsIntervalsStatus === 'function' && !_syncServerInfo && !_syncServerAsked) {
+    _syncServerAsked = true;
+    try {
+      const info = await integrationsIntervalsStatus();
+      if (info && info.ok !== false && info.status && info.status !== 'disconnected') _syncServerInfo = info;
+      // Sin sesión todavía no cuenta como "preguntado": el estado llegará cuando haya sesión.
+      if (info && info.status === 'offline') _syncServerAsked = false;
+    } catch (e) { /* la tarjeta se pinta igual: el import de cliente no depende de esto */ }
+  }
+  const srvActiva = !!(_syncServerInfo && _syncServerInfo.status === 'active');
 
   if (!configured || _syncCardEditMode) {
     // Setup / edit mode
@@ -5568,17 +5675,29 @@ async function renderSyncCard() {
         <button id="sync-save" class="btn-primary" style="flex:1">Save</button>
         ${configured ? `<button id="sync-cancel" class="btn-secondary" style="flex:1">Cancel</button>` : ''}
       </div>
+      <p class="muted" style="font-size:11px;margin-top:10px">The key is uploaded to the server so the daily sync and the COROS push keep working when the app is closed. It is never sent back and never leaves in a backup.</p>
     `;
     document.getElementById('sync-save').onclick = async () => {
+      const btn = document.getElementById('sync-save');
       const newAthlete = (document.getElementById('sync-athlete').value || '').trim();
       const newKey = (document.getElementById('sync-apikey').value || '').trim();
       if (!newAthlete || !newKey) { toast('Both fields required'); return; }
-      state.settings = state.settings || {};
-      state.settings.intervalsIcuAthleteId = newAthlete;
-      state.settings.intervalsIcuApiKey = newKey;
-      await saveSettings();
+      btn.disabled = true;
+      btn.textContent = 'Saving…';
+      // A-7: un solo camino de guardado (dispositivo + servidor). Ver `saveIntervalsCredentials`.
+      const r = await saveIntervalsCredentials(newKey, newAthlete);
+      if (!r || !r.ok) {
+        btn.disabled = false;
+        btn.textContent = 'Save';
+        toast(errText(r && r.error, 'The key could not be saved'));
+        return;
+      }
       _syncCardEditMode = false;
-      toast('Saved — syncing now…');
+      _syncServerInfo = r.serverOk
+        ? { status: 'active', athleteId: r.athleteId, keyHint: r.keyHint, lastError: null }
+        : null;
+      _syncServerAsked = r.serverOk;   // sin servidor, la próxima tarjeta vuelve a preguntar
+      toast(r.serverOk ? `Saved on the server (${r.keyHint || '••••'}) — syncing now…` : 'Saved on this device — syncing now…');
       await renderSyncCard();
       // Trigger an immediate full sync
       await runFullSync({ silent: false });
@@ -5617,16 +5736,54 @@ async function renderSyncCard() {
     <div class="muted" style="font-size:11px;margin-bottom:10px">
       Athlete <code>${escapeHtml(athleteId)}</code> · Key ${escapeHtml(_maskApiKey(apiKey))}
     </div>
+    <div class="muted" style="font-size:11px;margin-bottom:10px;line-height:1.6">
+      Server credential: ${srvActiva
+        ? `<span style="color:var(--accent)">stored</span> · key ${escapeHtml(_syncServerInfo.keyHint || '••••')}${_syncServerInfo.athleteId ? ` · athlete <code>${escapeHtml(String(_syncServerInfo.athleteId))}</code>` : ''}`
+        : `<span style="color:var(--yellow)">not stored</span> — the daily sync and the COROS push need it. Tap Edit and save the key again.`}
+      ${(_syncServerInfo && _syncServerInfo.lastError) ? `<br><span style="color:var(--red)">${escapeHtml(String(_syncServerInfo.lastError).slice(0, 160))}</span>` : ''}
+    </div>
     <div class="muted" style="font-size:11px;margin-bottom:12px;line-height:1.6">
       Syncing: <strong>wellness</strong> (recovery, HRV, RHR, sleep, SpO2) · <strong>training load</strong> (CTL/ATL/Form) · <strong>body</strong> (weight, steps) · <strong>nutrition</strong> (kcal + macros) · <strong>activities</strong> (all cardio: running, treadmill, bike, row, ski, elliptical, walking, swimming)<br>
       Local cache: ${wellnessRowCount} wellness rows · ${runRowCount} runs · ${sessRowCount} cardio sessions<br>
       ${importLine}Last runs sync: ${escapeHtml(lastRunsDate)}
     </div>
     <button id="sync-now" class="btn-primary btn-full">Sync now</button>
+    <button id="sync-from-server" class="btn-secondary btn-full" style="margin-top:8px"${srvActiva ? '' : ' disabled'}>Sync from the server</button>
+    <p class="muted" style="font-size:11px;margin-top:6px">"Sync now" imports from this device. "Sync from the server" asks the server to import and then pulls the rows down — the same path the daily job uses.</p>
   `;
   document.getElementById('sync-edit').onclick = () => {
     _syncCardEditMode = true;
     renderSyncCard();
+  };
+  // A-7: el camino de SERVIDOR, a demanda. Existe para poder ejercitarlo desde el teléfono sin
+  // esperar al cron de las 12:30 UTC, que es lo único que lo ejecuta hoy. El import de cliente
+  // ("Sync now") sigue siendo el que manda mientras el de servidor no lleve dos semanas limpio.
+  const srvBtn = document.getElementById('sync-from-server');
+  if (srvBtn) srvBtn.onclick = async () => {
+    srvBtn.textContent = 'Syncing…';
+    srvBtn.disabled = true;
+    try {
+      const r = (typeof integrationsSync === 'function')
+        ? await integrationsSync('intervals', { days: 7 })
+        : { ok: false, status: 'error', error: 'Integrations not loaded' };
+      if (r && r.ok) {
+        const n = Array.isArray(r.dates) ? r.dates.length : null;
+        toast(n != null ? `Server synced ${n} day${n === 1 ? '' : 's'}` : 'Server synced');
+        await safeCall('renderRecoveryBlock');
+        if (typeof renderRecentWorkouts === 'function') renderRecentWorkouts();
+      } else if (r && r.status === 'needs_reconnect') {
+        toast('The server key was rejected — save it again');
+      } else {
+        toast(errText(r && r.error, 'The server sync failed'));
+      }
+      // El indicio y el último error pueden haber cambiado: se vuelve a preguntar una vez.
+      _syncServerInfo = null;
+      _syncServerAsked = false;
+      await renderSyncCard();
+    } finally {
+      const b = document.getElementById('sync-from-server');
+      if (b) { b.textContent = 'Sync from the server'; b.disabled = false; }
+    }
   };
   document.getElementById('sync-now').onclick = async () => {
     const btn = document.getElementById('sync-now');
@@ -5682,14 +5839,19 @@ function renderIntervalsIcuUI() {
   const athInput = document.getElementById('setting-intervals-athlete');
   const saveBtn = document.getElementById('btn-save-intervals');
   if (!apiInput || !athInput || !saveBtn) return;
-  apiInput.value = (state.settings && state.settings.intervalsIcuApiKey) || '';
+  apiInput.value = intervalsApiKey();
   athInput.value = (state.settings && state.settings.intervalsIcuAthleteId) || '';
   saveBtn.onclick = async () => {
-    state.settings = state.settings || {};
-    state.settings.intervalsIcuApiKey = apiInput.value.trim();
-    state.settings.intervalsIcuAthleteId = athInput.value.trim();
-    await saveSettings();
-    if (typeof toast === 'function') toast('intervals.icu config saved');
+    // A-7: el MISMO camino que la tarjeta Sync (dispositivo + servidor). Este formulario está
+    // oculto y es legacy, pero un tercer camino de guardado sería un tercer sitio donde la clave
+    // del servidor puede quedarse vieja.
+    const r = await saveIntervalsCredentials(apiInput.value, athInput.value);
+    if (typeof toast === 'function') {
+      toast((r && r.ok)
+        ? (r.serverOk ? 'intervals.icu config saved on the server' : 'intervals.icu config saved on this device')
+        : errText(r && r.error, 'The key could not be saved'));
+    }
+    if (!r || !r.ok) return;
     // Pull HR zones now so cardio prescriptions get real bpm ranges (best-effort).
     fetchIntervalsIcuZones().catch(() => {});
     // Rerender the coach card so the "Push to COROS" button toggles based on key presence.
@@ -5706,7 +5868,7 @@ function renderIntervalsIcuUI() {
           if (typeof toast === 'function') toast(`Pulled ${result.pulled} run${result.pulled === 1 ? '' : 's'}`);
           renderRecentWorkouts();
         } else {
-          if (typeof toast === 'function') toast('Sync failed — check API key/athlete ID');
+          if (typeof toast === 'function') toast(`Sync failed: ${errText(intervalsLastError(), 'check the API key / athlete ID')}`);
         }
       } finally {
         syncBtn.textContent = 'Sync runs now';
@@ -5752,13 +5914,6 @@ const CARDIO_TYPE_MAP = {
   Swim: 'swim',
 };
 
-// NO se importan, por decisión del usuario (2026-08-18):
-//  - `Walk` / `Hike`: caminar 15 min al trabajo no es entrenamiento. Ensuciaba el historial con
-//    desplazamientos cotidianos. (Los pasos siguen entrando por su propia vía, `steps`, donde
-//    tienen sentido como contexto de actividad diaria.)
-//  - Fuerza y movilidad: duplicarían las sesiones de gimnasio registradas a mano.
-const NON_CARDIO_TYPES = new Set(['WeightTraining', 'Workout', 'Crossfit', 'Yoga', 'Pilates', 'StandUpPaddling', 'Walk', 'Hike']);
-
 const RUN_MODALITIES = new Set(['run_outdoor', 'treadmill']);
 
 // El lookup NORMALIZA la clave: intervals.icu muestra "Virtual Ski" con espacio en la interfaz
@@ -5780,10 +5935,36 @@ function _modalityFamily(modality) {
   return modality === 'walk' ? 'recovery' : 'cardio';
 }
 
+// C-28: la razón del último fallo, para que el toast diga algo. `intervalsIcuSync()` sigue
+// devolviendo `null` en el fallo (sus llamadores comprueban truthiness); lo que cambia es que
+// la causa ya no muere en la consola.
+let _intervalsLastError = null;
+function intervalsLastError() { return _intervalsLastError; }
+
+// ┌─ PUNTO DE RETIRADA · A-7 (2026-09-10) ─────────────────────────────────────────────────────┐
+// │ ESTA FUNCIÓN ES EL IMPORT DE CLIENTE de intervals.icu, y sigue viva a propósito. El         │
+// │ servidor ya sabe hacer lo mismo (`intervals-sync`, cron `intervals-sync-daily` a las 12:30  │
+// │ UTC, más el botón "Sync from the server" de Ajustes), pero ESTE camino es lo que alimenta   │
+// │ HOY `wellness`, `steps`, `bodyweight` y la mayoría de `runs`. Apostar el pipeline vivo a un │
+// │ import de servidor sin verificar, la víspera del cierre semanal, no es un cambio que valga  │
+// │ lo que arriesga.                                                                            │
+// │                                                                                             │
+// │ QUÉ SE BORRA CUANDO SE RETIRE, y no antes de que el camino de servidor lleve DOS SEMANAS    │
+// │ escribiendo los cinco stores sin huecos (comparar `wellness`/`steps`/`runs` día a día):     │
+// │   · esta función y `backfillCardioFromIntervals()`,                                         │
+// │   · `intervalsFetchWellness()` en whoop.js (y con ella el guard de precedencia con WHOOP),  │
+// │   · la mitad "dispositivo" de `saveIntervalsCredentials()`, `intervalsApiKey()` /           │
+// │     `setIntervalsApiKey()` y su entrada en `LOCAL_ONLY_KEYS` / `BACKUP_REDACT_KEYS`,        │
+// │   · el camino directo de `_icuUpsertEvents()` y de `fetchIntervalsIcuZones()`,              │
+// │   · `runFullSync()` pasa a ser `integrationsSync('intervals')` + `whoopSyncData()`.         │
+// │ Lo que NO se borra: `CARDIO_TYPE_MAP` (lo usa el import del servidor, espejado en           │
+// │ `_shared/cardio-types.ts` y vigilado por `verify-strava-steps-fns`).                        │
+// └─────────────────────────────────────────────────────────────────────────────────────────────┘
 async function intervalsIcuSync(opts = {}) {
-  const apiKey = state.settings && state.settings.intervalsIcuApiKey;
+  const apiKey = intervalsApiKey();
   const athleteId = state.settings && state.settings.intervalsIcuAthleteId;
-  if (!apiKey || !athleteId) return null;
+  if (!apiKey || !athleteId) { _intervalsLastError = 'no API key or athlete ID'; return null; }
+  _intervalsLastError = null;
 
   // Sync window: 30 days back default, or since last sync minus 1 day for overlap.
   // opts.oldest/opts.newest override it (used by the one-shot backfill).
@@ -5798,6 +5979,7 @@ async function intervalsIcuSync(opts = {}) {
     const res = await fetchWithTimeout(url, { headers: { Authorization: auth } });
     if (!res.ok) {
       console.warn('[intervals.icu] activities fetch failed:', res.status);
+      _intervalsLastError = `HTTP ${res.status}`;
       return null;
     }
     const activities = await res.json();
@@ -5853,6 +6035,7 @@ async function intervalsIcuSync(opts = {}) {
           distance: distanceKm > 0 ? Math.round(distanceKm * 100) / 100 : null,
           avgHR: a.average_heartrate ? Math.round(Number(a.average_heartrate)) : null,
           maxHR: a.max_heartrate ? Math.round(Number(a.max_heartrate)) : null,
+          tempC: num(a.average_temp),      // F-26: el calor de la sesión, no el mes
           perceivedEffort: null,
           evidenceTags: meta.evidenceTags || [],
           budgetWeight: meta.budgetWeight != null ? meta.budgetWeight : 0.5,
@@ -5892,6 +6075,13 @@ async function intervalsIcuSync(opts = {}) {
         hrZoneTimes: Array.isArray(a.icu_hr_zone_times) ? a.icu_hr_zone_times
                    : (Array.isArray(a.icu_zone_times) ? a.icu_zone_times : null),
         gapPace: gapSec ? _formatPaceFromSec(gapSec) : null,  // grade-adjusted pace
+        // F-26 (auditoría 2026-09-09): la TEMPERATURA de la sesión. ENV-001 dice que en calor
+        // se mantiene la FC objetivo y el ritmo cae, y el guardarraíl que lo vigila
+        // (`SUMMER-PACE`) decidía por el MES — junio-septiembre son "verano" y ya. En Madrid un
+        // rodaje a las 21:00 de septiembre a 19 °C y otro a las 14:00 de junio a 36 °C recibían
+        // la misma advertencia, que es tanto como no tenerla. Ésta es la granularidad correcta:
+        // el calor DE LA CARRERA, no la media del día.
+        tempC: num(a.average_temp),
         _updated_at: Date.now(),
       };
       await smartPut('runs', run);
@@ -5934,6 +6124,7 @@ async function intervalsIcuSync(opts = {}) {
     return { pulled, pulledSessions, total: (activities || []).length, kept, skipped };
   } catch (e) {
     console.warn('[intervals.icu] sync error:', e);
+    _intervalsLastError = (e && e.message) || 'network error';
     return null;
   }
 }
@@ -5957,7 +6148,7 @@ async function backfillCardioFromIntervals({ force = false } = {}) {
   const flag = (await dbGet('settings', 'cardioBackfillDone').catch(() => null));
   const doneRev = (flag && flag.data && flag.data.rev) || (flag && flag.data ? 1 : 0);
   if (doneRev >= CARDIO_BACKFILL_REV && !force) return null;
-  if (!(state.settings && state.settings.intervalsIcuApiKey && state.settings.intervalsIcuAthleteId)) return null;
+  if (!(intervalsApiKey() && state.settings && state.settings.intervalsIcuAthleteId)) return null;
 
   const totals = { runs: 0, sessions: 0, total: 0, kept: {}, skipped: {}, windows: 0 };
   const end = new Date();
@@ -5998,13 +6189,35 @@ async function backfillCardioFromIntervals({ force = false } = {}) {
 // Defensive: intervals.icu's athlete/sportSettings shape varies, so we try the
 // native zone bounds first, then derive from LTHR, then from max HR.
 async function fetchIntervalsIcuZones() {
-  const apiKey = state.settings && state.settings.intervalsIcuApiKey;
-  const athleteId = state.settings && state.settings.intervalsIcuAthleteId;
-  if (!apiKey || !athleteId) return null;
-  const auth = 'Basic ' + btoa(`API_KEY:${apiKey}`);
-  const res = await fetchWithTimeout(`https://intervals.icu/api/v1/athlete/${encodeURIComponent(athleteId)}`, { headers: { Authorization: auth } });
-  if (!res.ok) { console.warn('[intervals.icu] athlete fetch failed:', res.status); return null; }
-  const a = await res.json();
+  // A-7: el ALGORITMO no se toca (tres caminos y una heurística probados); lo único que cambia
+  // es de dónde salen los campos crudos. Con credencial en el servidor se piden por
+  // `intervals-sync {action:'athlete'}`, que devuelve exactamente `{lthr, maxHr, hrZones,
+  // sportSettings:[{types,lthr,max_hr,hr_zones}]}` — una forma RECORTADA del atleta, sin nombre
+  // ni correo. Sin credencial de servidor, el camino directo de siempre.
+  //
+  // La respuesta del servidor se re-mapea a los nombres crudos de la API (`icu_lthr`,
+  // `icu_max_hr`, `icu_hr_zones`) para que la heurística de abajo sea LA MISMA función en los
+  // dos caminos: dos derivaciones de zonas serían dos juegos de bpm en la misma pantalla.
+  let a = null;
+  const srvKey = (typeof integrationsIntervalsHasServerKey === 'function') && integrationsIntervalsHasServerKey();
+  if (srvKey && typeof integrationsIntervalsAthlete === 'function') {
+    const srv = await integrationsIntervalsAthlete();
+    if (srv) {
+      a = {
+        icu_lthr: srv.lthr, icu_max_hr: srv.maxHr, icu_hr_zones: srv.hrZones,
+        sportSettings: Array.isArray(srv.sportSettings) ? srv.sportSettings : [],
+      };
+    }
+  }
+  if (!a) {
+    const apiKey = intervalsApiKey();
+    const athleteId = state.settings && state.settings.intervalsIcuAthleteId;
+    if (!apiKey || !athleteId) return null;
+    const auth = 'Basic ' + btoa(`API_KEY:${apiKey}`);
+    const res = await fetchWithTimeout(`https://intervals.icu/api/v1/athlete/${encodeURIComponent(athleteId)}`, { headers: { Authorization: auth } });
+    if (!res.ok) { console.warn('[intervals.icu] athlete fetch failed:', res.status); return null; }
+    a = await res.json();
+  }
   const settings = Array.isArray(a.sportSettings) ? a.sportSettings : [];
   // Prefer the Run profile, else the first, else the athlete top-level fields.
   const sp = settings.find(s => Array.isArray(s.types) && s.types.some(t => /run/i.test(t))) || settings[0] || {};
@@ -6249,6 +6462,15 @@ function _generateIntervalsIcuDsl(run) {
   return lines.join('\n');
 }
 
+// A-7: ¿se puede EMPUJAR a intervals.icu? Con credencial local (el camino directo) o con
+// credencial en el servidor (`push_events`). Una sola definición para los cuatro sitios que lo
+// preguntaban por separado: cuando el punto de retirada llegue y la clave local desaparezca, es
+// esta función la que cambia, no cuatro condiciones idénticas repartidas por el fichero.
+function _icuCanPush() {
+  if (intervalsApiKey() && state.settings && state.settings.intervalsIcuAthleteId) return true;
+  return (typeof integrationsIntervalsHasServerKey === 'function') && integrationsIntervalsHasServerKey();
+}
+
 // Upsert planned events on the intervals.icu calendar.
 //
 // Uses the BULK endpoint with upsert=true. The plain POST /events does NOT match on
@@ -6256,8 +6478,26 @@ function _generateIntervalsIcuDsl(run) {
 // received several workouts for the same day. Per the API guide: "Events that do not
 // exist will be created. Those that already exist are updated. The external_id is only
 // matched against events created by your application."
+//
+// A-7 (2026-09-10). El EMPUJE pasa por el servidor cuando hay credencial guardada
+// (`intervals-sync {action:'push_events'}`), y cae al camino directo cuando no la hay. Lo que NO
+// cambia es quién ARMA los eventos: `pushRunningPlanToIntervalsIcu` y `pushCardioToIntervalsIcu`
+// siguen construyéndolos aquí, con el plan activo, el cardio del coach, la regla de fase y el
+// DSL verbatim. Reconstruir eso en el servidor sería una segunda implementación de la semana de
+// carrera — exactamente el fallo de L-1 (dos contadores de volumen). El servidor sólo valida la
+// forma y pone la credencial; el `external_id` sigue empezando por `pwa-`, que es lo que acota
+// qué eventos puede tocar (uno ajeno pisaría algo creado a mano en intervals.icu).
 async function _icuUpsertEvents(events) {
-  const apiKey = state.settings && state.settings.intervalsIcuApiKey;
+  const srvKey = (typeof integrationsIntervalsHasServerKey === 'function') && integrationsIntervalsHasServerKey();
+  if (srvKey && typeof integrationsPushIntervalsEvents === 'function') {
+    const r = await integrationsPushIntervalsEvents(events);
+    if (r && r.ok) return r;
+    // Un rechazo del servidor NO se reintenta en directo: si la clave del servidor está mal, la
+    // del dispositivo suele ser la misma, y un doble intento duplicaría el ruido sin arreglar
+    // nada. Se dice qué pasó y el llamador lo pinta.
+    throw new Error((r && r.error) ? String(r.error) : 'The server rejected the push');
+  }
+  const apiKey = intervalsApiKey();
   const athleteId = state.settings && state.settings.intervalsIcuAthleteId;
   if (!apiKey || !athleteId) throw new Error('intervals.icu no configurado');
   const auth = 'Basic ' + btoa(`API_KEY:${apiKey}`);
@@ -6313,9 +6553,7 @@ function _mondayOfWeekKey(weekKey) {
  * aprobado el martes sigue siendo válido el jueves).
  */
 async function pushRunningPlanToIntervalsIcu() {
-  const apiKey = state.settings && state.settings.intervalsIcuApiKey;
-  const athleteId = state.settings && state.settings.intervalsIcuAthleteId;
-  if (!apiKey || !athleteId) {
+  if (!_icuCanPush()) {
     if (typeof toast === 'function') toast('Set up intervals.icu in Settings first');
     return;
   }
@@ -6342,7 +6580,7 @@ async function pushRunningPlanToIntervalsIcu() {
     const rs = rw ? ((rw.sessions || []).find((x) => x.dow === dow) || null) : null;
     const usaRegla = !cc && !!rs;
     const offset = (dow >= 1 && dow <= 6) ? dow - 1 : 6;   // dow 0 = domingo = último día ISO
-    const date = (monday && typeof _plusDaysStr === 'function') ? _plusDaysStr(monday, offset) : null;
+    const date = monday ? addDays(monday, offset) : null;
     const durationMin = (cc && cc.durationMin != null) ? Number(cc.durationMin)
       : (usaRegla && rs.min != null) ? Number(rs.min)
         : (slot.durationMin || null);
@@ -6413,9 +6651,7 @@ function _generateCardioDsl(planned) {
 }
 
 async function pushCardioToIntervalsIcu() {
-  const apiKey = state.settings && state.settings.intervalsIcuApiKey;
-  const athleteId = state.settings && state.settings.intervalsIcuAthleteId;
-  if (!apiKey || !athleteId) { toast('Set up intervals.icu in Settings first'); return; }
+  if (!_icuCanPush()) { toast('Set up intervals.icu in Settings first'); return; }
 
   const date = today();
   let planned = null;
@@ -6596,7 +6832,7 @@ function _clibSubtype(item) {
 async function renderCardioLibrary() {
   const host = document.getElementById('cardio-library');
   if (!host) return;
-  const hasCreds = !!(state.settings && state.settings.intervalsIcuApiKey && state.settings.intervalsIcuAthleteId);
+  const hasCreds = _icuCanPush();
   const groups = [...new Set(CARDIO_LIBRARY.map(w => w.group))];
   // The target is always sent as a zone label (Z1-Z5) — intervals.icu resolves it
   // against your own zones before it reaches the COROS. The cached bpm is shown
@@ -6663,9 +6899,7 @@ async function renderCardioLibrary() {
 // external_id is per (day, workout): sending the SAME workout again updates it,
 // while two different workouts can coexist on one day (Z2 morning + intervals later).
 async function pushCardioWorkout(item) {
-  const apiKey = state.settings && state.settings.intervalsIcuApiKey;
-  const athleteId = state.settings && state.settings.intervalsIcuAthleteId;
-  if (!apiKey || !athleteId) { toast('Set up intervals.icu in Settings first'); return; }
+  if (!_icuCanPush()) { toast('Set up intervals.icu in Settings first'); return; }
   const date = today();
   const body = {
     external_id: `pwa-cardio-${date}-${item.id}`,
@@ -8790,7 +9024,7 @@ function _runningSlots() {
  * reales, pero no construyen tolerancia al impacto.
  */
 async function _runningHistory4w(ds) {
-  const desde = dateStr(new Date(Date.parse(ds + 'T12:00:00') - 28 * 86400000));
+  const desde = addDays(ds, -28);
   const [runs, sess] = await Promise.all([
     (typeof getRunsDeduped === 'function' ? getRunsDeduped() : dbGetAll('runs')).catch(() => []),
     (typeof getSessionsDeduped === 'function' ? getSessionsDeduped() : dbGetAll('sessions')).catch(() => []),
@@ -9146,7 +9380,7 @@ async function computeReadiness({ date } = {}) {
   let wellness = [];
   try {
     const all = await dbGetAll('wellness');
-    const desde = dateStr(new Date(Date.parse(ds + 'T12:00:00') - READINESS_WINDOW_DAYS * 86400000));
+    const desde = addDays(ds, -READINESS_WINDOW_DAYS);
     wellness = (all || []).filter(r => r && r.date && r.date >= desde && r.date <= ds);
   } catch (e) { console.warn('[readiness] wellness:', e); }
 
@@ -9549,7 +9783,13 @@ async function clearFutureScheduleOverrides() {
     let changed = false;
     for (const ds of Object.keys(sched)) { if (ds >= t) { delete sched[ds]; changed = true; } }
     if (changed) await saveWeekSchedule(sched);
-  } catch (e) {}
+  } catch (e) {
+    // C-28: era un `catch {}`. Si esto falla, los cambios de día hechos a mano SOBREVIVEN al
+    // plan nuevo y la semana que se pinta no es la que el coach propuso — un fallo que se nota
+    // como "el plan no se aplicó" y que no dejaba ni una línea en la consola.
+    console.warn('[Plan] clearFutureScheduleOverrides:', e);
+    if (typeof toast === 'function') toast(`Manual day changes kept: ${errText(e)}`);
+  }
 }
 
 // T5.1: user flexes the day-count (3/4/5/6; 6 = the full ideal). Persists the choice (synced),
@@ -9631,13 +9871,6 @@ const _DOW_ORDER = [1, 2, 3, 4, 5, 6, 0];
 function _idealKindFamily(kind) {
   return kind === 'cardio' ? 'cardio' : kind === 'hybrid' ? 'hybrid' : kind === 'recovery' ? 'recovery' : 'strength';
 }
-function _idealDurGuide(kind, dur) {
-  if (kind === 'strength') return dur <= 45 ? 'Compounds + 1-2 key accessories' : dur >= 75 ? 'Full + accessories + mobility' : 'Full session';
-  if (kind === 'cardio') return `${dur} min easy`;
-  if (kind === 'hybrid') return `${Math.min(dur, 30)} min · low skill`;
-  if (kind === 'recovery') return `${Math.min(dur, 40)} min easy`;
-  return `${dur} min`;
-}
 function _currentWeekLabel(dow) {
   const slot = (activeWeekTemplate && activeWeekTemplate[dow]) || { type: 'rest' };
   if (slot.type === 'gym' && slot.session) {
@@ -9660,10 +9893,18 @@ function _idealDayGuide(d, prog) {
   return '';
 }
 
-// 'YYYY-MM-DD' + n días, en UTC (las fechas del bloque salen del motor, que trabaja en UTC).
-function _plusDaysStr(ds, n) {
+// C-24 (auditoría 2026-09-09): LA ÚNICA suma de días de app.js. Se llamaba `_plusDaysStr` y
+// convivía con cuatro variantes a mano — `new Date(Date.parse(ds + 'T12:00:00') ± n*86400000)`
+// en tres sitios de este fichero y un `d.setDate(d.getDate() - 1)` en whoop.js. Todas hacían
+// "más o menos" lo mismo, y "más o menos" con fechas es lo que costó `tz_date_migration_v2`.
+//
+// Aritmética en UTC, igual que `mondayOf`/`isoWeekKey` del motor: sumar días sobre un Date
+// construido en hora local se desplaza un día en los cambios de horario.
+//
+// 'YYYY-MM-DD' → 'YYYY-MM-DD', o null si la entrada no es una fecha.
+function addDays(ds, n) {
   if (!ds) return null;
-  const t = Date.parse(ds + 'T00:00:00Z');
+  const t = Date.parse(String(ds).slice(0, 10) + 'T00:00:00Z');
   if (!isFinite(t)) return null;
   return new Date(t + n * 86400000).toISOString().slice(0, 10);
 }
@@ -9697,7 +9938,7 @@ async function renderIdealPreview() {
     return progressCardioMin(base, blk, { variant: v, lastCardioDaysAgo: daysAgo, coachMin: null }).min;
   };
   const blockLine = blk.index
-    ? `Week <b>${blk.index}/${DELOAD_BLOCK_WEEKS}</b> · ${blk.label} · block from ${_shortDate(blk.blockStartMonday)} to ${_shortDate(_plusDaysStr(blk.blockStartMonday, 6))} · deload the week of ${_shortDate(blk.deloadMonday)}`
+    ? `Week <b>${blk.index}/${DELOAD_BLOCK_WEEKS}</b> · ${blk.label} · block from ${_shortDate(blk.blockStartMonday)} to ${_shortDate(addDays(blk.blockStartMonday, 6))} · deload the week of ${_shortDate(blk.deloadMonday)}`
     : 'No block anchor yet — cardio repeats the base duration.';
 
   const variantToggle = [0, 3, 4, 5, 6].map(n => {
@@ -10053,10 +10294,10 @@ async function renderHomeStatTrio() {
   const weekDays = {};
   workouts.forEach(w => {
     if (!w.date) return;
-    const k = _isoWeekKeyFor(new Date(w.date + 'T12:00:00'));
+    const k = isoWeekKey(w.date);
     (weekDays[k] = weekDays[k] || new Set()).add(w.date);
   });
-  const curKey = _isoWeekKeyFor(new Date());
+  const curKey = isoWeekKey(today());
   let streak = 0;
   for (const k of Object.keys(weekDays).sort().reverse()) {
     if (k === curKey) continue;
@@ -10282,7 +10523,7 @@ async function renderHomeQueue() {
     el.addEventListener('click', () => {
       if (n.kind === 'gym') showSessionPicker(n.key, n.ds);
       else if (n.kind === 'cardio') switchTab('cardio');
-      else { switchTab('gym'); safeCall('openMobilityView'); }
+      else { switchTab('gym'); safeCallVoid('openMobilityView'); }
     });
   }
 }
@@ -10528,13 +10769,15 @@ async function renderRunTotals() {
   const runs = legacyRuns.concat(sessions.filter(s => s.family === 'cardio' && parseFloat(s.distance) > 0));
 
   const now = new Date();
-  // ISO week start: Monday 00:00 local
-  const dow = (now.getDay() + 6) % 7; // Mon=0..Sun=6
-  const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dow);
+  // C-24: el lunes por `mondayOf()` del motor (era la quinta aritmética de lunes de la app) y
+  // la semana anterior por `addDays()`. Los dos vuelven a Date porque `inRange` compara Date
+  // construidos en hora local.
+  const lunes = mondayOf(today());
+  const weekStart = new Date(lunes + 'T00:00:00');
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const yearStart = new Date(now.getFullYear(), 0, 1);
   // Previous period starts (for trend deltas)
-  const prevWeekStart = new Date(weekStart); prevWeekStart.setDate(prevWeekStart.getDate() - 7);
+  const prevWeekStart = new Date(addDays(lunes, -7) + 'T00:00:00');
   const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   const prevYearStart = new Date(now.getFullYear() - 1, 0, 1);
 
@@ -10732,11 +10975,6 @@ async function detectPRs(workout) {
 // guidance into the persistent Coach Review card on Stats > Today.
 
 // ==================== EXERCISE SWAP ====================
-function getAlternatives(muscle, currentId) {
-  const alts = EXERCISE_ALTERNATIVES[muscle] || [];
-  return alts.filter(a => a.id !== currentId);
-}
-
 function showSwapUI(card, ex, session) {
   const existing = card.querySelector('.swap-panel');
   if (existing) { existing.remove(); return; }
@@ -10876,7 +11114,7 @@ async function getStepsAvg7d() {
 }
 
 async function postStepsToCloud(stepsValue, dateStrOverride) {
-  const secret = state.settings && state.settings.stepsSecret;
+  const secret = stepsSecret();
   if (!secret) return { error: 'No secret configured. Generate one in Settings → Daily Steps.' };
   try {
     const res = await fetchWithTimeout(STEPS_INGEST_URL, {
@@ -10900,8 +11138,11 @@ async function postStepsToCloud(stepsValue, dateStrOverride) {
 async function logStepsManual(stepsValue) {
   const n = parseInt(stepsValue);
   if (!Number.isFinite(n) || n < 0 || n > 200000) { toast('Invalid steps value'); return; }
-  await dbPut('steps', { date: today(), steps: n, source: 'manual', ts: Date.now() });
-  // Best-effort cloud push so the value is preserved across devices/reinstalls.
+  // C-15: `smartPut` y no `dbPut`. El empuje por `steps-ingest` es "best effort" y su fallo
+  // sólo iba a la consola, así que un secreto caducado o un avión dejaban los pasos escritos
+  // a mano SÓLO en este teléfono, en silencio. La cola de sync es la red que faltaba: si el
+  // empuje directo no llega, la fila sube igual por el camino normal.
+  await smartPut('steps', { date: today(), steps: n, source: 'manual', ts: Date.now() });
   postStepsToCloud(n).then(r => {
     if (r && r.error) console.warn('[Steps] cloud push failed:', r.error);
   });
@@ -11548,7 +11789,7 @@ async function renderSyncWarning() {
     toast(after.total > 0 ? `${after.total} still not uploaded` : 'Synced');
     // V-8: el punto del topbar cuenta lo mismo que este banner; sin esto se quedaría ámbar
     // después de un reintento con éxito.
-    safeCall('renderTopbarStatusDot');
+    safeCallVoid('renderTopbarStatusDot');
   };
 }
 
@@ -11732,6 +11973,52 @@ async function renderProteinChart() {
 }
 
 // ==================== VOLUME PER MUSCLE GROUP (HEATMAP) ====================
+//
+// SERIES EFECTIVAS EN PANTALLA (L-1, 2026-09-10). Este mapa contaba UNA serie entera para la
+// etiqueta `muscle` del ejercicio y NADA para nadie más: un press de banca no acreditaba ni al
+// hombro ni al tríceps, y una remada nada al bíceps. El coach, desde v11.71, juzga el volumen en
+// series EFECTIVAS (1,0 al motor primario + 0,5 por cada secundario cargado del patrón), porque
+// el 10-14 de STR-003 está escrito en esos términos. O sea que la pantalla y el coach decían dos
+// números distintos del mismo entreno — exactamente el fallo que L-1 documentó (la app leía 16
+// series donde el validador leía 13) y que costó una semana de decisiones sobre un dato corrupto.
+//
+// NO SE ESCRIBE UN SEGUNDO MAPA DE CRÉDITOS. Se reusa el ÚNICO que existe, en `coach-facts.js`
+// (`VP_PATTERN_SECONDARIES`, `VP_SECONDARY_CREDIT`, `VP_NO_SECONDARY_IDS`, `VP_PATTERN_IDS`,
+// `_vpVolumeMuscle`, `_vpSecondariesFor`), que son declaraciones de nivel superior de un script
+// clásico cargado ANTES de este fichero y por tanto globales. Todo va con guarda `typeof`: con un
+// bundle viejo en caché la tarjeta degrada a series DIRECTAS (subcuenta, nunca infla) en vez de
+// lanzar y dejar la pantalla en blanco.
+//
+// La diferencia con el validador: allí se cuentan series PLANIFICADAS del plan; aquí, las series
+// HECHAS (`s.done`). Mismo crédito, distinta entrada.
+
+/** ¿Está disponible el crédito fraccionado de `coach-facts.js`? Si no, series directas. */
+function _mvEffectiveAvailable() {
+  return typeof _vpVolumeMuscle === 'function'
+    && typeof _vpSecondariesFor === 'function'
+    && typeof VP_SECONDARY_CREDIT === 'number'
+    && typeof VP_NO_SECONDARY_IDS === 'object' && VP_NO_SECONDARY_IDS
+    && typeof VP_PATTERN_IDS === 'object' && VP_PATTERN_IDS;
+}
+
+/** Media serie: el crédito fraccionado es una estimación, no una medida al decimal. */
+function _mvHalf(n) { return Math.round((Number(n) || 0) * 2) / 2; }
+
+/** `10` → "10"; `10.5` → "10.5". Punto decimal (i18n: la UI es en inglés). */
+function _mvNum(n) {
+  const v = _mvHalf(n);
+  return (v % 1 === 0) ? String(v) : v.toFixed(1);
+}
+
+/** ¿Esta fila se juzga contra el 10-14 de STR-003? `Power` y `Erectors`, no — igual que el
+ *  validador (`VP_VOLUME_NO_FLOOR`): la pliometría no es volumen de hipertrofia y el corpus no
+ *  declara ninguna banda para los erectores, que trabajan en cada bisagra y cada transporte. */
+function _mvHasBand(muscle) {
+  const fam = (typeof _vpMuscleFamily === 'function') ? _vpMuscleFamily(muscle) : muscle;
+  if (typeof _vpFamilyHasFloor === 'function') return _vpFamilyHasFloor(fam);
+  return !/^(power|core|erectors|otros|other)$/i.test(String(fam || ''));
+}
+
 async function renderMuscleVolume() {
   const container = document.getElementById('muscle-volume');
   if (!container) return;
@@ -11750,9 +12037,16 @@ async function renderMuscleVolume() {
     return;
   }
 
-  // Count sets per muscle group per day
-  const muscleDay = {}; // { muscle: { '2026-04-07': 4, ... } }
+  // Series EFECTIVAS por músculo y por día, con el crédito de `coach-facts.js`.
+  const efectivas = _mvEffectiveAvailable();
+  const muscleDay = {}; // { muscle: { '2026-04-07': 4.5, ... } }
   const muscleTotals = {};
+  const anota = (m, date, n) => {
+    if (!m || !n) return;
+    if (!muscleDay[m]) muscleDay[m] = {};
+    muscleDay[m][date] = (muscleDay[m][date] || 0) + n;
+    muscleTotals[m] = (muscleTotals[m] || 0) + n;
+  };
   workouts.forEach(w => {
     w.exercises.forEach(ex => {
       let muscle = null;
@@ -11778,17 +12072,51 @@ async function renderMuscleVolume() {
       // Se reetiqueta AQUI y no en el PLAN: el campo `muscle` alimenta `data-swap-muscle`, y
       // 'Power' no es una clave de EXERCISE_ALTERNATIVES, asi que cambiarlo alli dejaria el
       // boton de swap sin alternativas. Los contactos siguen visibles en su propia fila.
+      //
+      // v11.72 (L-1): la reetiqueta la decide `_vpVolumeMuscle`, que es la MISMA función que usa
+      // el coach (ids de pliometría / acondicionamiento / transporte, más la etiqueta
+      // `power|conditioning|cardio|plyo`). La regla por patrón de v11.48 se queda DETRÁS como
+      // red: cubre un id pliométrico que el mapa del coach todavía no conozca, y en la
+      // dirección segura (fuera de la hipertrofia, nunca dentro).
+      if (efectivas) muscle = _vpVolumeMuscle(ex.exerciseId, muscle);
       if (MOVEMENT_PATTERNS[ex.exerciseId] === 'plyometric') muscle = 'Power';
 
       const doneSets = ex.sets.filter(s => s.done).length;
-      if (!muscleDay[muscle]) muscleDay[muscle] = {};
-      muscleDay[muscle][w.date] = (muscleDay[muscle][w.date] || 0) + doneSets;
-      muscleTotals[muscle] = (muscleTotals[muscle] || 0) + doneSets;
+      if (!doneSets) return;
+      anota(muscle, w.date, doneSets);
+      if (!efectivas) return;
+      // El primario ya tiene su 1,0. `Power` no acredita secundarios (no es hipertrofia), una
+      // apertura tampoco (monoarticular aunque la librería la etiquete como press), y un patrón
+      // que no se puede resolver no acredita NADA: el sesgo es siempre a subcontar.
+      if (muscle === 'Power') return;
+      if (VP_NO_SECONDARY_IDS[String(ex.exerciseId || '')]) return;
+      const patron = MOVEMENT_PATTERNS[ex.exerciseId] || VP_PATTERN_IDS[String(ex.exerciseId || '')] || null;
+      if (!patron) return;
+      for (const sec of _vpSecondariesFor(patron, muscle)) anota(sec, w.date, doneSets * VP_SECONDARY_CREDIT);
     });
   });
+  // A 0,5, una vez, al final: sumar y redondear en cada paso arrastraría el redondeo.
+  for (const m of Object.keys(muscleTotals)) {
+    muscleTotals[m] = _mvHalf(muscleTotals[m]);
+    for (const d of Object.keys(muscleDay[m] || {})) muscleDay[m][d] = _mvHalf(muscleDay[m][d]);
+  }
 
   // Sort muscles by total sets descending
   const sorted = Object.keys(muscleTotals).sort((a, b) => muscleTotals[b] - muscleTotals[a]);
+
+  // El VEREDICTO (el 10-14) se da por FAMILIA, no por etiqueta, porque es así como lo da el
+  // validador: la cadena posterior repartida en `Hamstrings` / `Posterior` / `Glutes` leía 9
+  // series donde había 14 (F-7). Las FILAS siguen siendo por músculo —esa granularidad es lo
+  // útil de un mapa de calor— pero el color del total sale del total de su familia. Sin esto,
+  // `Glutes 3.5` se pintaría en naranja mientras el coach dice que la cadena posterior cumple:
+  // la pantalla y el coach volverían a contradecirse, que es el fallo entero de L-1.
+  const familyTotals = {};
+  for (const m of sorted) {
+    const fam = (typeof _vpMuscleFamily === 'function') ? _vpMuscleFamily(m) : m;
+    familyTotals[fam] = _mvHalf((familyTotals[fam] || 0) + muscleTotals[m]);
+  }
+  const familyOf = (m) => ((typeof _vpMuscleFamily === 'function') ? _vpMuscleFamily(m) : m);
+
   // Find max sets in any single cell for intensity scaling
   let maxCell = 0;
   sorted.forEach(m => weekStrs.forEach(d => { maxCell = Math.max(maxCell, (muscleDay[m] && muscleDay[m][d]) || 0); }));
@@ -11797,7 +12125,12 @@ async function renderMuscleVolume() {
   const dayLabels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
   const todayStr = today();
 
-  let html = `<div class="heatmap-grid" style="grid-template-columns: 72px repeat(7, 1fr) 40px">`;
+  // La etiqueta dice que el número lleva crédito fraccionado. Sin esto, un "8.5" en la fila de
+  // hombros parece un error de la app en vez de la cuenta que el coach usa.
+  let html = efectivas
+    ? `<p class="muted" style="font-size:11px;margin:0 0 10px;line-height:1.5">Effective sets: <b>1.0</b> for the exercise's primary muscle + <b>0.5</b> for each loaded secondary of its movement pattern (a bench press credits shoulders and triceps; a row, biceps and rear delts). This is the count the coach judges against 10-14, and the colour of each total is its <b>family</b> verdict — hamstrings, glutes and posterior are one chain to the coach. <b>Power</b> and <b>Erectors</b> have no band and are shown apart.</p>`
+    : `<p class="muted" style="font-size:11px;margin:0 0 10px;line-height:1.5">Direct sets only (the effective-set credit is unavailable in this build).</p>`;
+  html += `<div class="heatmap-grid" style="grid-template-columns: 72px repeat(7, 1fr) 40px">`;
   // Header row
   html += `<div class="hm-corner"></div>`;
   dayLabels.forEach((d, i) => {
@@ -11810,17 +12143,25 @@ async function renderMuscleVolume() {
   sorted.forEach(muscle => {
     const color = MUSCLE_COLORS[muscle] || MUSCLE_FALLBACK;
     const total = muscleTotals[muscle];
-    const inRange = total >= 10 && total <= 14;
-    html += `<div class="hm-muscle" style="color:${color}">${muscle}</div>`;
+    // El 10-14 sólo se juzga donde el corpus lo declara. `Power` y `Erectors` se pintan neutros:
+    // colorearlos en naranja por "no llegar a 10" sería inventarse una banda que no existe.
+    const conBanda = _mvHasBand(muscle);
+    const fam = familyOf(muscle);
+    const veredicto = familyTotals[fam] != null ? familyTotals[fam] : total;
+    const inRange = veredicto >= 10 && veredicto <= 14;
+    const colorTotal = !conBanda ? 'var(--text3)'
+      : (inRange ? 'var(--accent)' : veredicto < 10 ? 'var(--orange)' : 'var(--yellow)');
+    const tituloFam = (fam !== muscle) ? ` title="${escapeHtml(String(fam))}: ${_mvNum(veredicto)} effective sets"` : '';
+    html += `<div class="hm-muscle" style="color:${color}"${tituloFam}>${escapeHtml(String(muscle))}</div>`;
     weekStrs.forEach(d => {
       const sets = (muscleDay[muscle] && muscleDay[muscle][d]) || 0;
       const intensity = sets / maxCell;
       // V-2: antes se concatenaba el alfa al hex (`#60a5fa99`). Con tokens eso no existe, así
       // que el tinte se compone con `color-mix`, que es lo que el hex+alfa imitaba a mano.
       const bg = sets > 0 ? `color-mix(in srgb, ${color} ${Math.round(intensity * 60)}%, transparent)` : 'transparent';
-      html += `<div class="hm-cell" style="background:${bg}" title="${muscle}: ${sets} sets">${sets || ''}</div>`;
+      html += `<div class="hm-cell" style="background:${bg}" title="${escapeHtml(String(muscle))}: ${_mvNum(sets)} ${efectivas ? 'effective ' : ''}sets">${sets ? _mvNum(sets) : ''}</div>`;
     });
-    html += `<div class="hm-total" style="color:${inRange ? 'var(--accent)' : total < 10 ? 'var(--orange)' : 'var(--yellow)'}">${total}</div>`;
+    html += `<div class="hm-total" style="color:${colorTotal}">${_mvNum(total)}</div>`;
   });
   html += `</div>`;
   container.innerHTML = html;
@@ -11999,20 +12340,6 @@ function setStarValue(containerId, val) {
   container.querySelectorAll('button').forEach(b => b.classList.toggle('selected', parseInt(b.dataset.v) === val));
 }
 
-function setToggleValue(prefix, val) {
-  document.getElementById(prefix + '-yes').classList.toggle('selected', val);
-  document.getElementById(prefix + '-no').classList.toggle('selected', !val);
-}
-
-function getToggleValue(prefix) {
-  return document.getElementById(prefix + '-yes').classList.contains('selected');
-}
-
-function setupToggle(prefix) {
-  document.getElementById(prefix + '-yes').addEventListener('click', () => setToggleValue(prefix, true));
-  document.getElementById(prefix + '-no').addEventListener('click', () => setToggleValue(prefix, false));
-}
-
 function setupStarGroup(containerId) {
   const container = document.getElementById(containerId);
   if (!container) return;
@@ -12034,7 +12361,7 @@ async function loadSettings() {
 }
 
 function applySettingsToUI() {
-  const { unit, proteinTarget, startDate, userName, audioFeedback, stepsTarget, stepsSecret, goalWeight } = state.settings;
+  const { unit, proteinTarget, startDate, userName, audioFeedback, stepsTarget, goalWeight } = state.settings;
   document.getElementById('unit-kg').classList.toggle('selected', unit === 'kg');
   document.getElementById('unit-lb').classList.toggle('selected', unit === 'lb');
   document.getElementById('setting-protein-target').value = proteinTarget;
@@ -12058,7 +12385,7 @@ function applySettingsToUI() {
   const stepsTargetEl = document.getElementById('setting-steps-target');
   if (stepsTargetEl) stepsTargetEl.value = stepsTarget || 8000;
   const stepsSecretEl = document.getElementById('steps-secret');
-  if (stepsSecretEl) stepsSecretEl.value = stepsSecret || '';
+  if (stepsSecretEl) stepsSecretEl.value = stepsSecret();   // C-8: localStorage, no la fila
   const stepsEndpointEl = document.getElementById('steps-endpoint-url');
   if (stepsEndpointEl) stepsEndpointEl.value = STEPS_INGEST_URL;
   // Coach v2 (v11.61): 'ask' por defecto. `coachAutoApplyMode()` normaliza (vive en coach.js).
@@ -12100,14 +12427,13 @@ async function generateStepsSecret() {
   const bytes = new Uint8Array(24);
   crypto.getRandomValues(bytes);
   const secret = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
-  state.settings = { ...state.settings, stepsSecret: secret };
-  await smartPut('settings', { key: 'userSettings', data: state.settings });
+  setStepsSecret(secret);              // C-8: localStorage, nunca la fila sincronizada
   applySettingsToUI();
   toast('Secret generated. Copy it to the Supabase env var + your Shortcut.');
 }
 
 async function testStepsConnection() {
-  const secret = state.settings && state.settings.stepsSecret;
+  const secret = stepsSecret();
   if (!secret) { toast('Generate a secret first'); return; }
   const out = document.getElementById('steps-test-output');
   if (out) out.textContent = 'Testing…';
@@ -12166,17 +12492,21 @@ async function importBackup(file) {
     const text = await file.text();
     const data = JSON.parse(text);
 
-    if (data.workouts) for (const w of data.workouts) await dbPut('workouts', w);
-    if (data.runs) for (const r of data.runs) await dbPut('runs', r);
-    if (data.nutrition) for (const n of data.nutrition) await dbPut('nutrition', n);
-    if (data.settings) for (const s of data.settings) await dbPut('settings', s);
+    // C-16: `smartPut` y no `dbPut`. Un restore es EXACTAMENTE el momento en que la copia de
+    // la nube está incompleta o perdida, y con `dbPut` lo restaurado se quedaba en el
+    // teléfono: la siguiente bajada podía volver a pisarlo con lo que hubiera en Supabase.
+    // Ahora entra en la cola y sube.
+    if (data.workouts) for (const w of data.workouts) await smartPut('workouts', w);
+    if (data.runs) for (const r of data.runs) await smartPut('runs', r);
+    if (data.nutrition) for (const n of data.nutrition) await smartPut('nutrition', n);
+    if (data.settings) for (const s of data.settings) await smartPut('settings', s);
 
     await loadSettings();
     toast('Backup restored!');
     switchTab(state.currentTab);
   } catch (e) {
-    toast('Error restoring backup');
     console.error(e);
+    toast(`Could not restore the backup: ${errText(e, 'unreadable file')}`);
   }
 }
 
@@ -12352,7 +12682,7 @@ function bindEvents() {
   if (testBtn) testBtn.addEventListener('click', testStepsConnection);
   const copyBtn = document.getElementById('btn-steps-copy-payload');
   if (copyBtn) copyBtn.addEventListener('click', async () => {
-    const secret = state.settings.stepsSecret || '<GENERATE A SECRET FIRST>';
+    const secret = stepsSecret() || '<GENERATE A SECRET FIRST>';
     const sample = JSON.stringify({ secret, date: 'YYYY-MM-DD', steps: 0, source: 'shortcut' }, null, 2);
     try { await navigator.clipboard.writeText(sample); toast('Sample payload copied'); } catch { toast('Copy failed'); }
   });
@@ -12617,32 +12947,92 @@ async function checkAndNotify() {
 }
 
 // ==================== SERVICE WORKER ====================
-function registerServiceWorker() {
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js')
-      .then(reg => {
-        console.log('[SW] Registered:', reg.scope);
-        // Check for updates every 5 minutes
-        setInterval(() => reg.update(), 5 * 60 * 1000);
-        // When a new SW is found, auto-reload once it activates
-        reg.addEventListener('updatefound', () => {
-          const newWorker = reg.installing;
-          newWorker.addEventListener('statechange', () => {
-            if (newWorker.state === 'activated' && navigator.serviceWorker.controller) {
-              console.log('[SW] New version available, reloading...');
-              toast('App updated! Reloading...');
-              setTimeout(() => window.location.reload(), 1000);
-            }
-          });
-        });
-      })
-      .catch(err => console.warn('[SW] Registration failed:', err));
+//
+// C-6 (auditoría 2026-09-09). Lo que había y por qué era un problema real:
+//
+//   · DOS caminos de recarga a la vez — `updatefound` (cuando el worker nuevo activa) y
+//     `controllerchange` (cuando toma el control). Con `skipWaiting()` + `clients.claim()` los
+//     dos disparan en la misma actualización, así que la página se recargaba dos veces.
+//   · `controllerchange` salta TAMBIÉN en la primera instalación, cuando la página aún no tenía
+//     controlador. Era el "se recarga sola la primera vez que la abro".
+//   · `reg.installing` sin comprobar null. `updatefound` también salta cuando el que cambia es
+//     `reg.waiting`, y ahí `installing` es null: el `addEventListener` lanzaba un TypeError que
+//     se perdía dentro del `.then` y la actualización no se aplicaba nunca más en esa pestaña.
+//   · `reg.update()` cada 5 minutos. Con el teléfono en el gimnasio eso es una comprobación
+//     cada dos ejercicios, y cada una podía acabar en `location.reload()` A MITAD DE UNA SERIE.
+//
+// Ahora: UN solo camino, con la comprobación de null, sin recarga en la primera instalación, y
+// con una sesión de entreno abierta la recarga NO se hace sola — se ofrece en un chip. Perder
+// el sitio en la sesión a mitad de una serie es peor que ir una versión por detrás media hora.
+//
+// `clients.claim()` se queda en `sw.js`: sin él la primera visita se queda sin controlador y
+// no hay app offline hasta la siguiente carga. Lo que se retira es la RECARGA, no el claim.
 
-    // Also reload if controller changes (new SW took over)
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
-      window.location.reload();
-    });
+// El cerrojo que impide recargar dos veces: el chip y el camino automático comparten salida.
+// No se guarda el worker: cuando esto se ejecuta ya está `activated` y controlando la página
+// (`skipWaiting` + `clients.claim` en sw.js), así que recargar basta — no hay que mandarle nada.
+let _swReloading = false;
+
+/** Recarga por decisión explícita (el chip) o automática. Idempotente. */
+function _swApplyUpdate() {
+  if (_swReloading) return;
+  _swReloading = true;
+  window.location.reload();
+}
+
+/**
+ * Chip persistente "New version — tap to reload". Reutiliza el CSS del toast (`.toast` +
+ * `.toast-action`) con el modificador `.toast-sticky`, que es lo único que lo distingue: no lo
+ * borra el temporizador de `toast()`, porque el aviso tiene que seguir ahí cuando Julian acabe
+ * la serie. Id propio para que `toast()` no lo reutilice como su contenedor.
+ */
+function _swUpdateChip() {
+  let el = document.getElementById('sw-update-chip');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'sw-update-chip';
+    el.className = 'toast toast-sticky';
+    document.body.appendChild(el);
+    el.addEventListener('click', () => _swApplyUpdate());
   }
+  el.innerHTML = '<span>New version</span><button class="toast-action">Reload</button>';
+  el.classList.add('show');
+}
+
+/** El worker nuevo ya está activo: recargar, o ofrecerlo si hay un entreno en curso. */
+function _swVersionReady() {
+  if (_swReloading) return;
+  if (state.activeSession) {
+    console.log('[SW] nueva versión lista; sesión abierta → se ofrece, no se recarga');
+    _swUpdateChip();
+    return;
+  }
+  toast('App updated — reloading');
+  setTimeout(_swApplyUpdate, 1000);
+}
+
+function registerServiceWorker() {
+  if (!('serviceWorker' in navigator)) return;
+  navigator.serviceWorker.register('./sw.js')
+    .then((reg) => {
+      console.log('[SW] Registered:', reg.scope);
+      // Cada 30 minutos, no cada 5: la comprobación puede terminar en una recarga.
+      setInterval(() => { Promise.resolve(reg.update()).catch(() => {}); }, 30 * 60 * 1000);
+      reg.addEventListener('updatefound', () => {
+        const w = reg.installing || reg.waiting;
+        if (!w) return;
+        // Sin controlador es la PRIMERA instalación: no hay versión vieja que sustituir.
+        if (!navigator.serviceWorker.controller) return;
+        if (w.state === 'activated') { _swVersionReady(); return; }
+        const onState = () => {
+          if (w.state !== 'activated') return;
+          w.removeEventListener('statechange', onState);
+          _swVersionReady();
+        };
+        w.addEventListener('statechange', onState);
+      });
+    })
+    .catch((err) => console.warn('[SW] Registration failed:', err));
 }
 
 // ==================== INIT ====================
@@ -13021,6 +13411,10 @@ async function init() {
   // Legacy connection cards inside collapsible "Legacy connections" section
   renderStravaUI();
   renderIntervalsIcuUI();
+  // A-7: `stravaIsConnected()` es síncrona y lee la caché de `integration_status`, que la línea
+  // de arriba está cebando en segundo plano. Sin este segundo pase la tarjeta legacy de Strava
+  // pinta "Connect" en cada arranque sobre una integración que sí está conectada.
+  Promise.resolve(safeCall('integrationsGetStatus')).then(() => renderStravaUI()).catch(() => {});
 
   // Background sync on app open: runs (so Recent Runs is fresh) + wellness
   // (so the recovery card is current). Both swallowed errors — never block UI.
@@ -13040,7 +13434,7 @@ async function init() {
   {
     Promise.resolve(safeCall('whoopSyncData')).then((d) => {
       if (state.currentTab !== 'home') return;
-      safeCall('renderRecoveryBlock');
+      safeCallVoid('renderRecoveryBlock');
       // v11.58: si esta sincronización trajo el dato de HOY (ruta directa de WHOOP, o intervals
       // que ya lo tiene), el Home se repinta solo. Sin esto, la tarjeta se quedaría con el "Sin
       // dato de hoy" del primer render aunque el dato hubiese llegado dos segundos después.
@@ -13048,7 +13442,7 @@ async function init() {
       // recalcularlo, o la tarjeta se queda con el "sin dato de hoy" del primer render.
       invalidateReadiness();
       if (d && d.todaySource && d.todaySource !== 'missing') {
-        Promise.resolve(safeCall('renderRecoveryBlock')).catch(() => {});
+        safeCallVoid('renderRecoveryBlock');
         // v11.65: y el tile Readiness, que es donde se ve el número de hoy desde este incremento.
         renderHomeStatTrio().catch(() => {});
       }
@@ -13088,7 +13482,7 @@ window.enterSecondaryView = enterSecondaryView;
 // ni error visible ni forma de saber que faltaba media pantalla.
 document.addEventListener('DOMContentLoaded', () => init().catch(e => {
   console.warn('[init]', e);
-  toast('Startup failed — pull down to retry');
+  toast(`Startup failed: ${errText(e, 'pull down to retry')}`);
 }));
 
 // Save workout state when app goes to background (iOS kills PWAs aggressively)

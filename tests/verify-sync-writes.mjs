@@ -23,6 +23,7 @@
 // Ejecutar desde la raíz del repo: node tests/verify-sync-writes.mjs
 
 import { readFileSync } from 'node:fs';
+import vm from 'node:vm';
 
 const APP = readFileSync('app/app.js', 'utf8');
 const SYNC = readFileSync('app/supabase-sync.js', 'utf8');
@@ -68,11 +69,12 @@ console.log('3. Escrituras crudas en stores sincronizados (línea base justifica
 
 const baseline = [
   {
-    store: 'settings', src: APP, n: 10,
+    store: 'settings', src: APP, n: 9,
     motivo: 'borrador de entreno en curso y de movilidad (se escriben en cada serie: ' +
-            'sincronizarlos inundaría la cola), restauración de backup, 6 flags de migración ' +
-            '(el sexto, v11.57: re-anclaje del bloque al 7-sep) y el flag del backfill. Un flag sincronizado haría que otro dispositivo se ' +
-            'saltara una migración que sí necesita.',
+            'sincronizarlos inundaría la cola), 6 flags de migración (el sexto, v11.57: ' +
+            're-anclaje del bloque al 7-sep) y el flag del backfill. Un flag sincronizado ' +
+            'haría que otro dispositivo se saltara una migración que sí necesita. ' +
+            'v11.73 (C-16): la restauración de backup YA NO está aquí — pasó a smartPut.',
   },
   {
     store: 'settings', src: SYNC, n: 2,
@@ -80,16 +82,18 @@ const baseline = [
             'sería un bucle de realimentación.',
   },
   {
-    store: 'workouts', src: APP, n: 2,
-    motivo: 'restauración local de la migración de fechas (cancela un delete encolado, así ' +
-            'que la nube ya tiene la fila) y restauración de backup.',
+    store: 'workouts', src: APP, n: 1,
+    motivo: 'restauración local de la migración de fechas: cancela un delete encolado, así ' +
+            'que la nube YA tiene la fila. v11.73 (C-16): la restauración de backup pasó a ' +
+            'smartPut.',
   },
   {
-    store: 'steps', src: APP, n: 2,
-    motivo: 'escritura de filas que VIENEN de la nube (encolarlas las devolvería) y registro ' +
-            'manual, que empuja por su propia edge function steps-ingest.',
+    store: 'steps', src: APP, n: 1,
+    motivo: 'escritura de filas que VIENEN de la nube: encolarlas las devolvería. v11.73 ' +
+            '(C-15): el registro manual pasó a smartPut — el empuje por steps-ingest es ' +
+            '"best effort" y su fallo sólo iba a la consola, así que un secreto caducado ' +
+            'dejaba los pasos escritos a mano SÓLO en el teléfono.',
   },
-  { store: 'runs', src: APP, n: 1, motivo: 'restauración de backup.' },
   {
     store: 'settings', src: COACHJS, n: 1,
     motivo: "'coachReadoutSeen' (v11.57): la lectura del coach ya vista. Es estado de INTERFAZ " +
@@ -109,12 +113,40 @@ const baseline = [
             'coach no dijo nada"). Las escrituras del USUARIO sobre esa misma fila —aplicar, ' +
             'rechazar, vencer— sí van con `smartPut`: ésas son suyas y tienen que llegar a la nube.',
   },
-  { store: 'nutrition', src: APP, n: 1, motivo: 'restauración de backup.' },
 ];
 
 for (const b of baseline) {
   const got = cuenta(b.src, new RegExp(`dbPut\\('${b.store}'`, 'g'));
   eq(got, b.n, `dbPut('${b.store}') × ${b.n}`);
+}
+
+// ── 3.a v11.73 · C-15 y C-16: las dos rutas que no tenían red ──────────────────────
+//
+// EL FALLO. `logStepsManual` escribía con `dbPut` y empujaba a `steps-ingest` con un
+// `.then` que sólo hacía `console.warn`: con el secreto caducado, sin red o con la función
+// caída, los pasos tecleados a mano se quedaban en ESTE teléfono y nadie se enteraba.
+// `importBackup` es peor: un restore es justo el momento en que la copia de la nube está
+// incompleta, y con `dbPut` lo restaurado no subía — la siguiente bajada podía volver a
+// pisarlo con lo que hubiera en Supabase.
+console.log('');
+console.log('3.a C-15 · C-16: pasos a mano y restauración de backup encolan');
+{
+  const cuerpo = (src, firma, largo) => {
+    const i = src.indexOf(firma);
+    return i < 0 ? '' : src.slice(i, i + largo);
+  };
+  const steps = cuerpo(APP, 'async function logStepsManual(', 900);
+  yes(steps.length > 0, 'se localiza logStepsManual()');
+  yes(/smartPut\('steps'/.test(steps), "logStepsManual() escribe con smartPut (C-15)");
+  yes(!/dbPut\('steps'/.test(steps), 'y no crudo');
+  yes(/postStepsToCloud\(n\)/.test(steps), 'sigue empujando por steps-ingest (camino rápido)');
+
+  const imp = cuerpo(APP, 'async function importBackup(', 1400);
+  yes(imp.length > 0, 'se localiza importBackup()');
+  for (const st of ['workouts', 'runs', 'nutrition', 'settings']) {
+    yes(imp.includes(`smartPut('${st}'`), `importBackup() restaura ${st} con smartPut (C-16)`);
+    yes(!imp.includes(`dbPut('${st}'`), `y no crudo (${st})`);
+  }
 }
 
 // Los stores que NO deben tener ninguna escritura cruda en ningún fichero.
@@ -205,6 +237,91 @@ yes(/if \(!SUPABASE_URL \|\| !SUPABASE_ANON_KEY\) return;/.test(ENQ),
   'enqueueSync() gatea por configuración, no por cliente (v11.55, F-1)');
 yes(!/supabaseClient/.test(ENQ),
   'enqueueSync() ya no menciona supabaseClient');
+
+// ── 6. C-8 · los dos secretos NO viajan en `settings/userSettings` ─────────────────
+//
+// EL FALLO QUE ESTA PARTE EXISTE PARA IMPEDIR. `settings/userSettings` se sincroniza entero
+// a Supabase, y dentro iban `intervalsIcuApiKey` y `stepsSecret`. Con el secreto de pasos
+// cualquiera escribe en `steps` a través de `steps-ingest`; con la API key de intervals.icu
+// se lee todo el histórico del atleta. v11.70 (S-2) los quitó del BACKUP compartible; esto es
+// la otra mitad, la fila.
+//
+// Se EJECUTA `smartPut`, no se busca la cadena: el filtro vive dentro de la función y lo que
+// hay que demostrar es que el objeto que sale no lleva las claves — y que el accesor sigue
+// devolviendo el valor, o el arreglo habría roto intervals.icu en silencio.
+console.log('');
+console.log('6. C-8 · secretos fuera de la fila sincronizada');
+{
+  const trozo = (firma, hasta) => {
+    const i = APP.indexOf(firma);
+    const j = APP.indexOf(hasta, i);
+    return (i < 0 || j < 0) ? '' : APP.slice(i, j);
+  };
+  const src = trozo('const LOCAL_ONLY_KEYS', '// ==================== STATE');
+  yes(src.length > 0, 'se localizan LOCAL_ONLY_KEYS + los accesores + smartPut');
+
+  const store = new Map();
+  const escrituras = [];
+  const ctx = {
+    console,
+    localStorage: {
+      getItem: (k) => (store.has(k) ? store.get(k) : null),
+      setItem: (k, v) => store.set(k, String(v)),
+      removeItem: (k) => store.delete(k),
+    },
+    window: { syncedPut: (s2, d) => { escrituras.push([s2, d]); return Promise.resolve(); } },
+    dbPut: (s2, d) => { escrituras.push([s2, d]); return Promise.resolve(); },
+    state: { settings: { unit: 'kg', intervalsIcuApiKey: 'K3Y', stepsSecret: 'S3CR3T', goalWeight: 82 } },
+  };
+  vm.createContext(ctx);
+  vm.runInContext(`${src}\nglobalThis.__m = { smartPut, intervalsApiKey, stepsSecret, setIntervalsApiKey, setStepsSecret, LOCAL_ONLY_KEYS };`, ctx);
+  const M = ctx.__m;
+
+  yes(Array.isArray(M.LOCAL_ONLY_KEYS) && M.LOCAL_ONLY_KEYS.includes('intervalsIcuApiKey')
+    && M.LOCAL_ONLY_KEYS.includes('stepsSecret'), 'LOCAL_ONLY_KEYS lista las dos claves');
+
+  // (a) migración perezosa: el valor que ya estaba en la fila se recupera y pasa a localStorage
+  eq(M.intervalsApiKey(), 'K3Y', 'intervalsApiKey() migra el valor que ya estaba en la fila');
+  eq(M.stepsSecret(), 'S3CR3T', 'stepsSecret() también');
+  yes(store.size === 2, 'y quedan guardados en localStorage (2 claves)');
+  yes(!('intervalsIcuApiKey' in ctx.state.settings) && !('stepsSecret' in ctx.state.settings),
+    'y salen de state.settings, que es lo que se serializa');
+
+  // (b) el objeto que smartPut escribe NUNCA lleva los secretos, ni si vuelven a la fila
+  ctx.state.settings.intervalsIcuApiKey = 'OTRA';   // una bajada de Supabase con la fila vieja
+  ctx.state.settings.stepsSecret = 'OTRO';
+  M.smartPut('settings', { key: 'userSettings', data: ctx.state.settings });
+  const [st, row] = escrituras[escrituras.length - 1];
+  eq(st, 'settings', 'la escritura va al store settings');
+  yes(!('intervalsIcuApiKey' in row.data), 'el objeto escrito NO lleva intervalsIcuApiKey (C-8)');
+  yes(!('stepsSecret' in row.data), 'ni stepsSecret');
+  eq(row.data.unit, 'kg', 'y conserva el resto de userSettings');
+  eq(row.data.goalWeight, 82, 'incluido el peso objetivo');
+  eq(ctx.state.settings.intervalsIcuApiKey, 'OTRA', 'sin mutar el objeto del llamador');
+
+  // (c) otras filas de settings pasan intactas (el filtro es sólo para userSettings)
+  M.smartPut('settings', { key: 'weekSchedule', data: { '2026-09-10': 'lowerA' } });
+  eq(escrituras[escrituras.length - 1][1].data['2026-09-10'], 'lowerA',
+    'weekSchedule viaja tal cual');
+
+  // (d) el setter escribe en localStorage y no en la fila
+  M.setIntervalsApiKey('NUEVA');
+  eq(M.intervalsApiKey(), 'NUEVA', 'setIntervalsApiKey() se lee por el accesor');
+  yes(!('intervalsIcuApiKey' in ctx.state.settings), 'y borra la clave de state.settings');
+  M.setStepsSecret('');
+  eq(M.stepsSecret(), '', 'vaciar el secreto lo borra');
+}
+
+// Y NINGÚN otro sitio lee las claves directamente: el accesor es el único lector.
+for (const [nombre, src] of [['app.js', APP], ['coach.js', COACHJS], ['whoop.js', WHOOP], ['nutrition.js', NUT]]) {
+  const codigo = src.split(/\r?\n/).filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
+  eq((codigo.match(/state\.settings\.intervalsIcuApiKey/g) || []).length, 0,
+    `${nombre} no lee state.settings.intervalsIcuApiKey (usa intervalsApiKey())`);
+  eq((codigo.match(/state\.settings\.stepsSecret/g) || []).length, 0,
+    `${nombre} no lee state.settings.stepsSecret (usa stepsSecret())`);
+}
+yes(/const BACKUP_REDACT_KEYS = \['stepsSecret', 'intervalsIcuApiKey'\]/.test(APP),
+  'y el redactado del backup (S-2, v11.70) sigue en pie');
 
 console.log('');
 console.log(failed === 0

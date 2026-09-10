@@ -87,6 +87,24 @@ const ALLOW = [
 ];
 const ALLOW_SET = new Set(ALLOW.map(s => s.toLowerCase()));
 
+// Palabras mínimas para considerar una cadena "prosa recortada" y no una etiqueta de UI.
+const TRUNCATED_MIN_WORDS = 6;
+
+// Una FRASE LARGA cortada con `…` deja media palabra al final, y media palabra no se puede
+// juzgar: el `caveat` inglés de `READ-004` en `coach-rules.js` (generado desde `research/`) acaba
+// en "with benefit la…" — de "largest" — y ese trozo `la` es una palabra función del diccionario.
+// Se descarta ESE fragmento y sólo ése; el resto de la frase se sigue juzgando entera.
+//
+// El umbral de palabras es la parte que importa: una etiqueta de UI truncada es CORTA
+// ("Cargando…", "Guardando…") y tiene que seguir disparando el detector. Lo que se exime es prosa
+// recortada por un generador, que es de donde vienen estos fragmentos.
+export function stripTruncatedTail(text) {
+  const t = String(text);
+  if (!/\S…\s*$/.test(t)) return t;
+  if (t.trim().split(/\s+/).length < TRUNCATED_MIN_WORDS) return t;
+  return t.replace(/\s*\S*…\s*$/, '');
+}
+
 // Un literal está permitido si es exactamente una entrada de la lista blanca, o si es un
 // selector/identificador puro (sin espacios ni acentos): ids, claves, clases CSS, rutas.
 function allowed(text) {
@@ -248,6 +266,14 @@ if (IS_MAIN) {
       'el fixture con "Cargando…" dispara el detector (si esto falla, el test no vale nada)');
     const cmt = extractStrings(`// Cargando la semana del usuario\nconst a = 1;`);
     yes(cmt.every(s => !RE_ES.test(s.text)), 'y el MISMO texto dentro de un comentario no dispara');
+    // La regla de la cola truncada, por los dos lados. Sin el control, el día que alguien suba
+    // `TRUNCATED_MIN_WORDS` a 2 se exime media UI y el test sigue en verde.
+    yes(stripTruncatedTail('Cargando…') === 'Cargando…',
+      'una etiqueta corta truncada ("Cargando…") NO se exime: sigue juzgándose entera');
+    yes(!RE_ES.test(stripTruncatedTail('supports trend-based use, with benefit la…')),
+      'una frase larga cortada a media palabra sí pierde ese último fragmento (coach-rules.js:READ-004)');
+    yes(RE_ES.test(stripTruncatedTail('esta semana toca descarga y hay que cerrar la…')),
+      'y el resto de esa frase se sigue juzgando (si está en castellano, salta igual)');
     const cons = extractStrings(`console.warn('[wellness] lectura local:', e);`);
     yes(cons.length === 1 && isConsoleArg(cons[0].ctx), 'un argumento de console.* se reconoce como diagnóstico');
     const noCons = extractStrings(`toast('lectura local');`);
@@ -298,7 +324,7 @@ if (IS_MAIN) {
       if (allowed(s.text)) continue;
       if (isConsoleArg(s.ctx)) continue;
       if (seedRange && s.line >= seedRange[0] && s.line <= seedRange[1]) continue;
-      const m = s.text.match(RE_ES);
+      const m = stripTruncatedTail(s.text).match(RE_ES);
       if (m) hits.push({ line: s.line, word: m[1], text: s.text.trim().slice(0, 120) });
     }
     if (hits.length) {
@@ -319,7 +345,7 @@ if (IS_MAIN) {
     for (const s of htmlStrings(src)) {
       if (!/[A-Za-zÀ-ÿ]/.test(s.text)) continue;
       if (allowed(s.text)) continue;
-      const m = s.text.match(RE_ES);
+      const m = stripTruncatedTail(s.text).match(RE_ES);
       if (m) hits.push({ line: s.line, word: m[1], what: s.what, text: s.text.slice(0, 120) });
     }
     if (hits.length) {

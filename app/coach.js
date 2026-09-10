@@ -572,7 +572,7 @@ async function renderCoachGoalLine() {
 // LA VERSIÓN DE LA APP viaja al servidor (`clientVersion`) y al pack (`meta.appVersion`), que
 // es lo que permite luego saber qué código produjo una revisión rara.
 // `verify-coach-wiring.mjs` comprueba que coincide con la de index.html y con `CACHE_NAME`.
-const COACH_APP_VERSION = 'v11.72';
+const COACH_APP_VERSION = 'v11.73';
 
 const COACH_MAX_SESSION_IDS = 12;   // el tope que valida la edge function
 const COACH_MAX_EXERCISE_IDS = 150; // idem
@@ -657,11 +657,44 @@ function _cKg(v) {
   return (typeof _coachFmtKg === 'function') ? _coachFmtKg(Number(v)) : String(v);
 }
 function _cEsc(s) { return (typeof escapeHtml === 'function') ? escapeHtml(String(s == null ? '' : s)) : String(s == null ? '' : s); }
+// C-28: la causa en el toast. Tres toasts de coach.js decían sólo "Could not reject" /
+// "Could not restore" / "Could not build the pack" y la razón se quedaba en la consola.
+// Delega en `errText()` de app.js (recorte a 90 caracteres) y tiene respaldo propio porque
+// este fichero se carga como <script> aparte.
+function _cErr(e, fallback) {
+  if (typeof errText === 'function') return errText(e, fallback);
+  return (e && e.message) || fallback || 'unknown error';
+}
 function _cMd(md) {
   if (!md) return '';
   return (typeof markdownToBasicHtml === 'function') ? markdownToBasicHtml(md) : `<p>${_cEsc(md)}</p>`;
 }
 function _cWeekKey(ds) { return (typeof isoWeekKey === 'function') ? isoWeekKey(ds || today()) : null; }
+
+// C-26 (auditoría 2026-09-09): las sesiones "de pierna" para RUN-BEFORE-LEGS, en UN sitio.
+//
+// El predicado `subtype === 'lower' || subtype === 'full' || family === 'hybrid'` estaba
+// copiado TRES veces en este fichero: en el body que viaja a la función (`runWeeklyCoach`),
+// en el `ctx` del validador local (`_coachValidateCtx`) y en la fila `requested` del modo
+// manual (`requestManualCoachReview`). Que los tres coincidieran era la condición para que
+// "el API y el modo manual sean lo mismo", y nada lo comprobaba.
+//
+// Por qué `full` e `hybrid` cuentan: una sesión full-body carga las piernas igual que una
+// lower, y el acondicionamiento híbrido (trineo, farmer) es concéntrico dominante sobre
+// pierna. Dejarlos fuera haría que el guardarraíl aprobase un rodaje duro la víspera.
+//
+// @returns {string[]} ids de sesión; vacío si `sessionClassMap()` no está disponible.
+function _coachLowerSessionIds() {
+  try {
+    const map = (typeof sessionClassMap === 'function') ? sessionClassMap() : null;
+    return Object.entries(map || {})
+      .filter(([, cls]) => cls && (cls.subtype === 'lower' || cls.subtype === 'full' || cls.family === 'hybrid'))
+      .map(([sid]) => sid);
+  } catch (e) {
+    console.warn('[Coach] _coachLowerSessionIds:', e);
+    return [];
+  }
+}
 /** "W37" a partir de "2026-W37": el año sobra en una tarjeta de esta semana. */
 function _cWeekShort(wk) { const m = String(wk || '').match(/W(\d{2})$/); return m ? `W${m[1]}` : String(wk || ''); }
 /** La semana PARA la que se pide la revisión: domingo → la siguiente (motor, con test). */
@@ -1040,10 +1073,8 @@ async function runWeeklyCoach({ weekKey, userNote, regenerate, force } = {}) {
       // v11.66 (fn v4): la función valida la propuesta con `validatePlanVersion` antes de
       // guardarla y necesita saber qué sesiones cargan las piernas para RUN-BEFORE-LEGS. El
       // servidor lo deriva del plan si falta, pero sólo `sessionClassMap()` sabe que `full` e
-      // `hybrid` también cuentan. Misma lista que usa `_coachPreviewGuardrails` en la app.
-      lowerSessionIds: Object.entries((typeof sessionClassMap === 'function' ? sessionClassMap() : {}) || {})
-        .filter(([, c]) => c && (c.subtype === 'lower' || c.subtype === 'full' || c.family === 'hybrid'))
-        .map(([sid]) => sid),
+      // `hybrid` también cuentan. C-26: la lista, en `_coachLowerSessionIds()`.
+      lowerSessionIds: _coachLowerSessionIds(),
     };
     if (userNote) body.userNote = String(userNote).slice(0, COACH_MAX_USER_NOTE);
     if (regenerate) body.regenerate = true;
@@ -1249,14 +1280,8 @@ async function _coachValidateCtx(review, prev) {
   for (const s of Object.values(plan.sessions || {})) {
     for (const ex of (s.exercises || [])) if (ex && ex.id) libraryIds.add(ex.id);
   }
-  // Sesiones "de pierna" para RUN-BEFORE-LEGS: `full` e `hybrid` también cargan las piernas.
-  const lowerSessionIds = new Set();
-  try {
-    const map = (typeof sessionClassMap === 'function') ? sessionClassMap() : {};
-    for (const [sid, cls] of Object.entries(map || {})) {
-      if (cls && (cls.subtype === 'lower' || cls.subtype === 'full' || cls.family === 'hybrid')) lowerSessionIds.add(sid);
-    }
-  } catch (e) { /* sin el mapa, el chequeo se salta */ }
+  // C-26: el validador quiere un Set; la lista es la misma que viaja a la función.
+  const lowerSessionIds = new Set(_coachLowerSessionIds());
 
   let facts = review && review.facts ? review.facts : null;
   if (!facts) { try { facts = await buildCoachFactsFromStores(); } catch (e) { facts = null; } }
@@ -1448,7 +1473,7 @@ async function applyCoachProposal(review) {
     // sólo tocó kg y series, borrar los cambios de día que el usuario hizo a mano sería
     // deshacerle trabajo por nada.
     if (diff.weekTemplate && diff.weekTemplate.length > 0 && typeof clearFutureScheduleOverrides === 'function') {
-      try { await clearFutureScheduleOverrides(); } catch (e) {}
+      try { await clearFutureScheduleOverrides(); } catch (e) { console.warn('[Coach] clearFutureScheduleOverrides:', e); }
     }
 
     const row = Object.assign({}, review, {
@@ -1527,7 +1552,7 @@ async function rejectCoachProposal(review, reason) {
     return row;
   } catch (e) {
     console.warn('[Coach] rejectCoachProposal:', e);
-    if (typeof toast === 'function') toast('Could not reject');
+    if (typeof toast === 'function') toast(`Could not reject: ${_cErr(e)}`);
     return null;
   }
 }
@@ -1624,7 +1649,7 @@ async function rollbackPlanVersion(toId) {
     return nuevo;
   } catch (e) {
     console.warn('[Coach] rollbackPlanVersion:', e);
-    if (typeof toast === 'function') toast('Could not restore');
+    if (typeof toast === 'function') toast(`Could not restore: ${_cErr(e)}`);
     return null;
   }
 }
@@ -1824,6 +1849,46 @@ function COACH_CLOSE_WEEK_LABEL() {
     : 'Close the week and ask for the next';
 }
 
+// F-28 (auditoría 2026-09-09): cuántos días lleva la última carrera sin llegar.
+//
+// Cerrar la semana congela el pack de hechos: si intervals.icu o Strava no han sincronizado,
+// la revisión razona sobre una semana con menos kilómetros de los que Julian corrió y baja el
+// objetivo por un fallo de sincronización. El pack lo sabe (`staleness.runs`), pero lo sabe
+// DESPUÉS de cerrar, y en los estados desde los que se cierra (`none`, `expired`, `rejected`)
+// todavía no hay pack. Así que se calcula igual que `_factsStaleness`: el `date` más reciente
+// del store, en días.
+//
+// El umbral es el mismo del pack (`FACTS_STALE_DAYS = 2`) y NO bloquea el botón: los avisos
+// restringen al coach, no al usuario (principio 4 del plan v2.1).
+const COACH_RUNS_STALE_DAYS = 2;
+
+async function _coachRunsDaysAgo() {
+  try {
+    const runs = (await (typeof getRunsDeduped === 'function' ? getRunsDeduped() : dbGetAll('runs')).catch(() => [])) || [];
+    const sess = (await (typeof getSessionsDeduped === 'function' ? getSessionsDeduped() : dbGetAll('sessions')).catch(() => [])) || [];
+    const fechas = runs.map((r) => r && r.date)
+      .concat(sess.filter((s) => s && s.family === 'cardio').map((s) => s.date))
+      .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(String(d || '')))
+      .sort();
+    const ultima = fechas.pop();
+    if (!ultima) return null;                 // sin ninguna carrera no hay "vieja"
+    const dias = Math.round((Date.parse(today() + 'T00:00:00Z') - Date.parse(ultima + 'T00:00:00Z')) / 86400000);
+    return Number.isFinite(dias) ? { lastDate: ultima, daysAgo: dias } : null;
+  } catch (e) {
+    console.warn('[Coach] _coachRunsDaysAgo:', e);
+    return null;
+  }
+}
+
+/** La línea de aviso, o '' si la carrera está al día. */
+async function _coachStaleRunsHtml() {
+  const st = await _coachRunsDaysAgo();
+  if (!st || st.daysAgo <= COACH_RUNS_STALE_DAYS) return '';
+  return `<div class="coach-week-line coach-week-bad">Last cardio logged ${st.daysAgo} days ago`
+    + ` (${_cEsc(st.lastDate)}). Sync intervals.icu or Strava first, or the week gets reviewed`
+    + ` without those kilometres.</div>`;
+}
+
 function _coachCloseWeekBtn(id, label) {
   return `<button class="coach-btn coach-close-week" id="${id || 'coach-close-week'}">${_cEsc(label || COACH_CLOSE_WEEK_LABEL())}</button>`;
 }
@@ -1985,10 +2050,14 @@ async function renderCoachWeekCard(opts = {}) {
       cerrar = bid('coach-close-week');
     }
 
+    // F-28: el aviso sólo tiene sentido donde hay algo que cerrar.
+    const avisoCarrera = cerrar ? await _coachStaleRunsHtml() : '';
+
     el.innerHTML = `<div class="card coach-week-card">
       ${cabecera}
       ${bloqueLinea}
       ${cuerpo}
+      ${avisoCarrera}
       ${acciones ? `<div class="coach-actions">${acciones}</div>` : ''}
     </div>`;
 
@@ -2314,6 +2383,29 @@ async function _coachRenderDecisions(el) {
 const COACH_LEDGER_TOP = 15;
 let _coachLedgerAll = false;
 
+// F-25 (auditoría 2026-09-09): el CAVEAT de la regla, debajo de su fila del ledger.
+//
+// El ledger decía "REC-002 · citada 4 veces · strong" y ahí se acababa. El grado de evidencia
+// sin su salvedad es la mitad de la información y la mitad tranquilizadora: REC-001 es
+// `strong` Y lleva escrito que su banda se reescribió porque la mitad alta no tenía fuente;
+// REC-007 es `moderate` Y avisa de que la tabla por tipo de día nombra días de un plan
+// retirado. Sin eso, un `strong` en pantalla parece "esto está cerrado".
+//
+// TOLERANTE A LAS DOS FORMAS a propósito: `caveat` (cadena) y `caveats` (array, que es como
+// vienen en `research/evidence-to-rules.md`). `app/coach-rules.js` es un fichero GENERADO por
+// `scripts/build-rules-compact.mjs` y hoy sólo publica `rule` y `evidenceLevel`; en cuanto el
+// generador incluya la salvedad, esta línea la pinta sin tocar nada más. Mientras no la
+// incluya, no se pinta nada — no hay hueco vacío ni etiqueta sin contenido.
+const COACH_CAVEAT_MAX = 220;
+function _coachRuleCaveatHtml(regla) {
+  const raw = regla && (regla.caveat || regla.caveats);
+  const txt = Array.isArray(raw) ? raw.filter(Boolean).join(' · ') : raw;
+  const s = String(txt == null ? '' : txt).replace(/\s+/g, ' ').trim();
+  if (!s) return '';
+  const corto = s.length > COACH_CAVEAT_MAX ? s.slice(0, COACH_CAVEAT_MAX - 1) + '…' : s;
+  return `<div class="evl-caveat" title="${_cEsc(s)}">${_cEsc(corto)}</div>`;
+}
+
 async function _coachRenderLedger(el) {
   if (typeof buildEvidenceLedger !== 'function') { el.innerHTML = ''; return; }
   const all = await dbGetAll('decisions').catch(() => []);
@@ -2337,13 +2429,13 @@ async function _coachRenderLedger(el) {
       <span class="evl-week">Last</span>
       <span class="evl-grade">Evidence</span>
     </div>
-    ${visibles.map((f) => `<div class="evl-row${f.known ? '' : ' -unknown'}">
+    ${visibles.map((f) => `<div class="evl-item"><div class="evl-row${f.known ? '' : ' -unknown'}">
       <span class="evl-rule" title="${_cEsc((corpus[f.ruleId] || {}).rule || 'Rule with no text in the local corpus.')}">${_cEsc(f.ruleId)}</span>
       <span class="evl-num">${f.cited}</span>
       <span class="evl-num${f.retired ? ' -bad' : ''}">${f.retired || '·'}</span>
       <span class="evl-week">${_cEsc(_cWeekShort(f.lastWeek) || '·')}</span>
       <span class="evl-grade -${_cEsc(f.grade || 'unknown')}">${_cEsc(f.known ? (COACH_EVIDENCE_LABEL[f.grade] || f.grade || '—') : 'not in corpus')}</span>
-    </div>`).join('')}
+    </div>${_coachRuleCaveatHtml(corpus[f.ruleId])}</div>`).join('')}
     ${mas > 0 ? `<button class="evl-more" id="coach-ledger-more">Show all ${filas.length}</button>` : ''}
   </div>`;
   const btn = el.querySelector('#coach-ledger-more');
@@ -2432,7 +2524,7 @@ async function exportCoachFacts() {
   } catch (e) {
     console.warn('[Coach] exportCoachFacts:', e);
     if (out) { out.classList.remove('hidden'); out.innerHTML = `<p class="muted" style="font-size:11px;margin:0;color:var(--red)">${_cEsc((e && e.message) || 'error')}</p>`; }
-    if (typeof toast === 'function') toast('Could not build the pack');
+    if (typeof toast === 'function') toast(`Could not build the pack: ${_cErr(e)}`);
     return null;
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = 'Export facts JSON'; }
@@ -2514,9 +2606,7 @@ async function requestManualCoachReview({ weekKey, userNote } = {}) {
       currentPlan: _coachCurrentPlan(),
       allowed: _coachAllowed(),
       priorReviews: _coachPriorReviews(todas),
-      lowerSessionIds: Object.entries((typeof sessionClassMap === 'function' ? sessionClassMap() : {}) || {})
-        .filter(([, c]) => c && (c.subtype === 'lower' || c.subtype === 'full' || c.family === 'hybrid'))
-        .map(([sid]) => sid),
+      lowerSessionIds: _coachLowerSessionIds(),
     },
     userNote: userNote ? String(userNote).slice(0, COACH_MAX_USER_NOTE) : null,
     clientVersion: COACH_APP_VERSION,
@@ -2540,8 +2630,8 @@ if (typeof module !== 'undefined' && module.exports) {
     buildCoachFactsFromStores, maybeRunWeeklyCoach, runWeeklyCoach, pollCoachReview,
     applyCoachProposal, rejectCoachProposal, rollbackPlanVersion,
     renderCoachWeekCard, renderCoachView, openCoachView, coachDiffGroups,
-    _coachRenderLedger, COACH_LEDGER_TOP,
+    _coachRenderLedger, COACH_LEDGER_TOP, _coachRuleCaveatHtml, _coachStaleRunsHtml,
     exportCoachFacts, coachAutoApplyMode, setCoachAutoApply,
-    coachReviewMode, setCoachReviewMode, requestManualCoachReview,
+    coachReviewMode, setCoachReviewMode, requestManualCoachReview, _coachLowerSessionIds,
   };
 }

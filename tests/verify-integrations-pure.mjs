@@ -37,6 +37,20 @@
 //     el JSON reserializado en vez del cuerpo crudo): la comparación falla SIEMPRE y ningún
 //     evento entra nunca — o, peor, si se relajara la comprobación, entraría cualquiera.
 //
+// A-7 añade dos módulos y cinco silencios más:
+//
+//   · `normalizeActivity` leyendo `start_date` (UTC) en vez de `start_date_local`: la carrera de
+//     las 00:30 de Madrid se apunta al día anterior y la semana de carrera cuenta un día que no fue.
+//   · Un `feel: null` en el parche de `runs`. El servidor escribe con `merge_generic_row`
+//     (`data || patch`), así que un null no dice "no tengo dato": BORRA el que había. La
+//     sensación que el usuario tecleó sobre una carrera importada desaparece en el sync siguiente.
+//   · El `weight` suavizado de intervals.icu tratado como medida: inventa días de "peso estable"
+//     que son una sola pesada repetida, y con ellos una pendiente de peso falsa.
+//   · El parche de intervals.icu pisando el readiness de WHOOP o el peso de Withings: llega
+//     horas tarde y degradado, sin fases de sueño ni composición (D-1).
+//   · `maskSecret` enseñando parte de una clave corta, o un `•` por carácter: lo primero filtra
+//     un tercio de la credencial de intervals.icu, lo segundo publica su longitud.
+//
 // Node 25 borra los tipos de TypeScript sin build, así que el test importa los `.ts` directos.
 // Por eso esos dos módulos son de sintaxis borrable, con imports relativos `.ts` y sin tocar
 // `Deno` al cargarse: si alguien mete un `enum` o un `Deno.env.get` en el top level, este test
@@ -51,6 +65,11 @@ const dates = await import(pathToFileURL('supabase/functions/_shared/dates.ts').
 const measures = await import(pathToFileURL('supabase/functions/_shared/measures.ts').href);
 const wellnessMod = await import(pathToFileURL('supabase/functions/_shared/whoop-wellness.ts').href);
 const http = await import(pathToFileURL('supabase/functions/_shared/http.ts').href);
+// A-7: los dos módulos puros nuevos. Que este import funcione ya es una comprobación — si
+// alguien mete un `enum`, un import no relativo o un `Deno.env.get` en el top level, el test
+// deja de arrancar y el aviso llega antes del despliegue.
+const cardio = await import(pathToFileURL('supabase/functions/_shared/cardio-types.ts').href);
+const icu = await import(pathToFileURL('supabase/functions/_shared/intervals-wellness.ts').href);
 
 const { dayOf, pickNight, pickNightsByDay, parseOffsetMinutes } = dates;
 const { decodeMeasure, groupByDay, mergeBodyweight, buildBodyweightPatch, isManualRow, MEAS_TYPES } = measures;
@@ -443,6 +462,172 @@ eq(conIntervals.patch.source, 'withings', "con source 'withings'");
 const sinCambios = buildBodyweightPatch(scale, { ...scale });
 eq(Object.keys(sinCambios.patch).join(','), 'date',
    'resincronizar el mismo día no genera delta (sólo `date`): nada de churn en updated_at');
+
+// ── A-7 · los módulos puros de Strava e intervals.icu ─────────────────────────────────────
+//
+// EL FALLO QUE ESTA PARTE EXISTE PARA IMPEDIR: que un dato correcto acabe en el día equivocado,
+// con la magnitud equivocada o pisando el de otro proveedor, en silencio y sin que nada falle.
+//
+//   · `normalizeActivity` tomando la fecha de `start_date` (UTC) en vez de `start_date_local`:
+//     una carrera de las 00:30 de Madrid se apunta al día anterior, y la semana de carrera del
+//     coach cuenta un día que no fue.
+//   · `buildRunRow` mandando `feel: null`: el merge es `data || patch`, así que ese null BORRA
+//     la sensación que el usuario escribió sobre la carrera importada. Un número que tecleaste
+//     desapareciendo solo es la forma más rápida de dejar de fiarte de la app.
+//   · `weight` (la proyección suavizada de intervals.icu) tratado como medida: produce
+//     secuencias falsas de "peso estable" — tres días idénticos que son una sola pesada
+//     repetida — y con ellas una pendiente de peso y un ETA de objetivo inventados.
+//   · El parche de intervals.icu pisando el readiness de WHOOP: llega horas tarde y es una copia
+//     degradada del mismo número, sin fases de sueño ni SpO2.
+//   · El eco del peso de intervals.icu pisando la pesada de Withings: se pierde la hora, la
+//     composición y el decimal reales (D-1 de la auditoría 2026-09-09).
+//   · `maskSecret` revelando parte de una clave corta, o un `•` por carácter: lo primero filtra
+//     un tercio de la credencial, lo segundo publica su longitud.
+
+console.log('');
+console.log('A-7.1 maskSecret · un indicio, no una filtración');
+eq(http.maskSecret('abcdefghij1234'), '••••1234', 'clave larga: cuatro puntos y los cuatro últimos');
+eq(http.maskSecret('short12'), '••••', 'clave corta: NO se enseña nada de ella');
+eq(http.maskSecret('12345678'), '••••', 'ni con exactamente 2×keep caracteres');
+eq(http.maskSecret(''), '', 'sin clave, sin indicio');
+eq(http.maskSecret(null), '', 'y null no se convierte en la cadena "null"');
+yes(!/•{5,}/.test(http.maskSecret('unaClaveMuyMuyLargaDeVerdad')),
+    'el número de puntos es fijo: no publica la longitud de la clave');
+
+console.log('');
+console.log('A-7.2 normalizeActivity · la fecha LOCAL del proveedor, y nada inventado');
+const actNoche = cardio.normalizeActivity({
+  id: 99, type: 'Run', name: 'Late run',
+  start_date_local: '2026-09-09T00:30:00', start_date: '2026-09-08T22:30:00Z',
+  distance: 8000, moving_time: 2400, average_heartrate: 152.4,
+}, 'strava_');
+eq(actNoche.date, '2026-09-09',
+   'la fecha sale de start_date_local: con start_date (UTC) saldría el día 8');
+eq(actNoche.recordId, 'strava_99', 'el record_id lleva el prefijo de la vía de importación');
+eq(actNoche.sourceId, '99', 'y el id del proveedor va aparte, para la columna source_id');
+eq(actNoche.distanceKm, 8, 'metros → km');
+eq(actNoche.durationMin, 40, 'segundos → minutos');
+eq(actNoche.avgHR, 152, 'el pulso medio se redondea');
+eq(cardio.formatPace(actNoche.paceSecPerKm), '5:00', 'y el ritmo sale en m:ss por km');
+yes(actNoche.isRun, 'una Run va a `runs`');
+yes(!cardio.normalizeActivity({ id: 1, type: 'Ride', start_date_local: '2026-09-09T10:00:00' }, 'icu_').isRun,
+    'y una Ride, a `sessions`');
+// La MISMA actividad por las dos vías NO comparte record_id: la deduplicación en lectura es la
+// que decide cuál se cuenta, y fundirlas aquí borraría la evidencia de que llegaron por dos.
+const porIcu = cardio.normalizeActivity({ id: 99, type: 'Run', start_date_local: '2026-09-09T00:30:00', distance: 8000, moving_time: 2400 }, 'icu_');
+yes(porIcu.recordId !== actNoche.recordId, 'la misma actividad por Strava y por intervals.icu no colisiona');
+// Descartes: sin fecha utilizable y con tipo no importable.
+yes(cardio.normalizeActivity({ id: 2, type: 'Run' }, 'strava_') === null, 'sin fecha, no se importa');
+yes(cardio.normalizeActivity({ id: 3, type: 'Yoga', start_date_local: '2026-09-09T10:00:00' }, 'strava_') === null,
+    'y un tipo que no es cardio tampoco');
+
+console.log('');
+console.log('A-7.3 buildRunRow / buildSessionRow · ni un null en el parche');
+const runRow = cardio.buildRunRow(actNoche, 'strava', 1700);
+yes(!('feel' in runRow), '`feel` NO va en el parche: es del usuario y el merge lo borraría');
+yes(Object.values(runRow).every((v) => v !== null && v !== undefined),
+    'y no queda ni un null (con `data || patch`, un null es un borrado)');
+eq(runRow.source, 'strava', 'la fuente queda escrita en la fila');
+eq(runRow.notes, 'Late run', 'en `runs`, `notes` es el nombre de la actividad en el proveedor');
+eq(runRow._updated_at, 1700, 'y la marca de tiempo la pone el llamador (test reproducible)');
+
+const sesIntervalos = cardio.normalizeActivity({
+  id: 5, type: 'VirtualRide', name: 'Bike VO2', start_date_local: '2026-09-09T18:00:00',
+  distance: 20000, moving_time: 3600, icu_intensity: 'VO2 Max', icu_training_load: 88,
+}, 'icu_');
+const sesRow = cardio.buildSessionRow(sesIntervalos, 'intervals.icu', 1700);
+eq(sesRow.sessionType, 'cardio.intervals', 'la etiqueta de intensidad decide el subtipo');
+eq(sesRow.budgetWeight, 2, 'y con ella el peso en el presupuesto de días duros (0,5 → 2)');
+eq(sesRow.subtypeInferred, false, 'con etiqueta, el subtipo NO es inferido');
+yes(!('perceivedEffort' in sesRow) && !('notes' in sesRow),
+    'el esfuerzo percibido y las notas son del usuario: no van en el parche');
+const sesStrava = cardio.buildSessionRow(
+  cardio.normalizeActivity({ id: 6, type: 'Rowing', start_date_local: '2026-09-09T18:00:00', distance: 5000, moving_time: 1200 }, 'strava_'),
+  'strava', 1700);
+eq(sesStrava.sessionType, 'cardio.zone2', 'Strava no da intensidad → zona 2');
+eq(sesStrava.subtypeInferred, true, 'y queda marcado como inferido (GEN-002)');
+eq(sesStrava.budgetWeight, 0.5, 'con el peso de zona 2');
+
+console.log('');
+console.log('A-7.4 buildIntervalsWellnessPatch · sólo lo que intervals.icu trae de verdad');
+const filaIcu = {
+  id: '2026-09-09', readiness: 68.6, hrv: 91.2, restingHR: 48, tempRestingHR: 47,
+  sleepSecs: 25200, sleepScore: 82.4, ctl: 41.3, atl: 52.8, rampRate: 3.1, steps: 11402,
+  tempWeight: 84.35, weight: 84.4, bodyFat: 17.1, carbohydrates: 210, fatTotal: 70,
+  hrv_unknown_field: 5, comments: '  buen día  ',
+};
+const parche = icu.buildIntervalsWellnessPatch(filaIcu);
+eq(parche.readiness, 69, 'el readiness se redondea a entero');
+eq(parche.restingHRMeasured, 47, 'tempRestingHR entra como restingHRMeasured (la medida cruda)');
+eq(parche.weightMeasured, 84.4, 'tempWeight entra como weightMeasured');
+eq(parche.weight, 84.4, 'y `weight` sigue siendo la proyección suavizada');
+eq(parche.carbs, 210, 'carbohydrates → carbs');
+eq(parche.fat, 70, 'fatTotal → fat');
+eq(parche.comments, 'buen día', 'los comentarios se recortan');
+eq(parche.source, 'intervals.icu', 'la fila dice de quién es');
+yes(!('spO2' in parche) && !('lactate' in parche),
+    'lo que la fila NO trae no aparece en el parche (un null borraría lo que puso WHOOP)');
+yes(!('hrv_unknown_field' in parche),
+    'y una clave desconocida del proveedor no se cuela en `wellness` sin pasar por el mapeo');
+yes(icu.hasSignal(parche), 'hay señal más allá de `date` y `source`');
+yes(!icu.hasSignal({ date: '2026-09-09', source: 'intervals.icu' }),
+    'y una fila con sólo metadatos NO se escribe (sería churn de updated_at)');
+// Rango de plausibilidad del peso: un 0 o un 900 no es un peso, es basura.
+yes(!('weight' in icu.buildIntervalsWellnessPatch({ id: '2026-09-09', weight: 0 })),
+    'un peso de 0 kg se descarta');
+yes(!('weight' in icu.buildIntervalsWellnessPatch({ id: '2026-09-09', weight: 843.5 })),
+    'y uno de 843 kg también (un `unit` mal aplicado en origen)');
+
+console.log('');
+console.log('A-7.5 filterForeignKeys · intervals.icu sólo pisa lo que es suyo');
+const conWhoop = icu.filterForeignKeys(parche, { readinessSource: 'whoop' });
+yes(!('readiness' in conWhoop.patch) && !('hrv' in conWhoop.patch) && !('sleepSecs' in conWhoop.patch),
+    'si WHOOP escribió el día, su recuperación y su sueño se quitan del parche');
+eq(conWhoop.patch.ctl, 41.3, 'pero CTL/ATL/rampRate siguen entrando: son de intervals.icu');
+eq(conWhoop.patch.steps, 11402, 'y los pasos también');
+yes(conWhoop.dropped.includes('readiness') && conWhoop.dropped.includes('sleepScore'),
+    'y se dice QUÉ se dejó fuera (si no, "7 días escritos" no distingue 7 completos de 7 vacíos)');
+const conBascula = icu.filterForeignKeys(parche, { weightSource: 'withings' });
+yes(!('weight' in conBascula.patch) && !('weightMeasured' in conBascula.patch) && !('bodyFat' in conBascula.patch),
+    'si el peso es de la báscula, el eco de intervals.icu no lo toca (D-1)');
+eq(conBascula.patch.readiness, 69, 'y el readiness sí, porque WHOOP no escribió ese día');
+const conLosDos = icu.filterForeignKeys(parche, { readinessSource: 'whoop', weightSource: 'withings' });
+yes(!('readiness' in conLosDos.patch) && !('weight' in conLosDos.patch),
+    'con los dos dueños presentes se respetan los dos');
+eq(conLosDos.patch.ctl, 41.3, 'y lo que no es de nadie más sigue entrando');
+eq(icu.filterForeignKeys(parche, null).dropped.length, 0, 'sin fila previa no se quita nada');
+// La lista de claves de WHOOP incluye el desglose de sueño y las que empiezan por `whoop`.
+yes(icu.isWhoopOwnedKey('sleepRemSecs') && icu.isWhoopOwnedKey('whoopStrain') && icu.isWhoopOwnedKey('readinessSource'),
+    'isWhoopOwnedKey cubre el desglose de sueño, el prefijo `whoop*` y `readinessSource`');
+yes(!icu.isWhoopOwnedKey('ctl') && !icu.isWhoopOwnedKey('steps') && !icu.isWhoopOwnedKey('weight'),
+    'y NO cubre lo que WHOOP no da (si lo hiciera, intervals.icu no podría escribir nada útil)');
+
+console.log('');
+console.log('A-7.6 decideBodyweightWrite · quién gana en `bodyweight`');
+const D = (m, p, ex, prev) => icu.decideBodyweightWrite('2026-09-09', m, p, ex, prev, 900);
+eq(D(84.3, 84.4, null, null).patch.weight, 84.3, 'la medida cruda gana a la proyección');
+eq(D(84.3, 84.4, null, null).patch.measured, true, 'y se marca como medida');
+eq(D(84.3, 84.4, { source: 'withings', weight: 84.1 }, null).patch, null,
+   'la pesada de Withings NO se pisa (trae hora y composición)');
+eq(D(84.3, 84.4, { weight: 85.0 }, null).patch, null,
+   'un peso escrito a mano en la app tampoco (fila sin `source`)');
+eq(D(null, 84.4, null, 84.2).patch.weight, 84.4, 'sin medida, la proyección entra si CAMBIA');
+eq(D(null, 84.4, null, 84.4).patch, null,
+   'y no entra si es idéntica al día anterior: inventaría un día de "peso estable"');
+eq(D(null, 84.4, null, 84.4).weightUsed, 84.4,
+   'aunque sigue sirviendo como "último peso conocido" para las estimaciones de calorías');
+eq(D(null, 84.4, { measured: true, weight: 84.0, source: 'intervals.icu' }, 83.0).patch, null,
+   'y una proyección no sustituye una medida real del mismo día');
+eq(D(null, null, null, null).patch, null, 'sin peso no se escribe nada');
+eq(D(null, null, null, null).reason, 'sin peso', 'con el motivo escrito: un salto silencioso parece un fallo');
+
+console.log('');
+console.log('A-7.7 buildStepsRow · rango y nada más');
+eq(icu.buildStepsRow({ id: '2026-09-09', steps: 11402.6 }, 900).steps, 11403, 'los pasos se redondean');
+eq(icu.buildStepsRow({ id: '2026-09-09', steps: 11402 }, 900).source, 'intervals.icu', 'con su fuente');
+yes(icu.buildStepsRow({ id: '2026-09-09' }, 900) === null, 'un día sin pasos no escribe fila');
+yes(icu.buildStepsRow({ id: '2026-09-09', steps: 250000 }, 900) === null,
+    'y 250.000 pasos no es un día: es basura');
 
 console.log(failed === 0 ? '\nTODO OK' : `\n${failed} FALLOS`);
 process.exit(failed === 0 ? 0 : 1);

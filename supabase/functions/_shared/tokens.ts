@@ -14,10 +14,21 @@
 //      distinto del que falló, otro acabó de refrescar y usamos el suyo.
 //   4. **`needs_reconnect` sólo por `invalid_grant` real** (o un 401 que sobrevive al refresco).
 //      5xx, red, 429 e `invalid_client` conservan los tokens: reconectar no arregla nada de eso.
+//
+// A-7 (2026-09-10) añade los dos proveedores que quedaban en el teléfono:
+//   · **Strava** (`strava.ts`), OAuth con rotación: entra por el camino de siempre, sin excepciones.
+//   · **intervals.icu** (`intervals.ts`), API KEY con HTTP Basic: `kind: "apikey"`. No caduca y
+//     no se refresca, así que NO pasa por el mutex — `getApiKey` + `withApiKeyFetch`. Las dos
+//     guardas que impiden mezclar los caminos (`getValidToken` y `getApiKey` se rechazan
+//     mutuamente por `kind`) están ahí porque el fallo sería silencioso: una clave válida
+//     mandada al camino OAuth acaba en `needs_reconnect` por "sin refresh_token" y la
+//     integración se apaga sola.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { whoopAdapter } from "./whoop.ts";
 import { withingsAdapter } from "./withings.ts";
+import { stravaAdapter } from "./strava.ts";
+import { intervalsAdapter } from "./intervals.ts";
 import {
   ConfigError,
   PROVIDER_TIMEOUT_MS,
@@ -34,7 +45,19 @@ import {
 export { ConfigError, ProviderFatalAuthError, ProviderTransientError, ReconnectRequired, RefreshInProgress };
 
 export type Supa = ReturnType<typeof createClient>;
-export type ProviderId = "whoop" | "withings";
+export type ProviderId = "whoop" | "withings" | "strava" | "intervals";
+
+/**
+ * Dos clases de credencial, y la diferencia NO es cosmética (A-7):
+ *   · `oauth`   — WHOOP, Withings, Strava: par access/refresh, caduca, ROTA. Todo el mutex de
+ *                 `refreshWithLock` existe para ellos.
+ *   · `apikey`  — intervals.icu: una clave personal de larga vida, HTTP Basic, sin caducidad y
+ *                 sin refresco posible. Mandarla por el camino OAuth no es "un poco peor": el
+ *                 refresco fallaría, marcaría `needs_reconnect` y la integración se apagaría
+ *                 sola con una credencial perfectamente válida guardada. `kind` es la puerta
+ *                 que impide que eso pase por descuido.
+ */
+export type ProviderKind = "oauth" | "apikey";
 
 export interface TokenSet {
   access_token: string;
@@ -46,6 +69,7 @@ export interface TokenSet {
 
 export interface ProviderAdapter {
   id: ProviderId;
+  kind: ProviderKind;
   apiBase: string;
   scopes: string;
   authorizeUrl(state: string, redirectUri: string): string;
@@ -54,6 +78,8 @@ export interface ProviderAdapter {
   fetchExternalUserId(accessToken: string): Promise<string | null>;
   revoke(accessToken: string): Promise<boolean>;
   isAuthFailure(status: number, body: unknown): boolean;
+  /** Cómo se autentica una llamada a la API. Por defecto `Bearer`; intervals.icu usa Basic. */
+  authHeader?(credential: string): string;
 }
 
 export interface TokenRow {
@@ -89,7 +115,21 @@ const POLL_MAX_MS = 5_000;
 const ADAPTERS: Record<string, ProviderAdapter> = {
   whoop: whoopAdapter as unknown as ProviderAdapter,
   withings: withingsAdapter as unknown as ProviderAdapter,
+  strava: stravaAdapter as unknown as ProviderAdapter,
+  intervals: intervalsAdapter as unknown as ProviderAdapter,
 };
+
+/**
+ * El registro ES la lista de proveedores. `isProvider` se derivaba a mano con un `||` por
+ * proveedor y en A-7 había que tocarlo en dos sitios: derivarlo de `ADAPTERS` hace imposible
+ * registrar un adaptador que las funciones sigan rechazando por "provider inválido" (o al
+ * revés, aceptar un `provider` del cuerpo para el que no hay adaptador y caer con un
+ * `undefined is not a function` tres llamadas más abajo).
+ *
+ * El `check (provider in (...))` de la migración tiene que llevar EXACTAMENTE estos cuatro:
+ * `tests/verify-integrations-wiring.mjs` compara las dos listas.
+ */
+export const PROVIDERS = Object.keys(ADAPTERS) as ProviderId[];
 
 export function getAdapter(provider: string): ProviderAdapter {
   const a = ADAPTERS[provider];
@@ -98,8 +138,13 @@ export function getAdapter(provider: string): ProviderAdapter {
 }
 
 export function isProvider(p: unknown): p is ProviderId {
-  return p === "whoop" || p === "withings";
+  return typeof p === "string" && Object.prototype.hasOwnProperty.call(ADAPTERS, p);
 }
+
+// No hay un `isOAuthProvider()` a propósito: los dos sitios que necesitan la distinción
+// (`integrations-oauth` y `integrations-callback`) ya tienen el adaptador en la mano y leen
+// `adapter.kind`. Un envoltorio de una línea con un solo uso es exactamente el tipo de símbolo
+// muerto que C-30 fue a limpiar.
 
 let _svc: Supa | null = null;
 export function serviceClient(): Supa {
@@ -159,6 +204,53 @@ export async function upsertTokens(
   if (error) throw new Error(`integration_tokens upsert: ${error.message}`);
 }
 
+/**
+ * Alta o reemplazo de una credencial de tipo API KEY (A-7: intervals.icu).
+ *
+ * Se separa de `upsertTokens` a propósito y no se reutiliza pasando `expires_in: 0`: la clave
+ * va en `access_token` (ver la cabecera de `intervals.ts`), `refresh_token` se deja a NULL para
+ * que un refresco sea imposible por construcción y `expires_at` a NULL para que
+ * `getValidToken` — si alguien la mandara por el camino OAuth — no crea que caducó hace años y
+ * dispare un refresco que no existe.
+ */
+export async function upsertApiKey(
+  supa: Supa,
+  userId: string,
+  provider: ProviderId,
+  apiKey: string,
+  externalUserId: string | null,
+): Promise<void> {
+  if (getAdapter(provider).kind !== "apikey") {
+    throw new Error(`upsertApiKey: ${provider} no es un proveedor de API key`);
+  }
+  const now = new Date();
+  const row = {
+    user_id: userId,
+    provider,
+    access_token: apiKey,
+    refresh_token: null,
+    expires_at: null,
+    scope: null,
+    external_user_id: externalUserId,
+    status: "active",
+    last_refresh_at: now.toISOString(),
+    last_error: null,
+    refresh_lock_until: null,
+    updated_at: now.toISOString(),
+  };
+  const { error } = await supa.from(TABLE_TOKENS).upsert(row, { onConflict: "user_id,provider" });
+  if (error) throw new Error(`integration_tokens upsert (${provider}): ${error.message}`);
+}
+
+/**
+ * Borrado de la credencial. El trigger de la migración deja `integration_status` en
+ * 'disconnected', así que la PWA se entera sin que nadie tenga que acordarse de escribirlo.
+ */
+export async function deleteTokens(supa: Supa, userId: string, provider: ProviderId): Promise<void> {
+  const { error } = await supa.from(TABLE_TOKENS).delete().eq("user_id", userId).eq("provider", provider);
+  if (error) throw new Error(`integration_tokens delete (${provider}): ${error.message}`);
+}
+
 /** Campos de `integration_status` que NO derivan de los tokens (los del trigger no se tocan). */
 export async function markSynced(
   supa: Supa,
@@ -181,7 +273,13 @@ async function releaseLock(supa: Supa, userId: string, provider: ProviderId, las
   if (error) console.error(`[${provider}] no se pudo soltar el lock: ${error.message}`);
 }
 
-async function markNeedsReconnect(supa: Supa, userId: string, provider: ProviderId, reason: string): Promise<void> {
+/**
+ * Marca la integración como "hay que reconectar". Exportada desde A-7 porque los proveedores de
+ * API KEY no pasan por `refreshWithLock`, que era el único camino a este estado: sin esto, una
+ * clave de intervals.icu revocada dejaría la fila en `active` para siempre y la tarjeta de
+ * Ajustes seguiría diciendo "Connected" mientras el cron falla en silencio cada día.
+ */
+export async function markNeedsReconnect(supa: Supa, userId: string, provider: ProviderId, reason: string): Promise<void> {
   const { error } = await supa
     .from(TABLE_TOKENS)
     .update({ status: "needs_reconnect", last_error: clip(reason, 400), refresh_lock_until: null })
@@ -318,6 +416,13 @@ async function waitForOtherRefresh(
 
 /** Access token válido, refrescando preventivamente si caduca en menos de 5 minutos. */
 export async function getValidToken(supa: Supa, provider: ProviderId, userId: string): Promise<string> {
+  // GUARDA DE A-7. Una API key no caduca y no se puede refrescar: si `intervals` llegara aquí,
+  // `expires_at` es null → `!expMs` → `refreshWithLock` → "sin refresh_token" →
+  // `needs_reconnect`. La integración se apagaría sola con una credencial válida guardada. El
+  // error explícito convierte ese fallo silencioso en un fallo de programación visible.
+  if (getAdapter(provider).kind !== "oauth") {
+    throw new Error(`getValidToken: ${provider} usa API key — llamar a getApiKey`);
+  }
   const row = await loadTokenRow(supa, userId, provider);
   if (!row) throw new ReconnectRequired(provider, `${provider} no está conectado`);
   if (row.status === "needs_reconnect") {
@@ -330,6 +435,36 @@ export async function getValidToken(supa: Supa, provider: ProviderId, userId: st
   return row.access_token;
 }
 
+/**
+ * La API key guardada, sin refrescar nada. El equivalente de `getValidToken` para los
+ * proveedores de tipo `apikey` (A-7: intervals.icu).
+ *
+ * NUNCA devuelve la clave a un llamador que no sea el servidor: `intervals-sync` la usa para
+ * construir la cabecera Basic y punto. Lo que viaja a la app es `maskSecret(...)`.
+ */
+export async function getApiKey(supa: Supa, provider: ProviderId, userId: string): Promise<string> {
+  if (getAdapter(provider).kind !== "apikey") {
+    throw new Error(`getApiKey: ${provider} usa OAuth — llamar a getValidToken`);
+  }
+  const row = await loadTokenRow(supa, userId, provider);
+  if (!row) throw new ReconnectRequired(provider, `${provider} no está conectado`);
+  if (row.status === "needs_reconnect") {
+    throw new ReconnectRequired(provider, row.last_error || `${provider} necesita una clave nueva`);
+  }
+  if (!row.access_token) throw new ReconnectRequired(provider, `${provider}: no hay API key guardada`);
+  return row.access_token;
+}
+
+/** El id del usuario en el proveedor (atleta de intervals.icu, athlete de Strava, …). */
+export async function getExternalUserId(
+  supa: Supa,
+  provider: ProviderId,
+  userId: string,
+): Promise<string | null> {
+  const row = await loadTokenRow(supa, userId, provider);
+  return row ? row.external_user_id : null;
+}
+
 export interface ProviderResponse {
   status: number;
   headers: Headers;
@@ -337,14 +472,25 @@ export interface ProviderResponse {
   json: unknown;
 }
 
-async function rawFetch(url: string, init: RequestInit, token: string, provider: string): Promise<ProviderResponse> {
+async function rawFetch(
+  url: string,
+  init: RequestInit,
+  credential: string,
+  provider: string,
+  adapter: ProviderAdapter,
+): Promise<ProviderResponse> {
   let res: Response;
+  // A-7: la cabecera la decide el ADAPTADOR. `Bearer` sigue siendo el defecto (WHOOP, Withings,
+  // Strava); intervals.icu usa HTTP Basic `API_KEY:<clave>`. Con el `Bearer` fijo aquí, la
+  // alternativa era un segundo camino de red para intervals — otro `fetch` que clasificar, otro
+  // sitio donde olvidarse del timeout y del 401.
+  const authorization = adapter.authHeader ? adapter.authHeader(credential) : `Bearer ${credential}`;
   try {
     // C-11: 15 s por llamada a la API del proveedor. Sin tope, un listado colgado dejaba el
     // sync del cron ocupado hasta el límite del isolate y la pasada siguiente entraba encima.
     res = await fetchWithTimeout(url, {
       ...init,
-      headers: { ...(init.headers as Record<string, string> | undefined), Authorization: `Bearer ${token}` },
+      headers: { ...(init.headers as Record<string, string> | undefined), Authorization: authorization },
     }, PROVIDER_TIMEOUT_MS);
   } catch (err) {
     // Timeout incluido: transitorio. Nunca `needs_reconnect` — los tokens quedan intactos.
@@ -373,8 +519,12 @@ export async function withProviderFetch(
   supa: Supa = serviceClient(),
 ): Promise<ProviderResponse> {
   const adapter = getAdapter(provider);
+  // A-7: los proveedores de API key no tienen nada que refrescar, así que no entran en el
+  // bucle 401 → refresco → reintento. Un 401 suyo significa "la clave ya no vale".
+  if (adapter.kind === "apikey") return await withApiKeyFetch(adapter, provider, userId, url, init, supa);
+
   let token = await getValidToken(supa, provider, userId);
-  let out = await rawFetch(url, init, token, provider);
+  let out = await rawFetch(url, init, token, provider, adapter);
 
   // GUARD DE UN SOLO REINTENTO (`MAX_AUTH_RETRIES`). Si tras refrescar la API sigue diciendo
   // 401, el problema no es el token sino el permiso: reintentar en bucle sólo gasta rate limit
@@ -389,9 +539,48 @@ export async function withProviderFetch(
     authRetries++;
     console.log(`[${provider}] 401 → refresh → retry`);
     token = await refreshWithLock(supa, provider, userId, token);
-    out = await rawFetch(url, init, token, provider);
+    out = await rawFetch(url, init, token, provider, adapter);
   }
 
+  if (out.status === 429) {
+    throw new ProviderTransientError(
+      `[${provider}] 429 rate limit`,
+      429,
+      out.headers.get("X-RateLimit-Reset") || out.headers.get("Retry-After"),
+    );
+  }
+  if (out.status >= 500) {
+    throw new ProviderTransientError(`[${provider}] ${out.status} ${clip(out.text, 160)}`, out.status);
+  }
+  return out;
+}
+
+/**
+ * Llamada autenticada con API KEY (A-7). Misma clasificación de errores que el camino OAuth,
+ * SIN el bucle de refresco:
+ *
+ *   · 401/403 → la clave está revocada o no cubre a ese atleta. Se marca `needs_reconnect` y se
+ *     lanza `ReconnectRequired`, que es lo que hace que la tarjeta de Ajustes pinte "Reconnect"
+ *     en vez de "Connected" con un cron fallando en silencio detrás. NO se reintenta: reenviar
+ *     la misma clave da el mismo 401 y sólo gasta cuota.
+ *   · 429 y 5xx → transitorio. La clave se CONSERVA: intervals.icu limita a ~60 peticiones por
+ *     minuto y un 429 no significa nada sobre la validez de la credencial.
+ */
+async function withApiKeyFetch(
+  adapter: ProviderAdapter,
+  provider: ProviderId,
+  userId: string,
+  url: string,
+  init: RequestInit,
+  supa: Supa,
+): Promise<ProviderResponse> {
+  const key = await getApiKey(supa, provider, userId);
+  const out = await rawFetch(url, init, key, provider, adapter);
+
+  if (adapter.isAuthFailure(out.status, out.json)) {
+    await markNeedsReconnect(supa, userId, provider, `API ${out.status}: la credencial fue rechazada`);
+    throw new ReconnectRequired(provider, `${provider}: the saved credential was rejected`);
+  }
   if (out.status === 429) {
     throw new ProviderTransientError(
       `[${provider}] 429 rate limit`,

@@ -10,9 +10,18 @@
 //     proxy OAuth de Strava. El arreglo es una línea (`asUser.auth.getUser()`) y se deshace
 //     igual de fácil — un `const { user_id } = body` de vuelta y nada falla, nada avisa.
 //
-//   · **Los dos `CARDIO_TYPE_MAP` divergiendo** (C-7). El mismo mapa vive en `app/app.js` (vía
-//     intervals.icu) y en `strava-sync/index.ts` (vía Strava), con un "keep in sync" a mano y
-//     cero comprobaciones. Ya se había roto de las dos formas posibles, cada una silenciosa:
+//   · **`strava-sync` devolviendo un token al teléfono** (A-7). La función era un PROXY SIN
+//     ESTADO: `exchange` devolvía el par access/refresh al navegador y `refresh` lo recibía en
+//     el cuerpo. Strava ROTA el refresh token, así que dos almacenamientos (la PWA instalada y
+//     Safari, separados en iOS) se pisaban y el segundo recibía `refresh_token invalid` →
+//     "Strava se ha desconectado sola". Ahora los tokens viven en `integration_tokens` y por el
+//     cuerpo no entra ni sale ninguno; un solo `body.access_token` de vuelta lo deshace y nada
+//     falla, nada avisa.
+//
+//   · **Los `CARDIO_TYPE_MAP` divergiendo** (C-7). El mismo mapa vive en `app/app.js` (vía
+//     intervals.icu) y en `_shared/cardio-types.ts` (las dos vías del servidor), con un "keep in
+//     sync" a mano y cero comprobaciones. Ya se había roto de las dos formas posibles, cada una
+//     silenciosa:
 //       — faltaba `VirtualSki` en el servidor, así que toda sesión de SkiErg que llegara por
 //         Strava se descartaba sin ruido (`skipped`, que nadie mira);
 //       — sobraban `Walk`/`Hike`, que la app NO importa por decisión de Julian (2026-08-18),
@@ -34,15 +43,24 @@
 // Ejecutar desde la raíz del repo: node tests/verify-strava-steps-fns.mjs
 
 import { readFileSync, existsSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
 
 const read = (p) => (existsSync(p) ? readFileSync(p, 'utf8') : '');
 
 const STRAVA = read('supabase/functions/strava-sync/index.ts');
+const STRAVA_SYNC = read('supabase/functions/_shared/strava-sync.ts');
+const IMPORT = read('supabase/functions/_shared/activity-import.ts');
 const STEPS = read('supabase/functions/steps-ingest/index.ts');
 const MEAL = read('supabase/functions/parse-meal-photo/index.ts');
 const APPJS = read('app/app.js');
 const HTTP = read('supabase/functions/_shared/http.ts');
 const CONFIG = read('supabase/config.toml');
+
+// `_shared/cardio-types.ts` es PURO (sintaxis borrable, cero imports, cero globals de Deno), así
+// que Node 25 lo importa sin build y se compara el VALOR que corre, no un texto parecido. Si
+// alguien mete un `enum` o un `Deno.env.get` en el top level, este import revienta y el aviso
+// llega antes del despliegue.
+const cardio = await import(pathToFileURL('supabase/functions/_shared/cardio-types.ts').href);
 
 let failed = 0;
 const ok = (m) => console.log(`  ok   ${m}`);
@@ -51,51 +69,102 @@ const yes = (cond, m) => (cond ? ok(m) : bad(m));
 const eq = (got, want, m) =>
   (String(got) === String(want) ? ok(m) : bad(`${m} — esperaba ${want}, obtuve ${got}`));
 
-// ── 1. strava-sync: el usuario sale del JWT, jamás del cuerpo ──────────────────────────────
-console.log('1. strava-sync · el usuario del JWT, nunca del cuerpo (S-1)');
-const syncBody = STRAVA.slice(STRAVA.indexOf('if (action === "sync")'));
-yes(/asUser\.auth\.getUser\(\)/.test(syncBody), 'el usuario se resuelve con asUser.auth.getUser()');
-yes(/SUPABASE_ANON_KEY/.test(syncBody) && /Authorization: authHeader/.test(syncBody),
+// ── 1. strava-sync: el usuario sale del JWT, jamás del cuerpo — y el token, de la BASE ─────
+//
+// A-7 reescribió la función: el volcado vive en `_shared/strava-sync.ts` y la escritura en
+// `_shared/activity-import.ts`, así que las comprobaciones apuntan a los tres ficheros. Lo que
+// se protege es lo mismo de siempre, más una invariante nueva: **por el cuerpo no entra ni sale
+// una credencial**.
+console.log('1. strava-sync · el usuario del JWT y el token de la base (S-1 + A-7)');
+yes(/asUser\.auth\.getUser\(\)/.test(STRAVA), 'el usuario se resuelve con asUser.auth.getUser()');
+yes(/SUPABASE_ANON_KEY/.test(STRAVA) && /Authorization: authHeader/.test(STRAVA),
     'con un cliente que lleva el Authorization de la petición (no la service role)');
-yes(/if \(userErr \|\| !userData\?\.user\) return jsonResponse\(\{ error: "Invalid session" \}, 401\)/.test(syncBody),
+yes(/if \(userErr \|\| !userData\?\.user\) return json\(\{ error: "Token inválido" \}, 401\)/.test(STRAVA),
     'una sesión inválida es un 401, no un fallback a nada');
-yes(!/body\.user_id/.test(STRAVA) && !/user_id\s*\}\s*=\s*body/.test(STRAVA),
+yes(!/body\.user_id/.test(STRAVA) && !/user_id\s*\}\s*=\s*body/.test(STRAVA) && !/body\?\.user_id/.test(STRAVA),
     'body.user_id no se lee en NINGÚN sitio de la función');
-eq((syncBody.match(/user_id: userId/g) || []).length, 2,
-   'los dos upserts (runs y sessions) escriben el userId del JWT');
-yes(/SUPABASE_SERVICE_ROLE_KEY/.test(syncBody),
+// LA INVARIANTE DE A-7. Hasta v11.70 el cliente mandaba `access_token` en el cuerpo de `sync` y
+// recibía el par rotado en la respuesta de `refresh`. Un solo `body.access_token` de vuelta
+// devuelve la credencial al teléfono y nada falla, nada avisa.
+for (const [fichero, src] of [
+  ['strava-sync/index.ts', STRAVA],
+  ['_shared/strava-sync.ts', STRAVA_SYNC],
+  ['_shared/activity-import.ts', IMPORT],
+]) {
+  yes(!/body[.?]{1,2}access_token/.test(src) && !/access_token\s*\}\s*=\s*body/.test(src),
+      `${fichero}: el access token NO se lee del cuerpo`);
+  yes(!/access_token:/.test(src) && !/refresh_token:/.test(src),
+      `${fichero}: y ninguna respuesta lleva un token dentro`);
+}
+yes(/RETIRED_ACTIONS = \["exchange", "refresh"\]/.test(STRAVA),
+    'las dos acciones del proxy viejo siguen ACEPTÁNDOSE (la PWA sin reescribir no revienta)');
+yes(/"action_retired"/.test(STRAVA) && /code: "server_oauth"/.test(STRAVA),
+    'y son no-ops con un código que dice dónde está la puerta nueva');
+yes(/from "\.\.\/_shared\/tokens\.ts"/.test(STRAVA) || /serviceClient/.test(STRAVA),
     'la escritura sigue siendo con la service role (por eso el usuario tiene que salir del JWT)');
-yes(/verify_jwt = true/.test((CONFIG.split('[functions.strava-sync]')[1] || '').split('\n[')[0]),
-    'y config.toml declara verify_jwt = true para strava-sync');
+yes(/withProviderFetch\("strava"/.test(STRAVA_SYNC),
+    '_shared/strava-sync.ts pide el token a tokens.ts (401 → un refresco → un reintento)');
+yes(/p_user: userId/.test(IMPORT) && /userId: string/.test(IMPORT),
+    'activity-import escribe con el userId que recibe, no con uno del payload');
+// A-7 · la otra mitad de la invariante: el CLIENTE tampoco manda un token. Las dos acciones
+// retiradas siguen aceptándose en el servidor para una PWA vieja, pero la PWA de este repo no
+// las llama ya — y si alguien vuelve a escribir `action:'refresh'` en app/, el par rotado vuelve
+// al teléfono y se reabre el bucle de "Strava se ha desconectado sola".
+{
+  const STRAVAJS = read('app/strava.js');
+  yes(!!STRAVAJS, 'app/strava.js existe');
+  // La lista de claves MUERTAS que la limpieza borra las nombra por obligación (`strava_access_token`
+  // es el nombre de la clave que hay que quitar del dispositivo). Se neutraliza esa lista y se
+  // comprueba lo que importa: que en el CÓDIGO no queda ni una lectura ni un envío de token.
+  // Los comentarios también salen: la cabecera del fichero CITA el error de Strava que causó las
+  // desconexiones (`{field:"refresh_token"…}`), y esa historia tiene que poder estar escrita.
+  const sinLista = STRAVAJS
+    .replace(/const STRAVA_DEAD_LS_KEYS = \[[\s\S]*?\];/, 'const STRAVA_DEAD_LS_KEYS = [];')
+    .replace(/^\s*\/\/.*$/gm, '');
+  yes(sinLista.length < STRAVAJS.length, 'se localiza la lista de claves muertas');
+  yes(!/access_token/.test(sinLista) && !/refresh_token/.test(sinLista),
+      'fuera de esa lista, app/strava.js no nombra un token (ni para leerlo, ni para mandarlo)');
+  for (const accion of ['refresh', 'exchange', 'sync']) {
+    yes(!new RegExp(`action: '${accion}'`).test(STRAVAJS),
+        `y no invoca 'strava-sync' con action:'${accion}' (la invocación es de integrations.js)`);
+  }
+  yes(/integrationsSync\('strava'/.test(STRAVAJS),
+      "el sync del cliente pasa por integrationsSync('strava'), que manda { days, mode:'sync' }");
+}
 
-// ── 2. C-29: ni PostgREST ni Strava hablan directamente con el cliente ────────────────────
+// ── 2. C-29 + A-7: ni PostgREST ni Strava hablan directamente con el cliente ───────────────
 console.log('');
 console.log('2. strava-sync · los textos crudos van al log, no al cliente (C-29)');
 // El cuerpo de un error de PostgREST nombra tablas, columnas y restricciones; el de Strava
 // nombra el campo de NUESTRA configuración que está mal. Los dos son un oráculo.
-yes(!/text\.substring\(0, 500\) \}/.test(STRAVA) && !/\$\{text\.substring\(0, 200\)\}/.test(STRAVA),
-    'ningún `text.substring()` viaja dentro de una respuesta');
-yes(!/details: data/.test(STRAVA),
-    'exchange/refresh ya no devuelven `details: data` (el JSON entero de Strava al cliente)');
-for (const [etiqueta, contexto] of [
-  ['strava_exchange_failed', 'exchange'],
-  ['strava_refresh_failed', 'refresh'],
-  ['strava_fetch_failed', 'listado de actividades'],
-  ['strava_sync_failed', 'el catch general'],
+for (const [fichero, src] of [
+  ['strava-sync/index.ts', STRAVA],
+  ['_shared/strava-sync.ts', STRAVA_SYNC],
+  ['_shared/activity-import.ts', IMPORT],
 ]) {
-  yes(STRAVA.includes(`"${etiqueta}"`), `${contexto} devuelve la etiqueta \`${etiqueta}\``);
+  yes(!/text\.substring\(/.test(src), `${fichero}: ningún text.substring() viaja en una respuesta`);
+  yes(!/details: data/.test(src), `${fichero}: sin \`details: data\` (el JSON entero del proveedor)`);
 }
-eq((STRAVA.match(/console\.error\(`\[strava-sync\]/g) || []).length, 6,
-   'y los seis caminos de error escriben el detalle en el log');
+yes(STRAVA.includes('"strava_sync_failed"'), 'el catch general devuelve la etiqueta `strava_sync_failed`');
 yes(!/error: \(err as Error\)\.message/.test(STRAVA),
     'el catch general no devuelve el mensaje crudo de la excepción');
-// Los `errors[]` que sí viajan son NUESTROS: id + código + status, sin cuerpo del proveedor.
-yes(/errors\.push\(`\$\{stravaId\}: upsert_failed \$\{upsertRes\.status\}`\)/.test(STRAVA),
-    'los errores por actividad son etiqueta + status, no el cuerpo de la respuesta');
+yes(/code: "config"/.test(STRAVA),
+    'un secreto que falta se distingue con `code: "config"` (reconectar no arregla eso)');
+// Los `errors[]` que sí viajan son NUESTROS: id del proveedor + etiqueta, sin cuerpo ajeno.
+yes(/out\.errors\.push\(`\$\{n\.sourceId\}: merge_failed`\)/.test(IMPORT),
+    'los errores por actividad son etiqueta + id, no el cuerpo de la respuesta');
+yes(/console\.error\(`\[\$\{opts\.source\}\]/.test(IMPORT),
+    'y el detalle de cada uno sí se escribe en el log');
 
 // ── 3. C-7: CARDIO_TYPE_MAP y RUN_MODALITIES, idénticos en cliente y servidor ─────────────
+//
+// A-7 movió el mapa del servidor a `_shared/cardio-types.ts` — un módulo PURO que sirve a las
+// DOS vías de importación (Strava e intervals.icu). Antes había dos copias en el servidor
+// esperando a divergir; ahora hay una, y este test la compara con la de `app/app.js`. Como el
+// módulo es puro, se IMPORTA en vez de extraerse con una expresión regular: lo que se compara
+// es el valor real que corre, no un texto que se le parece.
 console.log('');
-console.log('3. C-7 · el mapa de modalidades es EL MISMO en app.js y en strava-sync');
+console.log('3. C-7 · el mapa de modalidades es EL MISMO en app.js y en _shared/cardio-types.ts');
 
 /** Extrae el objeto literal `const <name> = { … };` y lo devuelve como pares clave→valor. */
 function extraerMapa(src, name) {
@@ -129,29 +198,71 @@ function extraerSet(src, name) {
 }
 
 const mapaApp = extraerMapa(APPJS, 'CARDIO_TYPE_MAP');
-const mapaFn = extraerMapa(STRAVA, 'CARDIO_TYPE_MAP');
+const mapaFn = cardio.CARDIO_TYPE_MAP;
 yes(mapaApp && Object.keys(mapaApp).length > 10, `CARDIO_TYPE_MAP extraído de app/app.js (${mapaApp ? Object.keys(mapaApp).length : 0} tipos)`);
-yes(mapaFn && Object.keys(mapaFn).length > 10, `CARDIO_TYPE_MAP extraído de strava-sync (${mapaFn ? Object.keys(mapaFn).length : 0} tipos)`);
+yes(mapaFn && Object.keys(mapaFn).length > 10, `CARDIO_TYPE_MAP importado de _shared/cardio-types.ts (${mapaFn ? Object.keys(mapaFn).length : 0} tipos)`);
 if (mapaApp && mapaFn) {
   const soloApp = Object.keys(mapaApp).filter((k) => !(k in mapaFn));
   const soloFn = Object.keys(mapaFn).filter((k) => !(k in mapaApp));
   const distintos = Object.keys(mapaApp).filter((k) => k in mapaFn && mapaApp[k] !== mapaFn[k]);
   yes(soloApp.length === 0, `ningún tipo sólo en app.js${soloApp.length ? ` — faltan en el servidor: ${soloApp.join(', ')}` : ''}`);
-  yes(soloFn.length === 0, `ningún tipo sólo en strava-sync${soloFn.length ? ` — sobran en el servidor: ${soloFn.join(', ')}` : ''}`);
+  yes(soloFn.length === 0, `ningún tipo sólo en el servidor${soloFn.length ? ` — sobran: ${soloFn.join(', ')}` : ''}`);
   yes(distintos.length === 0,
       `ninguno apunta a modalidades distintas${distintos.length ? ` — ${distintos.map((k) => `${k}: ${mapaApp[k]} vs ${mapaFn[k]}`).join('; ')}` : ''}`);
   // Las dos roturas históricas, nombradas: un test que sólo compara no dice qué buscar.
   yes(mapaFn.VirtualSki === 'ski', 'VirtualSki → ski en el servidor (el SkiErg de Concept2 se descartaba)');
   yes(!('Walk' in mapaFn) && !('Hike' in mapaFn),
-      'Walk/Hike NO se importan por Strava (decisión de Julian 2026-08-18: los pasos van por `steps`)');
+      'Walk/Hike NO se importan (decisión de Julian 2026-08-18: los pasos van por `steps`)');
 }
 
+// A-7 dejó vivo el import de cliente de intervals.icu con un punto de retirada comentado. Este
+// mapa es lo ÚNICO de ese bloque que NO se va con él (lo usa el import del servidor vía el
+// módulo puro), así que se dice aquí para que la retirada no se lo lleve por delante.
+yes(/PUNTO DE RETIRADA · A-7/.test(APPJS) && /NO se borra/.test(APPJS),
+    'el punto de retirada del import de cliente dice explícitamente que CARDIO_TYPE_MAP se queda');
+
 const setApp = extraerSet(APPJS, 'RUN_MODALITIES');
-const setFn = extraerSet(STRAVA, 'RUN_MODALITIES');
-yes(!!setApp && !!setFn, 'RUN_MODALITIES extraído de los dos ficheros');
-eq((setFn || []).join(','), (setApp || []).join(','),
+const setFn = [...cardio.RUN_MODALITIES].sort();
+yes(!!setApp && setFn.length > 0, 'RUN_MODALITIES en los dos lados');
+eq(setFn.join(','), (setApp || []).join(','),
    'RUN_MODALITIES es el mismo conjunto (decide qué va a `runs` y qué a `sessions`)');
 
+// El lookup normalizado: intervals.icu enseña "Virtual Ski" con espacio y la API devuelve
+// `VirtualSki`. Un espacio no puede costar otra ronda de sesiones descartadas en silencio.
+for (const variante of ['VirtualSki', 'Virtual Ski', 'virtual_ski', 'VIRTUAL-SKI']) {
+  eq(cardio.activityModality({ type: variante }), 'ski', `activityModality("${variante}") → ski`);
+}
+eq(cardio.activityModality({ type: 'WeightTraining' }), null,
+   'la fuerza NO se importa (duplicaría las sesiones de gimnasio registradas a mano)');
+
+// El peso del subtipo alimenta el presupuesto de días duros: un intervalo importado con 0,5 en
+// vez de 2 hace creer al motor que queda presupuesto libre. Los valores tienen que ser los
+// MISMOS que en `SESSION_TYPES.cardio.subtypes` de app.js.
+console.log('');
+console.log('3b. C-7 · budgetWeight de los subtipos de cardio, igual que en app.js');
+const cardioBlock = (() => {
+  const i = APPJS.indexOf('  cardio: {');
+  if (i < 0) return '';
+  return APPJS.slice(i, APPJS.indexOf('  hybrid: {', i));
+})();
+let pesosComparados = 0;
+for (const sub of ['zone2', 'zone3', 'threshold', 'intervals', 'long_easy', 'recovery']) {
+  const m = new RegExp(`${sub}:\\s*\\{[^}]*budgetWeight:\\s*([0-9.]+)`).exec(cardioBlock);
+  if (!m) { bad(`no se pudo leer budgetWeight de cardio.${sub} en app.js`); continue; }
+  const meta = cardio.CARDIO_SUBTYPE_META[`cardio.${sub}`];
+  eq(meta ? meta.budgetWeight : 'AUSENTE', Number(m[1]), `cardio.${sub}: budgetWeight ${m[1]}`);
+  pesosComparados++;
+}
+eq(pesosComparados, 6, 'los seis subtipos de cardio comparados');
+eq(cardio.subtypeMeta('recovery', 'walk').budgetWeight, 0,
+   'recovery.walk pesa 0 (un paseo no es una dosis de cardio)');
+// `subtypeFromIntensity` es la traducción de la etiqueta de intervals.icu; Strava no da ninguna
+// y cae en zona 2 CON `subtypeInferred` (GEN-002: una suposición no se presenta como medida).
+eq(cardio.subtypeFromIntensity('VO2 Max intervals'), 'intervals', 'intensidad "VO2" → intervals');
+eq(cardio.subtypeFromIntensity('Tempo'), 'threshold', 'intensidad "Tempo" → threshold');
+eq(cardio.subtypeFromIntensity(''), 'zone2', 'sin etiqueta → zone2');
+yes(cardio.normalizeActivity({ id: 1, type: 'Run', start_date_local: '2026-09-08T07:00:00Z', distance: 5000, moving_time: 1500 }, 'strava_').subtypeInferred,
+    'y una actividad de Strava (sin intensidad) queda marcada subtypeInferred');
 // ── 4. C-20: steps-ingest ─────────────────────────────────────────────────────────────────
 console.log('');
 console.log('4. steps-ingest · secreto en tiempo constante y http compartido (C-20)');

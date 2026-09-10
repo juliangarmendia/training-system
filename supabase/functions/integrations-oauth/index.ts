@@ -6,6 +6,7 @@ import {
   getAdapter,
   isProvider,
   loadTokenRow,
+  PROVIDERS,
   serviceClient,
   TABLE_TOKENS,
 } from "../_shared/tokens.ts";
@@ -14,9 +15,16 @@ import {
 // quién pregunta, porque la fila de `oauth_states` que crea es la que autenticará después al
 // callback (que corre sin JWT porque el proveedor redirige a Safari, no a la PWA).
 //
-// Contrato: POST { action: 'authorize' | 'disconnect', provider: 'whoop' | 'withings' }
+// Contrato: POST { action: 'authorize' | 'disconnect', provider }
 //   authorize  → { url }   (la PWA hace location.href = url)
 //   disconnect → { ok: true, status: 'disconnected' }
+//
+// A-7 (2026-09-10) suma `strava` a los proveedores OAuth y `intervals` a la lista de
+// proveedores, con una asimetría deliberada: **`intervals` acepta `disconnect` pero rechaza
+// `authorize`**. intervals.icu no tiene OAuth — su credencial es una API key que se guarda con
+// `intervals-sync {action:'set_key'}` — así que un `authorize` aquí no puede hacer nada útil.
+// Se responde con `code: 'apikey_provider'` en vez de dejar que el adaptador lance: un mensaje
+// que dice DÓNDE está la puerta correcta ahorra media hora de depuración.
 //
 // Aquí NUNCA sale un token en la respuesta ni en un log.
 
@@ -40,13 +48,20 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const action = String(body?.action || "");
     const provider = body?.provider;
-    if (!isProvider(provider)) return json({ error: "provider inválido: whoop | withings" }, 400);
+    if (!isProvider(provider)) return json({ error: `provider inválido: ${PROVIDERS.join(" | ")}` }, 400);
 
     const supa = serviceClient();
     const adapter = getAdapter(provider);
 
     // ── authorize ────────────────────────────────────────────────────────────────────────
     if (action === "authorize") {
+      // A-7: intervals.icu no pasa por aquí. Su credencial es una API key.
+      if (adapter.kind !== "oauth") {
+        return json({
+          error: `${provider} does not use OAuth: send the API key to the ${provider}-sync function`,
+          code: "apikey_provider",
+        }, 400);
+      }
       // Purga antes de insertar: sin esto la tabla acumula un intento por cada vez que alguien
       // abre el flujo y se arrepiente.
       const { error: purgeErr } = await supa

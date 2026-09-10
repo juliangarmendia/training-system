@@ -421,7 +421,9 @@ yes(/\.readout = sessionReadout\(/.test(ATT_SRC), 'attachSessionReadout() adjunt
 // prescribía 85. Ahora usa el deload REAL de la semana siguiente.
 yes(/const nextWeekDeload = /.test(ATT_SRC), 'el "próxima vez" resuelve el deload de la semana que viene');
 yes(/blockWeek\(d\)\.isDeload/.test(ATT_SRC), '…con la misma aritmética anclada que la tarjeta de ese día');
-yes(/7 \* 86400000/.test(ATT_SRC), '…mirando +7 días (la próxima exposición del ejercicio)');
+// v11.73 (C-24): la suma de días ya no se escribe a mano — es `addDays()`, la única del
+// proyecto. Lo que hay que seguir afirmando es el +7, no cómo se calcula.
+yes(/addDays\(ds, 7\)/.test(ATT_SRC), '…mirando +7 días (la próxima exposición del ejercicio)');
 yes(/deload: nextWeekDeload,/.test(ATT_SRC), '…y se lo pasa a suggestSetTarget');
 yes(!/deload: false/.test(ATT_SRC), 'y ya no hay un `deload: false` que prometa una subida imposible');
 
@@ -700,7 +702,17 @@ for (const marca of ['whoop_access_token', 'whoop_refresh_token', 'whoop_token_e
 const WHOOP_CODE = WHOOPJS.split('\n').filter(l => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
 const isoUses = (WHOOP_CODE.match(/toISOString\(\)/g) || []).length;
 eq(isoUses, 0, 'whoop.js no usa toISOString() en ninguna fecha (F-14: todo local)');
-yes(/function _whoopLocalDateStr\(/.test(WHOOPJS), 'define _whoopLocalDateStr() (whoop.js carga antes que app.js)');
+// C-25 (v11.73): la afirmación se INVIERTE. `_whoopLocalDateStr` era `dateStr()` copiada
+// byte a byte, y la justificaba el orden de los <script> — cierto pero irrelevante: ninguna
+// de esas llamadas ocurre en tiempo de evaluación del fichero.
+yes(!/function _whoopLocalDateStr\(/.test(WHOOPJS),
+  'whoop.js ya NO define su propia fecha local (C-25: era dateStr() duplicada)');
+yes(!/_whoopLocalDateStr/.test(WHOOP_CODE), 'ni la usa en ningún sitio');
+yes((WHOOP_CODE.match(/\bdateStr\(/g) || []).length >= 7,
+  'usa `dateStr()` de app.js en los ~8 sitios donde tenía la copia');
+yes(/const dt = \(d instanceof Date\) \? d : \(d != null \? new Date\(d\) : new Date\(\)\);/.test(APP),
+  'y `dateStr()` absorbió la tolerancia de la copia (sin argumento = ahora)');
+yes(/if \(isNaN\(dt\.getTime\(\)\)\) return null;/.test(APP), '…y su null para entrada inválida');
 // La caché de 10 min no puede tapar la falta del dato de hoy.
 yes(/hasToday/.test(WSD_SRC), 'y si al payload cacheado le falta hoy, se resincroniza');
 yes(/_whoopServerSyncAt\) < WHOOP_CACHE_MS/.test(WSD_SRC),
@@ -803,7 +815,9 @@ for (const [fn, label] of [
 ]) {
   yes(/invalidateReadiness\(\)/.test(fnSrc(fn)), `${label}() invalida la caché del readiness`);
 }
-yes(/invalidateReadiness\(\);[\s\S]{0,400}safeCall\('renderRecoveryBlock'\)/.test(APP),
+// v11.73 (C-27): el repintado pasa por `safeCallVoid`, que es `safeCall` + el rechazo de la
+// promesa enganchado. El orden respecto a `invalidateReadiness()` es lo que se afirma.
+yes(/invalidateReadiness\(\);[\s\S]{0,400}safeCallVoid\('renderRecoveryBlock'\)/.test(APP),
   'y al llegar el dato de hoy en init se invalida ANTES de repintar el bloque de recuperación');
 
 // 13.c/d/e RETIRADOS en v11.62 — el advisory delegaba, la tarjeta pintaba dos botones y el
@@ -2092,6 +2106,258 @@ yes(/ctx\.settings\.kcalFirstAdjustDate/.test(FACTSJS), 'coach-facts.js lee sett
 yes(/_cfDate\(ctx\.settings\.kcalLastAdjustDate\)/.test(FACTSJS), '…y settings.kcalLastAdjustDate');
 yes(/nextEligibleAdjustDate: nextEligible/.test(FACTSJS),
   '…y de ahí sale nextEligibleAdjustDate, que hasta ahora era null siempre');
+
+// ══════════════════════════════════════════════════════════════════════════════════
+// v11.73 · Código y tests (auditoría 2026-09-09, incremento 5)
+// ══════════════════════════════════════════════════════════════════════════════════
+
+// ── C-10 · UNA sola semana ISO ─────────────────────────────────────────────────────
+//
+// EL FALLO. Había TRES: `_isoWeekKeyFor` en app.js, una `isoWeekKey` LOCAL dentro de
+// `renderStreaks` que SOMBREABA al global del motor (misma firma, otra aritmética), y la del
+// motor. Las dos de app.js contaban en hora local con la fórmula del 1-ene; la del motor
+// cuenta en UTC con la del 4-ene, que es ISO 8601. Discrepan en las fronteras de año y en el
+// cambio de horario, así que la racha de Stats y el `weekKey` del pack podían meter el mismo
+// entreno en semanas distintas. Y quien leía `renderStreaks` creía estar llamando al motor.
+console.log('');
+console.log('19. C-10 · una sola semana ISO');
+{
+  const APP_CODE = APP.split(/\r?\n/).filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
+  yes(!/function _isoWeekKeyFor\(/.test(APP_CODE), 'app.js ya no define _isoWeekKeyFor()');
+  yes(!/_isoWeekKeyFor/.test(APP_CODE), 'ni la llama en ningún sitio');
+  eq((APP_CODE.match(/function isoWeekKey\(/g) || []).length, 0,
+    'app.js no redefine isoWeekKey() en NINGÚN ámbito (la local sombreaba al global)');
+  eq((ENGINE.match(/^function isoWeekKey\(/gm) || []).length, 1,
+    'la única definición vive en coach-engine.js');
+  // Todo argumento de `isoWeekKey(` en app.js tiene que ser una CADENA de fecha, no un Date.
+  const args = [...APP_CODE.matchAll(/[^_.\w]isoWeekKey\(([^)]*)\)/g)].map((m) => m[1].trim());
+  yes(args.length >= 8, `${args.length} llamadas a isoWeekKey() en app.js`);
+  const conDate = args.filter((a) => /new Date\(/.test(a));
+  eq(conDate.length, 0, `ninguna le pasa un Date${conDate.length ? ' — ' + conDate.join(' | ') : ''}`);
+  // Y la frontera de año, ejecutada contra el motor: es donde las dos fórmulas discrepaban.
+  if (E && E.isoWeekKey) {
+    eq(E.isoWeekKey('2027-01-03'), '2026-W53', 'domingo 3-ene-2027 → 2026-W53 (la fórmula del 1-ene daba 2027-W01)');
+    eq(E.isoWeekKey('2026-01-01'), '2026-W01', 'jueves 1-ene-2026 → 2026-W01');
+    eq(E.isoWeekKey('2026-12-31'), '2026-W53', 'jueves 31-dic-2026 → 2026-W53');
+    eq(E.isoWeekKey('2025-12-29'), '2026-W01', 'lunes 29-dic-2025 → ya es 2026-W01');
+  }
+}
+
+// ── C-24 · un `mondayOf` y un `addDays` ────────────────────────────────────────────
+//
+// EL FALLO. Cinco aritméticas de "lunes de esta semana" y cinco de "sumar días" repartidas
+// por app.js, whoop.js y nutrition.js, cada una con su convención. Con fechas eso no es
+// duplicación cosmética: `d.setDate(d.getDate() - 1)` sobre un Date local devuelve el MISMO
+// día en el fin de semana del cambio de horario, y un día de desfase mueve la frontera
+// domingo/lunes — o sea la semana entera.
+console.log('');
+console.log('20. C-24 · una sola aritmética de fechas');
+{
+  const codigo = (src) => src.split(/\r?\n/).filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
+  const APP_CODE = codigo(APP);
+  const WH_CODE = codigo(WHOOPJS);
+  yes(/^function addDays\(ds, n\) \{/m.test(APP), 'app.js define addDays(ds, n)');
+  yes(!/_plusDaysStr/.test(APP_CODE), 'y ya no queda `_plusDaysStr` (era el mismo helper con otro nombre)');
+  yes(/const monday = mondayOf\(today\(\)\);/.test(APP),
+    'getWeekDates() saca el lunes de `mondayOf()` del motor, no de su propia cuenta');
+  yes(!/monday\.setDate\(/.test(APP_CODE), 'sin `monday.setDate(...)` a mano');
+  yes(!/\(now\.getDay\(\) \+ 6\) % 7/.test(APP_CODE), 'ni el `(getDay() + 6) % 7` de los totales de carrera');
+  yes(!/setDate\(\w+\.getDate\(\) - 1\)/.test(WH_CODE), 'whoop.js ya no resta un día a mano');
+  yes(/addDays\(r\.id, -1\)/.test(WH_CODE), 'usa addDays(r.id, -1)');
+  // Las sumas de días sobre 'YYYY-MM-DD' a mano, contadas: cero.
+  const aMano = (APP_CODE.match(/Date\.parse\([^)]*T12:00:00'\)\s*[+-]\s*\w+\s*\*\s*86400000/g) || []);
+  eq(aMano.length, 0, `ninguna suma de días a mano en app.js${aMano.length ? ' — ' + aMano.join(' | ') : ''}`);
+  // `addDays` ejecutada: el cambio de horario es el caso que rompía a las copias.
+  const src = APP.slice(APP.indexOf('function addDays(ds, n) {'));
+  const box = { console };
+  vm.createContext(box);
+  vm.runInContext(`${src.slice(0, src.indexOf('\n}') + 2)}\nglobalThis.__ad = addDays;`, box);
+  const ad = box.__ad;
+  eq(ad('2026-03-29', -1), '2026-03-28', 'addDays cruza el cambio de hora de primavera');
+  eq(ad('2026-10-25', -1), '2026-10-24', '…y el de otoño');
+  eq(ad('2026-01-01', -1), '2025-12-31', '…y el año');
+  eq(ad('2026-09-07', 6), '2026-09-13', 'lunes + 6 = domingo de la misma semana');
+  eq(ad(null, 3), null, 'y devuelve null sin fecha');
+  // Y coincide con el `mondayOf` del motor: el lunes de la semana es addDays(dom, -6).
+  if (E && E.mondayOf) {
+    eq(E.mondayOf('2026-09-13'), ad('2026-09-13', -6), 'mondayOf(domingo) == addDays(domingo, -6)');
+  }
+}
+
+// ── C-26 · una sola lista de sesiones de pierna ────────────────────────────────────
+//
+// EL FALLO. El predicado de RUN-BEFORE-LEGS (`subtype lower|full` o `family hybrid`) estaba
+// copiado tres veces en coach.js: en el body que viaja a la función, en el `ctx` del
+// validador local y en la fila `requested` del modo manual. Que los tres coincidieran era la
+// condición para que "el API y el modo manual sean lo mismo", y nada lo comprobaba.
+console.log('');
+console.log('21. C-26 · _coachLowerSessionIds()');
+{
+  const COACH_CODE = COACHJS.split(/\r?\n/).filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
+  yes(/function _coachLowerSessionIds\(\) \{/.test(COACHJS), 'existe _coachLowerSessionIds()');
+  eq((COACH_CODE.match(/subtype === 'lower'/g) || []).length, 1,
+    'el predicado aparece UNA vez en coach.js (eran tres)');
+  eq((COACH_CODE.match(/_coachLowerSessionIds\(\)/g) || []).length, 4,
+    'y los tres consumidores + el export lo llaman');
+  // Ejecutada: el mapa manda, y `full`/`hybrid` cuentan.
+  const i = COACHJS.indexOf('function _coachLowerSessionIds() {');
+  const src = COACHJS.slice(i, COACHJS.indexOf('\n}', i) + 2);
+  const box = {
+    console,
+    sessionClassMap: () => ({
+      lowerA: { family: 'strength', subtype: 'lower' },
+      upperA: { family: 'strength', subtype: 'upper' },
+      fullA: { family: 'strength', subtype: 'full' },
+      hyroxA: { family: 'hybrid', subtype: 'conditioning' },
+      z2: { family: 'cardio', subtype: 'zone2' },
+    }),
+  };
+  vm.createContext(box);
+  vm.runInContext(`${src}\nglobalThis.__l = _coachLowerSessionIds;`, box);
+  const ids = box.__l().sort();
+  eq(ids.join(','), 'fullA,hyroxA,lowerA', 'lower + full + hybrid cuentan como pierna; upper y cardio no');
+  // Sin el mapa no revienta ni inventa.
+  const box2 = { console };
+  vm.createContext(box2);
+  vm.runInContext(`${src}\nglobalThis.__l = _coachLowerSessionIds;`, box2);
+  eq(box2.__l().length, 0, 'sin sessionClassMap() devuelve lista vacía, no lanza');
+}
+
+// ── C-27 y C-28 · el fallo que no se ve no se arregla ──────────────────────────────
+console.log('');
+console.log('22. C-27 · safeCallVoid · C-28 · la causa en el toast');
+{
+  const APP_CODE = APP.split(/\r?\n/).filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
+  yes(/function safeCallVoid\(name, \.\.\.args\) \{/.test(APP), 'existe safeCallVoid()');
+  yes(/r\.then\(undefined, \(e\) => console\.warn\(`\[safeCall\] \$\{name\}:`, e\)\)/.test(APP),
+    'y engancha el rechazo de la promesa (safeCall sólo captura el throw síncrono)');
+  eq((APP_CODE.match(/safeCallVoid\('/g) || []).length, 4,
+    'los cuatro fire-and-forget del audit pasan por él');
+  yes(!/Promise\.resolve\(safeCall\('renderRecoveryBlock'\)\)\.catch\(\(\) => \{\}\)/.test(APP),
+    'y desaparece el `.catch(() => {})` que hacía pasar por manejado un fallo perdido');
+  // C-28
+  yes(/^function errText\(e, fallback\) \{/m.test(APP), 'existe errText()');
+  const i = APP.indexOf('function errText(e, fallback) {');
+  const box = { console };
+  vm.createContext(box);
+  vm.runInContext(`const ERR_TEXT_MAX = 90;\n${APP.slice(i, APP.indexOf('\n}', i) + 2)}\nglobalThis.__e = errText;`, box);
+  const et = box.__e;
+  eq(et(new Error('QuotaExceededError')), 'QuotaExceededError', 'saca el message del Error');
+  eq(et({ error_description: 'invalid grant' }), 'invalid grant', '…o el error_description de Supabase');
+  eq(et(null, 'unreadable file'), 'unreadable file', 'y usa el respaldo cuando no hay causa');
+  eq(et({}, 'nada'), 'nada', '…también con un objeto sin mensaje');
+  eq(et(new Error('a\nb\n  c')), 'a b c', 'colapsa los saltos de línea (un stack rompería la caja)');
+  eq(et(new Error('x'.repeat(200))).length, 90, 'y recorta a 90 caracteres');
+  yes(et(new Error('x'.repeat(200))).endsWith('…'), '…con puntos suspensivos');
+  // Los toasts ciegos que quedaban
+  yes(!/toast\('Error restoring backup'\)/.test(APP), 'el toast del restore ya no esconde la causa');
+  yes(/Could not restore the backup: \$\{errText\(e/.test(APP), '…la dice');
+  yes(!/toast\('Strava sync failed — check connection'\)/.test(APP), 'ni el de Strava');
+  yes(/function stravaLastError\(\)/.test(readFileSync('app/strava.js', 'utf8')),
+    'strava.js expone la razón del último fallo (stravaSync() sigue devolviendo null)');
+  yes(/function intervalsLastError\(\)/.test(APP), 'y app.js la de intervals.icu');
+  yes(!/toast\('Sync failed — check API key\/athlete ID'\)/.test(APP), 'el de intervals tampoco adivina');
+  yes(/function _cErr\(e, fallback\)/.test(COACHJS), 'coach.js tiene su _cErr() (se carga aparte)');
+  for (const t of ["Could not reject: \\$\\{_cErr\\(e\\)\\}", "Could not restore: \\$\\{_cErr\\(e\\)\\}", "Could not build the pack: \\$\\{_cErr\\(e\\)\\}"]) {
+    yes(new RegExp(t).test(COACHJS), `y los tres toasts del coach dicen la causa (${t.slice(0, 22)}…)`);
+  }
+  // El `catch {}` de clearFutureScheduleOverrides
+  const j = APP.indexOf('async function clearFutureScheduleOverrides()');
+  const cfso = APP.slice(j, APP.indexOf('\n}', APP.indexOf('} catch', j)) + 2);
+  yes(!/\} catch \(e\) \{\}/.test(cfso), 'clearFutureScheduleOverrides() ya no tiene el catch vacío');
+  yes(/console\.warn\('\[Plan\] clearFutureScheduleOverrides:'/.test(cfso), '…avisa por consola');
+  yes(/Manual day changes kept/.test(cfso), '…y en pantalla, porque el plan aplicado no se ve entero');
+  yes(!/clearFutureScheduleOverrides\(\); \} catch \(e\) \{\}/.test(COACHJS),
+    'y su llamador de coach.js tampoco lo silencia');
+}
+
+// ── F-25 · el caveat de la regla en el ledger ──────────────────────────────────────
+//
+// El ledger decía "REC-002 · citada 4 veces · strong" y ahí se acababa. Un grado de evidencia
+// sin su salvedad es la mitad tranquilizadora de la información: REC-001 es `strong` Y lleva
+// escrito que su banda se reescribió porque la mitad alta no tenía fuente.
+console.log('');
+console.log('23. F-25 · el caveat en el ledger de evidencia');
+{
+  yes(/function _coachRuleCaveatHtml\(regla\)/.test(COACHJS), 'existe _coachRuleCaveatHtml()');
+  yes(/\$\{_coachRuleCaveatHtml\(corpus\[f\.ruleId\]\)\}/.test(COACHJS),
+    'y el ledger lo pinta debajo de cada fila');
+  yes(/class="evl-item"/.test(COACHJS) && /\.evl-item \{/.test(CSS),
+    'la fila y su salvedad van en un `.evl-item` (con el borde en `.evl-row` el caveat leía como de la regla siguiente)');
+  yes(/\.evl-caveat \{/.test(CSS), '.evl-caveat tiene estilo');
+  const i = COACHJS.indexOf('function _coachRuleCaveatHtml(regla) {');
+  const box = { console, _cEsc: (x) => String(x == null ? '' : x).replace(/&/g, '&amp;').replace(/</g, '&lt;') };
+  vm.createContext(box);
+  vm.runInContext(`const COACH_CAVEAT_MAX = 220;\n${COACHJS.slice(i, COACHJS.indexOf('\n}', i) + 2)}\nglobalThis.__c = _coachRuleCaveatHtml;`, box);
+  const ch = box.__c;
+  eq(ch(undefined), '', 'sin regla no pinta nada');
+  eq(ch({ rule: 'x', evidenceLevel: 'strong' }), '',
+    'y con el corpus GENERADO de hoy (sólo rule + evidenceLevel) tampoco: ni hueco ni etiqueta vacía');
+  yes(/RANGE REWRITTEN/.test(ch({ caveat: 'RANGE REWRITTEN 2026-09-08' })), 'con `caveat` (cadena) lo pinta');
+  yes(/a · b/.test(ch({ caveats: ['a', 'b'] })),
+    'y con `caveats` (array, la forma de evidence-to-rules.md) los une — tolerante a las dos');
+  yes(ch({ caveat: 'y'.repeat(400) }).includes('…'), 'recorta el texto largo');
+  yes(/title="/.test(ch({ caveat: 'y'.repeat(400) })), '…y deja el completo en el title');
+  yes(!/<b>/.test(ch({ caveat: '<b>ojo</b>' })), 'y escapa el HTML del corpus');
+}
+
+// ── F-28 · aviso de carrera vieja antes de cerrar la semana ────────────────────────
+//
+// Cerrar la semana congela el pack. Si intervals.icu o Strava no han sincronizado, la revisión
+// razona sobre una semana con menos kilómetros de los que Julian corrió y baja el objetivo por
+// un fallo de sincronización. El pack lo sabe (`staleness.runs`) pero DESPUÉS de cerrar, y en
+// los estados desde los que se cierra todavía no hay pack.
+console.log('');
+console.log('24. F-28 · "Close the week" avisa si la carrera lleva > 2 días sin llegar');
+{
+  yes(/const COACH_RUNS_STALE_DAYS = 2;/.test(COACHJS),
+    'el umbral es 2 días, el mismo FACTS_STALE_DAYS del pack');
+  eq((readFileSync('app/coach-facts.js', 'utf8').match(/const FACTS_STALE_DAYS = 2;/g) || []).length, 1,
+    '…y el pack sigue usando 2 (si cambia allí, este test lo canta)');
+  yes(/async function _coachStaleRunsHtml\(\)/.test(COACHJS), 'existe _coachStaleRunsHtml()');
+  yes(/const avisoCarrera = cerrar \? await _coachStaleRunsHtml\(\) : '';/.test(COACHJS),
+    'y la tarjeta lo pinta SÓLO donde hay algo que cerrar');
+  // Hay tres plantillas `coach-week-card` en el fichero; la que importa es la que interpola el
+  // aviso. Se busca por el aviso y se mira su plantilla, no al revés.
+  const iAviso = COACHJS.indexOf('${avisoCarrera}');
+  const iAbre = COACHJS.lastIndexOf('el.innerHTML = `<div class="card coach-week-card">', iAviso);
+  const tpl = COACHJS.slice(iAbre, COACHJS.indexOf('</div>`;', iAviso));
+  yes(iAviso > 0 && iAbre > 0, 'el aviso se interpola dentro de la tarjeta de la semana');
+  yes(tpl.indexOf('${avisoCarrera}') < tpl.indexOf('coach-actions'),
+    'justo encima de las acciones, donde está el botón');
+  yes(!/disabled/.test(tpl), 'y no deshabilita nada: los avisos restringen al coach, no al usuario');
+  // Ejecutado, con las tres situaciones que importan.
+  const i = COACHJS.indexOf('async function _coachRunsDaysAgo() {');
+  const j = COACHJS.indexOf('function _coachCloseWeekBtn(');
+  const src = COACHJS.slice(i, j);
+  const mk = (runs, sess) => {
+    const box = {
+      console, Date,
+      today: () => '2026-09-10',
+      _cEsc: (x) => String(x == null ? '' : x),
+      getRunsDeduped: () => Promise.resolve(runs),
+      getSessionsDeduped: () => Promise.resolve(sess),
+      dbGetAll: () => Promise.resolve([]),
+    };
+    vm.createContext(box);
+    vm.runInContext(`const COACH_RUNS_STALE_DAYS = 2;\n${src}\nglobalThis.__h = _coachStaleRunsHtml;`, box);
+    return box.__h();
+  };
+  await mk([{ date: '2026-09-09' }], []).then((h) => eq(h, '', 'ayer: no avisa'));
+  await mk([{ date: '2026-09-08' }], []).then((h) => eq(h, '', 'hace 2 días: tampoco (es el umbral)'));
+  await mk([{ date: '2026-09-06' }], []).then((h) => {
+    yes(/4 days ago/.test(h), 'hace 4 días: avisa, con el número');
+    yes(/2026-09-06/.test(h), '…y con la fecha del último dato');
+    yes(/coach-week-bad/.test(h), '…en rojo (la clase que ya existe)');
+    yes(/intervals\.icu or Strava/.test(h), '…diciendo qué hacer antes de cerrar');
+  });
+  // Una sesión de cardio del store unificado cuenta igual que una carrera de `runs`.
+  await mk([{ date: '2026-09-06' }], [{ date: '2026-09-09', family: 'cardio' }])
+    .then((h) => eq(h, '', 'un remo de ayer en `sessions` también cuenta como cardio al día'));
+  await mk([{ date: '2026-09-06' }], [{ date: '2026-09-09', family: 'recovery' }])
+    .then((h) => yes(/4 days ago/.test(h), 'pero una sesión de movilidad NO cuenta como cardio'));
+  await mk([], []).then((h) => eq(h, '', 'sin ninguna carrera no hay "vieja" que avisar'));
+}
 
 console.log('');
 console.log(failed === 0

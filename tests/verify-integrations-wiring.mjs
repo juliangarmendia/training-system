@@ -669,7 +669,12 @@ yes(/'whoop-sync'/.test(INTEGJS) && /'withings-sync'/.test(INTEGJS),
 yes(/body: \{ days, mode: 'sync' \}/.test(INTEGJS), "con el cuerpo { days, mode:'sync' }");
 yes(/window\.location\.href = data\.url/.test(INTEGJS),
     'el authorize navega a la URL que da el servidor (la PWA no construye ninguna)');
-yes(!/localStorage/.test(INTEGJS), 'integrations.js no toca localStorage en absoluto');
+// C-8: la invariante es que integrations.js no ACCEDA a localStorage. Se comprueba sobre los
+// accesos (`getItem`/`setItem`/`removeItem`/indexado), no sobre la palabra: los comentarios de
+// A-7 explican POR QUÉ la clave de intervals.icu sigue en localStorage (en app.js) y esa
+// explicación tiene que poder estar escrita al lado.
+yes(!/localStorage\s*(\.\s*(get|set|remove)Item|\[)/.test(INTEGJS),
+    'integrations.js no accede a localStorage (ni get/set/removeItem ni indexado)');
 // `no_refresh_token` es un CÓDIGO DE ERROR del callback (el proveedor no concedió `offline`),
 // no un token: se neutraliza antes de buscar nombres de credencial.
 const INTEG_SIN_CODIGOS = INTEGJS.replace(/no_refresh_token/g, 'sin_permiso_persistente');
@@ -679,16 +684,17 @@ for (const marca of ['access_token', 'refresh_token', 'client_secret']) {
 yes(/from\('integration_status'\)/.test(INTEGJS), 'lee integration_status (el espejo, sin tokens)');
 yes(!/from\('integration_tokens'\)/.test(INTEGJS), 'y jamás integration_tokens');
 yes(/INTEG_STATUS_TTL_MS = 60 \* 1000/.test(INTEGJS), 'caché de estado de 60 s');
-yes(/pullStore\('wellness'\)/.test(INTEGJS) && /pullStore\('bodyweight'\)/.test(INTEGJS),
-    'tras sincronizar baja wellness (y bodyweight para Withings)');
+yes(/pullStore\(store\)/.test(INTEGJS) && /INTEG_SYNC_STORES\[provider\]/.test(INTEGJS),
+    'tras sincronizar baja los stores del proveedor (mapa, no un if por proveedor)');
 yes(/invalidateReadiness\(\)/.test(INTEGJS), 'e invalida el readiness cacheado');
 yes(/status: 'needs_reconnect'/.test(INTEGJS),
     'trata needs_reconnect como un estado que se pinta, no como una caída');
 yes(/Connected/.test(INTEGJS) && /Reconnect/.test(INTEGJS) && /Not connected/.test(INTEGJS),
     'la pill tiene los tres estados (en inglés: la UI es toda en inglés desde v11.67)');
 yes(/integ-pill/.test(INTEGJS) && /\.ok|'ok'/.test(INTEGJS), 'con sus clases CSS');
-yes(/Sync now/.test(INTEGJS) && /Disconnect</.test(INTEGJS) && />Connect</.test(INTEGJS),
-    'y los tres botones');
+yes(/>Sync now</.test(INTEGJS) && /Disconnect</.test(INTEGJS)
+    && /'Reconnect' : 'Connect'/.test(INTEGJS),
+    'y los tres botones (Connect/Reconnect comparten uno: el texto lo decide el estado)');
 yes(/last sync \$\{/.test(INTEGJS) && /event \$\{/.test(INTEGJS),
     'la segunda línea dice último sync y último evento');
 yes(/'never'/.test(INTEGJS), 'con "never" cuando no hay marca');
@@ -731,7 +737,11 @@ console.log('v11.70 · strava-sync no confía en body.user_id; strava.js llama c
   yes(!/text\.substring\(0, 500\) \}/.test(STRAVA_FN) && !/\$\{text\.substring\(0, 200\)\}/.test(STRAVA_FN), 'los textos crudos de Strava/PostgREST ya no van al cliente');
   yes(/import \{ createClient \} from "npm:@supabase\/supabase-js@2"/.test(STRAVA_FN), 'importa createClient para resolver la sesión');
   yes(!/Bearer \$\{SUPABASE_ANON_KEY\}/.test(STRAVAJS), 'strava.js ya no manda la anon key como Authorization');
-  yes(/functions\.invoke\('strava-sync'/.test(STRAVAJS), 'strava.js llama con functions.invoke (JWT de la sesión)');
+  // A-7: strava.js ya no invoca nada por su cuenta. La invocación (con el JWT de la sesión) es de
+  // integrations.js, que es quien tiene el mapa proveedor → función.
+  yes(!/functions\.invoke/.test(STRAVAJS) && /integrationsSync\('strava'/.test(STRAVAJS),
+      "strava.js delega en integrationsSync('strava') (la invocación con JWT vive en integrations.js)");
+  yes(/'strava-sync'/.test(INTEGJS), "y integrations.js sí invoca 'strava-sync'");
   yes(!/user_id: user\.id/.test(STRAVAJS), 'y no manda user_id en el cuerpo');
   yes(/payload\.trace_id\s*\?\s*String\(payload\.trace_id\)\s*:\s*`\$\{type\}:\$\{externalUserId\}:/.test(HOOKFN),
     'whoop-webhook: sin trace_id, clave sintética type:user:id (cinco reintentos = una fila)');
@@ -1106,6 +1116,176 @@ yes(!/eyJ[A-Za-z0-9_-]{10,}/.test(A7SQL),
     'y no hay un JWT escrito en la migración (quedaría en el repo Y en cron.job.command)');
 yes(/proname = 'cron_call_fn'/.test(A7SQL),
     'aborta si falta cron_call_fn en vez de programar dos jobs que fallan en silencio');
+
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// 30. A-7 · LA MITAD CLIENTE: Strava entera al servidor, intervals.icu con la clave arriba
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+//
+// EL FALLO QUE ESTA SECCIÓN EXISTE PARA IMPEDIR. Ninguno se ve el día que se escribe:
+//
+//   · **Un token de Strava que sobreviva en `app/*.js`.** Cualquier lectura o escritura de
+//     `strava_access_token` / `strava_refresh_token` que quede viva devuelve el problema entero:
+//     la PWA instalada y Safari rotando el mismo refresh token, el segundo con `invalid`, y
+//     "Strava se ha desconectado sola" cada pocos días. El fichero sólo puede BORRAR esas claves.
+//   · **La API key de intervals.icu volviendo a la fila sincronizada.** C-8 la sacó de
+//     `settings/userSettings` (que viaja a Supabase Y al JSON del backup exportable) y la puso en
+//     `localStorage`. Un `smartPut` sin el filtro, o un `saveIntervalsCredentials` que escriba la
+//     clave en `state.settings`, la devuelve al adjunto — y es una credencial con permiso de
+//     ESCRITURA (la app empuja semanas de entreno al COROS con ella).
+//   · **El mapa de proveedores incompleto.** `_integStatus` se declaraba con dos huecos a mano y
+//     el filtro de filas era un `hasOwnProperty` sobre ese objeto: una fila de `strava` o de
+//     `intervals` se descartaba en SILENCIO y la tarjeta pintaba "Not connected" sobre una
+//     integración activa, invitando a reconectar y a quemar una rotación sin motivo.
+//   · **`integrationsSync` con el ternario de dos proveedores.** `strava` e `intervals` habrían
+//     acabado los dos en `whoop-sync`: un 200 que no sincroniza nada y no se queja.
+//   · **La clave en un log o en un toast.** Sube una vez y no baja nunca; lo único que puede
+//     salir es el indicio enmascarado (`••••1234`).
+console.log('');
+console.log('30. A-7 · la mitad cliente (Strava al servidor, intervals.icu con clave en el servidor)');
+{
+  const STRAVAJS = read('app/strava.js');
+
+  // -- 30.1 · ni un token de Strava en NINGÚN fichero de la app -------------------------------
+  yes(!!STRAVAJS, 'app/strava.js existe');
+  for (const marca of ['STRAVA_CLIENT_ID', 'STRAVA_REDIRECT_URI', 'STRAVA_AUTH_URL', 'STRAVA_SCOPE',
+                       'www.strava.com/oauth', '_stravaCall', 'stravaRefreshToken', 'stravaGetToken',
+                       'stravaMarkReconnect', "action: 'refresh'", "action: 'exchange'"]) {
+    yes(!STRAVAJS.includes(marca), `strava.js sin \`${marca}\``);
+  }
+  // Lo ÚNICO que strava.js puede hacer con localStorage es BORRAR: las siete claves del OAuth de
+  // cliente son credenciales muertas y siguen en el dispositivo hasta que alguien las quite.
+  const lsVerbos = [...STRAVAJS.matchAll(/localStorage\s*\.\s*(\w+)/g)].map((m) => m[1]);
+  yes(lsVerbos.length > 0 && lsVerbos.every((v) => v === 'removeItem'),
+      `strava.js sólo BORRA de localStorage (${[...new Set(lsVerbos)].join(', ') || 'nada'})`);
+  yes(/STRAVA_DEAD_LS_KEYS/.test(STRAVAJS) && /^stravaPurgeDeviceCredentials\(\);$/m.test(STRAVAJS),
+      'y la limpieza se ejecuta al cargar el script (una vez por arranque)');
+  for (const k of ['strava_access_token', 'strava_refresh_token', 'strava_token_expiry',
+                   'strava_athlete_id', 'strava_athlete_name', 'strava_last_sync', 'strava_needs_reconnect']) {
+    yes(STRAVAJS.includes(`'${k}'`), `la limpieza incluye ${k}`);
+  }
+  // Y en el RESTO de la app tampoco queda una lectura de credencial de Strava.
+  for (const [name, src] of [['app/app.js', APPJS], ['app/whoop.js', WHOOPJS], ['app/integrations.js', INTEGJS]]) {
+    yes(!/localStorage\.(get|set)Item\(\s*['"]strava_/.test(src), `${name} no lee ni escribe credenciales de Strava`);
+    yes(!/strava_(access|refresh)_token/.test(src), `${name} no nombra un token de Strava`);
+  }
+
+  // -- 30.2 · los cinco envoltorios apuntan a integrations.js --------------------------------
+  yes(/integrationsConnect\('strava'\)/.test(STRAVAJS), "stravaConnect() -> integrationsConnect('strava')");
+  yes(/integrationsIsActive\('strava'\)/.test(STRAVAJS), "stravaIsConnected() -> integrationsIsActive('strava')");
+  yes(/integrationsStatusOf\('strava'\)/.test(STRAVAJS) && /'needs_reconnect'/.test(STRAVAJS),
+      "stravaNeedsReconnect() -> la fila de estado con status 'needs_reconnect'");
+  yes(/integrationsSync\('strava', \{ days: STRAVA_SYNC_DAYS \}\)/.test(STRAVAJS)
+      && /STRAVA_SYNC_DAYS = 7/.test(STRAVAJS), "stravaSync() -> integrationsSync('strava', {days: 7})");
+  yes(/integrationsDisconnect\('strava'\)/.test(STRAVAJS), "stravaDisconnect() -> integrationsDisconnect('strava')");
+  // C-28: el toast sigue pudiendo decir la causa, y sin fallo local usa el `last_error` del espejo.
+  yes(/function stravaLastError\(\)/.test(STRAVAJS) && /row\.last_error/.test(STRAVAJS),
+      'stravaLastError() sigue existiendo y cae al last_error de integration_status');
+  yes(/errText\(safeCall\('stravaLastError'\)/.test(APPJS), 'y el toast de Ajustes lo usa (C-28)');
+  // La página de vuelta del OAuth de cliente ya no existe.
+  yes(!existsSync('app/strava-callback.html'), 'app/strava-callback.html borrado');
+  yes(!/strava-callback\.html/.test(SW.slice(SW.indexOf('const APP_SHELL'), SW.indexOf('const SHELL_URLS'))),
+      'y fuera del APP_SHELL (precachear un 404 tira la tanda opcional sin ruido)');
+  yes(!/strava-callback/.test(INDEX), 'ni referenciado en index.html');
+
+  // -- 30.3 · el registro de proveedores: los CUATRO, y derivado -----------------------------
+  for (const id of ['whoop', 'withings', 'strava', 'intervals']) {
+    yes(new RegExp(`id: '${id}'`).test(INTEGJS), `INTEG_PROVIDERS incluye ${id}`);
+    yes(new RegExp(`${id}: '${id}-sync'`).test(INTEGJS), `INTEG_SYNC_FN mapea ${id} -> ${id}-sync`);
+  }
+  yes(/Runs and cardio from COROS/.test(INTEGJS), 'Strava se describe como "Runs and cardio from COROS"');
+  yes(/Training load, steps and history/.test(INTEGJS), 'e intervals.icu como "Training load, steps and history"');
+  yes(/INTEG_PROVIDER_IDS = INTEG_PROVIDERS\.map/.test(INTEGJS),
+      'la lista de ids se DERIVA de INTEG_PROVIDERS (no una segunda lista a mano)');
+  yes(/function _integEmptyStatus/.test(INTEGJS) && /for \(const id of INTEG_PROVIDER_IDS\) base\[id\] = null/.test(INTEGJS),
+      'y el estado vacío también: _integStatus tiene hueco para los cuatro');
+  yes(!/\{ whoop: null, withings: null, offline: true \}/.test(INTEGJS),
+      'ya no queda el objeto de dos proveedores escrito a mano');
+  yes(/INTEG_PROVIDER_IDS\.indexOf\(row\.provider\) >= 0/.test(INTEGJS),
+      'el filtro de filas usa la lista derivada (el hasOwnProperty descartaba strava e intervals)');
+  yes(!/hasOwnProperty\.call\(next/.test(INTEGJS), 'y el hasOwnProperty ya no está');
+
+  // -- 30.4 · el sync elige función y stores por mapa ----------------------------------------
+  yes(/const fn = INTEG_SYNC_FN\[provider\];/.test(INTEGJS), 'integrationsSync saca la función del mapa');
+  yes(/if \(!fn\) return \{ ok: false, status: 'error'/.test(INTEGJS),
+      'y un proveedor desconocido no llama a nadie (antes caía en whoop-sync)');
+  yes(!/provider === 'withings' \? 'withings-sync' : 'whoop-sync'/.test(INTEGJS), 'el ternario de dos proveedores se fue');
+  const storesBlock = INTEGJS.slice(INTEGJS.indexOf('const INTEG_SYNC_STORES'), INTEGJS.indexOf('async function integrationsSync'));
+  yes(/strava: \['runs', 'sessions'\]/.test(storesBlock), 'strava baja runs + sessions');
+  yes(/intervals: \['wellness', 'bodyweight', 'steps', 'runs', 'sessions'\]/.test(storesBlock),
+      'intervals baja wellness + bodyweight + steps + runs + sessions');
+  yes(/whoop: \['wellness'\]/.test(storesBlock) && /withings: \['wellness', 'bodyweight'\]/.test(storesBlock),
+      'y WHOOP / Withings siguen bajando lo mismo que antes');
+
+  // -- 30.5 · intervals.icu: proveedor de API key, no de OAuth ------------------------------
+  yes(/apiKey: true/.test(INTEGJS), 'intervals.icu está marcado como proveedor de API key');
+  yes(/function integrationsIsApiKeyProvider/.test(INTEGJS), 'con un predicado, no un igual-a-intervals repartido');
+  const connectBlock = INTEGJS.slice(INTEGJS.indexOf('async function integrationsConnect'),
+                                     INTEGJS.indexOf('async function integrationsDisconnect'));
+  yes(/integrationsIsApiKeyProvider\(provider\)/.test(connectBlock)
+      && /code: 'apikey_provider'/.test(connectBlock),
+      "integrationsConnect('intervals') corta con code:'apikey_provider' (no hay authorize que abrir)");
+  yes(/data-integ-act="savekey"/.test(INTEGJS) && /function _integKeyForm/.test(INTEGJS),
+      'y la tarjeta pinta un formulario de clave en vez del botón Connect');
+  yes(/id="integ-key-value"/.test(INTEGJS) && /type="password"/.test(INTEGJS), 'con el campo de clave en type=password');
+  yes(!/id="integ-key-value"[^>]*value="/.test(INTEGJS),
+      'y SIN `value=`: la clave no baja del servidor, así que el campo nace vacío');
+  yes(/keyEl\.value = ''/.test(INTEGJS), 'tras guardar, el campo se vacía (fuera del DOM en cuanto ha viajado)');
+  yes(/action: 'set_key'/.test(INTEGJS) && /action: 'status'/.test(INTEGJS),
+      "invoca 'intervals-sync' con set_key y con status");
+  yes(/action: 'push_events'/.test(INTEGJS) && /action: 'athlete'/.test(INTEGJS), 'y con push_events y athlete');
+  yes(/scope: 'Strava did not grant access to your activities'/.test(INTEGJS),
+      'INTEG_CONNECT_ERROR_EN traduce el código `scope` de Strava');
+
+  // -- 30.6 · LA CLAVE NO SALE: ni por smartPut, ni por el backup, ni por un log ------------
+  yes(/async function saveIntervalsCredentials/.test(APPJS), 'app.js tiene UN camino de guardado');
+  const saveBlock = APPJS.slice(APPJS.indexOf('async function saveIntervalsCredentials'),
+                                APPJS.indexOf('// ==================== UNIFIED SYNC CARD'));
+  yes(/integrationsSetIntervalsKey\(clave, atleta\)/.test(saveBlock), 'que sube la clave al servidor');
+  yes(/setIntervalsApiKey\(clave\)/.test(saveBlock), 'y la guarda con el accesor de C-8 (localStorage)');
+  yes(!/state\.settings\.intervalsIcuApiKey/.test(saveBlock),
+      'y NUNCA en state.settings (eso la devolvería a la fila sincronizada y al backup)');
+  yes(/intervalsIcuAthleteId = resuelto/.test(saveBlock),
+      'el id de atleta sí va a settings (no es secreto: es i12345)');
+  yes(/integrationsSaveIntervalsKey/.test(INTEGJS) && /typeof saveIntervalsCredentials === 'function'/.test(INTEGJS),
+      'y los DOS formularios entran por la misma función (dos caminos = una clave vieja en un lado)');
+  // El filtro de smartPut y el redactado del backup siguen en pie: son la mitad de C-8.
+  yes(/const LOCAL_ONLY_KEYS = \['intervalsIcuApiKey', 'stepsSecret'\]/.test(APPJS),
+      'LOCAL_ONLY_KEYS sigue listando la API key');
+  yes(/if \(store === 'settings' && data && data\.key === 'userSettings'\)/.test(APPJS)
+      && /_stripLocalOnly/.test(APPJS), 'smartPut sigue filtrándola de userSettings');
+  yes(/BACKUP_REDACT_KEYS = \['stepsSecret', 'intervalsIcuApiKey'\]/.test(APPJS),
+      'y el backup exportable sigue redactándola');
+  // Ni un log, ni un toast, con el valor dentro.
+  for (const [name, src] of [['app/integrations.js', INTEGJS], ['app/app.js', APPJS]]) {
+    yes(!/console\.(log|warn|info|error)\([^)]*\b(apiKey|clave|newKey)\b/.test(src),
+        `${name} no registra la clave en consola`);
+    yes(!/toast\([^)]*\b(apiKey|clave|newKey)\b/.test(src), `${name} no la muestra en un toast`);
+  }
+  yes(/keyHint/.test(INTEGJS) && /keyHint/.test(APPJS),
+      'lo único que se pinta de la clave es el indicio enmascarado que devuelve el servidor');
+
+  // -- 30.7 · el empuje al COROS y las zonas, por servidor cuando hay credencial ------------
+  const pushBlock = APPJS.slice(APPJS.indexOf('async function _icuUpsertEvents'),
+                                APPJS.indexOf('// Subtipo del plan v2'));
+  yes(/integrationsIntervalsHasServerKey/.test(pushBlock) && /integrationsPushIntervalsEvents\(events\)/.test(pushBlock),
+      '_icuUpsertEvents empuja por el servidor cuando hay credencial');
+  yes(/fetchWithTimeout\(`https:\/\/intervals\.icu\/api\/v1\/athlete\//.test(pushBlock),
+      'y conserva el camino directo como respaldo (el import de cliente sigue vivo)');
+  yes(/external_id: `pwa-/.test(APPJS), 'los external_id siguen empezando por pwa- (el servidor lo exige)');
+  const zonesBlock = APPJS.slice(APPJS.indexOf('async function fetchIntervalsIcuZones'),
+                                 APPJS.indexOf('// Return a bpm-range string'));
+  yes(/integrationsIntervalsAthlete\(\)/.test(zonesBlock), 'fetchIntervalsIcuZones pide athlete al servidor');
+  yes(/icu_lthr: srv\.lthr/.test(zonesBlock),
+      'y re-mapea a los nombres crudos para que la heurística de zonas sea LA MISMA función');
+  yes(/bpmLooking/.test(zonesBlock) && /z\.long_easy = z\.zone2/.test(zonesBlock),
+      'el algoritmo de zonas no se ha tocado');
+  // El punto de retirada, escrito donde se va a leer.
+  yes(/PUNTO DE RETIRADA · A-7/.test(APPJS),
+      'el import de cliente de intervals.icu lleva su punto de retirada comentado');
+  yes(/Sync from the server/.test(APPJS) && /integrationsSync\('intervals', \{ days: 7 \}\)/.test(APPJS),
+      'y Ajustes tiene el botón que ejercita el camino de servidor a demanda');
+}
 
 console.log(failed === 0 ? '\nTODO OK' : `\n${failed} FALLOS`);
 process.exit(failed === 0 ? 0 : 1);

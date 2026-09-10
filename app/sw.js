@@ -6,7 +6,9 @@
 //
 //   • Faltaban en el shell la hoja de Google Fonts (las tres familias de la identidad),
 //     `favicon.svg`, `privacy.html` y `strava-callback.html`: sin red la app abría con las
-//     fuentes del sistema y el callback de Strava daba 404.
+//     fuentes del sistema y el callback de Strava daba 404. (A-7, 2026-09-10: el callback de
+//     Strava se BORRÓ — el OAuth vive entero en el servidor (`integrations-callback`), así que
+//     ya no hay página de vuelta que cachear.)
 //   • Precacheaba `app-icon.png` (1,9 MB) y `intro.mp4` (348 KB) — 2,2 MB que hay que bajar
 //     ANTES de que el service worker active, en la primera visita y en cada versión nueva.
 //     Ahora se sirven por el manejador de runtime: red primero, caché si no hay red.
@@ -26,7 +28,7 @@
 //     └───────────────────────────────┴──────────────────────────────────────────────────┘
 //
 
-const CACHE_NAME = 'training-v11.72';
+const CACHE_NAME = 'training-v11.73';
 
 // La hoja de estilos de Google Fonts que pide `index.html`. Tiene que ser la MISMA URL,
 // carácter por carácter, o el `cache.match` no acierta.
@@ -56,7 +58,6 @@ const APP_SHELL = {
     './manifest.json',
     './favicon.svg',
     './privacy.html',
-    './strava-callback.html',
     GOOGLE_FONTS_CSS,
     './img/hero-pull.jpg',
     './img/session-legs.jpg',

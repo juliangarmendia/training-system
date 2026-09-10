@@ -23,25 +23,25 @@
 // Ahora los tokens viven en el servidor y aquí no hay ni uno: la conexión se gestiona en
 // `app/integrations.js` (tarjeta de Ajustes) y el dato se pide con `integrationsSync('whoop')`.
 
-// ==================== FECHAS (F-14) ====================
+// ==================== FECHAS (F-14 · C-25) ====================
 // Todo "hoy" de este fichero es LOCAL. Usaba `new Date().toISOString().split('T')[0]`, que es UTC:
 // entre las 00:00 y las 02:00 de Madrid pedía la ventana de "hoy" UTC (= ayer local) y etiquetaba
-// las filas con un día de menos. El resto de la app ya usa `dateStr()` local a propósito (el
-// proyecto pagó una migración por esto, tz_date_migration_v2). whoop.js se carga ANTES de app.js,
-// así que se define aquí su propio helper en vez de depender del orden de los <script>.
-function _whoopLocalDateStr(d) {
-  const dt = d instanceof Date ? d : (d != null ? new Date(d) : new Date());
-  if (isNaN(dt.getTime())) return null;
-  const y = dt.getFullYear();
-  const m = String(dt.getMonth() + 1).padStart(2, '0');
-  const day = String(dt.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
+// las filas con un día de menos. El proyecto ya pagó una migración por esto
+// (`tz_date_migration_v2`).
+//
+// C-25 (auditoría 2026-09-09): aquí vivía `_whoopLocalDateStr`, idéntica a `dateStr()` de
+// app.js. La justificaba "whoop.js se carga ANTES de app.js", y eso es cierto pero irrelevante:
+// ninguna de estas llamadas ocurre en tiempo de EVALUACIÓN del fichero, así que cuando se
+// ejecutan el global ya está. `dateStr()` absorbió su tolerancia (sin argumento = ahora,
+// entrada inválida = null) para que la sustitución fuese literal.
 
 // ==================== CONNECTION STATE ====================
 function intervalsWellnessConfigured() {
-  return !!(typeof state !== 'undefined' && state.settings
-    && state.settings.intervalsIcuApiKey
+  // C-8: la API key ya no vive en `settings/userSettings` (fila sincronizada) sino en
+  // localStorage, detrás de `intervalsApiKey()` de app.js. `typeof` porque app.js se evalúa
+  // DESPUÉS de este fichero; en tiempo de llamada el global ya existe.
+  return !!(typeof intervalsApiKey === 'function' && intervalsApiKey()
+    && typeof state !== 'undefined' && state.settings
     && state.settings.intervalsIcuAthleteId);
 }
 
@@ -142,11 +142,11 @@ let _wellnessKeyLoggingDone = false;
 
 async function intervalsFetchWellness() {
   if (!intervalsWellnessConfigured()) return null;
-  const apiKey = state.settings.intervalsIcuApiKey;
+  const apiKey = intervalsApiKey();
   const athleteId = state.settings.intervalsIcuAthleteId;
 
-  const today = _whoopLocalDateStr();
-  const weekAgo = _whoopLocalDateStr(new Date(Date.now() - 7 * 86400000));
+  const today = dateStr();
+  const weekAgo = dateStr(new Date(Date.now() - 7 * 86400000));
   const url = `https://intervals.icu/api/v1/athlete/${encodeURIComponent(athleteId)}/wellness`
     + `?oldest=${weekAgo}&newest=${today}`;
   const auth = 'Basic ' + btoa(`API_KEY:${apiKey}`);
@@ -258,12 +258,10 @@ async function intervalsFetchWellness() {
       try {
         if (typeof dbGet === 'function') {
           const existing = bwExisting;
-          const prevDate = (() => {
-            // Mediodía local − 1 día, en local: la misma cuenta de siempre, sin pasar por UTC.
-            const d = new Date(r.id + 'T12:00:00');
-            d.setDate(d.getDate() - 1);
-            return _whoopLocalDateStr(d);
-          })();
+          // C-24: el día anterior por `addDays()` de app.js, la única suma de días del proyecto.
+          // Antes era un `setDate(getDate() - 1)` sobre un Date construido en hora local, que en
+          // el fin de semana del cambio de horario devuelve el MISMO día.
+          const prevDate = addDays(r.id, -1);
           const prev = await dbGet('bodyweight', prevDate);
           const prevWeight = prev && typeof prev.weight === 'number' ? prev.weight : null;
           const isNewSignal = prevWeight === null || Math.abs(projectedW - prevWeight) >= 0.05;
@@ -409,7 +407,7 @@ async function intervalsFetchWellness() {
 
   return {
     synced: true,
-    syncDate: _whoopLocalDateStr(),
+    syncDate: dateStr(),
     source: 'intervals.icu',
     rows: rows.length,
     bodyWeight: latestWeight,
@@ -478,7 +476,7 @@ async function _whoopBuildFromWellness(todayStr, intervalsResult) {
   try { if (typeof dbGetAll === 'function') all = (await dbGetAll('wellness')) || []; }
   catch (e) { console.warn('[wellness] lectura local:', e); }
 
-  const from = _whoopLocalDateStr(new Date(Date.now() - 6 * 86400000));
+  const from = dateStr(new Date(Date.now() - 6 * 86400000));
   const rows = all
     .filter(r => r && r.date && r.date >= from && r.date <= todayStr)
     .sort((a, b) => String(a.date).localeCompare(String(b.date)));
@@ -547,7 +545,7 @@ async function whoopSyncData() {
     try { if (typeof integrationsGetStatus === 'function') await integrationsGetStatus(); } catch (e) {}
     if (!whoopIsConnected()) return null;
   }
-  const todayStr = _whoopLocalDateStr();
+  const todayStr = dateStr();
 
   // Caché de 10 min que NO puede tapar la falta del dato de hoy: si el payload guardado no trae
   // hoy y la ventana para volver a pedírselo al servidor ya venció, se rehace igualmente.
@@ -605,7 +603,7 @@ function getRecoveryColor(score) {
 // un dato que no es de hoy se pinta CON SU FECHA, nunca como si fuera de hoy (F-6).
 function whoopDayLabel(dateStrIn, todayStr) {
   if (!dateStrIn) return '';
-  const t = todayStr || _whoopLocalDateStr();
+  const t = todayStr || dateStr();
   if (dateStrIn === t) return 'today';
   const a = new Date(dateStrIn + 'T12:00:00');
   const b = new Date(t + 'T12:00:00');
@@ -642,7 +640,7 @@ async function whoopRecoveryBlockHtml() {
 
   // El número grande: el de HOY si existe, y si no el último disponible pero ETIQUETADO con su
   // día (F-6). Antes cogía `recovery[length - 1]` y lo pintaba como si fuera de hoy.
-  const _today = _whoopLocalDateStr();
+  const _today = dateStr();
   const todayRec = data.recovery.find(r => r && r.date === _today && r.score != null) || null;
   // Para el respaldo se coge el último día CON score: una fila de intervals con HRV pero sin
   // readiness pintaría el anillo en rojo al 0 %.
@@ -785,6 +783,6 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     whoopIsConnected, whoopSyncData, whoopResetCache, whoopNoteServerSync, intervalsFetchWellness,
     getRecoveryColor, whoopDayLabel, whoopClock, renderWhoopRecoveryCard, whoopRecoveryBlockHtml,
-    WHOOP_OWNED_KEYS, _whoopLocalDateStr, _whoopRowsEqual,
+    WHOOP_OWNED_KEYS, _whoopRowsEqual,
   };
 }

@@ -6,7 +6,7 @@
 > El *por qué* de cada cosa vive en [`../assessments/2026-08-16_system-audit.md`](../assessments/2026-08-16_system-audit.md).
 > Aquí está el *qué sigue*.
 >
-> Última actualización: **2026-09-10** (auditoría 2026-09-09: v11.70 P0 + datos + seguridad, y v11.71 + v11.72 + fn v5 — motores y pack, UX, servidor. Queda v11.73 código y tests, y A-7)
+> Última actualización: **2026-09-10** (auditoría 2026-09-09 CERRADA: v11.70 → v11.73, fn v5 y A-7. Sólo queda retirar el import de intervals.icu del cliente cuando el del servidor lleve una semana bien)
 
 ## Regla de trabajo
 
@@ -711,6 +711,58 @@ this" con Retry.
 3. **`VOL-FLOOR` avisaba seis veces.** Medido sobre la semilla real incumplen el suelo seis familias
    (Rear Delt 3, Chest 4, Shoulders 4, Quads 7, cadena posterior 7, Back 8), cada una con el mismo
    texto de tres frases. Ahora es UN aviso con la lista ordenada por lo peor.
+
+## v11.73 + A-7 (2026-09-10) — la auditoría queda cerrada
+
+**v11.73 · código y tests.** Un solo camino de actualización del service worker, y con un entreno
+abierto ya no recarga: sale un chip "New version / Reload" y decides tú (C-6). Los dos secretos
+salen de la fila de ajustes que se sincroniza y viven en el almacenamiento local del teléfono, con
+migración perezosa y filtro dentro de `smartPut`, en un sitio y no en veinte llamadores (C-8). Una
+sola semana ISO en todo el repo: las dos copias locales que sombreaban la del motor, fuera (C-10).
+Los pasos manuales y el restore de una copia de seguridad pasan por la cola de sincronización, así
+que un restore por fin sube (C-15, C-16). El test del service worker deriva la lista de ficheros
+del propio HTML, así que añadir un `<script>` y olvidarse del SW ya rompe la CI (C-17).
+`@supabase/supabase-js` pinado a una versión exacta y fuera del shell, razonado en el comentario
+(C-18). `requestManualCoachReview` se ejecuta de verdad en un sandbox en vez de comprobarse con
+expresiones regulares (C-19). Un `mondayOf` y un `addDays` únicos, un predicado de "sesión de
+pierna" único, `safeCallVoid` en los cuatro disparos sin dueño, y los toasts dicen la causa
+(C-24..C-28). Diez símbolos y 164 líneas de CSS muertas, verificadas con un escáner que cruza
+todas las declaraciones contra el HTML, los tests y los scripts (C-30). Se cablean los carbohidratos
+por tipo de día, que da consumidor a REC-007 y llevaba dos incrementos esperando, y la proteína por
+comida, porque 185 g en cuatro comidas y en dos no son lo mismo (F-20, F-21).
+
+**A-7 · las credenciales fuera del teléfono.** Strava pasa entero al servidor con el patrón de
+WHOOP: token en `integration_tokens`, refresco con cerrojo, rotación persistida y el usuario
+siempre del JWT. Y ahí salió el hallazgo del día: **Strava no había importado nunca una sola
+carrera**. La función hacía el upsert contra un índice único PARCIAL, que Postgres no puede inferir,
+así que todos los upserts morían con un `42P10` que acababa en un array de errores que nadie lee
+mientras la función respondía "200, sincronizado: 0". Cero filas de `runs` con origen Strava desde
+que existe. Arreglado con la clave real `(user_id, record_id)`. intervals.icu gana su propia
+función con la clave guardada en la base, y como no tiene OAuth se sube una vez con el JWT del
+usuario y no vuelve a bajar: la pantalla sólo ve `••••1234`. El envío de la semana al COROS no se
+rompe porque la llamada se mueve al servidor y el armado de la semana se queda en el cliente, donde
+están el plan, el cardio del coach y el DSL que hay que mandar verbatim.
+
+**Escalonado deliberado:** el import de intervals.icu **sigue corriendo en el cliente**. Es lo único
+que alimenta `wellness`, pasos, peso y casi todas las carreras, y apostar el canal de datos a un
+import de servidor sin estrenar el día antes de cerrar la semana no es un cambio que merezca la
+pena. El punto de retirada está comentado en `app.js`. Cuando el cron del servidor lleve una semana
+trayendo lo mismo, se borra el del cliente y la clave sale del teléfono del todo.
+
+### Lo que queda en manos de Julian
+
+1. **Panel de Strava:** cambiar el Authorization Callback Domain a tu dominio de Supabase. El
+   callback ya no es una página de la PWA.
+2. **Reconectar Strava una vez.** El refresh token vive en el `localStorage` del teléfono y el
+   servidor nunca lo ve, así que no se puede migrar. De paso se concede el permiso que faltaba
+   para leer actividades privadas, otra razón por la que podían faltar carreras.
+3. **Guardar la clave de intervals.icu** en Ajustes › Integrations, para que el servidor pueda
+   sincronizar por su cuenta.
+4. **Limpiar la fila vieja de ajustes.** Los dos secretos siguen en la nube dentro de
+   `settings/userSettings` (`data.data`): la versión nueva ya no los sube, pero la fila los
+   conserva hasta que se reescriba. Hay que borrarlos con SQL DESPUÉS de abrir la app una vez con
+   v11.73, porque la primera lectura es la que los pasa al almacenamiento local del teléfono.
+5. La protección de contraseñas filtradas en Supabase › Authentication, que sigue pendiente.
 
 ### Series efectivas — decidido por Julian el 2026-09-10
 

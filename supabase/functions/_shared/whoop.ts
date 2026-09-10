@@ -101,6 +101,9 @@ async function postToken(body: URLSearchParams, phase: string): Promise<TokenSet
 
 export const whoopAdapter = {
   id: "whoop" as const,
+  // A-7: par access/refresh que ROTA. `kind` es lo que separa esta clase de credencial de la
+  // API key de intervals.icu, que no se refresca nunca (ver `ProviderKind` en tokens.ts).
+  kind: "oauth" as const,
   apiBase: WHOOP_API_BASE,
   scopes: WHOOP_SCOPES,
 

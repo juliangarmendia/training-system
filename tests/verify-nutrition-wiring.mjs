@@ -127,8 +127,19 @@ yes(defineFn(NUT, 'nutSaveEnergy'), 'y tiene quien la guarde');
 // totales dejan de venir de las comidas y vuelve el problema que esto arregla.
 console.log('');
 console.log('8. Un solo escritor del store derivado');
-const escriturasApp = (APP.match(/smartPut\('nutrition'/g) || []).length;
-yes(escriturasApp === 0, `app.js ya no escribe en 'nutrition' (${escriturasApp} escrituras)`);
+// v11.73 (C-16): `importBackup()` restaura las filas exportadas y pasó de `dbPut` a `smartPut`
+// —con `dbPut` un restore no subía nunca, y un restore es justo el momento en que la copia de la
+// nube está incompleta—. NO rompe la invariante: la invariante es que nadie AUTORE totales a
+// mano, y devolver una fila que salió del propio export no es autorarla. Se excluye ese cuerpo y
+// se sigue exigiendo cero en todo lo demás.
+const iImp = APP.indexOf('async function importBackup(');
+const jImp = APP.indexOf('\n}', APP.indexOf('Could not restore the backup', iImp));
+const APP_SIN_RESTORE = APP.slice(0, iImp) + APP.slice(jImp);
+const escriturasApp = (APP_SIN_RESTORE.match(/smartPut\('nutrition'/g) || []).length;
+yes(iImp > 0 && jImp > iImp, 'se localiza importBackup() (la única excepción permitida)');
+yes(escriturasApp === 0, `app.js no escribe en 'nutrition' fuera del restore (${escriturasApp} escrituras)`);
+yes(/smartPut\('nutrition', n\)/.test(APP.slice(iImp, jImp)),
+  'y el restore sí encola sus filas, o no subirían nunca (C-16)');
 const escriturasNut = (NUT.match(/smartPut\('nutrition'/g) || []).length;
 yes(escriturasNut === 2, `nutrition.js escribe en 2 sitios: el agregado y la energía (${escriturasNut})`);
 yes(/async function recomputeNutritionDay/.test(NUT), 'recomputeNutritionDay() es el agregador');

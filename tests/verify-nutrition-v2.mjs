@@ -515,6 +515,150 @@ yes(/ffmSource: ffmInfo\.source/.test(COMPUTE),
   yes(ffmKg({}).kg > 0, 'sin entrada no revienta y devuelve un número usable');
 }
 
+// ── F-20 · el carbohidrato por tipo de día deja de estar muerto ─────────────────
+//
+// EL FALLO. `NUT_CARB_TARGETS` llevaba tres versiones sin un solo lector, y detrás hay una
+// regla con fuente: REC-007 ("periodizar el carbohidrato por tipo de día en vez de subir el
+// total"; Thomas/Erdman/Burke 2016, Tabla 2). Su `consumerNote` en evidence-to-rules.md decía
+// literalmente que era "el siguiente incremento de nutrición". Lo que este test protege es la
+// parte que se puede equivocar en silencio: que el TIPO de día salga de lo que pasó y no del
+// día de la semana — el caveat de la propia regla avisa de que la tabla de nutrition-notes.md
+// nombra Lun/Jue del plan de abril, que está retirado.
+console.log('\nF-20. Carbohidrato por tipo de día (REC-007)');
+{
+  eq(JSON.stringify(N.NUT_CARB_TARGETS), '{"lower":350,"upper":285,"longrun":310,"rest":250}',
+    'los cuatro objetivos, como en plans/nutrition-notes.md v3.0');
+  yes(typeof N.nutDayType === 'function', 'existe nutDayType()');
+
+  // Se reconstruye el módulo con los colaboradores de app.js fingidos: `nutDayType` los
+  // consulta con `typeof`, así que sin ellos cae al baseline y hay que probar las dos cosas.
+  const conEntorno = (env) => {
+    const box = Object.assign({ module: { exports: {} }, console, Date }, env);
+    box.exports = box.module.exports;
+    vm.createContext(box);
+    new vm.Script(SRC).runInContext(box);
+    return box.module.exports;
+  };
+  const CLASES = {
+    lowerA: { family: 'strength', subtype: 'lower' },
+    upperA: { family: 'strength', subtype: 'upper' },
+    hyroxA: { family: 'hybrid', subtype: 'conditioning' },
+  };
+  const base = {
+    sessionClassMap: () => CLASES,
+    activeWeekTemplate: { 1: { type: 'gym', session: 'lowerA' }, 2: { type: 'gym', session: 'upperA' }, 3: { type: 'rest' } },
+    state: { settings: { proteinTarget: 185, calorieTargetTraining: 2700, calorieTargetRest: 2400 } },
+  };
+  const mk = (workouts, runs, sess) => conEntorno(Object.assign({}, base, {
+    dbGetAll: (store) => Promise.resolve(store === 'workouts' ? workouts : []),
+    getRunsDeduped: () => Promise.resolve(runs || []),
+    getSessionsDeduped: () => Promise.resolve(sess || []),
+  }));
+
+  // 2026-09-07 es lunes; 09 miércoles (descanso en la plantilla); 08 martes.
+  let M = mk([{ date: '2026-09-07', session: 'lowerA' }], [], []);
+  eq(await M.nutDayType('2026-09-07'), 'lower', 'una sesión de pierna REGISTRADA → lower');
+  eq((await M.nutDayTargets('2026-09-07')).carbTarget, 350, '…y 350 g de carbohidrato');
+
+  M = mk([{ date: '2026-09-08', session: 'upperA' }], [], []);
+  eq(await M.nutDayType('2026-09-08'), 'upper', 'una de tren superior → upper (el baseline)');
+  eq((await M.nutDayTargets('2026-09-08')).carbTarget, 285, '…y 285 g');
+
+  M = mk([{ date: '2026-09-08', session: 'hyroxA' }], [], []);
+  eq(await M.nutDayType('2026-09-08'), 'lower',
+    'el híbrido cuenta como pierna (concéntrico dominante), igual que en RUN-BEFORE-LEGS');
+
+  M = mk([], [{ date: '2026-09-12', distance: 8.4, duration: 52 }], []);
+  eq(await M.nutDayType('2026-09-12'), 'longrun', 'un rodaje de 8,4 km → longrun');
+  eq((await M.nutDayTargets('2026-09-12')).carbTarget, 310, '…y 310 g');
+
+  M = mk([], [{ date: '2026-09-12', distance: 3.1, duration: 22 }], []);
+  eq(await M.nutDayType('2026-09-12'), 'upper',
+    'un trote corto NO es longrun (< 5 km y < 40 min): el día se juzga por la fuerza');
+
+  M = mk([], [], [{ date: '2026-09-12', family: 'cardio', durationMin: 45 }]);
+  eq(await M.nutDayType('2026-09-12'), 'longrun',
+    '45 min de remo en `sessions` también son cardio largo (la modalidad no manda, la dosis sí)');
+
+  M = mk([], [], []);
+  eq(await M.nutDayType('2026-09-09'), 'rest', 'un miércoles sin nada y con `rest` en la plantilla → rest');
+  eq((await M.nutDayTargets('2026-09-09')).carbTarget, 250, '…y 250 g (menos carbo, más grasa)');
+  eq(await M.nutDayType('2026-09-07'), 'lower', 'sin nada registrado, la plantilla del lunes ya dice lower');
+
+  // Y sin los globales de app.js: baseline, nunca un día de pierna inventado.
+  const SOLO = conEntorno({ dbGetAll: () => Promise.resolve([]) });
+  eq(await SOLO.nutDayType('2026-09-07'), 'rest',
+    'sin sessionClassMap ni plantilla no inventa: cae a rest, que es el baseline conservador');
+
+  // La etiqueta que se pinta, en inglés (la UI es toda inglés desde v11.67).
+  eq(N._nutDayTypeLabel('lower'), 'lower-body', 'la etiqueta de pantalla es inglesa');
+  eq(N._nutDayTypeLabel('longrun'), 'long-cardio', '…también la de cardio largo');
+  eq(N._nutDayTypeLabel('marciano'), 'training', 'y un tipo desconocido no rompe la frase');
+
+  // Es INFORMACIÓN, no semáforo: no entra en NUT_BANDS ni cambia el objetivo de kcal.
+  yes(!Object.prototype.hasOwnProperty.call(N.NUT_BANDS, 'carbs'),
+    'el carbohidrato NO tiene banda de color: informa, no puntúa');
+  const t = await mk([{ date: '2026-09-07', session: 'lowerA' }], [], []).nutDayTargets('2026-09-07');
+  eq(t.kcalTarget, 2700, 'y el objetivo de kcal del día de entreno no se toca');
+  eq(t.proteinFloor, 185, '…ni el suelo de proteína');
+}
+
+// ── F-21 · proteína POR COMIDA, no sólo el total ────────────────────────────────
+//
+// El total diario se cumple casi siempre; lo que decide la síntesis proteica es la DOSIS por
+// comida (umbral de leucina, ~30-50 g a este peso: Moore 2009, Schoenfeld & Aragon 2018).
+// 185 g en dos comidas y 185 g en cuatro dan el mismo número en pantalla y no son lo mismo,
+// y hasta ahora la app sólo publicaba el número que no distingue.
+console.log('\nF-21. Proteína por comida');
+{
+  eq(N.NUT_PROTEIN_MEAL_MIN, 30, 'el suelo por comida son 30 g');
+  eq(N.NUT_PROTEIN_MEAL_MAX, 50, 'y el techo útil 50');
+  const comida = (p) => ({ items: [{ kcal: 300, protein: p, nova: 1 }] });
+  let a = N.aggregateMeals([comida(45), comida(50), comida(40), comida(50)]);
+  eq(a.protein, 185, 'cuatro comidas: 185 g de total');
+  eq(a.proteinPerMealAvg, 46, '…y 46 g de media por comida');
+  eq(a.mealsUnderProteinMin, 0, '…ninguna por debajo del umbral');
+  eq(JSON.stringify(a.proteinPerMeal), '[45,50,40,50]', '…con el desglose, no sólo la media');
+
+  a = N.aggregateMeals([comida(160), comida(25)]);
+  eq(a.protein, 185, 'el mismo total en dos comidas');
+  eq(a.proteinPerMealAvg, 93, '…da 93 g de media: la media sola tampoco basta');
+  eq(a.mealsUnderProteinMin, 1, '…y el contador señala la comida que se queda en 25 g');
+
+  a = N.aggregateMeals([]);
+  eq(a.proteinPerMealAvg, null, 'sin comidas es null y no 0 (0 g/comida sería mentir)');
+  eq(a.mealsUnderProteinMin, 0, '…y ninguna comida floja, porque no hay ninguna');
+
+  // Una comida con varios items suma dentro de la comida, no cuenta como varias.
+  a = N.aggregateMeals([{ items: [{ kcal: 200, protein: 20 }, { kcal: 150, protein: 18 }] }]);
+  eq(a.mealCount, 1, 'dos alimentos en un plato siguen siendo UNA comida');
+  eq(a.proteinPerMealAvg, 38, '…con 38 g de proteína, por encima del umbral');
+  eq(a.mealsUnderProteinMin, 0, '…así que no se marca como floja');
+}
+
+// ── F-20 · F-21 · y llegan a la pantalla ────────────────────────────────────────
+// Los dos números se calculan en `computeNutritionDay` y se pintan en `renderNutToday`. Un
+// campo que se calcula y no se pinta es el bug que F-20 viene a cerrar, así que se comprueba
+// el otro extremo del cable.
+console.log('\nF-20/F-21. Publicados en la fila del día y en la vista');
+{
+  const fila = SRC.slice(SRC.indexOf('async function computeNutritionDay('), SRC.indexOf('async function recomputeNutritionDay('));
+  for (const k of ['proteinPerMeal: agg.proteinPerMeal', 'proteinPerMealAvg: agg.proteinPerMealAvg',
+                   'mealsUnderProteinMin: agg.mealsUnderProteinMin',
+                   'dayType: targets.dayType', 'carbTarget: targets.carbTarget']) {
+    yes(fila.includes(k), `la fila del día publica ${k.split(':')[0]}`);
+  }
+  const vista = SRC.slice(SRC.indexOf('function renderNutToday(day) {'), SRC.indexOf('async function renderNutMeals('));
+  yes(/\$\{perMealNote\}/.test(vista), 'la vista pinta la nota de proteína por comida');
+  yes(/leucine threshold/.test(vista), '…nombrando el umbral, no un número suelto');
+  yes(/day\.mealCount/.test(vista), '…y sólo cuando hay comidas registradas');
+  yes(/day\.carbTarget \? ` \/ \$\{day\.carbTarget\}`/.test(vista),
+    'y los carbos se pintan contra su objetivo del día');
+  yes(/REC-007/.test(vista), '…citando la regla, como el resto de la tarjeta');
+  yes(/redistribution, not more calories/.test(vista),
+    '…y diciendo que la palanca es redistribuir, no subir el total (el caveat de REC-007)');
+}
+
 // ── Resultado ───────────────────────────────────────────────────────────────────
 console.log(failed === 0
   ? '\n✅ Nutrición v2: todas las métricas derivadas son reproducibles.'

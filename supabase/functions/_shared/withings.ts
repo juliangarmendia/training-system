@@ -109,6 +109,7 @@ function toTokenSet(body: Record<string, unknown>): TokenSet {
 
 export const withingsAdapter = {
   id: "withings" as const,
+  kind: "oauth" as const,
   apiBase: WITHINGS_API_BASE,
   scopes: WITHINGS_SCOPES,
 

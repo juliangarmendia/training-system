@@ -49,9 +49,36 @@ const NUT_KCAL_REST = 2400;            // día de descanso
 const NUT_FIBER_TARGET = 25;           // g/día
 const NUT_FAT_FLOOR = 65;              // g/día
 
-// Objetivo de carbohidratos por tipo de día (nutrition-notes.md v3.0). Redistribuye
-// sin cambiar el total de calorías. Secundario: informa, no puntúa.
+// ── F-20 (auditoría 2026-09-09): CABLEADO, no borrado. La decisión y su por qué ──────
+//
+// Esta constante llevaba tres versiones sin un solo lector: `nutDayTargets()` calculaba kcal
+// y proteína y nada más. La alternativa era borrarla, y NO se borra porque detrás hay una
+// regla con fuente y con consumidor pendiente declarado: REC-007 ("periodizar el carbohidrato
+// por tipo de día en vez de subir el total"; Thomas/Erdman/Burke 2016, Tabla 2, banda
+// moderada 5-7 g/kg/d), cuyo `consumerNote` en `research/evidence-to-rules.md` dice
+// literalmente que es "el siguiente incremento de nutrición". Esto es ese incremento.
+//
+// CÓMO SE PUBLICA: como INFORMACIÓN, no como semáforo. No entra en `NUT_BANDS`, no puntúa el
+// día y no cambia el objetivo de kcal — sigue habiendo tres números que juzgan (kcal,
+// proteína, EA) y éste sólo dice cuánto carbohidrato pide el día que toca. Es lo que la regla
+// autoriza: la banda ACSM está por encima del baseline por decisión deliberada del déficit, y
+// la palanca disponible es la redistribución, no subir el total.
+//
+// LOS DÍAS SON TIPOS, NO DÍAS DE LA SEMANA. La tabla de `plans/nutrition-notes.md` nombra
+// Lun/Jue/Mar/Vie del plan de abril, que está retirado — es el caveat de REC-007. `nutDayType`
+// resuelve el tipo desde lo REGISTRADO y, si no hay nada, desde la plantilla activa.
 const NUT_CARB_TARGETS = { lower: 350, upper: 285, longrun: 310, rest: 250 };
+
+// Un rodaje cuenta como "long run day" a partir de aquí (nutrition-notes.md: "Z2 >= 5 km",
+// "subir CHO modesto si la corrida es >= 40 min").
+const NUT_LONGRUN_KM = 5;
+const NUT_LONGRUN_MIN = 40;
+
+// F-21: proteína por comida. Umbral de leucina para maximizar la síntesis proteica
+// (Moore 2009; Schoenfeld & Aragon 2018) — 30-50 g por comida a este peso corporal.
+// Fuente: plans/nutrition-notes.md, "Protein Distribution: Why 4 Meals" y la tabla de §615.
+const NUT_PROTEIN_MEAL_MIN = 30;
+const NUT_PROTEIN_MEAL_MAX = 50;
 
 // Umbrales del semáforo. Se IMPRIMEN en la leyenda de cada gráfico — nunca un
 // color sin su número al lado, que es lo que hace legible un dashboard denso.
@@ -260,8 +287,13 @@ function maintenanceCorrection(cal) {
 function aggregateMeals(meals) {
   const acc = { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, alcohol: 0,
                 kcalNova12: 0, mealCount: 0, itemCount: 0, estimatedItems: 0 };
+  // F-21: la proteína de cada comida por separado. El total diario ya se cumple casi
+  // siempre; lo que decide la síntesis proteica es la DOSIS por comida (umbral de leucina,
+  // 30-50 g), y 185 g en dos comidas no es lo mismo que en cuatro.
+  const porComida = [];
   for (const m of meals || []) {
     acc.mealCount++;
+    let pm = 0;
     for (const it of m.items || []) {
       const kcal = Number(it.kcal) || 0;
       acc.itemCount++;
@@ -273,12 +305,18 @@ function aggregateMeals(meals) {
       acc.alcohol += Number(it.alcohol) || 0;
       if (it.nova === 1 || it.nova === 2) acc.kcalNova12 += kcal;
       if (it.estimated) acc.estimatedItems++;
+      pm += Number(it.protein) || 0;
     }
+    porComida.push(Math.round(pm));
   }
   // % de las calorías del día que vienen de alimentos sin procesar o mínimamente
   // procesados. null y no 0 cuando no se comió nada: 0% sería mentir.
   acc.nova12Pct = acc.calories > 0 ? Math.round((acc.kcalNova12 / acc.calories) * 100) : null;
   ['calories', 'protein', 'carbs', 'fat', 'fiber', 'alcohol'].forEach(k => { acc[k] = Math.round(acc[k]); });
+  // F-21. `null` y no 0 sin comidas: 0 g/comida sería mentir igual que el 0 % de NOVA.
+  acc.proteinPerMeal = porComida.slice();
+  acc.proteinPerMealAvg = porComida.length ? Math.round(acc.protein / porComida.length) : null;
+  acc.mealsUnderProteinMin = porComida.filter(g => g < NUT_PROTEIN_MEAL_MIN).length;
   return acc;
 }
 
@@ -735,6 +773,54 @@ async function nutEeeForDate(date, bodyweightKg) {
   return Math.round(total);
 }
 
+/**
+ * F-20 · El TIPO de día, para el objetivo de carbohidrato de REC-007.
+ *
+ * Orden de resolución, de lo más real a lo más previsto:
+ *   1. `rest` si no hay sesión ni registrada ni prevista (`nutIsTrainingDay`).
+ *   2. `longrun` si hay cardio registrado de >= 5 km o >= 40 min. Va PRIMERO entre los días
+ *      de entreno: un sábado con rodaje largo pide más carbohidrato que la fuerza que lleve.
+ *   3. `lower` si la sesión de fuerza del día carga las piernas (`sessionClassMap()`:
+ *      subtipo `lower` o `full`, o familia `hybrid` — la misma definición que RUN-BEFORE-LEGS).
+ *   4. `upper` como baseline, que es lo que la tabla llama "comer normal".
+ *
+ * `typeof` en todo lo de app.js: este fichero se carga antes y los tests lo ejecutan solo.
+ * Sin esos globales el tipo cae a `upper`/`rest`, que es el baseline — nunca inventa un día
+ * de pierna.
+ */
+async function nutDayType(date) {
+  if (!(await nutIsTrainingDay(date))) return 'rest';
+
+  // (2) cardio largo registrado
+  try {
+    const runs = (await (typeof getRunsDeduped === 'function' ? getRunsDeduped() : dbGetAll('runs')).catch(() => [])) || [];
+    const sess = (await (typeof getSessionsDeduped === 'function' ? getSessionsDeduped() : dbGetAll('sessions')).catch(() => [])) || [];
+    const cardio = runs.filter(r => r && r.date === date)
+      .concat(sess.filter(s => s && s.date === date && s.family === 'cardio'));
+    const largo = cardio.some(x => (Number(x.distance) || 0) >= NUT_LONGRUN_KM
+      || (Number(x.durationMin != null ? x.durationMin : x.duration) || 0) >= NUT_LONGRUN_MIN);
+    if (largo) return 'longrun';
+  } catch (e) { /* sin cardio legible, se sigue por fuerza */ }
+
+  // (3) la sesión de fuerza del día: la registrada manda sobre la prevista
+  try {
+    const clases = (typeof sessionClassMap === 'function') ? (sessionClassMap() || {}) : {};
+    const esPierna = (sid) => {
+      const c = sid ? clases[sid] : null;
+      return !!(c && (c.subtype === 'lower' || c.subtype === 'full' || c.family === 'hybrid'));
+    };
+    const workouts = (await dbGetAll('workouts').catch(() => [])) || [];
+    const hecho = workouts.find(w => w && w.date === date);
+    if (hecho) return esPierna(hecho.session) ? 'lower' : 'upper';
+    const jsDay = new Date(date + 'T12:00:00Z').getUTCDay();
+    const slot = (typeof activeWeekTemplate !== 'undefined' && activeWeekTemplate)
+      ? activeWeekTemplate[jsDay] : null;
+    if (slot && slot.type === 'gym' && esPierna(slot.session)) return 'lower';
+  } catch (e) { /* baseline */ }
+
+  return 'upper';
+}
+
 // El "contrato del día": los cuatro números de la cabecera. Salen de settings cuando el
 // usuario los ha tocado, y de nutrition-notes.md si no.
 async function nutDayTargets(date) {
@@ -743,6 +829,9 @@ async function nutDayTargets(date) {
   const kcalTarget = training
     ? (Number(s.calorieTargetTraining) || NUT_KCAL_TRAINING)
     : (Number(s.calorieTargetRest) || NUT_KCAL_REST);
+  // F-20: el tipo de día y su objetivo de carbohidrato (REC-007). Informativos: no entran en
+  // `NUT_BANDS` ni cambian `kcalTarget`.
+  const dayType = await nutDayType(date);
   return {
     date,
     training,
@@ -750,6 +839,8 @@ async function nutDayTargets(date) {
     proteinFloor: Number(s.proteinTarget) || NUT_PROTEIN_FLOOR,
     fiberTarget: NUT_FIBER_TARGET,
     fatFloor: NUT_FAT_FLOOR,
+    dayType,
+    carbTarget: NUT_CARB_TARGETS[dayType] || null,
   };
 }
 
@@ -793,8 +884,14 @@ async function computeNutritionDay(date) {
     mealCount: agg.mealCount,
     itemCount: agg.itemCount,
     estimatedItems: agg.estimatedItems,
+    // F-21 · proteína por comida (dosis, no total) · F-20 · tipo de día y carbohidrato
+    proteinPerMeal: agg.proteinPerMeal,
+    proteinPerMealAvg: agg.proteinPerMealAvg,
+    mealsUnderProteinMin: agg.mealsUnderProteinMin,
     kcalTarget: targets.kcalTarget,
     proteinFloor: targets.proteinFloor,
+    dayType: targets.dayType,
+    carbTarget: targets.carbTarget,
     trainingDay: targets.training,
     eee,
     ffm,
@@ -1079,6 +1176,10 @@ function renderNutContract(day, adh) {
 }
 
 // ── Totales del día + disponibilidad energética ─────────────────────────────────────
+// F-20: el tipo de día en inglés y en la lengua del usuario del plan, no la clave.
+const NUT_DAY_TYPE_LABEL = { lower: 'lower-body', upper: 'upper-body', longrun: 'long-cardio', rest: 'rest' };
+function _nutDayTypeLabel(t) { return NUT_DAY_TYPE_LABEL[t] || 'training'; }
+
 function renderNutToday(day) {
   const el = document.getElementById('nut-today');
   if (!el) return;
@@ -1100,6 +1201,15 @@ function renderNutToday(day) {
     : 'nut-neutral';
   const eaFaltan = (eaClosed && ea != null && ea < NUT_EA_FLOOR)
     ? Math.round((NUT_EA_FLOOR - ea) * (day.ffm || NUT_FFM_KG_FALLBACK)) : 0;
+
+  // F-21: la DOSIS por comida, debajo del total. Sin comidas no se dice nada — un "0 g por
+  // comida" leería como "has comido sin proteína", que no es lo mismo que "no hay registro".
+  const perMeal = day.proteinPerMealAvg;
+  const bajas = day.mealsUnderProteinMin || 0;
+  const perMealNote = (perMeal == null || !day.mealCount) ? '' : `<div class="nut-metric-note">`
+    + `${perMeal} g per meal across ${day.mealCount} meal${day.mealCount === 1 ? '' : 's'}`
+    + ` · target ${NUT_PROTEIN_MEAL_MIN}-${NUT_PROTEIN_MEAL_MAX} g (leucine threshold)`
+    + `${bajas ? ` · <strong>${bajas} below ${NUT_PROTEIN_MEAL_MIN} g</strong>` : ''}</div>`;
 
   const nova = day.nova12Pct;
   const novaCls = nova == null ? 'nut-neutral'
@@ -1123,6 +1233,7 @@ function renderNutToday(day) {
         <span class="nut-metric-val ${protClass}">${Math.round(day.protein || 0)} / ${day.proteinFloor} g</span>
       </div>
       <div class="nut-bar"><div class="nut-bar-fill ${protClass}" style="width:${Math.round(protPct * 100)}%"></div></div>
+      ${perMealNote}
     </div>
 
     <div class="nut-metric">
@@ -1147,11 +1258,13 @@ function renderNutToday(day) {
     </div>
 
     <div class="nut-macros">
-      <span>carbs <strong>${Math.round(day.carbs || 0)} g</strong></span>
+      <span>carbs <strong>${Math.round(day.carbs || 0)} g</strong>${day.carbTarget ? ` / ${day.carbTarget}` : ''}</span>
       <span>fat <strong>${Math.round(day.fat || 0)} g</strong></span>
       <span>fiber <strong>${Math.round(day.fiber || 0)} g</strong> / ${NUT_FIBER_TARGET}</span>
       ${day.alcoholG ? `<span>alcohol <strong>${Math.round(day.alcoholG)} g</strong></span>` : ''}
     </div>
+    ${day.carbTarget ? `<div class="nut-metric-note">Carbs on a ${_nutDayTypeLabel(day.dayType)}`
+      + ` day: ${day.carbTarget} g (REC-007 — redistribution, not more calories).</div>` : ''}
   `;
 }
 
@@ -2175,5 +2288,8 @@ if (typeof module !== 'undefined' && module.exports) {
     NUT_NOVA_PENALTY, NUT_PD_CAP, NUT_EA_FLOOR, NUT_FFM_KG_FALLBACK,
     NUT_PROTEIN_FLOOR, NUT_KCAL_TRAINING, NUT_KCAL_REST, NUT_BANDS,
     NUT_ADHERENCE_MIN, NUT_ADHERENCE_WINDOW, NUT_CALIB_MIN_SIGNAL,
+    // F-20 / F-21 (v11.73): carbohidrato por tipo de día (REC-007) y proteína por comida.
+    NUT_CARB_TARGETS, NUT_PROTEIN_MEAL_MIN, NUT_PROTEIN_MEAL_MAX,
+    NUT_LONGRUN_KM, NUT_LONGRUN_MIN, nutDayType, nutDayTargets, _nutDayTypeLabel,
   };
 }

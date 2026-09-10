@@ -17,9 +17,25 @@ entrypoint = "./functions/steps-ingest/index.ts"
 
 [functions.strava-sync]
 enabled = true
-# verify_jwt: la PWA llama con la sesion del usuario y la funcion escribe sus carreras.
+# verify_jwt = true en los DOS modos (A-7). Con la sesion de la PWA el usuario sale del JWT y la
+# funcion escribe SUS carreras; el cron de pg_net manda el JWT anon (publico, satisface esta
+# puerta) MAS la cabecera `x-cron-secret`, que es el secreto de verdad y se compara en tiempo
+# constante dentro. Los tokens de Strava viven en `integration_tokens` y no entran ni salen por
+# el cuerpo: `exchange`/`refresh` son no-ops retiradas.
 verify_jwt = true
+import_map = "./functions/strava-sync/deno.json"
 entrypoint = "./functions/strava-sync/index.ts"
+
+[functions.intervals-sync]
+enabled = true
+# verify_jwt = true en los DOS modos, igual que sus gemelas. Y aqui importa mas que en ninguna:
+# `action: 'set_key'` es el UNICO punto del sistema por el que sube una credencial de usuario
+# (la API key de intervals.icu), asi que la funcion tiene que saber de quien es antes de
+# guardarla. El cron entra con el JWT anon + `x-cron-secret`. La clave nunca vuelve a bajar: las
+# lecturas devuelven solo un indicio enmascarado (`maskSecret`).
+verify_jwt = true
+import_map = "./functions/intervals-sync/deno.json"
+entrypoint = "./functions/intervals-sync/index.ts"
 
 [functions.integrations-oauth]
 enabled = true

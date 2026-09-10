@@ -657,6 +657,10 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
 .workout-actions { display: flex; flex-direction: column; gap: 12px; margin-top: 16px; }
 .toast { position: fixed; bottom: calc(var(--nav-h) + var(--safe-bottom) + 16px); left: 50%; transform: translateX(-50%) translateY(80px); background: var(--surface2); border: 1px solid var(--accent); border-radius: var(--radius-sm); padding: 10px 22px; font-size: 14px; font-weight: 600; color: var(--accent); z-index: 2000; transition: transform 0.3s, opacity 0.3s; opacity: 0; pointer-events: none; white-space: normal; max-width: min(340px, calc(100vw - 48px)); text-align: center; line-height: 1.4; box-shadow: 0 4px 20px rgba(0,0,0,0.4); }
 .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; pointer-events: auto; }
+/* C-6: el chip de "New version". Es un `.toast` en todo (posición, borde de acento, sombra) y
+   sólo cambia en que no se va solo: `toast()` ignora `.toast-sticky` y nadie le pone
+   temporizador. Toda la superficie es pulsable, no sólo el botón — un objetivo de 44 px. */
+.toast.toast-sticky { cursor: pointer; padding: 12px 22px; }
 .view-scroll::-webkit-scrollbar { width: 0; }
 
 /* ========== Swap Panel ========== */
@@ -1212,6 +1216,11 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
   padding: 8px 10px;
   text-align: center;
 }
+/* A-7: el formulario de clave del único proveedor sin OAuth (intervals.icu). Vive dentro de su
+   propia fila de la tarjeta, no en un diálogo: es el sustituto del botón "Connect". */
+.integ-keyform { margin-top: 8px; }
+.integ-keyform .form-row { margin-bottom: 6px; }
+.integ-keyform .form-row label { color: var(--text3); }
 
 /* ========== Body Weight chart legend ========== */
 .bw-chart-legend {
@@ -1299,174 +1308,10 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
   margin: 6px 0 4px;
   text-align: center;
 }
-/* Running plan card inside Coach Review */
-.wcc-rp {
-  margin-top: 12px;
-  padding: 10px 12px;
-  background: rgba(252, 76, 2, 0.06);
-  border: 1px solid rgba(252, 76, 2, 0.18);
-  border-radius: 8px;
-}
-.wcc-rp-header {
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--brand-strava);
-  margin-bottom: 8px;
-}
-.wcc-rp-runs { display: flex; flex-direction: column; gap: 8px; }
-.wcc-rp-run {
-  background: var(--bg, #1a1a1a);
-  padding: 8px 10px;
-  border-radius: 6px;
-}
-.wcc-rp-run-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 8px;
-  font-size: 13px;
-}
-.wcc-rp-label { font-weight: 600; color: var(--text); }
-.wcc-rp-target { font-size: 12px; color: var(--text2); font-variant-numeric: tabular-nums; }
-.wcc-rp-intervals {
-  font-size: 11px;
-  color: var(--text2);
-  margin-top: 4px;
-  font-family: ui-monospace, monospace;
-}
-.wcc-rp-note { font-size: var(--fs-xs); color: var(--text3); margin-top: 4px; line-height: 1.4; }
 .wcc-section-body p:last-child { margin-bottom: 0; }
 .wcc-section-body ul { margin: 4px 0; padding-left: 20px; }
 .wcc-section-body li { margin-bottom: 3px; }
 .wcc-section-body strong { color: var(--accent); }
-
-/* ========== Coach Review: structured Next Week plan ========== */
-.wcc-nwp {
-  margin-top: 14px;
-  padding-top: 14px;
-  border-top: 1px solid var(--border);
-}
-.wcc-nwp-header {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-.wcc-nwp-title {
-  font-size: 13px;
-  font-weight: 800;
-  color: var(--text);
-  letter-spacing: 0.02em;
-}
-.wcc-nwp-phase {
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  padding: 2px 8px;
-  border-radius: 6px;
-  background: var(--surface2);
-  color: var(--text2);
-}
-.wcc-nwp-phase-push { background: rgba(251,146,60,0.15); color: var(--orange); }
-.wcc-nwp-phase-deload { background: rgba(96,165,250,0.15); color: var(--blue); }
-.wcc-nwp-phase-baseline { background: var(--tint-purple); color: var(--purple); }
-.wcc-nwp-summary {
-  font-size: 12px;
-  color: var(--text2);
-  margin-bottom: 10px;
-  line-height: 1.5;
-  font-style: italic;
-}
-.wcc-nwp-sessions {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.wcc-nwp-session {
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  overflow: hidden;
-}
-.wcc-nwp-session-summary {
-  cursor: pointer;
-  padding: 10px 12px;
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--text);
-  list-style: none;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.wcc-nwp-session-summary::before {
-  content: '▸';
-  color: var(--text2);
-  font-size: 11px;
-  transition: transform 0.15s;
-  display: inline-block;
-}
-.wcc-nwp-session[open] .wcc-nwp-session-summary::before {
-  transform: rotate(90deg);
-}
-.wcc-nwp-session-summary::-webkit-details-marker { display: none; }
-.wcc-nwp-session-label { flex: 1; }
-.wcc-nwp-session-focus {
-  font-size: 11px;
-  color: var(--text2);
-  padding: 0 12px 6px 26px;
-  font-style: italic;
-}
-.wcc-nwp-exercises {
-  padding: 4px 12px 12px 26px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.wcc-nwp-ex {
-  border-bottom: 1px dashed var(--border);
-  padding-bottom: 6px;
-}
-.wcc-nwp-ex:last-child { border-bottom: none; padding-bottom: 0; }
-.wcc-nwp-ex-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 8px;
-}
-.wcc-nwp-ex-name {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text);
-}
-.wcc-nwp-ex-target {
-  font-size: 12px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  color: var(--accent);
-  text-align: right;
-}
-.wcc-nwp-ex-rpe {
-  color: var(--text2);
-  font-weight: 500;
-}
-.wcc-nwp-ex-note {
-  font-size: 11px;
-  color: var(--text2);
-  margin-top: 3px;
-  line-height: 1.4;
-}
-.wcc-nwp-aux {
-  margin-top: 10px;
-  font-size: 12px;
-  color: var(--text2);
-  line-height: 1.5;
-}
-.wcc-nwp-aux strong { color: var(--text); font-weight: 700; }
 
 /* ========== Login form spacing ========== */
 .login-row { margin-bottom: 10px; }
@@ -2670,8 +2515,14 @@ body[data-tab="home"] .home-scroll-v2 { padding-top: calc(var(--safe-top) + 10px
   font-family: var(--font-mono); font-size: var(--fs-3xs); text-transform: uppercase;
   letter-spacing: 0.08em; color: var(--text3); border-bottom: 1px solid var(--border);
 }
-.evl-row { border-bottom: 1px solid var(--border); }
-.evl-row:last-of-type { border-bottom: none; }
+/* F-25: la fila y su salvedad van en un `.evl-item`, y el separador es del item. Con el borde
+   en `.evl-row` el caveat aparecía DEBAJO de la línea, o sea leyéndose como si perteneciera a la
+   regla siguiente. */
+.evl-item { border-bottom: 1px solid var(--border); }
+.evl-item:last-child { border-bottom: none; }
+.evl-caveat {
+  padding: 0 0 6px 0; font-size: var(--fs-2xs); line-height: 1.45; color: var(--text3);
+}
 .evl-row.-unknown .evl-rule { color: var(--text3); text-decoration: line-through; }
 .evl-rule {
   flex: 1; min-width: 0; font-family: var(--font-mono); color: var(--text2);

@@ -430,13 +430,65 @@ const shellEntries = [...SHELL_BLOCK.matchAll(/'(\.\/[^']*)'/g)].map((m) => m[1]
 yes(!SHELL_BLOCK.includes('app-icon.png'),
   'APP_SHELL NO precachea app-icon.png (1,9 MB antes de activar el service worker)');
 yes(!SHELL_BLOCK.includes('intro.mp4'), 'APP_SHELL NO precachea intro.mp4');
-for (const f of ['./integrations.js', './coach-rules.js', './coach-facts.js', './coach-engine.js', './coach.js', './nutrition.js', './app.js', './style.css', './index.html']) {
-  yes(shellEntries.includes(f), `APP_SHELL incluye ${f}`);
+
+// ── C-17 (auditoría 2026-09-09): la lista esperada SE DERIVA DE index.html ──────────────
+//
+// EL FALLO QUE ESTA PARTE EXISTE PARA IMPEDIR: hasta v11.72 la lista de ficheros que este test
+// exigía en `APP_SHELL.critical` estaba escrita a mano AQUÍ. O sea que añadir un `<script src>`
+// nuevo al HTML y olvidarse de `sw.js` pasaba el test en verde, y el fichero nuevo simplemente
+// no existía sin conexión: la app abría, y la mitad que dependía de ese script no estaba.
+// Es exactamente el bug que V-6 arregló para `integrations.js` — a mano, y sin red que lo
+// impidiera la segunda vez.
+//
+// Ahora la fuente de verdad es el HTML: todo `<script src="x.js">` y todo
+// `<link rel="stylesheet" href="x.css">` de origen propio TIENE que estar en `critical`.
+// La hoja de Google Fonts es el caso aparte (va en `optional`, con su constante).
+const localScripts = [...HTML.matchAll(/<script\s+src="([^"]+)"/g)].map((m) => m[1])
+  .filter((u) => !/^https?:\/\//.test(u));
+const localStyles = [...HTML.matchAll(/<link\s+rel="stylesheet"\s+href="([^"]+)"/g)].map((m) => m[1])
+  .filter((u) => !/^https?:\/\//.test(u));
+const criticalBlock = SHELL_BLOCK.slice(SHELL_BLOCK.indexOf('critical:'), SHELL_BLOCK.indexOf('optional:'));
+const criticalEntries = [...criticalBlock.matchAll(/'(\.\/[^']*)'/g)].map((m) => m[1]);
+yes(localScripts.length >= 10, `index.html carga ${localScripts.length} scripts propios`);
+yes(criticalEntries.includes('./index.html') && criticalEntries.includes('./'),
+  'APP_SHELL.critical incluye el documento (./ y ./index.html)');
+for (const u of localScripts.concat(localStyles)) {
+  const rel = './' + u.replace(/^\.\//, '');
+  yes(criticalEntries.includes(rel),
+    `APP_SHELL.critical incluye ${rel} (lo carga index.html) — si falla, ese fichero no existe sin conexión`);
+  yes(existsSync('app/' + u.replace(/^\.\//, '')), `y ${u} existe en app/`);
 }
+// El recíproco: nada en `critical` que ya no cargue el HTML (residuo de un borrado).
+for (const rel of criticalEntries) {
+  if (rel === './' || rel === './index.html') continue;
+  const u = rel.slice(2);
+  yes(localScripts.includes(u) || localStyles.includes(u),
+    `${rel} sigue en el APP_SHELL crítico y lo sigue cargando index.html`);
+}
+// C-18: el cliente de Supabase viene de un CDN con VERSIÓN EXACTA, y está fuera del shell
+// a propósito (respuesta opaca en `no-cors` + sin red no hay nada que sincronizar). La decisión
+// tiene que estar escrita al lado, o el próximo incremento la deshace sin saberlo.
+{
+  const cdn = [...HTML.matchAll(/<script\s+src="(https?:\/\/[^"]+)"/g)].map((m) => m[1]);
+  yes(cdn.length === 1 && /@supabase\/supabase-js@\d+\.\d+\.\d+/.test(cdn[0]),
+    `el único script de CDN es supabase-js con versión exacta (${cdn[0] || 'ninguno'})`);
+  yes(!SHELL_BLOCK.includes('supabase-js'), 'y NO está en el APP_SHELL');
+  const iCdn = HTML.indexOf('cdn.jsdelivr.net');
+  yes(/C-18/.test(HTML.slice(Math.max(0, iCdn - 1800), iCdn)),
+    'con el comentario que justifica el pin y por qué se queda fuera del shell');
+}
+
+// A-7 (2026-09-10): la comprobación va en LAS DOS DIRECCIONES. `strava-callback.html` se borró
+// —el OAuth de Strava vive entero en el servidor— y una entrada de shell que apunta a un fichero
+// que ya no existe hace que `cache.addAll`/`allSettled` de la tanda opcional falle en silencio en
+// cada install: la app sigue arrancando y nadie se entera de que el precache está roto.
 for (const f of ['./favicon.svg', './privacy.html', './strava-callback.html']) {
   const onDisk = existsSync('app/' + f.slice(2));
   yes(!onDisk || shellEntries.includes(f), `APP_SHELL incluye ${f} (existe en app/)`);
+  yes(onDisk || !shellEntries.includes(f), `y NO lo lista si el fichero no existe (${f})`);
 }
+yes(!existsSync('app/strava-callback.html') && !shellEntries.includes('./strava-callback.html'),
+  'strava-callback.html borrado y fuera del APP_SHELL (A-7)');
 yes(/GOOGLE_FONTS_CSS/.test(SHELL_BLOCK), 'APP_SHELL incluye la hoja de Google Fonts');
 const fontsUrl = (SW.match(/const GOOGLE_FONTS_CSS = '([^']+)'/) || [])[1];
 yes(!!fontsUrl && HTML.includes(fontsUrl),
@@ -503,6 +555,93 @@ console.log('');
   _ok(a > 0 && /\.catch\(/.test(APP.slice(a, b)), '_autosaveWorkout() existe y captura el rechazo');
   _ok(!/addEventListener\('(input|change)', \(\) => saveActiveWorkout\(\)\)/.test(APP), 'ningún listener llama a saveActiveWorkout() sin catch');
   _ok(!/^\s+saveActiveWorkout\(\);\s*$/m.test(APP.slice(APP.indexOf("container.querySelectorAll('[data-field=\"rpe\"]')"), APP.indexOf("container.querySelectorAll('[data-field=\"rpe\"]')") + 600)), 'el handler de RPE tampoco');
+}
+
+// ---------------------------------------------------------------------------
+// 10 · L-1 · el mapa de calor cuenta SERIES EFECTIVAS, con el crédito del coach
+// ---------------------------------------------------------------------------
+//
+// EL FALLO QUE ESTA SECCIÓN EXISTE PARA IMPEDIR: que la PANTALLA y el COACH cuenten el volumen de
+// dos maneras distintas. `renderMuscleVolume` sumaba una serie entera para la etiqueta `muscle`
+// del ejercicio y nada para nadie más; desde v11.71 el validador juzga series EFECTIVAS (1,0 al
+// motor primario + 0,5 por secundario cargado del patrón), porque el 10-14 de STR-003 está
+// escrito en esos términos. Es exactamente la forma de L-1: dos contadores, la app leyendo 16
+// series donde el validador leía 13, y una semana de decisiones tomadas sobre el número corrupto.
+//
+// Y su gemelo: que el arreglo sea un SEGUNDO mapa de créditos en app.js. Entonces habría dos
+// mapas que divergen en el siguiente incremento en vez de dos contadores.
+section('10 · L-1 · mapa de calor en series efectivas');
+{
+  const FACTS = readFileSync('app/coach-facts.js', 'utf8');
+  const mv = APP.slice(APP.indexOf('async function renderMuscleVolume()'),
+                       APP.indexOf('// ==================== SWIMLANE TIMELINE'));
+  yes(mv.length > 800, 'se localiza renderMuscleVolume');
+
+  // El crédito se REUSA, no se reimplementa.
+  for (const sym of ['_vpVolumeMuscle', '_vpSecondariesFor', 'VP_SECONDARY_CREDIT',
+                     'VP_NO_SECONDARY_IDS', 'VP_PATTERN_IDS']) {
+    yes(new RegExp(`(const|function|let)\\s+${sym}\\b`).test(FACTS),
+      `${sym} es una declaración de nivel superior de coach-facts.js (global en un script clásico)`);
+    yes(mv.includes(sym) || APP.includes(sym), `y app.js la usa: ${sym}`);
+  }
+  // Ni un segundo mapa de secundarios en app.js.
+  yes(!/VP_PATTERN_SECONDARIES\s*=/.test(APP) && !/SECONDARY_CREDIT\s*=\s*0\.5/.test(APP),
+    'app.js NO declara su propio mapa de créditos ni su propio 0,5 (una implementación, no dos)');
+  yes(/VP_SECONDARY_CREDIT\s*=\s*0\.5/.test(FACTS), 'el 0,5 vive en coach-facts.js y sólo ahí');
+
+  // Guarda `typeof`: un bundle viejo en caché degrada a series directas, no lanza.
+  yes(/function _mvEffectiveAvailable\(\)/.test(APP), 'hay un predicado de disponibilidad');
+  const avail = APP.slice(APP.indexOf('function _mvEffectiveAvailable()'), APP.indexOf('function _mvHalf'));
+  yes(/typeof _vpVolumeMuscle === 'function'/.test(avail) && /typeof _vpSecondariesFor === 'function'/.test(avail),
+    'que comprueba con typeof las funciones de coach-facts.js');
+  yes(/typeof VP_SECONDARY_CREDIT === 'number'/.test(avail), 'y el crédito');
+  yes(/const efectivas = _mvEffectiveAvailable\(\)/.test(mv), 'renderMuscleVolume lo consulta una vez');
+  yes(/if \(!efectivas\) return;/.test(mv), 'y sin él cuenta series DIRECTAS (subcuenta, no lanza)');
+
+  // El crédito: 1,0 al primario, 0,5 a cada secundario del patrón, y las tres exclusiones.
+  yes(/anota\(muscle, w\.date, doneSets\)/.test(mv), '1,0 al músculo primario');
+  yes(/doneSets \* VP_SECONDARY_CREDIT/.test(mv), 'y VP_SECONDARY_CREDIT a cada secundario');
+  yes(/_vpSecondariesFor\(patron, muscle\)/.test(mv), 'los secundarios los resuelve coach-facts.js');
+  yes(/MOVEMENT_PATTERNS\[ex\.exerciseId\] \|\| VP_PATTERN_IDS\[/.test(mv),
+    'el patrón sale de la librería y, si no, del fallback por id del validador');
+  yes(/if \(!patron\) return;/.test(mv), 'un patrón que no se resuelve NO acredita nada (sesgo a subcontar)');
+  yes(/if \(muscle === 'Power'\) return;/.test(mv), 'Power no acredita secundarios (no es hipertrofia)');
+  yes(/VP_NO_SECONDARY_IDS\[String\(ex\.exerciseId/.test(mv), 'y las aperturas tampoco (monoarticulares)');
+  yes(/_vpVolumeMuscle\(ex\.exerciseId, muscle\)/.test(mv),
+    'la reetiqueta a Power la decide _vpVolumeMuscle (la misma que el coach)');
+
+  // Power y Erectors fuera de la banda 10-14, igual que el validador.
+  yes(/function _mvHasBand\(/.test(APP), 'hay un predicado de "esta fila tiene banda"');
+  const band = APP.slice(APP.indexOf('function _mvHasBand('), APP.indexOf('async function renderMuscleVolume()'));
+  yes(/_vpFamilyHasFloor/.test(band) && /_vpMuscleFamily/.test(band),
+    'que delega en _vpFamilyHasFloor/_vpMuscleFamily del validador');
+  yes(/power\|core\|erectors/.test(band), 'con un respaldo local por si coach-facts.js no está');
+  yes(/const conBanda = _mvHasBand\(muscle\)/.test(mv) && /!conBanda \? 'var\(--text3\)'/.test(mv),
+    'las filas sin banda se pintan neutras (no en naranja por "no llegar a 10")');
+
+  // El veredicto se da por FAMILIA, como el validador (F-7): la cadena posterior repartida en
+  // tres etiquetas leía 9 series donde había 14. Sin esto, `Glutes 3.5` sale en naranja mientras
+  // el coach dice que la cadena cumple — y la pantalla vuelve a contradecir al coach.
+  yes(/const familyTotals = \{\}/.test(mv) && /_vpMuscleFamily\(m\)/.test(mv),
+    'los totales se agregan también por familia, con _vpMuscleFamily del validador');
+  yes(/veredicto >= 10 && veredicto <= 14/.test(mv) && /veredicto < 10 \? 'var\(--orange\)'/.test(mv),
+    'y el color del total juzga el total de la FAMILIA, no el de la etiqueta suelta');
+  yes(/_mvNum\(veredicto\)/.test(mv), 'con el número de la familia en el title de la fila');
+  yes(/VP_VOLUME_FAMILY_MERGE/.test(FACTS) && /'posterior chain': VP_POSTERIOR_FAMILY/.test(FACTS),
+    'y la fusión de familias sigue declarada una sola vez, en coach-facts.js');
+  yes(/family<\/b> verdict/.test(mv), 'la tarjeta explica que el color es el veredicto de la familia');
+  yes(/VP_VOLUME_NO_FLOOR = \{ power: 1, core: 1, otros: 1, erectors: 1 \}/.test(FACTS),
+    'y la lista de familias sin suelo sigue siendo la del validador');
+
+  // Medias series: se muestran, y se etiquetan.
+  yes(/function _mvNum\(/.test(APP) && /v\.toFixed\(1\)/.test(APP), 'los 0,5 se pintan como 10.5, no como 10');
+  yes(/_mvNum\(total\)/.test(mv) && /_mvNum\(sets\)/.test(mv), 'en el total de la fila y en cada celda');
+  yes(/Math\.round\(\(Number\(n\) \|\| 0\) \* 2\) \/ 2/.test(APP), 'redondeando a media serie');
+  yes(/Effective sets:/.test(mv) && /1\.0/.test(mv) && /0\.5/.test(mv),
+    'la tarjeta EXPLICA que el número lleva crédito fraccionado');
+  yes(/coach judges against 10-14/.test(mv), 'y dice que es la cuenta que usa el coach');
+  yes(/Power<\/b> and <b>Erectors/.test(mv), 'y que Power y Erectors van aparte, sin banda');
+  yes(/Weekly Effective Sets by Muscle/.test(HTML), 'el título de la tarjeta también lo dice');
 }
 
 if (fails) {

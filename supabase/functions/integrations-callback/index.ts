@@ -10,6 +10,7 @@ import {
 } from "../_shared/tokens.ts";
 import { syncWhoop } from "../_shared/whoop-sync.ts";
 import { subscribeWithingsNotify, syncWithings } from "../_shared/withings-sync.ts";
+import { syncStrava } from "../_shared/strava-sync.ts";
 
 // EL CALLBACK OAUTH ATERRIZA AQUÍ, NO EN UNA PÁGINA DE LA PWA.
 //
@@ -48,6 +49,13 @@ Deno.serve(async (req) => {
     const candidate = fromPath || url.searchParams.get("provider") || "";
     if (!isProvider(candidate)) {
       console.warn(`[callback] proveedor irreconocible en ${url.pathname}`);
+      return fail("provider");
+    }
+    // A-7: `intervals` es un proveedor registrado pero NO tiene OAuth, así que nadie puede
+    // aterrizar aquí legítimamente con él. Sin esta guarda, una URL fabricada a mano llegaría
+    // hasta `adapter.exchange`, que lanza — y un `fail("server")` no dice nada de lo que pasó.
+    if (getAdapter(candidate).kind !== "oauth") {
+      console.warn(`[callback] ${candidate} no usa OAuth: no puede llegar un código aquí`);
       return fail("provider");
     }
     provider = candidate;
@@ -92,6 +100,21 @@ Deno.serve(async (req) => {
     const adapter = getAdapter(provider);
     const tokens = await adapter.exchange(code, callbackUrl(provider));
 
+    // (2b) A-7 · EL SCOPE CONCEDIDO DE STRAVA VIAJA EN LA REDIRECCIÓN, no en la respuesta del
+    // token. Y en la pantalla de consentimiento de Strava las casillas son INDEPENDIENTES: se
+    // puede aceptar el `read` y dejar sin marcar "View data about your activities". El canje
+    // sale bien, la integración queda "Conectada" y luego cada listado responde 401/403 — un
+    // sync que falla para siempre por un permiso que nadie recuerda haber desmarcado. Se
+    // comprueba aquí, que es el único momento en que se puede decir algo útil.
+    if (provider === "strava") {
+      const granted = url.searchParams.get("scope") || "";
+      if (!/activity:read/.test(granted)) {
+        console.error(`[callback] strava: scope concedido sin permiso de actividades (${clip(granted, 80)})`);
+        return fail("scope");
+      }
+      if (!tokens.scope) tokens.scope = granted;
+    }
+
     // Sin refresh token no hay integración persistente: es exactamente el fallo viejo (WHOOP
     // sin scope `offline` caduca en una hora). Mejor fallar visible al conectar que "conectar"
     // y desconectarse solo esa tarde.
@@ -118,7 +141,7 @@ Deno.serve(async (req) => {
       console.log(`[callback] withings notify subscribe → ${sub.ok ? "ok" : sub.reason}`);
     }
 
-    // (6) Primer volcado en segundo plano (30 días de WHOOP; Withings en A-5).
+    // (6) Primer volcado en segundo plano (30 días de WHOOP, 90 de Withings y de Strava).
     EdgeRuntime.waitUntil(initialSync(userId, provider));
 
     // (7) De vuelta a la app. En el iPhone esto abre Safari: el usuario lo cierra y la PWA
@@ -136,15 +159,20 @@ Deno.serve(async (req) => {
 
 /**
  * Primer volcado tras conectar: 30 días de WHOOP, 90 de Withings (la báscula es barata de
- * pedir y una pendiente de peso larga vale mucho para el coach). Va bajo `waitUntil` porque
- * tarda varios segundos y el usuario está esperando una redirección, no un JSON. Si falla, no
- * rompe la conexión: los tokens ya están guardados y el cron recogerá los datos.
+ * pedir y una pendiente de peso larga vale mucho para el coach) y 90 de Strava — el histórico
+ * de cardio es lo que llena `runs`/`sessions`, y sin él el presupuesto de días duros y la
+ * progresión de carrera arrancan ciegos. Va bajo `waitUntil` porque tarda varios segundos y el
+ * usuario está esperando una redirección, no un JSON. Si falla, no rompe la conexión: los
+ * tokens ya están guardados y el cron recogerá los datos.
  */
 async function initialSync(userId: string, provider: ProviderId): Promise<void> {
   try {
     if (provider === "whoop") {
       const out = await syncWhoop(userId, { days: 30 });
       console.log(`[callback] initialSync whoop → ${out.dates.length} días`);
+    } else if (provider === "strava") {
+      const out = await syncStrava(userId, { days: 90 });
+      console.log(`[callback] initialSync strava → ${out.runs} carreras, ${out.sessions} sesiones`);
     } else {
       const out = await syncWithings(userId, { days: 90 });
       console.log(`[callback] initialSync withings → ${out.dates.length} días`);
