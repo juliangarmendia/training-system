@@ -8,7 +8,7 @@
 //
 //   node scripts/build-fn-assets.mjs
 //
-// sourceSha256: ddcf4948c21f61b0eac782dc9cd57630248f60d9f689f143d769b568f3c6e02e
+// sourceSha256: d006173fde5e93c9d049714ecfd2a4c0e27ac87065610fdddc1504db6b815b86
 // source: app/coach-facts.js
 //
 // tests/verify-fn-assets.mjs FALLA si app/coach-facts.js cambia y nadie regeneró esto: dos
@@ -2805,13 +2805,26 @@ function validatePlanVersion(plan, ctx) {
     // lo juzga el coach.
     if (deficit && (_n(c.variant) == null || _n(c.variant) >= VP_FREQ_FLOOR_MIN_VARIANT)) {
       const families = _vpMuscleFamilies(setsNow.byMuscle);
-      for (const [fam, n] of Object.entries(families)) {
-        if (!_vpFamilyHasFloor(fam)) continue;
-        if (n < VP_MIN_SETS_PER_MUSCLE) {
-          add('VOL-FLOOR', 'warn',
-            `${fam}: ${n} sets/week, below the floor of ${VP_MIN_SETS_PER_MUSCLE} (STR-003 says 10-14 in a deficit). Under the floor the muscle is not maintained, it is visited — and in a deficit that is where lean mass goes. Counted by family: ${VP_POSTERIOR_FAMILY} merges Hamstrings + Posterior + Glutes.`,
-            ['STR-003', 'STR-001']);
-        }
+      // UN aviso con la lista, no uno por familia: sobre el plan vivo el suelo lo incumplen tres
+      // o cuatro a la vez, y cuatro chips con el mismo texto de tres frases se leen como ruido.
+      // El hallazgo es uno y la decisión también (¿se redistribuyen series o se acepta?).
+      //
+      // Y EL AVISO DICE SU PROPIA LIMITACIÓN. El contador suma las series cuya etiqueta `muscle`
+      // es esa familia: las DIRECTAS. La contribución de un compuesto a sus músculos secundarios
+      // (el press al hombro, la remada al bíceps) no se cuenta, porque la semilla no declara
+      // secundarios y fabricar ese mapa aquí sería inventarse el denominador. Por eso el texto
+      // dice "direct sets": el coach tiene que leerlo como "pocas series DIRECTAS", que es
+      // accionable (redistribuir o aceptar), y no como "este músculo no se estimula", que sería
+      // falso. Cerrar esto de verdad es contar series fraccionadas, y eso cambiaría también
+      // `VOL-CAP`: es una decisión de lógica de entrenamiento, no de implementación.
+      const bajo = Object.entries(families)
+        .filter(([fam, n]) => _vpFamilyHasFloor(fam) && n < VP_MIN_SETS_PER_MUSCLE)
+        .sort((a, b) => a[1] - b[1]);
+      if (bajo.length) {
+        add('VOL-FLOOR', 'warn',
+          `Below the floor of ${VP_MIN_SETS_PER_MUSCLE} direct sets/week (STR-003 says 10-14 in a deficit): ${
+            bajo.map(([fam, n]) => `${fam} ${n}`).join(', ')}. Under the floor the muscle is not maintained, it is visited — and in a deficit that is where lean mass goes. Direct sets only: a compound's contribution to its secondary muscles is not counted, so read this as few DIRECT sets and decide whether to redistribute or accept. Counted by family: ${VP_POSTERIOR_FAMILY} merges Hamstrings + Posterior + Glutes.`,
+          ['STR-003', 'STR-001']);
       }
     }
 

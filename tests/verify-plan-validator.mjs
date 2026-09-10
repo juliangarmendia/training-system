@@ -269,21 +269,22 @@ sec('F-7 · VOL-FLOOR (warn) — STR-003: el SUELO de series, no sólo el techo'
 // va la masa magra, que es el objetivo #2 declarado.
 {
   const volFloor = pick(base, 'VOL-FLOOR');
-  ok(volFloor.length > 0, 'el ideal de 4 sesiones dispara el suelo');
+  // UN aviso con la lista dentro, no uno por familia: cuatro chips con el mismo texto de tres
+  // frases se leen como ruido y el hallazgo (y la decisión) es uno.
+  eq(volFloor.length, 1, 'el ideal de 4 sesiones dispara el suelo UNA vez, con la lista dentro');
   ok(volFloor.every(r => r.level === 'warn'), 'y siempre BLANDO: se discute, no bloquea');
-  const chest = volFloor.find(r => /^Chest/.test(r.text));
-  ok(!!chest, 'pecho, con 4 series/semana, está entre los avisados');
-  if (chest) {
-    for (const n of ['Chest', '4 sets/week', '10']) {
-      ok(chest.text.indexOf(n) !== -1, `   el texto lleva "${n}" — ${chest.text}`);
-    }
-    eq(chest.ruleIds.join(','), 'STR-003,STR-001', '   y cita STR-003 (el que declara el 10-14)');
+  const floor = volFloor[0];
+  for (const n of ['Chest 4', '10 direct sets/week', 'STR-003', 'Direct sets only']) {
+    ok(floor.text.indexOf(n) !== -1, `   el texto lleva "${n}" — ${floor.text}`);
   }
+  ok(/Chest 4.*Shoulders 4|Shoulders 4.*Chest 4/.test(floor.text),
+    '   y nombra a las dos familias por debajo con su número, ordenadas por lo peor');
+  eq(floor.ruleIds.join(','), 'STR-003,STR-001', '   y cita STR-003 (el que declara el 10-14)');
   // Ni pliometría ni core tienen suelo: ATH-003 gobierna el core por PATRÓN (anti-rotación /
   // anti-extensión), no por series, y el box jump no es volumen de hipertrofia (L-1, v11.70).
-  ok(!volFloor.some(r => /^Power/.test(r.text)), "la fila 'Power' nunca tiene suelo");
-  ok(!volFloor.some(r => /^Core/.test(r.text)), "ni 'Core': lo gobierna ATH-003 por patrón");
-  ok(!volFloor.some(r => /^otros/.test(r.text)), "ni 'otros', que es 'la semilla no dijo músculo'");
+  ok(!/Power \d/.test(floor.text), "la fila 'Power' nunca tiene suelo");
+  ok(!/Core \d/.test(floor.text), "ni 'Core': lo gobierna ATH-003 por patrón");
+  ok(!/otros \d/.test(floor.text), "ni 'otros', que es 'la semilla no dijo músculo'");
 
   // La cadena posterior, agregada: 3 + 4 + 4 = 11 series, por encima del suelo. Sin la fusión
   // saldrían TRES avisos por debajo de 10 sobre un estímulo que está bien dosificado.
@@ -291,16 +292,18 @@ sec('F-7 · VOL-FLOOR (warn) — STR-003: el SUELO de series, no sólo el techo'
     lowerA: { id: 'lowerA', name: 'Lower A', mobilityMin: 8, exercises: [EX.boxJump, EX.squat, Object.assign({}, EX.legCurl, { muscle: 'Hamstrings', sets: 3 })] },
     lowerB: { id: 'lowerB', name: 'Lower B', mobilityMin: 8, exercises: [Object.assign({}, EX.trap, { muscle: 'Posterior', sets: 4 }), EX.legExt, EX.abWheel, Object.assign({}, EX.legCurl, { muscle: 'Glutes', sets: 4 })] },
   }) });
-  ok(!pick(post, 'VOL-FLOOR').some(r => /^Posterior chain:/.test(r.text)),
-    `la cadena posterior agregada (11 series) NO avisa — avisan: ${pick(post, 'VOL-FLOOR').map(r => r.text.split(':')[0]).join(', ')}`);
-  ok(!pick(post, 'VOL-FLOOR').some(r => /^(Hamstrings|Glutes|Posterior):/.test(r.text)),
-    'y ninguna de las tres etiquetas sueltas avisa por su cuenta');
+  const postTxt = (pick(post, 'VOL-FLOOR')[0] || { text: '' }).text;
+  ok(!/Posterior chain \d/.test(postTxt),
+    `la cadena posterior agregada (11 series) NO sale en la lista — la lista dice: ${postTxt.slice(0, 120)}`);
+  ok(!/(Hamstrings|Glutes|Posterior) \d/.test(postTxt),
+    'y ninguna de las tres etiquetas sueltas sale por su cuenta');
 
   // Por encima del suelo, silencio.
   const chestOk = run({ sessions: Object.assign(clone(PLAN_OK.sessions), {
     upperA: { id: 'upperA', name: 'Upper A', exercises: [Object.assign({}, EX.bench, { sets: 10 }), EX.row, EX.facePull, EX.pallof] },
   }) });
-  ok(!pick(chestOk, 'VOL-FLOOR').some(r => /^Chest/.test(r.text)), 'pecho con 10 series exactas: en el suelo, no por debajo');
+  ok(!/Chest \d/.test((pick(chestOk, 'VOL-FLOOR')[0] || { text: '' }).text),
+    'pecho con 10 series exactas: en el suelo, no por debajo');
 
   // Las dos puertas: variante <4 y mantenimiento.
   silent(run(null, { variant: 3 }), 'VOL-FLOOR',
