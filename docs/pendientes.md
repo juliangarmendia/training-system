@@ -712,13 +712,28 @@ this" con Retry.
    (Rear Delt 3, Chest 4, Shoulders 4, Quads 7, cadena posterior 7, Back 8), cada una con el mismo
    texto de tres frases. Ahora es UN aviso con la lista ordenada por lo peor.
 
-### Decisión pendiente de Julian (lógica de entrenamiento)
+### Series efectivas — decidido por Julian el 2026-09-10
 
-**¿Series fraccionadas?** `VOL-FLOOR` y `VOL-CAP` cuentan las series cuya etiqueta `muscle` es esa
-familia: las DIRECTAS. La contribución de un compuesto a sus secundarios (el press al hombro, la
-remada al bíceps) no se cuenta, porque la semilla no declara secundarios y fabricar ese mapa sería
-inventarse el denominador. Por eso el aviso dice "direct sets" y pide leerse como "pocas series
-DIRECTAS". Contarlas fraccionadas (1,0 al motor primario, 0,5 al secundario, que es la convención
-de la literatura de hipertrofia) haría el suelo realista, pero **también cambiaría el techo**: con
-crédito indirecto, `VOL-CAP` empezaría a disparar donde hoy calla. Es un cambio de lógica de
-entrenamiento con efecto en las dos direcciones, así que lo decide Julian, no la implementación.
+Preguntó si contar motor primario y secundario tenía sentido y qué haría un coach profesional.
+Lo tiene, y es lo que hace: **1,0 serie para el motor primario y 0,5 para cada secundario que se
+carga de verdad**, que es la convención en la que está escrito el 10-14 de STR-003. Nadie cuenta
+el press de banca como cero series de hombro. Implementado el mismo día:
+
+- Una decisión por `movementPattern` en `VP_PATTERN_SECONDARIES`, los 22 de la librería, cada una
+  con su justificación en el código. Patrón sin decisión, cero crédito: el sesgo es a subcontar.
+- Las aperturas no acreditan nada aunque la librería las etiquete como press: no extienden el codo.
+- Los erectores van a su propio cubo y no a `Back`, que es dorsal y espalda media y ya estaba
+  exactamente en el tope. Sin esto, el techo avisaba cada semana de un músculo que no se ha pasado.
+- `VOL-CAP` se parte por qué número se pasa: **duro** sólo si las series directas superan 14, que es
+  un hecho de la prescripción; **blando** si sólo se pasa el efectivo, que es una estimación. Un duro
+  detiene el camino manual, así que no puede dispararse sobre un estimado.
+- El suelo se juzga en efectivas y su puerta cuenta días de gimnasio de la plantilla, no días de la
+  variante: la variante de 4 días tiene dos sesiones de fuerza y 10 series por familia no cabe.
+
+Medido sobre la semilla real en las variantes 6, 5, 4 y 3: **ningún aviso de techo, de ningún
+nivel**. En la variante viva el suelo avisa una vez, con Calves 3 · Rear Delt 6,5 · Biceps 7 ·
+Triceps 7,5. Eso sí es accionable: un curl, un face pull, o aceptarlo por escrito.
+
+Dos matices que el sistema no pretende resolver y el coach tiene que recordar: la frecuencia por
+patrón (2×/semana, STR-002) pesa más que el número exacto, y el número es contabilidad, no
+fisiología. La decisión la toman el rendimiento y la cinta métrica.
