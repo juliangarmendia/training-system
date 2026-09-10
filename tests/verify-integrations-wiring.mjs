@@ -55,6 +55,11 @@
 //   · El forward-fill de intervals tratado como "manual": entonces la báscula NO entra nunca y
 //     la composición no aparece jamás.
 //
+// A-7 (Strava e intervals.icu al servidor) cierra la lista, y sus silencios están en la
+// cabecera de la sección 22: un token de vuelta en una respuesta, la API key en un log, un
+// proveedor de API key mandado por el camino OAuth, el `check (provider in …)` sin los
+// proveedores nuevos, y un upsert que reemplaza `runs`/`sessions` en vez de fundirlos.
+//
 // Ejecutar desde la raíz del repo: node tests/verify-integrations-wiring.mjs
 
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
@@ -82,6 +87,18 @@ const WIHOOKFN = read('supabase/functions/withings-webhook/index.ts');
 const EVENTS = read('supabase/functions/_shared/events.ts');
 const CRON = read('supabase/functions/_shared/cron.ts');
 const ORPHANSQL = read('supabase/migrations/20260910_integration_events_orphans.sql');
+
+// A-7 · Strava e intervals.icu al servidor
+const STRAVA_AD = read('supabase/functions/_shared/strava.ts');
+const STRAVA_SH = read('supabase/functions/_shared/strava-sync.ts');
+const STRAVAFN = read('supabase/functions/strava-sync/index.ts');
+const INTERVALS_AD = read('supabase/functions/_shared/intervals.ts');
+const INTERVALS_SH = read('supabase/functions/_shared/intervals-sync.ts');
+const INTERVALS_WELL = read('supabase/functions/_shared/intervals-wellness.ts');
+const INTERVALSFN = read('supabase/functions/intervals-sync/index.ts');
+const ACT_IMPORT = read('supabase/functions/_shared/activity-import.ts');
+const CARDIO_TYPES = read('supabase/functions/_shared/cardio-types.ts');
+const A7SQL = read('supabase/migrations/20260911_a7_strava_intervals_tokens.sql');
 
 let failed = 0;
 const ok = (m) => console.log(`  ok   ${m}`);
@@ -112,7 +129,12 @@ eq(verifyJwtOf('integrations-oauth'), 'true',
 eq(verifyJwtOf('integrations-callback'), 'false',
    'integrations-callback = false (llega el navegador del proveedor; la auth es la fila state)');
 eq(verifyJwtOf('steps-ingest'), 'false', 'steps-ingest = false (Atajo de iOS con secreto compartido)');
-eq(verifyJwtOf('strava-sync'), 'true', 'strava-sync = true (sesión de la PWA)');
+eq(verifyJwtOf('strava-sync'), 'true', 'strava-sync = true (sesión de la PWA, o anon + x-cron-secret)');
+// A-7: y aquí importa más que en ninguna. `set_key` es el ÚNICO punto por el que sube una
+// credencial de usuario (la API key de intervals.icu): sin JWT no se sabe de quién es.
+eq(verifyJwtOf('intervals-sync'), 'true', 'intervals-sync = true (set_key sube una credencial)');
+yes(/set_key/.test(fnBlock('intervals-sync') || ''),
+    'y su bloque explica en un comentario que por ahí sube la clave');
 eq(verifyJwtOf('whoop-sync'), 'true', 'whoop-sync = true (JWT del usuario, o anon + x-cron-secret)');
 eq(verifyJwtOf('whoop-webhook'), 'false', 'whoop-webhook = false (la auth es la firma HMAC)');
 eq(verifyJwtOf('withings-sync'), 'true', 'withings-sync = true (mismos dos modos que whoop-sync)');
@@ -135,7 +157,7 @@ yes(/x-cron-secret/.test(fnBlock('whoop-sync') || ''),
 yes(/WITHINGS_WEBHOOK_TOKEN/.test(fnBlock('withings-webhook') || ''),
     'el bloque del webhook de Withings explica que la auth es el token de la URL');
 for (const fn of ['integrations-oauth', 'integrations-callback', 'whoop-sync', 'whoop-webhook',
-                  'withings-sync', 'withings-webhook']) {
+                  'withings-sync', 'withings-webhook', 'strava-sync', 'intervals-sync']) {
   yes(existsSync(`supabase/functions/${fn}/deno.json`), `${fn}/deno.json existe`);
   yes(new RegExp(`entrypoint = "\\./functions/${fn}/index\\.ts"`).test(CONFIG),
       `${fn} declara su entrypoint`);
@@ -221,7 +243,10 @@ lines.forEach((l, i) => {
   if (/await markNeedsReconnect\(/.test(l)) callSites.push(i);
 });
 yes(callSites.length >= 3, `hay ${callSites.length} llamadas a markNeedsReconnect`);
-const FATAL_MARKERS = /ProviderFatalAuthError|invalid_grant|tras refresh|sin refresh_token/;
+// A-7 suma un cuarto marcador fatal: `credencial fue rechazada`, el 401/403 de un proveedor de
+// API KEY (intervals.icu). No pasa por el refresco — no hay nada que refrescar — pero es igual
+// de terminal: la clave está revocada y sólo se arregla pegando una nueva.
+const FATAL_MARKERS = /ProviderFatalAuthError|invalid_grant|tras refresh|sin refresh_token|credencial fue rechazada/;
 for (const i of callSites) {
   const around = lines.slice(Math.max(0, i - 6), i + 3).join('\n');
   yes(FATAL_MARKERS.test(around),
@@ -696,10 +721,13 @@ console.log('v11.70 · strava-sync no confía en body.user_id; strava.js llama c
 {
   const STRAVA_FN = read('supabase/functions/strava-sync/index.ts');
   const STRAVAJS = read('app/strava.js');
-  const syncBody = STRAVA_FN.slice(STRAVA_FN.indexOf('if (action === "sync")'));
-  yes(/asUser\.auth\.getUser\(\)/.test(syncBody), 'sync: el usuario sale de asUser.auth.getUser() (patrón de whoop-sync)');
+  // A-7 reescribió la función: ya no hay bloque `if (action === "sync")` porque el volcado es la
+  // acción por defecto y vive en `_shared/strava-sync.ts`. Lo que se comprueba es la misma
+  // invariante: el usuario del JWT y la escritura con el userId resuelto, nunca con uno del cuerpo.
+  yes(/asUser\.auth\.getUser\(\)/.test(STRAVA_FN), 'sync: el usuario sale de asUser.auth.getUser() (patrón de whoop-sync)');
   yes(!/user_id\s*\}\s*=\s*body/.test(STRAVA_FN) && !/body\.user_id/.test(STRAVA_FN), 'sync: body.user_id no se lee en ningún sitio');
-  yes((syncBody.match(/user_id: userId/g) || []).length >= 2, 'y los dos upserts (runs, sessions) escriben el userId del JWT');
+  yes(/p_user: userId/.test(read('supabase/functions/_shared/activity-import.ts')),
+      'y los dos merges (runs, sessions) escriben el userId resuelto en el servidor');
   yes(!/text\.substring\(0, 500\) \}/.test(STRAVA_FN) && !/\$\{text\.substring\(0, 200\)\}/.test(STRAVA_FN), 'los textos crudos de Strava/PostgREST ya no van al cliente');
   yes(/import \{ createClient \} from "npm:@supabase\/supabase-js@2"/.test(STRAVA_FN), 'importa createClient para resolver la sesión');
   yes(!/Bearer \$\{SUPABASE_ANON_KEY\}/.test(STRAVAJS), 'strava.js ya no manda la anon key como Authorization');
@@ -785,6 +813,299 @@ yes(/cron\.schedule\('integration-events-orphans', '\*\/30 \* \* \* \*'/.test(OR
     'programado cada 30 minutos');
 yes(/cron\.unschedule/.test(ORPHANSQL),
     'y desprogramado antes por nombre: reaplicar la migración no puede dejar dos jobs iguales');
+
+// ── A-7 · Strava e intervals.icu al servidor (cierra C-8) ─────────────────────────────────
+//
+// EL FALLO QUE ESTA SECCIÓN EXISTE PARA IMPEDIR. Estas dos credenciales vivían en el teléfono y
+// A-7 las mueve a `integration_tokens`. Todo lo que puede deshacer ese trabajo es de una línea
+// y ninguna de esas líneas falla en desarrollo:
+//
+//   · **Un token de vuelta en una respuesta.** `strava-sync` era un proxy sin estado:
+//     `exchange` devolvía el par access/refresh al navegador y `refresh` lo recibía en el
+//     cuerpo. Un solo `access_token:` en un `json(...)` y la credencial vuelve al
+//     `localStorage`, con la PWA instalada y Safari pisándose la rotación otra vez.
+//   · **La API key de intervals.icu de vuelta a la app.** Es una credencial con permiso de
+//     ESCRITURA (la app empuja semanas de entreno al COROS con ella). Devolverla en `status`
+//     "para poder mostrarla" la reintroduce en el store `settings`, que se sincroniza Y entra en
+//     el JSON de la copia de seguridad exportable. Sólo puede salir `maskSecret(...)`.
+//   · **La clave en un `console.log`.** Los logs de las edge functions se leen desde el panel y
+//     se quedan días. Un `console.log(body)` en la acción `set_key` publica la credencial.
+//   · **`intervals` por el camino OAuth.** Su `expires_at` es null: `getValidToken` lo tomaría
+//     por caducado, iría a `refreshWithLock`, no encontraría refresh token y marcaría
+//     `needs_reconnect`. La integración se apagaría sola con una clave perfectamente válida
+//     guardada. Las dos guardas por `kind` son lo que lo impide.
+//   · **El check de `provider` sin los proveedores nuevos.** Todo el código se despliega, la
+//     PWA pinta el flujo entero, y el insert muere con un 23514 al final.
+//   · **`intervals` en el check de `oauth_states`.** Permitiría crear un `state` que nunca
+//     podrá canjearse: un camino muerto con aspecto de camino vivo.
+//   · **Un upsert que REEMPLAZA `runs`/`sessions`.** Borraría la sensación (`feel`) que el
+//     usuario escribió sobre una carrera importada y lo que aportó el otro importador (la misma
+//     carrera de un COROS llega por Strava Y por intervals.icu).
+//   · **El scope de Strava sin `activity:read`.** En su pantalla de consentimiento las casillas
+//     son independientes: el canje sale bien, la tarjeta dice "Conectado" y cada listado
+//     responde 403 para siempre.
+console.log('');
+console.log('22. A-7 · registro de proveedores: uno solo, derivado de los adaptadores');
+yes(/kind: "oauth" as const/.test(WHOOP) && /kind: "oauth" as const/.test(WITHINGS) &&
+    /kind: "oauth" as const/.test(STRAVA_AD) && /kind: "apikey" as const/.test(INTERVALS_AD),
+    'los cuatro adaptadores declaran su `kind` (oauth ×3, apikey ×1)');
+yes(/ProviderId = "whoop" \| "withings" \| "strava" \| "intervals"/.test(TOKENS),
+    'ProviderId incluye los cuatro');
+// `isProvider` DERIVADO del registro y no una cadena de `||`: en A-7 había que tocarlo en dos
+// sitios y olvidarse de uno significa "provider inválido" para un adaptador que sí existe.
+yes(/hasOwnProperty\.call\(ADAPTERS, p\)/.test(TOKENS),
+    'isProvider se deriva de ADAPTERS, no de una lista escrita a mano');
+yes(/export const PROVIDERS = Object\.keys\(ADAPTERS\)/.test(TOKENS),
+    'y PROVIDERS también (la lista que valida `integrations-oauth`)');
+for (const p of ['whoop', 'withings', 'strava', 'intervals']) {
+  yes(new RegExp(`^\\s{2}${p}: \\w+Adapter as unknown as ProviderAdapter,$`, 'm').test(TOKENS),
+      `ADAPTERS registra ${p}`);
+}
+
+console.log('');
+console.log('23. A-7 · ni un token en un cuerpo, ni en una respuesta, ni en un log');
+for (const [nombre, src] of [
+  ['strava-sync/index.ts', STRAVAFN],
+  ['_shared/strava-sync.ts', STRAVA_SH],
+  ['intervals-sync/index.ts', INTERVALSFN],
+  ['_shared/intervals-sync.ts', INTERVALS_SH],
+  ['_shared/activity-import.ts', ACT_IMPORT],
+]) {
+  yes(!/body[.?]{1,2}access_token/.test(src) && !/body[.?]{1,2}refresh_token/.test(src),
+      `${nombre}: no lee tokens del cuerpo`);
+  yes(!/\baccess_token:/.test(src) && !/\brefresh_token:/.test(src),
+      `${nombre}: ninguna respuesta lleva un token dentro`);
+}
+// La API key SÍ sube una vez (es la única forma: intervals.icu no tiene OAuth) y NO baja nunca.
+yes(/body\?\.apiKey/.test(INTERVALSFN), 'intervals-sync: la clave sube en `set_key` (única vía)');
+yes(/keyHint: maskSecret\(apiKey\)/.test(INTERVALSFN),
+    'y lo único que se devuelve de ella es maskSecret(apiKey)');
+yes(!/console\.(log|warn|error)\([^)]*apiKey/.test(INTERVALSFN),
+    'la clave NO aparece en ningún console.* (los logs del panel se quedan días)');
+yes(!/console\.(log|warn|error)\([^)]*access_token/.test(INTERVALS_SH) &&
+    !/console\.(log|warn|error)\([^)]*access_token/.test(STRAVA_SH),
+    'ni el access token en los logs de los módulos de sync');
+yes(/keyHint: maskSecret\(row\.access_token\)/.test(INTERVALS_SH),
+    'credentialStatus devuelve el indicio enmascarado, no la clave');
+yes(/export function maskSecret/.test(HTTP) && /if \(s\.length <= keep \* 2\) return "••••"/.test(HTTP),
+    'maskSecret no revela nada de un secreto corto');
+yes(/return `••••\$\{s\.slice\(-keep\)\}`/.test(HTTP),
+    'y el número de puntos es fijo: no publica la longitud de la clave');
+
+console.log('');
+console.log('24. A-7 · el usuario, del JWT; el token, de la base');
+for (const [nombre, src] of [['strava-sync', STRAVAFN], ['intervals-sync', INTERVALSFN]]) {
+  yes(/asUser\.auth\.getUser\(\)/.test(src), `${nombre}: el usuario sale del JWT`);
+  yes(/return json\(\{ error: "Token inválido" \}, 401\)/.test(src),
+      `${nombre}: una sesión inválida es un 401, no un fallback`);
+  yes(!/body\.user_id/.test(src) && !/body\?\.user_id/.test(src),
+      `${nombre}: body.user_id no se lee en ningún sitio`);
+  yes(/handleCronMode\(req, "(strava|intervals)"/.test(src),
+      `${nombre}: modo cron por el bloque compartido (C-22)`);
+  yes(/x-cron-secret/.test(CRON), `${nombre}: y ese bloque compara el secreto en tiempo constante`);
+}
+// El cron se comprueba ANTES de resolver el JWT: manda el JWT anon, que no identifica a nadie.
+yes(INTERVALSFN.indexOf('handleCronMode') < INTERVALSFN.indexOf('asUser.auth.getUser'),
+    'intervals-sync: el modo cron se atiende antes de resolver el JWT (el anon no identifica a nadie)');
+yes(STRAVAFN.indexOf('handleCronMode') < STRAVAFN.indexOf('asUser.auth.getUser'),
+    'strava-sync: igual');
+yes(/getApiKey\(supa, provider, userId\)/.test(TOKENS),
+    'la API key se lee de la base (getApiKey), nunca de la petición');
+
+console.log('');
+console.log('25. A-7 · las dos guardas por `kind` (una clave válida no puede apagar la integración)');
+yes(/getValidToken: \$\{provider\} usa API key/.test(TOKENS),
+    'getValidToken rechaza un proveedor de API key (si no, iría a refrescar lo que no existe)');
+yes(/getApiKey: \$\{provider\} usa OAuth/.test(TOKENS), 'y getApiKey rechaza uno de OAuth');
+yes(/if \(adapter\.kind === "apikey"\) return await withApiKeyFetch/.test(TOKENS),
+    'withProviderFetch desvía las API keys a su propio camino (sin bucle de refresco)');
+yes(/refresh_token: null/.test(TOKENS) && /upsertApiKey/.test(TOKENS),
+    'upsertApiKey guarda refresh_token a NULL: un refresco es imposible por construcción');
+yes(/expires_at: null/.test(TOKENS), 'y expires_at a NULL: la clave no caduca');
+yes(/authHeader\(credential: string\)/.test(TOKENS) || /adapter\.authHeader \?/.test(TOKENS),
+    'la cabecera la decide el adaptador (Bearer por defecto, Basic en intervals.icu)');
+yes(/return `Basic \$\{btoa\(`API_KEY:\$\{apiKey\}`\)\}`/.test(INTERVALS_AD),
+    'intervals.icu usa HTTP Basic con el usuario literal API_KEY');
+yes(/authorizeUrl[\s\S]{0,200}throw new Error/.test(INTERVALS_AD),
+    'y sus métodos de OAuth lanzan: nadie debe llegar a ellos, y si llega se ve');
+yes(/code: "apikey_provider"/.test(OAUTH),
+    'integrations-oauth rechaza `authorize` para intervals con un código que dice dónde ir');
+yes(/getAdapter\(candidate\)\.kind !== "oauth"/.test(CALLBACK),
+    'y el callback no acepta un código para un proveedor sin OAuth');
+
+console.log('');
+console.log('26. A-7 · timeouts y clasificación de errores en los proveedores nuevos');
+for (const [nombre, src] of [
+  ['_shared/strava.ts', STRAVA_AD], ['_shared/intervals.ts', INTERVALS_AD],
+  ['_shared/strava-sync.ts', STRAVA_SH], ['_shared/intervals-sync.ts', INTERVALS_SH],
+  ['_shared/activity-import.ts', ACT_IMPORT], ['_shared/cardio-types.ts', CARDIO_TYPES],
+  ['_shared/intervals-wellness.ts', INTERVALS_WELL],
+]) {
+  const crudos = (src.match(/(?<!WithTimeout)(?<![A-Za-z])fetch\(/g) || []).length;
+  eq(crudos, 0, `${nombre}: cero fetch() sin tope`);
+}
+yes(/fetchWithTimeout\([\s\S]{0,300}TOKEN_TIMEOUT_MS\)/.test(STRAVA_AD),
+    'strava.ts: el endpoint de token con 12 s');
+yes(/fetchWithTimeout\([\s\S]{0,300}PROVIDER_TIMEOUT_MS\)/.test(STRAVA_AD),
+    'strava.ts: perfil y deauthorize con 15 s');
+yes(/fetchWithTimeout\([\s\S]{0,200}PROVIDER_TIMEOUT_MS\)/.test(INTERVALS_AD),
+    'intervals.ts: la validación de la clave con 15 s');
+yes(/ProviderTransientError\([\s\S]{0,140}netErrorText\(err, TOKEN_TIMEOUT_MS\)/.test(STRAVA_AD),
+    'strava.ts: un timeout del token es TRANSITORIO (no quema el refresh token)');
+yes(/ProviderTransientError\([\s\S]{0,140}netErrorText\(err, PROVIDER_TIMEOUT_MS\)/.test(INTERVALS_AD),
+    'intervals.ts: igual con la API');
+yes(!/markNeedsReconnect/.test(STRAVA_AD) && !/markNeedsReconnect/.test(INTERVALS_AD),
+    'y ningún adaptador nuevo marca needs_reconnect por su cuenta (eso es de tokens.ts)');
+// La TRAMPA de Strava: el mismo 400 significa tres cosas según `errors[].resource`/`field`.
+const refreshIdx = STRAVA_AD.indexOf('e.resource === "refreshtoken"');
+const appIdx = STRAVA_AD.indexOf('e.resource === "application"');
+const codeIdx = STRAVA_AD.indexOf('e.resource === "authorizationcode"');
+const rateIdx = STRAVA_AD.indexOf('res.status === 429 || res.status >= 500');
+yes(refreshIdx > 0 && /ProviderFatalAuthError/.test(STRAVA_AD.slice(refreshIdx, refreshIdx + 260)),
+    'strava.ts: refresh_token inválido EN EL REFRESCO → fatal (el único caso que obliga a reconectar)');
+yes(/phase === "refresh" && \(e\.resource === "refreshtoken"/.test(STRAVA_AD),
+    'y sólo en el refresco: en el canje ese error no existe');
+yes(appIdx > 0 && /ConfigError/.test(STRAVA_AD.slice(appIdx, appIdx + 240)),
+    'strava.ts: client_id/secret mal → ConfigError (reconectar no lo arregla)');
+yes(codeIdx > 0 && !/ProviderFatalAuthError/.test(STRAVA_AD.slice(codeIdx, codeIdx + 200)),
+    'strava.ts: un código de autorización caducado NO marca la integración como rota');
+yes(rateIdx > 0 && rateIdx < refreshIdx,
+    'strava.ts: el 429/5xx se clasifica ANTES que los `errors[]` (un 500 con cuerpo raro no es fatal)');
+yes(/status === 401 \|\| status === 403/.test(INTERVALS_AD),
+    'intervals.ts: 401 y 403 son fallo de credencial (403 = la clave no cubre a ese atleta)');
+yes(/ATHLETE_ID_RE = \/\^\[A-Za-z0-9_-\]\{1,40\}\$\//.test(INTERVALS_AD),
+    'y el id de atleta se valida: va dentro de la RUTA de la API');
+
+console.log('');
+console.log('27. A-7 · Strava: scope, ventana y espejo de estado');
+yes(/STRAVA_SCOPES = "read,activity:read_all"/.test(STRAVA_AD),
+    'scope con activity:read_all (con activity:read Strava OCULTA las actividades privadas, sin avisar)');
+yes(/activity:read/.test(CALLBACK) && /return fail\("scope"\)/.test(CALLBACK),
+    'el callback comprueba el scope CONCEDIDO (las casillas de Strava son independientes)');
+yes(/if \(!tokens\.scope\) tokens\.scope = granted/.test(CALLBACK),
+    'y lo guarda: la respuesta del token de Strava no trae scope, la redirección sí');
+yes(/expires_at/.test(STRAVA_AD) && /expAt - nowSecs/.test(STRAVA_AD),
+    'la caducidad se toma del `expires_at` absoluto, no del `expires_in` relativo (latencia)');
+yes(/markSynced\(supa, userId, "strava"/.test(STRAVA_SH), 'strava-sync escribe el espejo de estado');
+yes(/markSynced\(supa, userId, "intervals"/.test(INTERVALS_SH), 'intervals-sync también');
+yes(/MAX_PAGES/.test(STRAVA_SH) && /records\.length < PAGE_LIMIT/.test(STRAVA_SH),
+    'la paginación de Strava tiene tope y final (page/per_page, no cursor)');
+yes(/syncStrava\(userId, \{ days: 90 \}\)/.test(CALLBACK),
+    'y al conectar se hace el primer volcado de 90 días (sin histórico, el presupuesto arranca ciego)');
+
+console.log('');
+console.log('28. A-7 · intervals.icu: merge aditivo y precedencia de claves');
+// El merge tiene que ser `merge_generic_row`. Un `.upsert()` de PostgREST reemplaza `data`.
+for (const [nombre, src] of [['_shared/intervals-sync.ts', INTERVALS_SH], ['_shared/activity-import.ts', ACT_IMPORT]]) {
+  yes(/rpc\("merge_generic_row"/.test(src), `${nombre}: escribe con merge_generic_row`);
+  yes(!/\.upsert\(/.test(src), `${nombre}: y NO con un upsert que reemplaza la fila entera`);
+}
+// La lista de claves que son de WHOOP tiene que estar COMPLETA: si al servidor se le queda una
+// fuera, la copia degradada de intervals.icu (horas más tarde, sin fases de sueño ni SpO2) pisa
+// el readiness bueno. La lista mínima se declara aquí, y MIENTRAS el cliente conserve su copia
+// (`app/whoop.js`, hasta que se reescriba para A-7) las dos tienen que coincidir exactamente.
+const OWNED_MIN = [
+  'readiness', 'hrv', 'restingHR', 'spO2', 'skinTemp',
+  'sleepSecs', 'sleepInBedSecs', 'sleepAwakeSecs', 'sleepRemSecs', 'sleepDeepSecs',
+  'sleepLightSecs', 'sleepScore', 'sleepEfficiency', 'sleepConsistency', 'respiration',
+  'sleepNeedSecs',
+].sort();
+const ownedFn = (/export const WHOOP_OWNED_KEYS = \[([\s\S]*?)\];/.exec(INTERVALS_WELL)?.[1] || '')
+  .match(/"([a-zA-Z0-9]+)"/g)?.map((s) => s.replace(/"/g, '')).sort() || [];
+eq(ownedFn.join(','), OWNED_MIN.join(','),
+   'WHOOP_OWNED_KEYS del servidor: las 16 claves de recuperación y sueño, ni una menos');
+const ownedApp = (/const WHOOP_OWNED_KEYS = \[([\s\S]*?)\];/.exec(WHOOPJS)?.[1] || '')
+  .match(/'([a-zA-Z0-9]+)'/g)?.map((s) => s.replace(/'/g, '')).sort() || [];
+if (ownedApp.length) {
+  eq(ownedApp.join(','), ownedFn.join(','), 'y coincide con la copia que aún tiene app/whoop.js');
+} else {
+  ok('app/whoop.js ya no tiene su copia (A-7 cliente hecho): la del servidor es la única');
+}
+yes(/prev\.readinessSource === "whoop"/.test(INTERVALS_WELL),
+    'si el día lo escribió WHOOP, sus claves se quitan del parche de intervals.icu');
+yes(/prev\.weightSource === "withings"/.test(INTERVALS_WELL),
+    'si el peso es de la báscula, el eco redondeado de intervals.icu no lo pisa (D-1)');
+yes(/WITHINGS_OWNED_KEYS = \["weight", "weightMeasured", "bodyFat", "weightSource"\]/.test(INTERVALS_WELL),
+    'y la lista de lo que es de la báscula está escrita, no adivinada');
+yes(/existing\.source === "withings"/.test(INTERVALS_WELL),
+    'en `bodyweight`, la pesada de Withings manda siempre');
+yes(/existing && !existing\.source && existingWeight !== null/.test(INTERVALS_WELL),
+    'y un peso escrito a mano en la app tampoco se pisa (más estricto que el cliente)');
+yes(/Math\.abs\(\(projected as number\) - prevDayWeight\) >= 0\.05/.test(INTERVALS_WELL),
+    'el forward-fill sólo se guarda si CAMBIA (si no, inventa días de "peso estable")');
+yes(/tempWeight/.test(INTERVALS_WELL) && /suavizado/.test(INTERVALS_WELL),
+    'tempWeight (medida) y weight (proyección) siguen siendo cosas distintas');
+// Sin webhook: intervals.icu no notifica, así que no se abre una fila que nadie va a cerrar.
+// El grep es sobre el CÓDIGO, no sobre los comentarios: la cabecera del módulo explica
+// justamente por qué no se abre una fila de eventos.
+yes(!/_shared\/events\.ts/.test(INTERVALS_SH) && !/openEvent|closeEvent|TABLE_EVENTS/.test(INTERVALS_SH) &&
+    !/openEvent|closeEvent|TABLE_EVENTS/.test(INTERVALSFN),
+    'intervals-sync NO abre filas en integration_events (sin webhook, serían huérfanas permanentes de C-12)');
+yes(!existsSync('supabase/functions/intervals-webhook'),
+    'y no hay función de webhook para un proveedor que no notifica');
+// La derivación de zonas de FC se queda en el cliente; lo que se mueve es la LLAMADA.
+yes(/action === "athlete"/.test(INTERVALSFN) && /export async function athleteZones/.test(INTERVALS_SH),
+    'hay una acción `athlete` que devuelve los campos de FC (el cliente sigue derivando sus zonas)');
+yes(/sportSettings: settings\.map/.test(INTERVALS_SH),
+    'y devuelve una forma RECORTADA, no el JSON entero del atleta (nombre y correo no hacen falta)');
+// EL FALLO QUE ESTO IMPIDE. Mover la clave al servidor deja sin credencial al botón que manda la
+// semana de carrera al calendario de intervals.icu (y de ahí al COROS), que Julian usa cada
+// semana. La salida NO es reconstruir la semana en el servidor: se arma con el plan activo, el
+// cardio del coach y la regla de fase, y el DSL va verbatim porque un bloque de trote/caminata no
+// se puede aplanar a "35m Z2". Lo que se mueve es la LLAMADA, igual que con las zonas.
+yes(/action === "push_events"/.test(INTERVALSFN) && /export async function pushEvents/.test(INTERVALS_SH),
+    'hay una acción `push_events`: el cliente sigue armando la semana, el servidor sólo pone la credencial');
+yes(/events\/bulk\?upsert=true/.test(INTERVALS_SH),
+    'y empuja por el endpoint bulk con upsert: la misma semana dos veces actualiza, no duplica');
+yes(/PUSH_EXTERNAL_ID = \/\^pwa-/.test(INTERVALS_SH),
+    "el `external_id` tiene que empezar por `pwa-`: sin eso el proxy podría pisar un evento que Julian creó a mano");
+yes(/PUSH_MAX_EVENTS/.test(INTERVALS_SH) && /PUSH_CATEGORIES/.test(INTERVALS_SH) && /PUSH_LOCAL_DATE/.test(INTERVALS_SH),
+    'y valida cuántos, de qué categoría y con qué fecha local (un proxy sin cotas es un proxy abierto)');
+{
+  const src = INTERVALS_SH.slice(INTERVALS_SH.indexOf('export async function pushEvents'));
+  const cuerpo = src.slice(0, src.indexOf('export ', 10) === -1 ? src.length : src.indexOf('export ', 10));
+  yes(/console\.error\(/.test(cuerpo) && !/error: [^}]*res\.text/.test(cuerpo),
+      'el cuerpo crudo de intervals.icu va al log, no al cliente (C-29)');
+  yes(/PushBadRequest/.test(cuerpo),
+      'y una forma inválida es 400 con su propio tipo de error, no un 500 que parece caída del proveedor');
+}
+yes(/code: "invalid_events"/.test(INTERVALSFN) && /, 400\)/.test(INTERVALSFN),
+    'la función traduce ese error a 400 con un código estable');
+
+console.log('');
+console.log('29. A-7 · la migración 20260911_a7_strava_intervals_tokens.sql');
+yes(A7SQL.length > 0, 'existe');
+for (const t of ['integration_tokens', 'integration_status']) {
+  yes(new RegExp(`alter table public\\.${t}[\\s\\S]{0,200}check \\(provider in \\('whoop','withings','strava','intervals'\\)\\)`).test(A7SQL),
+      `${t}: el check acepta los cuatro proveedores`);
+}
+// El check de la base y el registro del código tienen que decir lo MISMO.
+const checkList = (/integration_tokens_provider_check\s*\n\s*check \(provider in \(([^)]*)\)\)/.exec(A7SQL)?.[1] || '')
+  .split(',').map((s) => s.trim().replace(/'/g, '')).filter(Boolean).sort();
+const adapterList = [...(TOKENS.match(/^\s{2}(\w+): \w+Adapter as unknown as ProviderAdapter,$/gm) || [])]
+  .map((l) => /^\s{2}(\w+):/.exec(l)[1]).sort();
+eq(checkList.join(','), adapterList.join(','),
+   'y coincide EXACTAMENTE con ADAPTERS (un adaptador sin su check muere con un 23514 al guardar)');
+yes(/oauth_states_provider_check\s*\n\s*check \(provider in \('whoop','withings','strava'\)\)/.test(A7SQL),
+    "oauth_states NO acepta 'intervals': no tiene OAuth, y un state que no se puede canjear es un camino muerto");
+yes(/not valid;\n\s*alter table public\.integration_tokens validate constraint/.test(A7SQL),
+    'los checks se añaden `not valid` y se validan aparte (sin lock largo de escritura)');
+yes(/p_table not in \('wellness','bodyweight','steps','runs','sessions'\)/.test(A7SQL),
+    'merge_generic_row acepta las cinco tablas y sigue siendo una LISTA BLANCA');
+yes(/revoke execute on function public\.merge_generic_row/.test(A7SQL) &&
+    /grant execute on function public\.merge_generic_row\(text, uuid, text, jsonb\) to service_role/.test(A7SQL),
+    'con EXECUTE revocado a todos menos service_role (security definer + p_table dinámico = escritor universal)');
+yes(/data \|\| excluded\.data/.test(A7SQL), 'y el merge sigue siendo aditivo dentro de una sola sentencia');
+for (const job of ['intervals-sync-daily', 'strava-sync-daily']) {
+  yes(new RegExp(`cron\\.schedule\\('${job}'`).test(A7SQL), `programa ${job}`);
+  yes(new RegExp(`jobname in \\([^)]*'${job}'`).test(A7SQL), `y lo desprograma antes por nombre (idempotente)`);
+}
+yes(/cron_call_fn\('intervals-sync'/.test(A7SQL) && /cron_call_fn\('strava-sync'/.test(A7SQL),
+    'los dos jobs llaman por cron_call_fn (secretos de Vault, no literales en el repo)');
+yes(!/eyJ[A-Za-z0-9_-]{10,}/.test(A7SQL),
+    'y no hay un JWT escrito en la migración (quedaría en el repo Y en cron.job.command)');
+yes(/proname = 'cron_call_fn'/.test(A7SQL),
+    'aborta si falta cron_call_fn en vez de programar dos jobs que fallan en silencio');
 
 console.log(failed === 0 ? '\nTODO OK' : `\n${failed} FALLOS`);
 process.exit(failed === 0 ? 0 : 1);
