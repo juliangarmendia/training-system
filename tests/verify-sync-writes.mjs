@@ -101,7 +101,7 @@ const baseline = [
             'móvil la borrase en la web antes de leerla, y encolaría una escritura por sesión.',
   },
   {
-    store: 'coach_reviews', src: COACHJS, n: 3,
+    store: 'coach_reviews', src: COACHJS, n: 4,
     motivo: 'ESPEJO LOCAL de filas que escribe LA EDGE FUNCTION, no la app (v11.61). La fila de ' +
             'una revisión es del servidor: él pone `running` y luego `proposed` con la propuesta ' +
             'que cuesta $0,50-0,70. Un `smartPut` de la copia `running` la encolaría y el ' +
@@ -111,7 +111,11 @@ const baseline = [
             'fila `failed` local cuando la invocación ni llega a la función (sin fila del ' +
             'servidor no hay nada que reflejar, y un fallo sin rastro es indistinguible de "el ' +
             'coach no dijo nada"). Las escrituras del USUARIO sobre esa misma fila —aplicar, ' +
-            'rechazar, vencer— sí van con `smartPut`: ésas son suyas y tienen que llegar a la nube.',
+            'rechazar, vencer— sí van con `smartPut`: ésas son suyas y tienen que llegar a la nube. ' +
+            '(4) v11.74: descartar un fallo LOCAL (`_coachDismissReview`). Esa fila no existe en el ' +
+            'servidor —la escribió el catch sin pasar por la cola—, así que subirla ahora sólo ' +
+            'propagaría un fallo de ESTE teléfono a los demás. Si la fila es del servidor, el mismo ' +
+            'camino usa smartPut.',
   },
 ];
 

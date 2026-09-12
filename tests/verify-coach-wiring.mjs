@@ -183,6 +183,14 @@ const fnSrc = (decl) => {
   return APP.slice(i, j < 0 ? APP.length : j);
 };
 
+// El gemelo de `fnSrc` sobre coach.js: mismo criterio (hasta el primer `}` en columna 0).
+const fnSrc2 = (decl) => {
+  const i = COACHJS.indexOf(decl);
+  if (i < 0) return '';
+  const j = COACHJS.indexOf('\n}', i);
+  return COACHJS.slice(i, j < 0 ? COACHJS.length : j);
+};
+
 const IDW_SRC = fnSrc('function isDeloadWeek(');
 yes(!!IDW_SRC, 'se localiza isDeloadWeek()');
 yes(/blockWeek\(/.test(IDW_SRC), 'isDeloadWeek() delega en blockWeek( — una sola aritmética');
@@ -2280,10 +2288,12 @@ console.log('');
 console.log('23. F-25 · el caveat en el ledger de evidencia');
 {
   yes(/function _coachRuleCaveatHtml\(regla\)/.test(COACHJS), 'existe _coachRuleCaveatHtml()');
-  yes(/\$\{_coachRuleCaveatHtml\(corpus\[f\.ruleId\]\)\}/.test(COACHJS),
-    'y el ledger lo pinta debajo de cada fila');
-  yes(/class="evl-item"/.test(COACHJS) && /\.evl-item \{/.test(CSS),
-    'la fila y su salvedad van en un `.evl-item` (con el borde en `.evl-row` el caveat leía como de la regla siguiente)');
+  yes(/_coachRuleCaveatHtml\(x\.regla\)/.test(COACHJS),
+    'y el bloque de evidencia lo pinta dentro de la fila de su regla');
+  // v11.74: el ledger de cinco columnas se sustituyó por frases; la salvedad cuelga ahora de
+  // la fila de la regla (`.evt-row`), que es quien lleva el separador.
+  yes(/class="evt-row"/.test(COACHJS) && /\.evt-row \{/.test(CSS),
+    'cada regla es una `.evt-row` con su frase, y la salvedad va dentro de ella');
   yes(/\.evl-caveat \{/.test(CSS), '.evl-caveat tiene estilo');
   const i = COACHJS.indexOf('function _coachRuleCaveatHtml(regla) {');
   const box = { console, _cEsc: (x) => String(x == null ? '' : x).replace(/&/g, '&amp;').replace(/</g, '&lt;') };
@@ -2357,6 +2367,101 @@ console.log('24. F-28 · "Close the week" avisa si la carrera lleva > 2 días si
   await mk([{ date: '2026-09-06' }], [{ date: '2026-09-09', family: 'recovery' }])
     .then((h) => yes(/4 days ago/.test(h), 'pero una sesión de movilidad NO cuenta como cardio'));
   await mk([], []).then((h) => eq(h, '', 'sin ninguna carrera no hay "vieja" que avisar'));
+}
+
+// ── v11.74 · un fallo NO puede enterrar una propuesta ───────────────────────────────
+console.log('');
+console.log('24. v11.74 · la tarjeta elige la fila ACCIONABLE, no la del intento más alto');
+//
+// EL FALLO QUE ESTE BLOQUE EXISTE PARA IMPEDIR, y que pasó de verdad. El 2026-09-12 Julian tenía
+// `coach_reviews 2026-W37#1` en `proposed` (con su propuesta entera, escrita a mano y validada) y
+// encima una fila LOCAL `failed` que escribe el `catch` de `runWeeklyCoach` con
+// `attempt = nº de filas + 1`. La ordenación era semana → intento, así que el fallo ganaba: la
+// tarjeta llevaba dos días diciendo "The W37 review failed" con la propuesta debajo, invisible, y
+// sin forma de llegar a ella ni de descartar el fallo. Dos días de trabajo del coach tapados por
+// un evento de red.
+{
+  const pickCtx = { console, module: { exports: {} } };
+  pickCtx.exports = pickCtx.module.exports;
+  vm.createContext(pickCtx);
+  const trozo = (decl) => {
+    const i = COACHJS.indexOf(decl);
+    const j = COACHJS.indexOf('\n}', i);
+    return COACHJS.slice(i, j < 0 ? COACHJS.length : j + 2);
+  };
+  vm.runInContext([
+    COACHJS.slice(COACHJS.indexOf('const COACH_ROW_VALUE = {'), COACHJS.indexOf('function _coachRowValue(r) {')),
+    trozo('function _coachRowValue(r) {'),
+    trozo('function _coachPickReview(rows) {'),
+    trozo('function _coachFailedSibling(rows, review) {'),
+    'globalThis.pick = _coachPickReview; globalThis.sib = _coachFailedSibling; globalThis.val = _coachRowValue;',
+  ].join('\n'), pickCtx);
+
+  const propuesta = { id: '2026-W37#1', weekKey: '2026-W37', attempt: 1, status: 'proposed', updatedAt: '2026-09-09T08:25:00Z' };
+  const fallo = { id: '2026-W37#local-2', weekKey: '2026-W37', attempt: 2, status: 'failed', local: true, createdAt: 1789000000000, error: { kind: 'invoke', message: 'Failed to fetch' } };
+
+  const elegida = pickCtx.pick([propuesta, fallo]);
+  eq(elegida && elegida.id, '2026-W37#1', 'con una propuesta y un fallo posterior de la MISMA semana, manda la propuesta');
+  const hermano = pickCtx.sib([propuesta, fallo], elegida);
+  eq(hermano && hermano.id, '2026-W37#local-2', 'y el fallo se recupera aparte, para contarlo en una línea');
+
+  // Sin propuesta, el fallo sí manda: es lo único que hay que enseñar.
+  eq(pickCtx.pick([fallo]).id, '2026-W37#local-2', 'un fallo solo sigue siendo la fila de la tarjeta');
+  // Una semana más reciente gana a una propuesta vieja, aunque la vieja sea más accionable.
+  const w38 = { id: '2026-W38#1', weekKey: '2026-W38', attempt: 1, status: 'failed', createdAt: 1789100000000 };
+  eq(pickCtx.pick([propuesta, w38]).id, '2026-W38#1', 'la semana manda por encima de la accionabilidad: una propuesta vieja no tapa la semana nueva');
+  // Descartado deja de competir.
+  const descartado = Object.assign({}, fallo, { status: 'dismissed' });
+  eq(pickCtx.pick([descartado]).id, '2026-W37#local-2', 'una fila descartada sigue existiendo…');
+  eq(pickCtx.val(descartado) < pickCtx.val(fallo), true, '…pero vale menos que el fallo sin descartar, así que nunca gana a nada');
+  // Dos intentos fallidos: el más alto.
+  const fallo3 = Object.assign({}, fallo, { id: '2026-W37#local-3', attempt: 3 });
+  eq(pickCtx.pick([fallo, fallo3]).id, '2026-W37#local-3', 'entre dos fallos, el intento más alto');
+  eq(pickCtx.sib([propuesta, fallo], null), null, 'sin fila elegida no hay hermano que contar');
+  eq(pickCtx.sib([propuesta], propuesta), null, 'y sin fallo tampoco');
+}
+// La rama `failed` tiene que ser útil: el motivo real, reintentar SU semana y poder descartarla.
+{
+  const card = COACHJS.slice(COACHJS.indexOf("} else if (review.status === 'failed') {"));
+  const rama = card.slice(0, card.indexOf("} else if (review.status === 'expired'"));
+  yes(/review\.error && review\.error\.message/.test(rama),
+    'la tarjeta pinta el MOTIVO real del fallo, no sólo su etiqueta genérica');
+  yes(/coach-week-retry/.test(rama) && /coach-week-dismiss/.test(rama),
+    'y ofrece reintentar y descartar');
+  yes(/weekKey: review\.weekKey \|\| _cTargetWeek\(today\(\)\)/.test(COACHJS),
+    'el reintento apunta a la semana de la FILA (un domingo, _cTargetWeek ya es la siguiente)');
+  yes(/async function _coachDismissReview\(review\)/.test(COACHJS) && /status: 'dismissed'/.test(COACHJS),
+    'descartar marca la fila, no la borra: el rastro del fallo se conserva');
+}
+// Y la llamada tiene límite de tiempo.
+yes(/const COACH_INVOKE_TIMEOUT_MS = 60000/.test(COACHJS) && /Promise\.race/.test(COACHJS),
+  'la invocación al coach tiene timeout: sin él, una llamada colgada dejaba la tarjeta en "running" para siempre');
+
+// ── v11.74 · la semana, contada ─────────────────────────────────────────────────────
+console.log('');
+console.log('25. v11.74 · la explicación de la semana se lee sin abrir nada');
+{
+  const prop = COACHJS.slice(COACHJS.indexOf("} else if (review.status === 'proposed') {"));
+  const rama = prop.slice(0, prop.indexOf("} else if (review.status === 'applied')"));
+  yes(/_coachSection\(nextWeek, COACH_STORY_SECTIONS\.changing\)/.test(rama)
+    && /_coachSection\(nextWeek, COACH_STORY_SECTIONS\.why\)/.test(rama),
+    'Home saca "qué cambio" y "por qué" de la prosa del contrato');
+  yes(!/<details class="coach-week-next">/.test(rama),
+    'y ya NO las esconde en un <details> plegado: el texto estaba escrito y no se leía');
+  yes(/function _coachRenderStory\(el, review\)/.test(COACHJS)
+    && /coach-week-story/.test(fnSrc2('async function renderCoachView(')),
+    'la vista Coach abre con la explicación entera');
+  const st = COACHJS.slice(COACHJS.indexOf('function _coachSection(md, header)'));
+  yes(!/RegExp|\.match\(/.test(st.slice(0, st.indexOf('\n}'))),
+    '_coachSection corta por índice, sin regex sobre texto que escribe un modelo');
+}
+{
+  const gl = fnSrc2('async function renderCoachGoalLine(');
+  yes(/not enough to read a trend yet/.test(gl), 'la línea de peso dice QUÉ FALTA, no "no signal"');
+  yes(/anchor lift/.test(gl) && /conDato\.length/.test(gl),
+    'la de fuerza compara sólo las anclas con dato: el denominador y el numerador son la misma población');
+  yes(!/otros\.join/.test(gl) && !/peso\.join/.test(gl),
+    'y ya no se construye juntando fragmentos con puntos medios');
 }
 
 console.log('');

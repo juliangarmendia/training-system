@@ -493,47 +493,69 @@ async function renderCoachGoalLine() {
     if (!calc) return;
     const { gp, goals, weighins, todayStr } = calc;
 
-    // ---- Línea 1: peso -------------------------------------------------------------------
+    // v11.74 · FRASES, NO TELEGRAMA. Esto decía "Weight no signal (6 weigh-ins in 14d) · 10k
+    // run/walk phase · 0 km/wk · Z2 2/3 · Strength 2/6 anchors", y Julian pidió que fuera "más
+    // explicativo, descriptivo". Cada línea dice ahora qué se mide, cómo va y, cuando no hay
+    // señal, QUÉ FALTA para tenerla — que es la única parte accionable de una línea sin datos.
+
+    // ---- Peso ----------------------------------------------------------------------------
     const desde14 = dateStr(new Date(Date.parse(todayStr + 'T12:00:00') - 13 * 86400000));
     const n14 = new Set((weighins || []).filter((w) => w.date >= desde14).map((w) => w.date)).size;
     const w = gp.weight || {};
-    const peso = [];
+    let lineaPeso;
     if (w.status === 'insufficient' || w.trend7d == null) {
-      peso.push(`Weight no signal (${n14} weigh-in${n14 === 1 ? '' : 's'} in 14 d)`);
+      lineaPeso = `Weight: not enough to read a trend yet — ${n14} weigh-in${n14 === 1 ? '' : 's'} in the last 14 days.`
+        + ' Step on the scale fasted each morning and this turns into a rate.';
     } else {
-      peso.push(`Weight ${_cNum(w.trend7d, 1)}`);
-      if (w.slope != null) peso.push(`${_cNum(w.slope, 2)} kg/wk`);
+      const ritmo = w.slope != null
+        ? ` and moving ${_cNum(Math.abs(w.slope), 2)} kg/week ${w.slope < 0 ? 'down' : 'up'}`
+        : '';
       const hito = Number(((goals || {}).primary || {}).milestoneKg);
       const banda = (((goals || {}).primary || {}).targetWeightKg) || [];
+      let destino = '';
       if (w.etaMilestoneWeeks != null && w.etaMilestoneWeeks > 0 && isFinite(hito)) {
-        peso.push(`milestone ${_cNum(hito, 0)} kg in ~${_cNum(w.etaMilestoneWeeks, 0)} wk`);
+        destino = ` At this rate you hit ${_cNum(hito, 0)} kg in about ${_cNum(w.etaMilestoneWeeks, 0)} weeks.`;
       } else if (w.etaWeeks != null && w.etaWeeks > 0 && banda.length === 2) {
-        peso.push(`${_cNum(banda[1], 0)} kg in ~${_cNum(w.etaWeeks, 0)} wk`);
+        destino = ` At this rate you reach ${_cNum(banda[1], 0)} kg in about ${_cNum(w.etaWeeks, 0)} weeks.`;
       }
+      lineaPeso = `Weight: ${_cNum(w.trend7d, 1)} kg on a 7-day average${ritmo}.${destino}`;
     }
 
-    // ---- Línea 2: carrera + fuerza -------------------------------------------------------
+    // ---- Carrera -------------------------------------------------------------------------
     const r = gp.running || {};
-    const s = gp.strength || {};
-    const otros = [];
+    let lineaRun;
     if (r.runCount === 0) {
-      otros.push('10k: no runs in 4 weeks');
+      lineaRun = '10k goal: nothing logged in 4 weeks, so there is no aerobic trend to read.';
     } else {
       const fase = (typeof RW_PHASE_LABEL !== 'undefined' && RW_PHASE_LABEL[r.phase]) || r.phase;
-      otros.push(`10k: ${fase} phase`);
-      otros.push(`${_cNum(r.weeklyKm, 1)} km/wk`);
-      if (r.z2Sample > 0) otros.push(`Z2 ${r.z2Compliance}/${r.z2Sample}`);
+      const z2 = r.z2Sample > 0
+        ? ` ${r.z2Compliance} of the ${r.z2Sample} run${r.z2Sample === 1 ? '' : 's'} with a heart-rate reading stayed in Zone 2.`
+        : ' None of those runs came back with a heart-rate reading, so Zone 2 compliance is unknown.';
+      lineaRun = `10k goal: ${fase} phase, ${_cNum(r.weeklyKm, 1)} km last week.${z2}`;
     }
-    const anclas = s.anchors || [];
+
+    // ---- Fuerza --------------------------------------------------------------------------
+    // EL DENOMINADOR, ARREGLADO. Decía "Strength 2/6 anchors" con el numerador contando anclas
+    // CON DATO y el denominador TODAS: dos poblaciones distintas en la misma fracción, que se
+    // lee como "4 anclas han bajado" cuando lo que pasa es que 4 no se han entrenado.
+    const s2 = gp.strength || {};
+    const anclas = s2.anchors || [];
     const conDato = anclas.filter((a) => a.maintained !== null);
-    otros.push(conDato.length
-      ? `Strength ${conDato.filter((a) => a.maintained).length}/${anclas.length} anchors`
-      : `Strength no signal (0 of ${anclas.length} anchors with data)`);
+    const sinDato = anclas.length - conDato.length;
+    let lineaFuerza;
+    if (!conDato.length) {
+      lineaFuerza = `Strength: none of your ${anclas.length} anchor lifts has been trained recently enough to compare, so I cannot tell you if you are holding.`;
+    } else {
+      const mantenidas = conDato.filter((a) => a.maintained).length;
+      const cola = sinDato
+        ? ` The other ${sinDato} ${sinDato === 1 ? 'has' : 'have'} no recent data to compare.`
+        : '';
+      lineaFuerza = `Strength: ${mantenidas} of the ${conDato.length} anchor lift${conDato.length === 1 ? '' : 's'} I can compare ${mantenidas === 1 ? 'is' : 'are'} holding.${cola}`;
+    }
 
     el.innerHTML =
       `<div class="coach-goal-line" role="button" tabindex="0">` +
-      `<div class="cgl-row">${_cEsc(peso.join(' · '))}</div>` +
-      `<div class="cgl-row">${_cEsc(otros.join(' · '))}</div>` +
+      [lineaPeso, lineaRun, lineaFuerza].map((l) => `<div class="cgl-row">${_cEsc(l)}</div>`).join('') +
       `</div>`;
     // Un toque lleva al detalle. Es el único gesto: aquí no se decide nada.
     const box = el.querySelector('.coach-goal-line');
@@ -572,11 +594,27 @@ async function renderCoachGoalLine() {
 // LA VERSIÓN DE LA APP viaja al servidor (`clientVersion`) y al pack (`meta.appVersion`), que
 // es lo que permite luego saber qué código produjo una revisión rara.
 // `verify-coach-wiring.mjs` comprueba que coincide con la de index.html y con `CACHE_NAME`.
-const COACH_APP_VERSION = 'v11.73';
+const COACH_APP_VERSION = 'v11.74';
 
 const COACH_MAX_SESSION_IDS = 12;   // el tope que valida la edge function
 const COACH_MAX_EXERCISE_IDS = 150; // idem
 const COACH_MAX_USER_NOTE = 1200;   // idem
+// C-11 del audit, la mitad que faltaba: el cliente NO tenía timeout en la llamada al coach.
+// `functions.invoke` sin límite se queda esperando lo que el sistema operativo quiera, y la
+// tarjeta se queda en "running" sin que nadie escriba una fila de fallo. 60 s es holgado: la
+// función responde en dos fases (202 + polling), así que esto sólo cubre el apretón de manos.
+const COACH_INVOKE_TIMEOUT_MS = 60000;
+async function _coachInvokeWithTimeout(supa, body, ms) {
+  const limite = ms || COACH_INVOKE_TIMEOUT_MS;
+  let t = null;
+  const reloj = new Promise((_, rej) => {
+    t = setTimeout(() => rej(new Error(`the call timed out after ${Math.round(limite / 1000)} s`)), limite);
+  });
+  try {
+    return await Promise.race([supa.functions.invoke('coach-weekly-review', { body }), reloj]);
+  } finally { if (t) clearTimeout(t); }
+}
+
 const COACH_POLL_MS = 5000;
 const COACH_POLL_MAX_MS = 5 * 60 * 1000;
 
@@ -1082,7 +1120,7 @@ async function runWeeklyCoach({ weekKey, userNote, regenerate, force } = {}) {
     // Mismo camino que `parse-meal-photo` (app/nutrition.js): `functions.invoke` pone el token
     // de la sesión en la cabecera Authorization, que es lo que la función valida con
     // `asUser.auth.getUser()`. Un `fetch` a mano tendría que reconstruirlo.
-    const { data, error } = await supa.functions.invoke('coach-weekly-review', { body });
+    const { data, error } = await _coachInvokeWithTimeout(supa, body);
     if (error) throw new Error(error.message || 'The coach function failed');
     if (data && data.error) throw new Error(data.error);
 
@@ -1243,14 +1281,54 @@ function _coachElapsed(sinceMs) {
 // ==================== LA REVISIÓN VIGENTE ====================
 
 /** La revisión más reciente: por semana ISO descendente y, dentro de la semana, por intento. */
-async function _coachLatestReview() {
-  const rows = await dbGetAll('coach_reviews').catch(() => []);
+/**
+ * Cuánto vale una fila PARA LA TARJETA. No es prioridad de negocio: es qué merece la pantalla.
+ *
+ * EL FALLO QUE ESTO IMPIDE, y que pasó de verdad. El 2026-09-12 Julian tenía
+ * `coach_reviews 2026-W37#1` en `proposed` (en el servidor, con su propuesta entera) y encima un
+ * intento fallido LOCAL que escribe el `catch` de `runWeeklyCoach` con `attempt = nº filas + 1`.
+ * La ordenación era semana -> intento, así que el fallo ganaba SIEMPRE: la tarjeta llevaba dos
+ * días diciendo "The W37 review failed" con la propuesta buena debajo, invisible, sin botón que
+ * llevara a ella y sin forma de descartar el fallo (`_coachExpireIfStale` sólo vence `proposed`
+ * y `requested`). Un fallo es un EVENTO; una propuesta es TRABAJO que espera una decisión.
+ */
+const COACH_ROW_VALUE = {
+  proposed: 4, running: 4, requested: 4,   // piden una decisión o están en marcha
+  applied: 3,                              // es el plan vigente
+  expired: 2, rejected: 2,                 // historia, pero historia real
+  failed: 1,                               // un intento que no llegó a nada
+  dismissed: 0,                            // un fallo que el usuario ya ha visto y apartado
+};
+function _coachRowValue(r) {
+  const v = COACH_ROW_VALUE[String((r && r.status) || '')];
+  return v == null ? 1 : v;
+}
+
+/** La fila que manda: la semana más reciente y, dentro de ella, la más accionable. Pura. */
+function _coachPickReview(rows) {
   const ts = (r) => (r.updatedAt ? Date.parse(r.updatedAt) || 0 : 0) || Number(r.createdAt || 0) || 0;
   const sorted = (rows || []).filter((r) => r && r.id).sort((a, b) =>
     String(b.weekKey || '').localeCompare(String(a.weekKey || ''))
+    || (_coachRowValue(b) - _coachRowValue(a))
     || (Number(b.attempt || 0) - Number(a.attempt || 0))
     || (ts(b) - ts(a)));
   return sorted[0] || null;
+}
+
+/**
+ * El fallo que la fila elegida deja fuera de pantalla, si lo hay. Se cuenta en una línea: que la
+ * propuesta mande no significa esconder que el último intento de regenerarla se estrelló.
+ */
+function _coachFailedSibling(rows, review) {
+  if (!review || _coachRowValue(review) < 3) return null;
+  const ts = (r) => (r.updatedAt ? Date.parse(r.updatedAt) || 0 : 0) || Number(r.createdAt || 0) || 0;
+  return ((rows || []).filter((r) => r && r.status === 'failed' && r.weekKey === review.weekKey)
+    .sort((a, b) => ts(b) - ts(a))[0]) || null;
+}
+
+async function _coachLatestReview() {
+  const rows = await dbGetAll('coach_reviews').catch(() => []);
+  return _coachPickReview(rows);
 }
 
 /**
@@ -1948,8 +2026,11 @@ async function renderCoachWeekCard(opts = {}) {
       </div>`;
       return;
     }
-    let review = await _coachLatestReview();
+    const filas = (await dbGetAll('coach_reviews').catch(() => [])) || [];
+    let review = _coachPickReview(filas);
     review = await _coachExpireIfStale(review);
+    // El fallo que la propuesta tapa (si lo hay): se cuenta, no se esconde.
+    const falloAparte = _coachFailedSibling(filas, review);
 
     const wkTxt = _cEsc(_cWeekShort((review && review.weekKey) || objetivo));
     const plan = (typeof activePlan !== 'undefined' && activePlan) ? activePlan : null;
@@ -2012,11 +2093,20 @@ async function renderCoachWeekCard(opts = {}) {
       });
       const nextWeek = ((review.output || {}).briefing || {}).nextWeek;
       const prios = brief.priorities;
+      // v11.74 · LA EXPLICACIÓN, NO EL RESUMEN. Antes: "Focus: …", tres viñetas y la prosa
+      // plegada dentro de un `<details>`. Ahora el titular y las dos secciones que contestan las
+      // dos preguntas de Julian — qué voy a hacer esta semana y por qué — se leen sin abrir nada.
+      // El desarrollo entero (qué vigilo, qué necesito de ti) vive en la vista Coach.
+      const queCambio = _coachSection(nextWeek, COACH_STORY_SECTIONS.changing);
+      const porQue = _coachSection(nextWeek, COACH_STORY_SECTIONS.why);
       cuerpo = `
-        ${brief.focus ? `<div class="cwc-focus">Focus: ${_cEsc(brief.focus)}</div>` : ''}
-        ${prios.length ? `<ol class="coach-week-prios">${prios.map((p) => `<li>${_cEsc(p)}</li>`).join('')}</ol>` : ''}
-        ${_coachWhyHtml(brief, { plegado: true })}
-        ${nextWeek ? `<details class="coach-week-next"><summary>Next week</summary><div class="coach-week-md">${_cMd(nextWeek)}</div></details>` : ''}
+        ${brief.focus ? `<div class="cwc-focus">${_cEsc(brief.focus)}</div>` : ''}
+        ${queCambio
+    ? `<div class="cwc-story">${_cMd(_cTrimTxt(queCambio, 460))}</div>`
+    : (prios.length ? `<ol class="coach-week-prios">${prios.map((p) => `<li>${_cEsc(p)}</li>`).join('')}</ol>` : '')}
+        ${porQue
+    ? `<div class="cwc-story"><span class="cwc-label">WHY</span> ${_cMd(_cTrimTxt(porQue, 340))}</div>`
+    : _coachWhyHtml(brief, { plegado: true })}
         <div class="coach-week-diff">${_coachDiffHtml(groups, 8)}</div>
         ${_coachGuardChipsHtml(guardrails)}`;
       // NINGÚN BOTÓN DESHABILITADO, tampoco con avisos duros: los duros restringen al coach,
@@ -2038,8 +2128,16 @@ async function renderCoachWeekCard(opts = {}) {
       if (volver) acciones = `<button class="coach-btn" id="${bid('coach-week-undo')}" data-plan="${_cEsc(volver)}">Undo</button>`;
     } else if (review.status === 'failed') {
       const kind = (review.error && review.error.kind) || 'api';
-      cuerpo = `<div class="coach-week-line coach-week-bad">The ${wkTxt} review failed: ${_cEsc(COACH_ERROR_LABEL[kind] || kind)}.</div>`;
-      acciones = `<button class="coach-btn" id="${bid('coach-week-regen')}">Regenerate</button>`;
+      // El MOTIVO real se guardaba y no se pintaba en ninguna parte: "the function could not be
+      // called" no dice si fue la red, la sesión caducada o un 500. Sin eso no hay nada que hacer
+      // salvo volver a pulsar y esperar.
+      const detalle = (review.error && review.error.message) ? String(review.error.message) : '';
+      cuerpo = `<div class="coach-week-line coach-week-bad">The ${wkTxt} review failed: ${_cEsc(COACH_ERROR_LABEL[kind] || kind)}.</div>`
+        + (detalle ? `<div class="coach-week-sub">${_cEsc(_cTrimTxt(detalle, 220))}</div>` : '');
+      // Reintenta SU semana, no la semana objetivo de hoy: un domingo, `_cTargetWeek` es la
+      // siguiente, así que el botón regeneraba una semana distinta de la que había fallado.
+      acciones = `<button class="coach-btn coach-btn-primary" id="${bid('coach-week-retry')}">Try again</button>`
+        + `<button class="coach-btn" id="${bid('coach-week-dismiss')}">Dismiss</button>`;
     } else if (review.status === 'expired' || review.status === 'rejected') {
       cuerpo = `<div class="coach-week-line">Proposal for ${wkTxt} ${review.status === 'expired' ? 'expired (it was from an earlier week)' : 'rejected'}.</div>`;
       acciones = `${_coachCloseWeekBtn(bid('coach-close-week'))}<button class="coach-btn" id="${bid('coach-week-regen')}">Regenerate</button>`;
@@ -2052,11 +2150,18 @@ async function renderCoachWeekCard(opts = {}) {
 
     // F-28: el aviso sólo tiene sentido donde hay algo que cerrar.
     const avisoCarrera = cerrar ? await _coachStaleRunsHtml() : '';
+    // El fallo apartado, en una línea con su motivo y un botón para que no vuelva.
+    const notaFallo = falloAparte
+      ? `<div class="coach-week-sub coach-week-bad">Last attempt to regenerate failed: ${
+        _cEsc(COACH_ERROR_LABEL[(falloAparte.error && falloAparte.error.kind) || 'api'] || 'error')}.`
+        + ` <button class="coach-week-inline-btn" id="${bid('coach-fail-dismiss')}">Dismiss</button></div>`
+      : '';
 
     el.innerHTML = `<div class="card coach-week-card">
       ${cabecera}
       ${bloqueLinea}
       ${cuerpo}
+      ${notaFallo}
       ${avisoCarrera}
       ${acciones ? `<div class="coach-actions">${acciones}</div>` : ''}
     </div>`;
@@ -2074,6 +2179,9 @@ async function renderCoachWeekCard(opts = {}) {
         await rejectCoachProposal(review, (why || '').trim() || null);
       });
       on('coach-week-regen', () => runWeeklyCoach({ weekKey: _cTargetWeek(today()), regenerate: true }));
+      on('coach-week-retry', () => runWeeklyCoach({ weekKey: review.weekKey || _cTargetWeek(today()), regenerate: true }));
+      on('coach-week-dismiss', async () => { await _coachDismissReview(review); });
+      on('coach-fail-dismiss', async () => { await _coachDismissReview(falloAparte); });
       on('coach-week-ask-api', () => runWeeklyCoach({ weekKey: review.weekKey || _cTargetWeek(today()), force: true }));
       on('coach-week-regen-note', async () => {
         const nota = await _coachAskText('What should it take into account?', 'One or two sentences', true, 'Regenerate');
@@ -2089,6 +2197,69 @@ async function renderCoachWeekCard(opts = {}) {
     if (typeof showErrorState === 'function') showErrorState(el, 'The weekly review could not be read.', () => renderCoachWeekCard(opts));
     else { el.classList.add('hidden'); el.innerHTML = ''; }
   }
+}
+
+/**
+ * Aparta un intento fallido. No lo borra: `dismissed` sigue en la tabla y el coach del domingo
+ * puede verlo (que la semana pasada fallaran tres intentos es información), pero deja de
+ * competir por la tarjeta. Borrar sería perder el rastro; dejarlo era perder la pantalla.
+ *
+ * `dbPut` y no `smartPut` cuando la fila es local (`local: true`): la escribió el `catch` sin
+ * pasar por la cola, no existe en el servidor, y subirla ahora sólo propagaría un fallo de ESTE
+ * teléfono a los demás.
+ */
+async function _coachDismissReview(review) {
+  if (!review || !review.id) return;
+  const fila = Object.assign({}, review, { status: 'dismissed', updatedAt: new Date().toISOString() });
+  try {
+    if (review.local) await dbPut('coach_reviews', fila);
+    else await smartPut('coach_reviews', fila);
+  } catch (e) { console.warn('[Coach] dismiss:', e); }
+  try { await renderCoachWeekCard(); } catch (e) {}
+  try { if (typeof _coachRenderWeek === 'function' && document.getElementById('coach-week')) await _coachRenderWeek(); } catch (e) {}
+}
+
+/**
+ * Las cinco cabeceras literales de `briefing.nextWeek` y las dos de `lastWeek`. El servidor las
+ * comprueba una por una al sanear (`index.ts`), así que aquí se pueden dar por ciertas — y si
+ * alguna falta, `_coachSection` devuelve cadena vacía y quien llama decide el respaldo.
+ */
+const COACH_STORY_SECTIONS = {
+  changing: '## What I am changing',
+  why: '## Why it changes',
+  holds: '## Why it holds',
+  watching: '## What I am watching',
+  needs: '## What I need from you',
+  happened: '## What happened',
+  previous: '## Previous decisions',
+};
+
+/**
+ * El cuerpo de UNA sección de un markdown de cabeceras literales. Puro y sin regex: se corta por
+ * la cabecera pedida hasta la siguiente que empiece por '## '.
+ *
+ * POR QUÉ EXISTE. La prosa del coach ya venía entera en `briefing.nextWeek` desde el contrato v2,
+ * y la Home la enseñaba dentro de un `<details>Next week</details>` plegado: es decir, el trabajo
+ * estaba hecho y el usuario no lo veía. Julian lo dijo tal cual — "el coach sigue no siendo
+ * natural, tiene que darme una buena explicación de qué voy a hacer esta semana y por qué".
+ */
+function _coachSection(md, header) {
+  const txt = String(md || '');
+  const i = txt.indexOf(header);
+  if (i < 0) return '';
+  const desde = i + header.length;
+  const resto = txt.slice(desde);
+  const j = resto.indexOf('\n## ');
+  return (j < 0 ? resto : resto.slice(0, j)).trim();
+}
+
+/** Recorta un texto para pantalla sin cortar a mitad de palabra. */
+function _cTrimTxt(txt, max) {
+  const t = String(txt || '').trim();
+  if (t.length <= max) return t;
+  const corte = t.slice(0, max);
+  const esp = corte.lastIndexOf(' ');
+  return (esp > max * 0.6 ? corte.slice(0, esp) : corte) + '…';
 }
 
 /**
@@ -2140,6 +2311,55 @@ function _coachWhyHtml(brief, opts = {}) {
     ? `<details class="cwc-why"><summary>WHY IT HOLDS</summary><div class="coach-week-md">${_cMd(mantiene)}</div></details>`
     : `<div class="cwc-block"><div class="cwc-label">WHY IT HOLDS</div><div class="coach-week-md">${_cMd(mantiene)}</div></div>`;
   return bloqueCambia + bloqueMantiene;
+}
+
+/**
+ * LA SEMANA CONTADA. Las cinco secciones de `briefing.nextWeek`, cada una con su título en
+ * lenguaje normal, más lo que pasó la semana anterior debajo.
+ *
+ * Home enseña el titular y las dos primeras secciones; aquí está el desarrollo, que es lo que
+ * Julian pidió: "una buena explicación de qué voy a hacer esta semana y por qué voy a hacerlo".
+ * No hay nada plegado salvo la semana pasada, que es contexto y no instrucción.
+ */
+const COACH_STORY_TITLES = [
+  ['changing', 'This week'],
+  ['why', 'Why it changes'],
+  ['holds', 'Why the rest holds'],
+  ['watching', 'What I am watching'],
+  ['needs', 'What I need from you'],
+];
+
+function _coachRenderStory(el, review) {
+  if (!el) return;
+  const out = (review && review.output) || {};
+  const b = out.briefing || {};
+  const next = String(b.nextWeek || '').trim();
+  const last = String(b.lastWeek || '').trim();
+  if (!next && !last) { el.innerHTML = ''; return; }
+
+  const bloques = COACH_STORY_TITLES
+    .map(([clave, titulo]) => {
+      const cuerpo = _coachSection(next, COACH_STORY_SECTIONS[clave]);
+      if (!cuerpo) return '';
+      return `<div class="cwc-block"><div class="cwc-label">${_cEsc(titulo.toUpperCase())}</div>`
+        + `<div class="coach-week-md">${_cMd(cuerpo)}</div></div>`;
+    })
+    .filter(Boolean)
+    .join('');
+
+  // Sin las cabeceras esperadas (una revisión vieja, o una escrita a mano sin secciones) se
+  // pinta el markdown entero antes que nada: el texto vale aunque no tenga la forma.
+  const cuerpoNext = bloques || (next ? `<div class="coach-week-md">${_cMd(next)}</div>` : '');
+  const cuerpoLast = last
+    ? `<details class="cwc-why"><summary>How last week went</summary><div class="coach-week-md">${_cMd(last)}</div></details>`
+    : '';
+
+  el.innerHTML = `<div class="card">
+    <div class="card-title">The week, explained</div>
+    ${b.focus ? `<div class="cwc-focus">${_cEsc(b.focus)}</div>` : ''}
+    ${cuerpoNext}
+    ${cuerpoLast}
+  </div>`;
 }
 
 /** Una fila de `weekSummary`: chip de estado + nombre de la sesión + su motivo. */
@@ -2243,6 +2463,7 @@ async function renderCoachView() {
       // V-12: la MISMA tarjeta que Home, en el contenedor de la vista. La que había aquí era
       // una copia peor: sin foco, sin diff, sin guardrails y sin el estado `requested`.
       seccion('coach-week', () => _coachRenderWeek()),
+      seccion('coach-week-story', (el) => _coachRenderStory(el, review)),
       seccion('coach-briefing', (el) => _coachRenderBriefing(el, review)),
       seccion('coach-proposal', (el) => _coachRenderProposal(el, review)),
       seccion('coach-goals-view', () => (typeof renderGoalsCard === 'function' ? renderGoalsCard('coach-goals-view') : null)),
@@ -2374,14 +2595,12 @@ async function _coachRenderDecisions(el) {
   </div>`;
 }
 
-// ==================== LEDGER DE EVIDENCIA (R-11) ====================
+// ==================== EN QUE SE APOYA EL ENTRENAMIENTO (v11.74) ====================
 //
-// La tabla que cierra el bucle regla → decisión → resultado. `buildEvidenceLedger` es puro y
-// vive en coach-engine.js; aquí sólo se leen las decisiones, se pasa el corpus local y se
-// pinta. Top 15 con "show all" porque el corpus tiene 72 reglas y una tabla de 72 filas en
-// 390 px no la lee nadie: las que importan son las citadas, y están arriba.
-const COACH_LEDGER_TOP = 15;
-let _coachLedgerAll = false;
+// Antes: el ledger de evidencia (R-11), una tabla por Rule ID con Cited / Retired / Last.
+// `buildEvidenceLedger` (coach-engine.js, puro) sigue siendo quien cuenta las citas — lo usa el
+// bloque nuevo para marcar qué reglas están decidiendo de verdad — pero el RECUENTO ya no es lo
+// que se pinta: lo que se pinta es la frase de la regla.
 
 // F-25 (auditoría 2026-09-09): el CAVEAT de la regla, debajo de su fila del ledger.
 //
@@ -2406,45 +2625,82 @@ function _coachRuleCaveatHtml(regla) {
   return `<div class="evl-caveat" title="${_cEsc(s)}">${_cEsc(corto)}</div>`;
 }
 
+/**
+ * EN QUE SE APOYA TU ENTRENAMIENTO.
+ *
+ * Lo que había aquí era una tabla por Rule ID con las columnas Cited / Retired / Last / Evidence,
+ * y Julian la rechazó con la razón exacta: "no entiendo nada, está con nomenclaturas STR001 que
+ * no se entienden, Retired no sé qué es, Cited tampoco". Tenía razón por partida doble. Primero,
+ * los códigos no significan nada fuera del repositorio. Y segundo, lo que contaba era un
+ * SINSENTIDO: la fila dominante era "STR-001 · 31", que son 31 entrenos guardados llevando esa
+ * etiqueta — no 31 veces que la regla decidiera algo, y desde luego no si funcionó. "Retired"
+ * valía `·` en todas las filas en funcionamiento normal.
+ *
+ * Lo que sí es información: en qué se apoya el entrenamiento, dicho en frases. Cinco temas, cada
+ * uno con las reglas que de verdad gobiernan ese trozo del plan, su texto completo del corpus y
+ * su nivel de evidencia en palabras. El código queda en el `title=` y en un desplegable al final,
+ * para cuando haya que citarlo en una conversación como ésta.
+ *
+ * LOS TEMAS SON UN MAPA EXPLÍCITO, no una heurística por prefijo: `REC-` mezcla recuperación
+ * (REC-006 hidratación) con recomposición (REC-002 ritmo de pérdida), y agrupar por las tres
+ * primeras letras habría puesto el agua junto al déficit.
+ */
+const COACH_EVIDENCE_THEMES = [
+  { title: 'How much you lift', rules: ['STR-003', 'STR-002', 'STR-001'] },
+  { title: 'How the load progresses', rules: ['LOAD-001', 'LOAD-004', 'STR-010'] },
+  { title: 'Running and cardio', rules: ['END-001', 'END-003', 'END-009', 'INT-001'] },
+  { title: 'The deficit and what you eat', rules: ['REC-002', 'REC-001', 'REC-007', 'REC-008'] },
+  { title: 'Recovery and readiness', rules: ['READ-005', 'READ-006', 'REC-009', 'ATH-003'] },
+];
+
 async function _coachRenderLedger(el) {
-  if (typeof buildEvidenceLedger !== 'function') { el.innerHTML = ''; return; }
-  const all = await dbGetAll('decisions').catch(() => []);
+  if (!el) return;
   const corpus = (typeof COACH_RULES !== 'undefined' && COACH_RULES) ? COACH_RULES : {};
-  const filas = buildEvidenceLedger(all || [], corpus);
-  if (!filas.length) {
-    el.innerHTML = `<div class="card coach-decs-card">
-      <div class="coach-brief-title">Evidence ledger</div>
-      <div class="coach-week-empty">No decisions yet — the ledger fills in as the coach cites rules.</div>
-    </div>`;
-    return;
-  }
-  const visibles = _coachLedgerAll ? filas : filas.slice(0, COACH_LEDGER_TOP);
-  const mas = filas.length - visibles.length;
+  // Las reglas que el coach ha citado de verdad en sus decisiones: sirven para marcar cuáles
+  // están DECIDIENDO ahora mismo, no para ordenar nada.
+  // `buildEvidenceLedger` (coach-engine.js, puro y con test) sigue siendo el único que cuenta
+  // citas: aquí sólo hace falta saber CUÁLES, no cuántas veces.
+  let citadas = new Set();
+  try {
+    const decs = (await dbGetAll('decisions').catch(() => [])) || [];
+    const filas = (typeof buildEvidenceLedger === 'function') ? buildEvidenceLedger(decs, corpus) : [];
+    citadas = new Set(filas.filter((f) => f && f.cited > 0).map((f) => String(f.ruleId)));
+  } catch (e) { citadas = new Set(); }
+
+  const bloques = COACH_EVIDENCE_THEMES.map((t) => {
+    const filas = t.rules
+      .map((id) => ({ id, regla: corpus[id] }))
+      .filter((x) => x.regla && x.regla.rule)
+      .map((x) => {
+        const nivel = COACH_EVIDENCE_LABEL[x.regla.evidenceLevel] || x.regla.evidenceLevel || '';
+        const usada = citadas.has(x.id);
+        return `<div class="evt-row" title="${_cEsc(x.id)}">
+          <div class="evt-rule">${_cEsc(x.regla.rule)}</div>
+          <div class="evt-meta">${_cEsc(nivel ? `${nivel} evidence` : 'no grade')}${usada ? ' · used in this plan' : ''}</div>
+          ${_coachRuleCaveatHtml(x.regla)}
+        </div>`;
+      })
+      .join('');
+    if (!filas) return '';
+    return `<div class="evt-theme"><div class="cwc-label">${_cEsc(t.title.toUpperCase())}</div>${filas}</div>`;
+  }).filter(Boolean).join('');
+
+  if (!bloques) { el.innerHTML = ''; return; }
+
+  // Los códigos, para quien los necesite: plegados y al final, nunca por delante de la frase.
+  const codigos = COACH_EVIDENCE_THEMES
+    .flatMap((t) => t.rules)
+    .filter((id) => corpus[id])
+    .map((id) => `<div class="evt-code"><span class="evt-code-id">${_cEsc(id)}</span> ${_cEsc(corpus[id].rule)}</div>`)
+    .join('');
+
   el.innerHTML = `<div class="card coach-decs-card">
-    <div class="coach-brief-title">Evidence ledger</div>
-    <div class="evl-head">
-      <span class="evl-rule">Rule</span>
-      <span class="evl-num">Cited</span>
-      <span class="evl-num">Retired</span>
-      <span class="evl-week">Last</span>
-      <span class="evl-grade">Evidence</span>
-    </div>
-    ${visibles.map((f) => `<div class="evl-item"><div class="evl-row${f.known ? '' : ' -unknown'}">
-      <span class="evl-rule" title="${_cEsc((corpus[f.ruleId] || {}).rule || 'Rule with no text in the local corpus.')}">${_cEsc(f.ruleId)}</span>
-      <span class="evl-num">${f.cited}</span>
-      <span class="evl-num${f.retired ? ' -bad' : ''}">${f.retired || '·'}</span>
-      <span class="evl-week">${_cEsc(_cWeekShort(f.lastWeek) || '·')}</span>
-      <span class="evl-grade -${_cEsc(f.grade || 'unknown')}">${_cEsc(f.known ? (COACH_EVIDENCE_LABEL[f.grade] || f.grade || '—') : 'not in corpus')}</span>
-    </div>${_coachRuleCaveatHtml(corpus[f.ruleId])}</div>`).join('')}
-    ${mas > 0 ? `<button class="evl-more" id="coach-ledger-more">Show all ${filas.length}</button>` : ''}
+    <div class="coach-brief-title">What your training is based on</div>
+    <div class="coach-week-sub">Every session you do comes from these. The grade is how solid the
+      research behind each one is, not how sure I am about you.</div>
+    ${bloques}
+    ${codigos ? `<details class="cwc-why"><summary>Reference codes</summary>${codigos}</details>` : ''}
   </div>`;
-  const btn = el.querySelector('#coach-ledger-more');
-  if (btn) {
-    btn.addEventListener('click', () => {
-      _coachLedgerAll = true;
-      _coachRenderLedger(el).catch((e) => console.warn('[Coach] ledger:', e));
-    });
-  }
 }
 
 async function _coachRenderVersions(el) {
@@ -2625,12 +2881,14 @@ if (typeof module !== 'undefined' && module.exports) {
     renderCoachReadout, renderRecoveryBlock, renderReadinessSignals, renderRecoveryLine, renderGoalsCard,
     renderCoachGoalLine, _coachGoalProgressFromStores,
     COACH_APP_VERSION, COACH_RULE_LABEL, COACH_EVIDENCE_LABEL, COACH_GUARD_LABEL, COACH_STATUS_LABEL,
+    _coachPickReview, _coachFailedSibling, _coachRowValue, _cTrimTxt, _coachSection,
+    COACH_STORY_SECTIONS,
     COACH_PHASES, COACH_WS_STATUS_LABEL, COACH_CLOSE_WEEK_LABEL,
     coachBriefFromReview, _coachAppliedHtml, _coachWhyHtml,
     buildCoachFactsFromStores, maybeRunWeeklyCoach, runWeeklyCoach, pollCoachReview,
     applyCoachProposal, rejectCoachProposal, rollbackPlanVersion,
     renderCoachWeekCard, renderCoachView, openCoachView, coachDiffGroups,
-    _coachRenderLedger, COACH_LEDGER_TOP, _coachRuleCaveatHtml, _coachStaleRunsHtml,
+    _coachRenderLedger, COACH_EVIDENCE_THEMES, _coachRuleCaveatHtml, _coachStaleRunsHtml,
     exportCoachFacts, coachAutoApplyMode, setCoachAutoApply,
     coachReviewMode, setCoachReviewMode, requestManualCoachReview, _coachLowerSessionIds,
   };

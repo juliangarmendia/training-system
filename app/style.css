@@ -2399,6 +2399,21 @@ body[data-tab="home"] .home-scroll-v2 { padding-top: calc(var(--safe-top) + 10px
 .coach-week-open { margin-left: auto; background: none; border: none; padding: 12px 4px; margin-right: -4px; min-height: 44px; color: var(--accent); font-family: var(--font-mono); font-size: var(--fs-2xs); letter-spacing: 0.08em; cursor: pointer; }
 .coach-week-line { margin-top: 8px; font-size: var(--fs-sm); color: var(--text); line-height: 1.45; }
 .coach-week-bad { color: var(--red); }
+/* v11.74 · la linea secundaria de la tarjeta: el motivo de un fallo, o el fallo que la propuesta
+   deja aparte. Mas pequena y mas apagada que la linea principal, porque es contexto y no la
+   decision que se pide. */
+.coach-week-sub { margin-top: 6px; font-size: var(--fs-2sm); color: var(--text3); line-height: 1.45; }
+.coach-week-sub.coach-week-bad { color: var(--red); opacity: 0.85; }
+.coach-week-inline-btn {
+  background: none; border: 0; padding: 2px 4px; margin-left: 2px;
+  color: var(--text2); font-size: var(--fs-2sm); text-decoration: underline; cursor: pointer;
+}
+/* v11.74 · la explicacion de la semana en prosa, que antes vivia plegada en un <details>. */
+.cwc-story { margin-top: 8px; font-size: var(--fs-sm); color: var(--text2); line-height: 1.5; }
+.cwc-story p { margin: 0 0 6px; }
+.cwc-story ul, .cwc-story ol { margin: 0 0 6px; padding-left: 18px; }
+.cwc-story li { margin-bottom: 3px; }
+.cwc-story strong { color: var(--text); }
 .coach-week-mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text2); }
 .coach-week-status { margin-top: 6px; font-size: var(--fs-xs); color: var(--text3); line-height: 1.45; }
 .coach-week-empty { margin-top: 8px; font-size: var(--fs-xs); color: var(--text3); }
@@ -2499,53 +2514,28 @@ body[data-tab="home"] .home-scroll-v2 { padding-top: calc(var(--safe-top) + 10px
 .coach-close-week[disabled] { opacity: 0.6; cursor: default; }
 
 /* ============================================================
-   R-11 (auditoría 2026-09-08) — LEDGER DE EVIDENCIA
+   v11.74 — EN QUE SE APOYA TU ENTRENAMIENTO
    ============================================================
-   Bloque al final del fichero a propósito, igual que el de B-4: es lo último que se añade y
-   así dos carriles que tocan el mismo push no se pisan en mitad del fichero.
-   Cinco columnas en 390 px: la regla se lleva el ancho sobrante y los tres números van a
-   ancho fijo con `tabular-nums`, que es lo único que hace legible una tabla en un teléfono.
-   Cero color por estado salvo el rojo del contador de retiradas — una regla que se retira es
-   la única fila que hay que ver de un vistazo. */
-.evl-head, .evl-row {
-  display: flex; align-items: baseline; gap: 6px;
-  padding: 5px 0; font-size: var(--fs-xs); line-height: 1.35;
+   Sustituye a la tabla del ledger (R-11), que era cinco columnas de codigos y contadores en
+   390 px. Julian: "no entiendo nada". Ahora son frases, asi que el layout es de TEXTO: una
+   frase por regla, su nivel debajo en mono pequeno, y la salvedad si la hay. Sin columnas,
+   sin numeros y sin codigos a la vista. */
+.evt-theme { margin-top: 14px; }
+.evt-theme:first-of-type { margin-top: 10px; }
+.evt-row { padding: 7px 0; border-bottom: 1px solid var(--border); }
+.evt-theme .evt-row:last-child { border-bottom: none; }
+.evt-rule { font-size: var(--fs-xs); line-height: 1.45; color: var(--text); }
+.evt-meta {
+  margin-top: 3px; font-family: var(--font-mono); font-size: var(--fs-3xs);
+  text-transform: uppercase; letter-spacing: 0.06em; color: var(--text3);
 }
-.evl-head {
-  font-family: var(--font-mono); font-size: var(--fs-3xs); text-transform: uppercase;
-  letter-spacing: 0.08em; color: var(--text3); border-bottom: 1px solid var(--border);
-}
-/* F-25: la fila y su salvedad van en un `.evl-item`, y el separador es del item. Con el borde
-   en `.evl-row` el caveat aparecía DEBAJO de la línea, o sea leyéndose como si perteneciera a la
-   regla siguiente. */
-.evl-item { border-bottom: 1px solid var(--border); }
-.evl-item:last-child { border-bottom: none; }
-.evl-caveat {
-  padding: 0 0 6px 0; font-size: var(--fs-2xs); line-height: 1.45; color: var(--text3);
-}
-.evl-row.-unknown .evl-rule { color: var(--text3); text-decoration: line-through; }
-.evl-rule {
-  flex: 1; min-width: 0; font-family: var(--font-mono); color: var(--text2);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.evl-row .evl-rule { color: var(--text); }
-.evl-num {
-  width: 34px; flex-shrink: 0; text-align: right;
-  font-variant-numeric: tabular-nums; color: var(--text2);
-}
-.evl-num.-bad { color: var(--red); font-weight: 700; }
-.evl-week { width: 34px; flex-shrink: 0; text-align: right; font-family: var(--font-mono); font-size: var(--fs-3xs); color: var(--text3); }
-.evl-grade { width: 72px; flex-shrink: 0; text-align: right; font-family: var(--font-mono); font-size: var(--fs-3xs); text-transform: uppercase; letter-spacing: 0.04em; color: var(--text3); }
-.evl-grade.-strong { color: var(--accent); }
-.evl-grade.-moderate { color: var(--teal); }
-.evl-grade.-weak_extrapolated { color: var(--yellow); }
-.evl-grade.-expert { color: var(--text2); }
-.evl-more {
-  margin-top: 8px; background: none; border: 1px solid var(--border2);
-  border-radius: var(--radius-xs); padding: 6px 10px; color: var(--text2);
-  font-family: var(--font-mono); font-size: var(--fs-2xs); text-transform: uppercase;
-  letter-spacing: 0.08em; cursor: pointer;
-}
+/* La salvedad se queda con su clase de F-25: el pintor es el mismo (`_coachRuleCaveatHtml`) y
+   una regla `strong` sin su "pero" sigue siendo media regla. */
+.evl-caveat { padding: 4px 0 0; font-size: var(--fs-2xs); line-height: 1.45; color: var(--text3); }
+/* Los codigos, plegados al final: siguen haciendo falta para citar una regla en una
+   conversacion, pero nunca por delante de la frase. */
+.evt-code { padding: 5px 0; font-size: var(--fs-2xs); line-height: 1.45; color: var(--text3); }
+.evt-code-id { font-family: var(--font-mono); color: var(--text2); }
 
 /* ==================================================
    v11.72 — UX (auditoría 2026-09-09, incremento 3)

@@ -162,7 +162,7 @@ for (const tok of ['--fs-3xs: 9px', '--fs-2xs: 10px', '--fs-xs: 11px', '--fs-sm:
 // en v11.61 (`weekly_reviews`, hoy sólo lectura), y la mitad de sus tamaños son 12px, un paso
 // que la escala `--fs-*` no tiene. Añadir un token para poder migrar el CSS de una pantalla en
 // retirada sería inventarse la escala al revés. Cuando esa tarjeta se borre, se borra entera.
-const FAM_NUEVAS = /^\.(coach-|rs-|cgl-|crl-|integ-|integrations-|stat-card|readiness-signals|t3-|evl-|queue-next|ht-status|sync-warning)/;
+const FAM_NUEVAS = /^\.(coach-|rs-|cgl-|crl-|integ-|integrations-|stat-card|readiness-signals|t3-|evl-|evt-|cwc-|queue-next|ht-status|sync-warning)/;
 const literales = [];
 for (const r of RULES) {
   const sels = r.sel.split(',').map((x) => x.trim()).filter(Boolean);
@@ -308,7 +308,7 @@ yes(vivas === 0, `las ${BORRADAS.length} familias borradas devuelven 0 selectore
 for (const fam of ['sync-warning-banner', 'sync-warning-icon', 'sync-warning-title',
                    'sync-warning-text', 'queue-next', 'queue-next-txt', 'ht-status',
                    'ht-status-ok', 'ht-status-wait', 'ht-status-off', 'skeleton-line',
-                   'empty-state-box', 'evl-row', 'evl-num', 'evl-grade']) {
+                   'empty-state-box', 'evt-row', 'evt-rule', 'evt-meta']) {
   yes(RULES.some((r) => new RegExp(`\\.${fam}(?![\\w-])`).test(r.sel)), `.${fam} existe en style.css`);
 }
 // `.skeleton-line` se queda porque V-8 la usa de verdad, en JS y en el HTML estático.
@@ -499,14 +499,33 @@ eq(ENG.buildEvidenceLedger([null, {}, { ruleIds: 'STR-001' }], RULES_FX).length,
 // La vista: sección, estado vacío y "show all".
 yes(/async function _coachRenderLedger\(el\)/.test(COACHJS), '_coachRenderLedger() vive en coach.js');
 const LEDV = fnSrc(COACHJS, 'async function _coachRenderLedger(el)');
-yes(/buildEvidenceLedger\(all \|\| \[\], corpus\)/.test(LEDV), 'y usa el builder puro');
+// v11.74 · EL FALLO QUE ESTE BLOQUE IMPIDE AHORA. La tabla de cinco columnas por Rule ID se
+// retiró porque no se entendía ("STR001 no se entiende, Retired no sé qué es"), y porque lo que
+// contaba era el número de entrenos que llevaban esa etiqueta, no si la regla funcionó. Lo que
+// no puede volver: un código crudo delante de la frase, o una frase sin su nivel de evidencia.
+yes(/buildEvidenceLedger\(decs, corpus\)/.test(LEDV),
+  'sigue usando el builder puro para saber qué reglas está citando el coach');
 yes(/COACH_RULES/.test(LEDV), 'con el corpus local (coach-rules.js)');
-yes(/Evidence ledger/.test(LEDV), 'la sección se llama "Evidence ledger"');
-yes(/No decisions yet — the ledger fills in as the coach cites rules\./.test(LEDV),
-  'con su estado vacío exacto');
-yes(/COACH_LEDGER_TOP/.test(LEDV) && /const COACH_LEDGER_TOP = 15/.test(COACHJS),
-  'top 15 por defecto');
-yes(/Show all \$\{filas\.length\}/.test(LEDV), 'y un "Show all N" para el resto');
+yes(/What your training is based on/.test(LEDV), 'la sección se llama "What your training is based on"');
+yes(/COACH_EVIDENCE_THEMES/.test(LEDV) && /const COACH_EVIDENCE_THEMES = \[/.test(COACHJS),
+  'los temas son un mapa explícito, no una heurística por prefijo');
+{
+  const temas = COACHJS.slice(COACHJS.indexOf('const COACH_EVIDENCE_THEMES = ['));
+  const bloque = temas.slice(0, temas.indexOf('];'));
+  eq((bloque.match(/title:/g) || []).length, 5, 'son cinco temas');
+  for (const id of ['STR-003', 'LOAD-001', 'END-001', 'REC-002', 'READ-005']) {
+    yes(bloque.includes(id), `y uno de ellos cubre ${id}`);
+  }
+  const RULESJS = readFileSync('app/coach-rules.js', 'utf8');
+  const ids = (bloque.match(/[A-Z]{3,4}-\d{3}/g) || []);
+  const fuera = ids.filter((id) => !RULESJS.includes(`"${id}"`));
+  eq(fuera.join(', ') || 'ninguno', 'ninguno',
+    'todos los ids de los temas existen en el corpus generado (si no, el bloque saldría vacío en silencio)');
+}
+yes(/evidence/.test(LEDV) && /COACH_EVIDENCE_LABEL/.test(LEDV),
+  'cada regla lleva su nivel de evidencia EN PALABRAS');
+yes(/Reference codes/.test(LEDV),
+  'y los códigos quedan plegados al final, para citar en una conversación');
 yes(/coach-ledger/.test(fnSrc(COACHJS, 'async function renderCoachView(')),
   'renderCoachView pinta la sección');
 yes(HTML.indexOf('id="coach-ledger"') > HTML.indexOf('id="coach-decisions"'),

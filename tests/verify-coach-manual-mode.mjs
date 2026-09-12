@@ -64,7 +64,13 @@ yes(/coachReviewMode\(\) === 'manual'/.test(maybe) && maybe.indexOf("coachReview
   'maybeRunWeeklyCoach vuelve ANTES de runWeeklyCoach cuando el modo es manual');
 const run = body(COACH, 'async function runWeeklyCoach(');
 yes(/!force && !regenerate && coachReviewMode\(\) === 'manual'/.test(run), 'runWeeklyCoach desvía a la fila requested salvo regenerate/force');
-yes(run.indexOf('requestManualCoachReview') < run.indexOf("functions.invoke('coach-weekly-review'"), 'y el desvío va antes de functions.invoke');
+// v11.74: la llamada va envuelta en `_coachInvokeWithTimeout` (un `Promise.race` con 60 s),
+// así que lo que hay que comprobar es que el desvío manual ocurre antes de ESA llamada. Sin el
+// envoltorio, una invocación colgada dejaba la tarjeta en "running" para siempre.
+yes(run.indexOf('requestManualCoachReview') < run.indexOf('_coachInvokeWithTimeout('),
+  'y el desvío va antes de la llamada a la función');
+yes(/functions\.invoke\('coach-weekly-review'/.test(body(COACH, 'async function _coachInvokeWithTimeout(')),
+  'la invocación real vive dentro del envoltorio con timeout, en un solo sitio');
 
 console.log('');
 console.log('3. La fila `requested` es el mismo body que viajaría a la función');

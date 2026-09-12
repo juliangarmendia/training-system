@@ -656,6 +656,10 @@
         <div class="view-scroll">
           <button id="coach-back" class="back-btn">&larr; Back</button>
           <div id="coach-week"></div>
+          <!-- v11.74 · La explicacion de la semana, entera y en prosa. Existia en el contrato
+               desde el principio (`briefing.nextWeek`, cinco secciones) y vivia plegada dentro
+               de un <details> en la tarjeta de Home: el trabajo estaba hecho y no se leia. -->
+          <div id="coach-week-story"></div>
           <div id="coach-briefing"></div>
           <div id="coach-proposal"></div>
           <!-- `coach-goals-view` y no `coach-goals`: la tarjeta de Objetivos sigue viva en
@@ -664,9 +668,11 @@
                los dos sitios. -->
           <div class="card coach-goals" id="coach-goals-view"></div>
           <div id="coach-decisions"></div>
-          <!-- R-11 (auditoría 2026-09-08): el ledger de evidencia — por Rule ID, veces citada,
-               veces retirada, última semana y grado. Es el agregado del log de decisiones que
-               tiene justo encima, así que va pegado a él y antes de las versiones del plan. -->
+          <!-- v11.74 · "En que se apoya tu entrenamiento". Antes era una tabla por Rule ID con
+               las columnas Cited / Retired / Last, que Julian no entendia ("STR001 no se
+               entiende, Retired no se que es"). Y tenia razon: la fila dominante era
+               "STR-001 · 31 · · · W37 · STRONG", que es el recuento de entrenos que llevaban esa
+               etiqueta, no si la regla funciono. Ahora son cinco bloques en frases completas. -->
           <div id="coach-ledger"></div>
           <div id="coach-versions"></div>
         </div>
@@ -840,7 +846,7 @@
           </div>
           <div class="section-label" style="margin-top:24px">App</div>
           <div class="card">
-            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v11.73<br>Data stored locally + cloud sync.<br>Works offline.</p>
+            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v11.74<br>Data stored locally + cloud sync.<br>Works offline.</p>
             <button id="btn-force-update" class="btn-secondary btn-full" style="text-align:center">Force Update App</button>
           </div>
         </div>
