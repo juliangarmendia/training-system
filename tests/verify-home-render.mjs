@@ -644,6 +644,57 @@ section('10 · L-1 · mapa de calor en series efectivas');
   yes(/Weekly Effective Sets by Muscle/.test(HTML), 'el título de la tarjeta también lo dice');
 }
 
+section('11 · v11.75 · "This week" dice qué hiciste y qué falta');
+// EL FALLO QUE ESTO IMPIDE. Julian: "en This week debería aparecer qué hice cada día y qué tengo
+// que hacer los días faltantes". La única diferencia entre hecho y pendiente era la opacidad de
+// una barra de 2 px, y los días pasados no enseñaban plan: un martes fallado se veía exactamente
+// igual que un martes de descanso.
+{
+  const i = APP.indexOf('async function renderWeekCalendar(');
+  const cuerpo = APP.slice(i, APP.indexOf('\n}', i));
+  yes(/class="wc-label -\$\{c\.etiquetaEstado\}"/.test(cuerpo), 'cada día pinta su etiqueta con su estado');
+  yes(/isPast \? 'missed' : 'pending'/.test(cuerpo), 'un día pasado con plan y sin registro se marca como fallado, no como descanso');
+  yes(/etiquetaEstado = 'done'/.test(cuerpo) && /'✓ '/.test(cuerpo), 'lo hecho lleva su marca');
+  yes(/nombreSesion\(gym\.sessionId/.test(cuerpo), 'y lo hecho dice el NOMBRE de la sesión que se hizo, no "gym"');
+  yes(/done\} of \$\{/.test(cuerpo) || /doneCount\} of /.test(cuerpo), 'la cabecera cuenta cuántos van de cuántos');
+  yes(!/wc-leg-dot/.test(cuerpo), 'y la leyenda de dos puntos de color, que no explicaba nada, se retira');
+}
+
+section('12 · v11.75 · el día de cardio ofrece opciones');
+// Julian: "cuando es cardio como hoy sábado tengo que tener opciones, no solamente Run 40' in Z2".
+// Los datos existían (ALT_LIBRARY, con su `alt` en cada día del bloque ideal) y no llegaban a la
+// tarjeta: el `alt` se perdía en `buildWeekTemplateFromIdeal`, así que la lista salía con una sola
+// opción y el bloque no se pintaba NUNCA, en silencio.
+{
+  yes(/if \(day\.alt\) tpl\[day\.dow\]\.alt = day\.alt;/.test(APP),
+    'la plantilla se queda el `alt` del día (sin esto, no hay alternativas que ofrecer)');
+  yes(/alt: slot\.alt \|\| null/.test(APP), 'y el día lo lleva hasta la tarjeta');
+  yes(/function cardioDayOptions\(planned\)/.test(APP) && /function cardioOptionsHtml\(opciones\)/.test(APP),
+    'existen las dos piezas: qué se ofrece y cómo se pinta');
+  const i = APP.indexOf('function cardioDayOptions(planned)');
+  const cuerpo = APP.slice(i, APP.indexOf('\n}', i));
+  yes(/recommended: true/.test(cuerpo), 'la prescrita va la primera y marcada como recomendada');
+  yes(/ALT_LIBRARY/.test(cuerpo), 'las alternativas salen de ALT_LIBRARY, no de una lista nueva');
+  yes(/family === 'hybrid'|RPE 8/.test(cuerpo), 'y las duras se ordenan las últimas');
+  yes(/demanding/.test(cuerpo), 'diciendo que lo son');
+  const h = APP.indexOf('function cardioOptionsHtml(opciones)');
+  const html = APP.slice(h, APP.indexOf('\n}', h));
+  yes(/\$\{i \+ 1\}/.test(html), 'las opciones van numeradas 1, 2, 3 como pidió Julian');
+  yes(/data-cmod/.test(html) && /CARDIO_MODALITIES/.test(APP), 'y debajo se elige la máquina');
+  yes(/opciones\.length < 2/.test(html), 'con una sola opción no se pinta un selector de una cosa');
+  // PLAN_REV sube: la plantilla cambia de forma y los teléfonos tienen que regenerarla.
+  yes(/const PLAN_REV = 11;/.test(APP), 'PLAN_REV sube a 11 (la plantilla cambió de forma)');
+}
+
+section('13 · v11.75 · la semana se recoloca al guardar');
+{
+  const i = APP.indexOf('async function afterWorkoutSaved()');
+  const cuerpo = APP.slice(i, APP.indexOf('\n}', i));
+  yes(/applyWeekReflow\(/.test(cuerpo), 'guardar un entreno recoloca la semana');
+  yes(cuerpo.indexOf('applyWeekReflow') < cuerpo.indexOf('renderWeekBanner'),
+    'y lo hace ANTES de repintar, para que todos lean el calendario ya corregido');
+}
+
 if (fails) {
   console.error(`verify-home-render: ${fails} de ${checks} comprobaciones FALLAN`);
   process.exit(1);

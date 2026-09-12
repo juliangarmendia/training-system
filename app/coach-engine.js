@@ -2558,6 +2558,115 @@ function goalProgress(goals, facts) {
   };
 }
 
+// ==================== REFLOW DE LA SEMANA (v11.75) ====================
+//
+// EL PROBLEMA, en las palabras de Julian: "Si por ejemplo el lunes en vez de hacer Lower A hago
+// Upper A, no puede ser que el martes me vuelva a decir Upper A. Tiene que adaptarse el plan."
+//
+// Y tenía razón: no había NADA que reconciliase. `showSessionPicker` escribía una sola clave
+// `weekSchedule[fecha] = sesión` antes de empezar, `finishWorkout` no tocaba el calendario, y la
+// plantilla seguía diciendo lo mismo el resto de la semana. El resultado era una semana con dos
+// días de tren superior, ninguno de pierna, y una app que no se enteraba.
+//
+// LO QUE ESTA FUNCIÓN ES Y LO QUE NO ES. No inventa días ni cambia la plantilla: reparte las
+// sesiones de fuerza QUE FALTAN entre los huecos de gimnasio QUE QUEDAN. El conjunto objetivo
+// es el de la plantilla de esa semana; si ya hiciste Upper A, Upper A sale del conjunto y lo que
+// queda se recoloca. Si no caben, se dicen las que se quedan fuera — programar un quinto día de
+// fuerza porque el usuario se desordenó sería subir el volumen por la puerta de atrás, que es
+// justo lo que CLAUDE.md prohíbe en déficit.
+//
+// EL PASADO NO SE TOCA. Nunca. Lo que ya pasó es un hecho, y reescribir el plan de ayer para que
+// cuadre con lo que se hizo es la forma más limpia de que la adherencia mienta.
+//
+// Pura: entra y sale JSON. La escribe `applyWeekReflow` en app.js, que es quien habla con IDB.
+const REFLOW_LOWER = { lower: 1, full: 1 };
+
+/**
+ * @param {object} o
+ * @param {object} o.template   `weekTemplate` del plan activo: { [jsDay]: {type, session, …} }
+ * @param {object} o.doneByDate  { 'YYYY-MM-DD': sessionId } — lo que YA se hizo esta semana
+ * @param {string[]} o.weekDates Los siete días ISO de la semana, de lunes a domingo
+ * @param {string} o.todayStr    Hoy
+ * @param {object} o.classMap    `sessionClassMap()`: { sessionId: {family, subtype} }
+ * @param {object} o.overrides   El `weekSchedule` actual (sólo para no repetir lo que ya vale)
+ * @returns {{ changes: object, pending: string[], moved: Array<{session,from,to}> }}
+ */
+function reflowWeek(o) {
+  const tpl = (o && o.template) || {};
+  const done = (o && o.doneByDate) || {};
+  const dias = Array.isArray(o && o.weekDates) ? o.weekDates.slice(0, 7) : [];
+  const hoy = String((o && o.todayStr) || '');
+  const clases = (o && o.classMap) || {};
+  const overrides = (o && o.overrides) || {};
+  if (!dias.length || !hoy) return { changes: {}, pending: [], moved: [] };
+
+  // 1. El conjunto objetivo: las sesiones de fuerza que la plantilla pide esta semana, en su
+  //    orden de calendario. Se cuentan con repetición (una plantilla puede repetir una sesión).
+  const objetivo = [];
+  const slots = [];      // los huecos de gimnasio, con su fecha
+  dias.forEach((ds) => {
+    const jsDay = new Date(ds + 'T12:00:00').getDay();
+    const slot = tpl[jsDay] || tpl[String(jsDay)] || null;
+    if (!slot || slot.type !== 'gym' || !slot.session) return;
+    objetivo.push(slot.session);
+    slots.push({ ds, base: slot.session });
+  });
+  if (!slots.length) return { changes: {}, pending: [], moved: [] };
+
+  // 2. Lo hecho sale del conjunto, por id y una sola vez cada uno.
+  const pendientes = objetivo.slice();
+  const hechasHoyOAntes = [];
+  for (const ds of dias) {
+    const sid = done[ds];
+    if (!sid) continue;
+    hechasHoyOAntes.push({ ds, sid });
+    const i = pendientes.indexOf(sid);
+    if (i >= 0) pendientes.splice(i, 1);
+  }
+
+  // 3. Los huecos que quedan: hoy y el futuro, y sólo los que no tienen ya un entreno guardado.
+  const libres = slots.filter((sl) => sl.ds >= hoy && !done[sl.ds]);
+
+  // 4. Reparto. Se evita dejar dos días de pierna seguidos cuando haya alternativa: es la única
+  //    restricción real del reparto (STR-007, y el sentido común de no encadenar sentadilla y
+  //    peso muerto). Lo hecho AYER también cuenta para la primera comparación.
+  const esPierna = (sid) => {
+    const c = sid ? clases[sid] : null;
+    return !!(c && REFLOW_LOWER[c.subtype]);
+  };
+  const cola = pendientes.slice();
+  const changes = {};
+  const moved = [];
+  let previa = null;
+  const ultimaHecha = hechasHoyOAntes.filter((h) => h.ds < hoy).sort((a, b) => a.ds.localeCompare(b.ds)).pop();
+  if (ultimaHecha) previa = ultimaHecha.sid;
+
+  for (const sl of libres) {
+    if (!cola.length) break;
+    let idx = 0;
+    if (esPierna(previa) && esPierna(cola[0])) {
+      const alt = cola.findIndex((sid) => !esPierna(sid));
+      if (alt > 0) idx = alt;
+    }
+    const elegida = cola.splice(idx, 1)[0];
+    previa = elegida;
+    if (overrides[sl.ds] === elegida) continue;      // ya estaba bien
+    if (overrides[sl.ds] === undefined && sl.base === elegida) continue;  // la plantilla ya lo dice
+    changes[sl.ds] = elegida;
+    if (sl.base !== elegida) moved.push({ session: elegida, from: sl.base, to: sl.ds });
+  }
+
+  // 5. Los huecos sobrantes se vacían: si la semana ya tiene sus sesiones hechas, un hueco que
+  //    la plantilla llenaba con una sesión repetida no puede seguir pidiéndola.
+  for (const sl of libres.slice(Math.min(libres.length, pendientes.length))) {
+    if (overrides[sl.ds] === null) continue;
+    if (changes[sl.ds] === undefined) changes[sl.ds] = null;
+  }
+
+  return { changes, pending: cola.slice(), moved };
+}
+
+
 // ==================== LEDGER DE EVIDENCIA (R-11, auditoría 2026-09-08) ====================
 //
 // POR QUÉ EXISTE. El sistema obliga al coach a citar Rule IDs en cada decisión
@@ -2651,6 +2760,7 @@ function _ledgerWeekOf(d) {
 // fichero con `vm` y leen este bloque. En el navegador no estorba (no hay `module`).
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
+    reflowWeek,
     COACH_GOALS_DEFAULT,
     // Una fuente por concepto (E-9, v11.67)
     LB_TO_KG,

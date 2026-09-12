@@ -6,7 +6,7 @@
 > El *por qué* de cada cosa vive en [`../assessments/2026-08-16_system-audit.md`](../assessments/2026-08-16_system-audit.md).
 > Aquí está el *qué sigue*.
 >
-> Última actualización: **2026-09-10** (auditoría 2026-09-09 CERRADA: v11.70 → v11.73, fn v5 y A-7. Sólo queda retirar el import de intervals.icu del cliente cuando el del servidor lleve una semana bien)
+> Última actualización: **2026-09-12** (diez ajustes de Julian tras usar v11.73: v11.74 el coach que se entiende, v11.75 el plan que se adapta, v11.76 la comida en tres caminos, v11.77 pantallas)
 
 ## Regla de trabajo
 
@@ -711,6 +711,56 @@ this" con Retry.
 3. **`VOL-FLOOR` avisaba seis veces.** Medido sobre la semilla real incumplen el suelo seis familias
    (Rear Delt 3, Chest 4, Shoulders 4, Quads 7, cadena posterior 7, Back 8), cada una con el mismo
    texto de tres frases. Ahora es UN aviso con la lista ordenada por lo peor.
+
+## Los diez ajustes de Julian (2026-09-12)
+
+Tras unos días con v11.73. No eran diez cosas sueltas: tres (4, 5, 8) son el mismo problema de
+fondo — **la app sabía lo que había planificado y no lo que había pasado** — y tres más (2, 6 y el
+Evidence Ledger) son el mismo problema de voz: el coach tenía los datos y no los contaba como los
+contaría una persona.
+
+**Decisiones que tomó él:** la semana se reordena sola al desviarse; las opciones de cardio son
+sesión alternativa **y** máquina; el Evidence Ledger se sustituye por un resumen llano; la
+explicación va con titular en Home y desarrollo en la vista Coach.
+
+### v11.74 · el coach se entiende (puntos 2, 4, 6)
+
+**El fallo que estaba costando dinero de verdad:** la propuesta de W37 llevaba dos días escondida.
+En el servidor estaba en `proposed` con todo su contenido; en el teléfono había encima una fila
+LOCAL `failed` que escribe el `catch` de `runWeeklyCoach` con `attempt = nº de filas + 1`, y la
+tarjeta ordenaba por semana y luego por intento. El fallo ganaba siempre. Ahora la fila se elige
+por accionabilidad: una propuesta viva gana a un fallo, el fallo se cuenta en una línea con su
+motivo real (que se guardaba y no se pintaba en ninguna parte) y se puede apartar. El reintento
+apunta a la semana de SU fila, no a la semana objetivo de hoy — un domingo eran distintas. Y la
+llamada tiene por fin timeout.
+
+La explicación de la semana ya venía entera en el contrato (`briefing.nextWeek`, cinco secciones)
+y vivía plegada dentro de un `<details>`: el trabajo estaba hecho y no se leía. El Evidence Ledger
+se retira: su fila dominante era "STR-001 · 31", que son 31 entrenos guardados llevando esa
+etiqueta, no 31 veces que la regla decidiera algo.
+
+### v11.75 · el plan se adapta (puntos 5, 8, 7)
+
+`reflowWeek` (pura, en `coach-engine.js`, con test propio) reparte las sesiones que faltan entre
+los huecos que quedan. No inventa días: lo que no cabe se dice. No toca el pasado: reescribir el
+plan de ayer para que cuadre con lo que se hizo es la forma más limpia de que la adherencia
+mienta. No hace falta store nuevo porque `getPlannedSession` ya consulta `weekSchedule[fecha]`
+antes que la plantilla, y las cuatro superficies que enseñan la semana leen todas del mismo sitio.
+
+"This week" pasa a decir el nombre de lo que se hizo y de lo que falta, con los días pasados sin
+registro marcados como fallados — antes un martes fallado se veía igual que un martes de descanso.
+
+Y el día de cardio ofrece opciones numeradas. Los datos existían desde T4 (`ALT_LIBRARY` con su
+`alt` en cada día del bloque ideal) y se perdían en `buildWeekTemplateFromIdeal`, así que la lista
+salía con una sola opción y el bloque no se pintaba nunca, en silencio. Las duras van las últimas
+y dicen que lo son: el presupuesto de días duros es semanal.
+
+### v11.77 · pantallas (puntos 3, 9, 10)
+
+Los cuatro tiles suben a lo más alto de Home. "Recent cardio" junta por fin carreras, bici, remo y
+ski en una sola lista —eran dos, una por store, con los totales en medio— y cada modalidad tiene
+su icono: antes una salida en bici y una de remo salían las dos con el muñeco corriendo. La
+pestaña Foods pasa a llamarse Ranking, que es lo que siempre fue.
 
 ## v11.73 + A-7 (2026-09-10) — la auditoría queda cerrada
 

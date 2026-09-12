@@ -1249,6 +1249,9 @@ function openDB() {
 // ellos con una llamada más o una menos que en los otros. Un solo sitio.
 async function afterWorkoutSaved() {
   invalidateRenderPass();
+  // v11.75: aquí es donde se SABE lo que pasó, así que aquí se recoloca la semana. Va antes de
+  // los repintados para que todos lean el calendario ya corregido.
+  try { await applyWeekReflow(); } catch (e) { console.warn('[repaint] reflow:', e); }
   // V-5: los cuatro grupos de Stats caducan a la vez — series, volumen, rachas y carga de la
   // semana salen todos del entreno que se acaba de guardar.
   state._statsPainted.clear();
@@ -2457,6 +2460,91 @@ async function saveWeekSchedule(schedule) {
   await smartPut('settings', { key: 'weekSchedule', data: schedule });
   // Después de la escritura: `dbPut` acaba de invalidar la caché y este es el valor bueno.
   state._weekSchedule = schedule;
+}
+
+/**
+ * LA SEMANA SE RECOLOCA SOLA (v11.75).
+ *
+ * Julian, 2026-09-12: "Si por ejemplo el lunes en vez de hacer Lower A hago Upper A, no puede ser
+ * que el martes me vuelva a decir Upper A. Tiene que adaptarse el plan."
+ *
+ * Y no había nada que lo hiciera. `showSessionPicker` escribía UNA clave `weekSchedule[fecha]`
+ * antes de empezar la sesión y ahí acababa todo: `finishWorkout` no tocaba el calendario, así que
+ * la semana seguía pidiendo el martes lo que ya se había hecho el lunes, y se quedaba sin día de
+ * pierna sin que nadie lo dijera.
+ *
+ * POR QUÉ NO HACE FALTA UN STORE NUEVO. `getPlannedSession` ya consulta `weekSchedule[ds]` ANTES
+ * que la plantilla, y las cuatro superficies que enseñan la semana —el calendario de Home, la
+ * cola de "This week", la tarjeta de hoy y el banner de Gym— leen todas `getPlannedSessionForDate`.
+ * Escribir overrides por fecha propaga a las cuatro sin tocar ninguna.
+ *
+ * El reparto lo decide `reflowWeek` (coach-engine.js, pura y con test propio). Aquí sólo se leen
+ * los entrenos de la semana, se llama, se escribe y se avisa.
+ */
+async function applyWeekReflow(opts = {}) {
+  if (typeof reflowWeek !== 'function') return null;
+  try {
+    const fechas = getWeekDates().map((d) => dateStr(d));
+    const workouts = (await dbGetAll('workouts').catch(() => [])) || [];
+    const doneByDate = {};
+    for (const w of workouts) {
+      if (!w || !w.date || !fechas.includes(w.date)) continue;
+      // El primero del día manda: dos entrenos el mismo día es raro, y el segundo no cambia
+      // qué sesión de la semana se ha cubierto.
+      if (!doneByDate[w.date]) doneByDate[w.date] = w.sessionId || w.session || null;
+    }
+    const plan = (typeof activePlan !== 'undefined' && activePlan) ? activePlan : null;
+    const tpl = (plan && plan.weekTemplate) || activeWeekTemplate || null;
+    if (!tpl) return null;
+    const overrides = await getWeekSchedule();
+    const r = reflowWeek({
+      template: tpl,
+      doneByDate,
+      weekDates: fechas,
+      todayStr: today(),
+      classMap: (typeof sessionClassMap === 'function') ? sessionClassMap() : {},
+      overrides,
+    });
+    const claves = Object.keys(r.changes || {});
+    if (!claves.length) return r;
+
+    const nuevo = Object.assign({}, overrides);
+    for (const ds of claves) nuevo[ds] = r.changes[ds];
+    await saveWeekSchedule(nuevo);
+
+    // Se AVISA, no se pregunta (decisión de Julian: "reordenar la semana sola"). Pero se dice
+    // qué se movió: un plan que cambia solo y en silencio es peor que uno que no cambia.
+    if (!opts.silent && typeof toast === 'function') {
+      const m = (r.moved || [])[0];
+      const nombre = (sid) => {
+        const ses = plan && plan.sessions && plan.sessions[sid];
+        return (ses && ses.name) || sid;
+      };
+      const dia = m ? new Date(m.to + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long' }) : null;
+      if (m && dia) toast(`Week rescheduled · ${nombre(m.session)} moved to ${dia}`);
+      else toast('Week rescheduled around what you actually did');
+    }
+    // Y queda en el log de decisiones, que es lo que el coach lee el domingo: sin esto, la
+    // desviación y su arreglo son invisibles para la revisión semanal.
+    if ((r.moved || []).length && typeof smartPut === 'function') {
+      try {
+        await smartPut('decisions', {
+          id: `reflow-${today()}-${Date.now()}`,
+          date: today(),
+          type: 'structure',
+          what: `Week rescheduled: ${r.moved.map((m) => `${m.session} → ${m.to}`).join(', ')}`,
+          why: 'A session was done on a different day than planned; the remaining days were redealt.',
+          outcome: 'done',
+          ruleIds: ['STR-002', 'STR-007'],
+          source: 'app',
+        });
+      } catch (e) { console.warn('[reflow] decision:', e); }
+    }
+    return r;
+  } catch (e) {
+    console.warn('[reflow]:', e);
+    return null;
+  }
 }
 
 // Get the planned gym session for a specific date
@@ -7996,29 +8084,75 @@ async function logCardio() {
 
 // T2 (v11.20): render recently-logged non-run cardio + recovery sessions in the
 // Run tab. Reads the 'sessions' store, normalizes via the T1 adapter.
+// v11.77 (punto 9) · UN icono por MODALIDAD. Julian: "los logos de Ride, Row son iguales que
+// los de Run, deberíamos poner otro logito". Y era literal: `renderSessionHistory` tenía una rama
+// binaria por FAMILIA (cardio → corredor, recuperación → sol), así que una salida en bici, una de
+// remo y una de ski salían las tres con el mismo muñeco corriendo. Los emoji ya existían en la
+// app para esto mismo (el selector de envío a intervals.icu), así que no se inventa un juego
+// nuevo: se usa el que ya se reconoce.
+const CARDIO_ICON = {
+  run_outdoor: '🏃', treadmill: '🏃', bike: '🚴', row: '🚣', ski: '⛷️',
+  elliptical: '🌀', swim: '🏊', walk: '🚶',
+};
+const CARDIO_ICON_TINT = {
+  bike: ['var(--tint-orange)', 'var(--orange)'],
+  row: ['var(--tint-teal)', 'var(--teal)'],
+  ski: ['var(--tint-purple)', 'var(--purple)'],
+  walk: ['var(--tint-teal)', 'var(--teal)'],
+};
+function cardioIconFor(modality, family) {
+  const icono = CARDIO_ICON[modality] || (family === 'recovery' ? '🚶' : '🏃');
+  const tinte = CARDIO_ICON_TINT[modality] || (family === 'recovery' ? ['var(--tint-teal)', 'var(--teal)'] : ['var(--tint-blue)', 'var(--blue)']);
+  return { icono, bg: tinte[0], fg: tinte[1] };
+}
+
 async function renderSessionHistory() {
   const container = document.getElementById('sess-history');
   if (!container) return;
-  const sessions = (await dbGetAll('sessions').catch(() => []))
-    .sort((a, b) => (b.ts || 0) - (a.ts || 0)).slice(0, 12);
-  if (!sessions.length) { container.innerHTML = ''; return; }
-  const iconCardio = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13" cy="4" r="2"/><path d="M5 21l3-9 2.5 2V21M15 11l-3-3-4 4 2 2"/></svg>`;
-  const iconRec = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3M12 18v3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M3 12h3M18 12h3M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/></svg>`;
-  container.innerHTML = sessions.map(s => {
-    const sess = (typeof toSession === 'function') ? toSession(s, 'sessions') : s;
-    const isCardio = sess.family === 'cardio';
+  // UNA lista. Antes había dos: ésta leía `sessions` (bici, remo, ski, caminata) y "Runs
+  // (history)" leía `runs` (las carreras), con los totales en medio. Julian: "en Cardio debería
+  // aparecer todo junto en Recent Cardio, tanto runs como cycling como rows". Las dos fuentes ya
+  // vienen dedupeadas de fábrica (`getRunsDeduped`/`getSessionsDeduped`): la misma actividad del
+  // COROS llega por Strava y por intervals.icu, y juntarlas sin dedupe la habría duplicado.
+  const [runs, sesiones] = await Promise.all([
+    (typeof getRunsDeduped === 'function' ? getRunsDeduped() : dbGetAll('runs')).catch(() => []),
+    (typeof getSessionsDeduped === 'function' ? getSessionsDeduped() : dbGetAll('sessions')).catch(() => []),
+  ]);
+  const filas = []
+    .concat((sesiones || []).map((x) => {
+      const sess = (typeof toSession === 'function') ? toSession(x, 'sessions') : x;
+      return { kind: 'session', id: sess.id, date: sess.date, title: sess.title || 'Session',
+        distance: sess.distance, durationMin: sess.durationMin, week: sess.week,
+        feel: sess.perceivedEffort, modality: sess.modality || null, family: sess.family || 'cardio' };
+    }))
+    .concat((runs || []).map((r) => ({
+      kind: 'run', id: r.id, date: r.date,
+      title: r.avgPace ? `Run · ${r.avgPace}/km` : 'Run',
+      distance: r.distance, durationMin: r.duration ? Math.round(durationToMinutes(r.duration)) : null,
+      week: r.week, feel: null, modality: 'run_outdoor', family: 'cardio',
+    })))
+    .filter((f) => f && f.date)
+    .sort((a, b) => String(b.date).localeCompare(String(a.date)))
+    .slice(0, 14);
+  if (!filas.length) {
+    if (typeof showEmptyState === 'function') showEmptyState(container, '🏃', 'No cardio yet', 'Runs, rides, rows and ski sessions all land here.');
+    else container.innerHTML = '';
+    return;
+  }
+  container.innerHTML = filas.map(sess => {
+    const ic = cardioIconFor(sess.modality, sess.family);
     const dist = sess.distance != null ? ` · ${sess.distance} km` : '';
     const dur = sess.durationMin != null ? `${sess.durationMin} min` : '';
     return `
     <div class="history-item">
-      <div class="hi-icon" style="background:${isCardio ? 'var(--tint-blue)' : 'var(--tint-teal)'};color:${isCardio ? 'var(--blue)' : 'var(--teal)'}">${isCardio ? iconCardio : iconRec}</div>
+      <div class="hi-icon hi-icon-emoji" style="background:${ic.bg};color:${ic.fg}">${ic.icono}</div>
       <div class="hi-left">
-        <div class="hi-title">${sess.title || 'Session'}${dist}</div>
+        <div class="hi-title">${escapeHtml(sess.title)}${dist}</div>
         <div class="hi-sub">${formatDate(sess.date)}${dur ? ` · ${dur}` : ''}${sess.week ? ` · Wk ${sess.week}` : ''}</div>
       </div>
       <div class="hi-right">
-        ${sess.perceivedEffort ? `<div><div class="hi-stat">${sess.perceivedEffort}/5</div><div class="hi-stat-sub">feel</div></div>` : ''}
-        <button class="hi-delete" data-delete-session="${sess.id}" aria-label="Delete session">&times;</button>
+        ${sess.feel ? `<div><div class="hi-stat">${sess.feel}/5</div><div class="hi-stat-sub">feel</div></div>` : ''}
+        ${sess.kind === 'session' ? `<button class="hi-delete" data-delete-session="${sess.id}" aria-label="Delete session">&times;</button>` : ''}
       </div>
     </div>`;
   }).join('');
@@ -8719,7 +8853,9 @@ if (typeof window !== 'undefined' && typeof window.addEventListener === 'functio
 // el calendario de la semana, la sesión de hoy y la cola. El topbar y el selector de plan
 // se pintan desde `state`, así que un esqueleto allí sería un parpadeo gratis.
 function showHomeSkeletons() {
-  const bloques = [['week-calendar', 3], ['todays-plan-card', 3], ['home-queue', 1]];
+  // v11.77: el trío de tiles sube a lo más alto de Home (decisión de Julian), así que es lo
+  // primero que se ve vacío mientras carga. Sin esqueleto, Home abre con un hueco arriba.
+  const bloques = [['home-stat-trio', 1], ['week-calendar', 3], ['todays-plan-card', 3], ['home-queue', 1]];
   for (const [id, n] of bloques) {
     const el = document.getElementById(id);
     if (el && !el.innerHTML) showSkeleton(el, n, 'line');
@@ -9212,7 +9348,7 @@ async function getPlannedSessionForDate(date) {
       const st = slot.subtype || 'zone2';
       const base = slot.durationMin || null;
       const p = await prog(base, _coachCardioMin(jsDay, 'durationMin'));
-      const out = { type: 'run', date: ds, name: slot.label || 'Cardio Z2', subtitle: cardioSubtypeLabel(st), subtype: st, durationMin: p.min, baseMin: base, durationSource: p.source, durationNote: p.note, block: blk, summary: slot.summary || null, hrTarget: cardioHrTarget(st) };
+      const out = { type: 'run', date: ds, name: slot.label || 'Cardio Z2', subtitle: cardioSubtypeLabel(st), subtype: st, durationMin: p.min, baseMin: base, durationSource: p.source, durationNote: p.note, block: blk, summary: slot.summary || null, hrTarget: cardioHrTarget(st), alt: slot.alt || null };
       // v11.60: la carrera de la semana. Coach > regla > base.
       //
       // v11.70 (L-2). La puerta era `if (!(activePlan && activePlan.running))`, y el esquema del
@@ -9687,6 +9823,10 @@ function buildWeekTemplateFromIdeal(variantNum) {
       if (day.z2FinisherModality) tpl[day.dow].z2FinisherModality = day.z2FinisherModality;
     } else if (day.kind === 'cardio') {
       tpl[day.dow] = { type: 'run', label: day.title, subtype: day.subtype || 'zone2', durationMin: day.durationMin || null, summary: day.summary || null };
+      // v11.75: la clave de sus alternativas (`ALT_LIBRARY`). Estaba en la semilla desde T4 y se
+      // perdía aquí, así que la tarjeta del día no tenía de dónde sacar las opciones y el bloque
+      // 'Pick one' no se pintaba nunca, en silencio.
+      if (day.alt) tpl[day.dow].alt = day.alt;
     } else if (day.kind === 'recovery') {
       tpl[day.dow] = { type: 'recovery', label: day.title || 'Active recovery', subtype: day.subtype || 'mobility' };
       if (day.z2Finisher) tpl[day.dow].z2FinisherMin = day.z2Finisher;
@@ -9716,7 +9856,9 @@ function buildWeekTemplateFromIdeal(variantNum) {
 // 10 = v11.72 (F-8: la variante de 5 días vuelve a lower/upper/upper — empuje y tirón a 2x/semana,
 //     STR-002, con la bisagra en el RDL de lowerA. F-15: `z2FinisherModality` en los días con
 //     finisher, para que "20' Z2" diga TAMBIÉN en qué — bici/ski tras pierna, cinta tras torso).
-const PLAN_REV = 10;
+// 11 = v11.75 (la plantilla se queda el `alt` de cada día de cardio: sin él, el bloque
+//      "Pick one" de la tarjeta no tenía alternativas que ofrecer y no se pintaba, en silencio).
+const PLAN_REV = 11;
 
 async function applyIdealPlan({ force = false } = {}) {
   const n = _idealVariant();
@@ -10411,23 +10553,42 @@ async function renderWeekCalendar() {
     if (status === 'rest') dot = `<span class="wc-rest"></span>`;
     else dot = `<span class="wc-lines">${line(strengthState, sCol)}${line(cardioState, cCol)}</span>`;
 
-    return { i, ds, jsDay, isToday, dateNum: date.getDate(), label: dayNames[i], status, dot, gym, planned };
+    // v11.75 · LA ETIQUETA. Julian: "en This week debería aparecer qué hice cada día y qué
+    // tengo que hacer los días que faltan". Antes la única diferencia entre hecho y pendiente
+    // era la opacidad de una barra de 2 px, y los días pasados no enseñaban plan ninguno: un
+    // martes fallado se veía igual que un martes de descanso.
+    const nombreSesion = (sid) => {
+      if (!sid) return null;
+      const ses = (typeof activePlan !== 'undefined' && activePlan && activePlan.sessions) ? activePlan.sessions[sid] : null;
+      return (ses && ses.name) || sid;
+    };
+    let etiqueta = '';
+    let etiquetaEstado = '';          // done | pending | missed
+    if (gym) { etiqueta = nombreSesion(gym.sessionId || gym.session) || 'Session'; etiquetaEstado = 'done'; }
+    else if (loggedCardio) { etiqueta = (sess && sess.title) || (run && 'Run') || 'Cardio'; etiquetaEstado = 'done'; }
+    else if (loggedRecovery) { etiqueta = 'Recovery'; etiquetaEstado = 'done'; }
+    else if (pType === 'gym') { etiqueta = nombreSesion(planned.sessionId || planned.session) || 'Session'; etiquetaEstado = isPast ? 'missed' : 'pending'; }
+    else if (pType === 'run') { etiqueta = planned.distanceKm ? `${planned.distanceKm} km` : (planned.durationMin ? `${planned.durationMin}'` : 'Cardio'); etiquetaEstado = isPast ? 'missed' : 'pending'; }
+    else if (pType === 'recovery') { etiqueta = 'Mobility'; etiquetaEstado = isPast ? 'missed' : 'pending'; }
+    else { etiqueta = 'Rest'; etiquetaEstado = 'rest'; }
+    // El nombre largo no cabe en una columna de 48 px: se recorta por palabra.
+    const corta = String(etiqueta).length > 9 ? String(etiqueta).split(/[ ·]/)[0].slice(0, 9) : etiqueta;
+
+    return { i, ds, jsDay, isToday, dateNum: date.getDate(), label: dayNames[i], status, dot, gym, planned, etiqueta: corta, etiquetaEstado, etiquetaFull: etiqueta };
   });
 
   container.innerHTML = `
     <div class="home-sec-row">
       <h2 class="home-h2">This week</h2>
-      <span class="home-link-mono">
-        <span class="wc-leg"><span class="wc-leg-dot" style="background:${typeTone('strength')}"></span>Strength</span>
-        <span class="wc-leg"><span class="wc-leg-dot" style="background:${typeTone('cardio')}"></span>Cardio</span>
-      </span>
+      <span class="home-link-mono">${doneCount} of ${cells.filter((c) => c.etiquetaEstado !== 'rest').length} done</span>
     </div>
     <div class="week-cal">
       ${cells.map(c => `
-        <button class="wc-cell${c.isToday ? ' is-today' : ''}${c.status === 'rest' ? ' is-rest' : ''}" data-wc="${c.i}">
+        <button class="wc-cell${c.isToday ? ' is-today' : ''}${c.status === 'rest' ? ' is-rest' : ''}" data-wc="${c.i}" title="${escapeHtml(c.etiquetaFull)}">
           <span class="wc-day">${c.label}</span>
           <span class="wc-date">${c.dateNum}</span>
           <span class="wc-status">${c.dot}</span>
+          <span class="wc-label -${c.etiquetaEstado}">${c.etiquetaEstado === 'done' ? '✓ ' : ''}${escapeHtml(c.etiqueta)}</span>
         </button>`).join('')}
     </div>
     <button class="historial-btn" id="historial-btn">
@@ -10546,6 +10707,7 @@ async function renderTodaysPlan() {
     const done = !!doneCardio;
     const sub = (planned.subtitle || 'Zone 2 · easy') + (planned.durationMin ? ` · ${planned.durationMin}'` : '');
     const hrLine = planned.hrTarget ? `Target HR: <b>${planned.hrTarget}</b>` : cardioIntensityGuide(planned.subtype);
+    const opcionesCardio = cardioDayOptions(planned);
     // v11.60: la fase de carrera y su dosis. El patrón de trote/caminata y los km son la
     // prescripción real de la semana; sin ellos la tarjeta decía sólo "40 min Zona 2".
     const fase = (typeof runningPhaseLabel === 'function') ? runningPhaseLabel(planned) : '';
@@ -10575,6 +10737,7 @@ async function renderTodaysPlan() {
       </section>
       <div class="cardio-rx card">
         ${rxRows}
+        ${done ? '' : cardioOptionsHtml(opcionesCardio)}
         <div class="cardio-rx-actions">
           <button class="btn-primary" id="rx-log-cardio">${done ? 'View cardio' : 'Log cardio'}</button>
           <button class="btn-secondary" id="rx-push-icu">Send to intervals.icu</button>
@@ -10585,6 +10748,24 @@ async function renderTodaysPlan() {
     if (logBtn) logBtn.addEventListener('click', () => switchTab('cardio'));
     const pushBtn = container.querySelector('#rx-push-icu');
     if (pushBtn) pushBtn.addEventListener('click', () => pushCardioToIntervalsIcu());
+    // Elegir una opción o una máquina NO cambia la plantilla de la semana: cambia lo de HOY, y se
+    // recuerda para que la tarjeta y el registro de cardio lleguen con ello puesto.
+    container.querySelectorAll('[data-copt]').forEach((b) => b.addEventListener('click', async () => {
+      const o = opcionesCardio[Number(b.dataset.copt)] || null;
+      if (!o) return;
+      container.querySelectorAll('[data-copt]').forEach((x) => x.classList.remove('is-picked'));
+      b.classList.add('is-picked');
+      state._cardioPick = { date: today(), option: o.id, label: o.label, modality: o.modality || (state._cardioPick || {}).modality || null };
+      if (typeof toast === 'function') toast(`Today: ${o.label}`);
+    }));
+    container.querySelectorAll('[data-cmod]').forEach((b) => b.addEventListener('click', () => {
+      const mod = b.dataset.cmod;
+      container.querySelectorAll('[data-cmod]').forEach((x) => x.classList.remove('is-picked'));
+      b.classList.add('is-picked');
+      state._cardioPick = Object.assign({ date: today() }, state._cardioPick || {}, { modality: mod });
+      const m = CARDIO_MODALITIES.find((x) => x.id === mod);
+      if (typeof toast === 'function' && m) toast(`On the ${m.label.toLowerCase()}`);
+    }));
     return;
   }
 
@@ -11970,6 +12151,87 @@ async function renderProteinChart() {
     label.textContent = `Target ${state.settings.proteinTarget}g`;
     svgEl.appendChild(label);
   }
+}
+
+// ==================== OPCIONES DE UN DIA DE CARDIO (v11.75) ====================
+//
+// Julian, 2026-09-12: "Cuando es cardio como hoy sábado tengo que tener opciones, no solamente
+// Run 40' in Z2. En la tarjeta tengo que decir 1/2/3/4 con las opciones disponibles."
+//
+// Los datos YA ESTABAN y no los leía nadie en la tarjeta del día:
+//   · `IDEAL_BLOCK_V1` etiqueta cada día con su `alt` (`hard_cardio`, `strength_upper`…).
+//   · `ALT_LIBRARY['hard_cardio']` tiene bici Z2, remo moderado, run/walk fácil y el híbrido
+//     sled+ski, cada uno con su `reason` y sus `ruleIds`. Su consumidor se retiró en v11.62 y
+//     las alternativas se quedaron huérfanas: el preview las pintaba como TEXTO, sin poder
+//     elegirlas.
+//   · `CARDIO_LIBRARY` tiene 17 sesiones con DSL y ya sabe cuál encaja con el subtipo de hoy.
+//
+// Julian eligió "las dos cosas": primero QUÉ sesión, y dentro de ella CON QUÉ. Son dos
+// decisiones distintas y conviene no mezclarlas — cambiar de máquina no cambia el estímulo
+// (SEL-004, INT-002: misma dosis aeróbica, distinto impacto e interferencia con las piernas),
+// mientras que cambiar de sesión sí.
+const CARDIO_MODALITIES = [
+  { id: 'run_outdoor', label: 'Run', icon: '🏃' },
+  { id: 'treadmill', label: 'Treadmill', icon: '🏃' },
+  { id: 'bike', label: 'Bike', icon: '🚴' },
+  { id: 'row', label: 'Row', icon: '🚣' },
+  { id: 'ski', label: 'SkiErg', icon: '⛷️' },
+];
+
+/**
+ * Las 2-3 sesiones entre las que elegir hoy. La prescrita SIEMPRE la primera y marcada.
+ * Puras salvo la lectura del plan activo: deciden qué se ofrece, no qué se hace.
+ */
+function cardioDayOptions(planned) {
+  const out = [{
+    id: 'rx',
+    label: planned.subtitle || cardioSubtypeLabel(planned.subtype) || 'Prescribed',
+    detail: planned.distanceKm ? `${planned.distanceKm} km` : (planned.durationMin ? `${planned.durationMin} min` : ''),
+    why: 'What the plan asks for today.',
+    recommended: true,
+    modality: planned.modality || null,
+  }];
+  // Las alternativas del día vienen de su `alt` en el bloque ideal. Sin `alt`, no se inventan.
+  const alt = planned.alt || (planned.slot && planned.slot.alt) || null;
+  const lib = (typeof ALT_LIBRARY !== 'undefined' && ALT_LIBRARY) ? (ALT_LIBRARY[alt] || []) : [];
+  // LAS DURAS VAN LAS ÚLTIMAS Y DICEN QUE LO SON. El híbrido de trineo + SkiErg está en esta
+  // lista como ALTERNATIVA de un día de cardio (HYB-001: "0-1/sem, en lugar de un cardio, no
+  // además"), pero ofrecerlo en el mismo tono que un Z2 fácil invita a convertir un día suave en
+  // un día duro sin pensarlo — y el presupuesto de días duros es semanal (BUD-001).
+  const dura = (a) => a.family === 'hybrid' || /RPE 8|RPE 9/.test(String(a.intensity || ''));
+  const ordenadas = lib.slice().sort((a, b) => (dura(a) ? 1 : 0) - (dura(b) ? 1 : 0));
+  for (const a of ordenadas.slice(0, 3)) {
+    out.push({
+      id: `alt-${out.length}`,
+      label: a.label,
+      detail: [a.durationMin ? `${a.durationMin} min` : '', dura(a) ? 'demanding' : ''].filter(Boolean).join(' · '),
+      why: a.reason || '',
+      recommended: false,
+      modality: a.modality || null,
+    });
+  }
+  return out;
+}
+
+/** El HTML de "Pick one" + la fila de máquinas. Reutiliza el chasis de `.swap-panel`. */
+function cardioOptionsHtml(opciones) {
+  if (!opciones || opciones.length < 2) return '';
+  return `<div class="cardio-opts">
+    <div class="swap-title">Pick one</div>
+    ${opciones.map((o, i) => `
+      <button class="swap-option cardio-opt" data-copt="${i}">
+        <span class="cardio-opt-n">${i + 1}</span>
+        <span class="cardio-opt-main">
+          <span class="cardio-opt-label">${escapeHtml(o.label)}${o.detail ? ` · ${escapeHtml(o.detail)}` : ''}</span>
+          ${o.why ? `<span class="cardio-opt-why">${escapeHtml(o.why)}</span>` : ''}
+        </span>
+        ${o.recommended ? '<span class="cardio-opt-rec">Recommended</span>' : ''}
+      </button>`).join('')}
+    <div class="swap-title" style="margin-top:10px">On what</div>
+    <div class="cardio-mods">
+      ${CARDIO_MODALITIES.map((m) => `<button class="swap-option cardio-mod" data-cmod="${m.id}">${m.icon} ${escapeHtml(m.label)}</button>`).join('')}
+    </div>
+  </div>`;
 }
 
 // ==================== VOLUME PER MUSCLE GROUP (HEATMAP) ====================
