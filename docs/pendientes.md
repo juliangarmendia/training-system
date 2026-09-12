@@ -6,7 +6,7 @@
 > El *por qué* de cada cosa vive en [`../assessments/2026-08-16_system-audit.md`](../assessments/2026-08-16_system-audit.md).
 > Aquí está el *qué sigue*.
 >
-> Última actualización: **2026-09-12** (diez ajustes de Julian tras usar v11.73: v11.74 el coach que se entiende, v11.75 el plan que se adapta, v11.76 la comida en tres caminos, v11.77 pantallas)
+> Última actualización: **2026-09-12** (diez ajustes de Julian tras usar v11.73, los cuatro incrementos DESPLEGADOS: v11.74 el coach que se entiende, v11.75 el plan que se adapta, v11.76 la comida en tres caminos, v11.77 pantallas. `parse-meal-photo` v2 desplegada. Suite en verde, 38 ficheros)
 
 ## Regla de trabajo
 
@@ -755,6 +755,49 @@ Y el día de cardio ofrece opciones numeradas. Los datos existían desde T4 (`AL
 salía con una sola opción y el bloque no se pintaba nunca, en silencio. Las duras van las últimas
 y dicen que lo son: el presupuesto de días duros es semanal.
 
+### v11.76 · la comida, en tres caminos (punto 1)
+
+Había un solo embudo: foto → IA → confirmar → guardar. La invariante que no se toca es que los
+tres caminos terminan en `saveMeal()`, lo único que llega a `recomputeNutritionDay()` — es lo que
+sostiene que el total del día cuadre con la suma de sus comidas.
+
+**A · la foto, y guardar el plato.** Cada item y el plato entero ganan "Save to my foods", con su
+medida real y su foto, que ya estaba subida y no se borra. Los platos de Honest Greens que Julian
+repite cuatro o cinco veces al mes se fotografían UNA vez.
+
+**B · la biblioteca, por la medida en que viene la comida.** Era sólo por 100 g, que es la unidad
+de la etiqueta y no la de nadie comiendo. `foods` gana `serving {label, grams}`, `servings[]`,
+`photoPath`, `useCount` y `lastUsedAt`; el picker abre por Recientes y Frecuentes y el stepper
+cuenta medidas ("1 scoop"), con los gramos por debajo, que es lo que persiste. Migración perezosa:
+sin `serving` se asume 100 g y todo sigue como estaba. La frecuencia pasa a ser un campo: se
+recalculaba escaneando todas las comidas en cada render.
+
+**C · el texto, con atajos.** Julian preguntó *qué datos son importantes saber cada vez que
+ingreso una comida por descripción*. Por orden de cuánto mueven el número:
+
+| Dato | Por qué cambia el número | Regla |
+|---|---|---|
+| **Cantidad** (peso, o medida casera) | Es el primer factor de error, por encima de qué era | todas |
+| **Cocción y grasa añadida** | Una pechuga a la plancha y la misma salteada difieren ~150 kcal | REC-002 |
+| **Proteína: fuente y cantidad** | Es el suelo no negociable, y se juzga por comida (30-50 g) | REC-001 |
+| **Restaurante o casa** | Fuera se cocina con más aceite y más sal; el sesgo es sistemático | REC-002 |
+| **Bebida y alcohol** | El alcohol es la cuarta macro y ya se modela aparte | REC-002 |
+| **Hora de la comida** | Coloca los carbohidratos alrededor del entreno | REC-007 |
+| **Tipo de día** (ya lo sabe la app) | Decide si toca más o menos carbohidrato ese día | REC-007 |
+
+En pantalla son chips opcionales que escriben una línea `Context — …` en la nota. No son campos
+obligatorios ni un formulario: el contrato del servidor (`body.note`) no cambia. La hora y el tipo
+de día no se preguntan, los pone el cliente.
+
+En el servidor, el caso **sin foto** deja de ser dos frases injertadas en un prompt que empezaba
+"a partir de una foto" y tiene su propia sección: qué asumir cuando falta la cantidad **y decirlo**,
+el techo de confianza en 0,6 sin peso explícito, la tabla de medidas caseras a gramos, y que los
+campos de `Context —` mandan sobre los valores por defecto. `PROMPT_VERSION` sube a 2.
+
+**Y el bug que hacía invisible la mitad de esto:** `#app` declara `z-index: 1`, así que crea un
+contexto de apilamiento y cualquier hoja abierta desde DENTRO de un `.modal` se pintaba por debajo
+de él. El picker y `#prompt-sheet` pasan a nivel de body.
+
 ### v11.77 · pantallas (puntos 3, 9, 10)
 
 Los cuatro tiles suben a lo más alto de Home. "Recent cardio" junta por fin carreras, bici, remo y
@@ -808,10 +851,11 @@ trayendo lo mismo, se borra el del cliente y la clave sale del teléfono del tod
    para leer actividades privadas, otra razón por la que podían faltar carreras.
 3. **Guardar la clave de intervals.icu** en Ajustes › Integrations, para que el servidor pueda
    sincronizar por su cuenta.
-4. **Limpiar la fila vieja de ajustes.** Los dos secretos siguen en la nube dentro de
-   `settings/userSettings` (`data.data`): la versión nueva ya no los sube, pero la fila los
-   conserva hasta que se reescriba. Hay que borrarlos con SQL DESPUÉS de abrir la app una vez con
-   v11.73, porque la primera lectura es la que los pasa al almacenamiento local del teléfono.
+4. ~~**Limpiar la fila vieja de ajustes.**~~ **HECHO y verificado el 2026-09-12.** No hizo
+   falta SQL: Julian abrió la app con la versión nueva (la fila `userSettings` se reescribió a las
+   09:54 UTC) y esa primera lectura es la que pasa los secretos al almacenamiento local y los deja
+   de subir. Comprobado contra la tabla entera: ni `stepsSecret` ni `intervalsIcuApiKey` aparecen
+   ya en ninguna fila de `settings`.
 5. La protección de contraseñas filtradas en Supabase › Authentication, que sigue pendiente.
 
 ### Series efectivas — decidido por Julian el 2026-09-10
