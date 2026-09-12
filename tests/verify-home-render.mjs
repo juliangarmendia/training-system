@@ -695,6 +695,65 @@ section('13 · v11.75 · la semana se recoloca al guardar');
     'y lo hace ANTES de repintar, para que todos lean el calendario ya corregido');
 }
 
+section('14 · v11.77 · Cardio: UNA lista, con icono propio y sin perder nada');
+// Julian, punto 9: "en Cardio debería aparecer todo junto en Recent Cardio, tanto runs como
+// cycling como rows"; "los logos de Ride, Row son iguales que los de Run"; "el Distance total
+// debería ir arriba del todo".
+//
+// El fallo que esta sección existe para impedir es el de la fusión descuidada: juntar dos listas
+// quedándose sólo con lo que hacía una de ellas. La lista de carreras que se retira sabía tres
+// cosas que la otra no: estimaba las kcal, enseñaba el pulso medio y borraba con deshacer.
+{
+  // La vista: los totales primero, y una sola lista después.
+  // El corte va hasta la SIGUIENTE vista, no hasta `view-stats`: Nutrición está en medio, y
+  // cortar por ahí metía su lista de comidas dentro de "la vista de Cardio".
+  const iCardio = HTML.indexOf('id="view-cardio"');
+  const vistaCardio = HTML.slice(iCardio, HTML.indexOf('id="view-', iCardio + 12));
+  yes(vistaCardio.indexOf('id="run-totals-card"') > -1, 'los totales de distancia siguen en la vista');
+  yes(vistaCardio.indexOf('id="run-totals-card"') < vistaCardio.indexOf('id="sess-history"'),
+    'y van ARRIBA de la lista, no metidos entre las dos que había');
+  yes(!/id="run-history"/.test(HTML), 'la segunda lista ("Runs (history)") ya no existe en el HTML');
+  yes(!/function renderRunHistory\(/.test(APP), 'ni su renderer en app.js (no queda escribiendo en un hueco)');
+  yes((vistaCardio.match(/class="recent-list"/g) || []).length === 1,
+    'en Cardio queda exactamente UNA lista');
+
+  // El renderer: dos fuentes, ya dedupeadas.
+  const iRSH = APP.indexOf('async function renderSessionHistory()');
+  const cuerpoRSH = APP.slice(iRSH, APP.indexOf('\n}\n', iRSH));
+  yes(/getRunsDeduped/.test(cuerpoRSH) && /getSessionsDeduped/.test(cuerpoRSH),
+    'lee las DOS fuentes, y las dos dedupeadas (la misma salida del COROS llega por Strava y por intervals.icu)');
+  yes(/localeCompare/.test(cuerpoRSH), 'y las mezcla ordenadas por fecha, no una detrás de otra');
+
+  // Lo que la lista retirada sabía hacer, y que no se pierde por el camino.
+  yes(/estimateCalories\(/.test(cuerpoRSH), 'sigue estimando las kcal de una carrera');
+  yes(/avgHR/.test(cuerpoRSH), 'sigue enseñando el pulso medio');
+  yes(/feel: r\.feel/.test(cuerpoRSH), 'y el feel de la carrera, que la primera versión de la fusión ponía a null');
+  yes(/smartDelete\(/.test(cuerpoRSH) && /label: 'Undo'/.test(cuerpoRSH),
+    'borrar sincroniza y se puede deshacer');
+  yes(!/dbDelete\('sessions'/.test(cuerpoRSH),
+    'y ya no hay un borrado en crudo: esa fila volvía en la siguiente sincronización');
+  yes((cuerpoRSH.match(/data-del-id/g) || []).length >= 2,
+    'un solo botón de borrar para las dos fuentes, no dos comportamientos distintos en la misma lista');
+
+  // El icono, que era la queja literal de Julian.
+  yes(/function cardioIconFor\(/.test(APP), 'el icono se elige por MODALIDAD, no por familia');
+  const iMapa = APP.indexOf('const CARDIO_ICON = {');
+  const mapa = APP.slice(iMapa, APP.indexOf('};', iMapa));
+  const iconos = ['run_outdoor', 'bike', 'row', 'ski']
+    .map((k) => (mapa.match(new RegExp(k + ": '([^']+)'")) || [])[1]);
+  yes(iconos.every(Boolean), 'correr, bici, remo y ski tienen icono');
+  yes(new Set(iconos).size === 4,
+    'y los cuatro son DISTINTOS (antes bici, remo y ski salían los tres con el muñeco corriendo)');
+  yes(/cardioIconFor\(sess\.modality/.test(cuerpoRSH), 'y la lista lo usa');
+
+  // El llamador ya no invoca la retirada.
+  const iTab = APP.indexOf("} else if (tab === 'cardio')");
+  const tab = APP.slice(iTab, iTab + 220);
+  yes(!/renderRunHistory/.test(tab), 'abrir la pestaña Cardio ya no llama a la retirada');
+  yes(tab.indexOf('renderRunTotals') < tab.indexOf('renderSessionHistory'),
+    'y pinta los totales antes que la lista, en el orden en que se leen');
+}
+
 if (fails) {
   console.error(`verify-home-render: ${fails} de ${checks} comprobaciones FALLAN`);
   process.exit(1);

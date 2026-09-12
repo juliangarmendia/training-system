@@ -17,8 +17,18 @@
 //   guardarraíl de adherencia (adherenceMode) para que un tercer abandono
 //   degrade el sistema en vez de romperlo.
 //
+// TRES CAMINOS DE ENTRADA (v11.76), un solo destino. Registrar tenía un embudo único —foto—
+// y eso hacía caro justo lo que más se repite. Ahora son tres, y los tres terminan en
+// `saveMeal()`, que es lo único que llega a `recomputeNutritionDay`:
+//   A · foto (+ nota) → hoja de confirmación → y desde ahí "Save to my foods", que mete el
+//       plato en la biblioteca con su medida y su foto para no volver a fotografiarlo.
+//   B · biblioteca, con medidas de verdad ('1 scoop' → 30 g) y ordenada por uso reciente y
+//       frecuente, no por una fórmula de calidad.
+//   C · texto libre + chips opcionales que añaden una línea estructurada a la nota.
+//
 // ARQUITECTURA DE DATOS — tres stores, un solo escritor por store:
-//   `foods`      biblioteca canónica, macros por 100 g. Crece con el uso.
+//   `foods`      biblioteca canónica, macros por 100 g (la única verdad; `serving` es un
+//                multiplicador, nunca un segundo juego de macros). Crece con el uso.
 //   `meals`      una fila por comida registrada, items en gramos.
 //   `nutrition`  NO se sustituye. Pasa a ser el agregado derivado por día que
 //                escribe recomputeNutritionDay(). Los cinco consumidores que ya
@@ -677,6 +687,219 @@ function itemFromFood(food, grams, extra) {
   };
 }
 
+// ==================== MEDIDAS, USO Y CHIPS (v11.76) ====================
+//
+// EL PROBLEMA QUE ESTO RESUELVE. Hasta aquí la biblioteca era SÓLO por 100 g y el registro
+// tenía un solo embudo: foto → hoja → saveMeal. Eso hacía caro justo lo que más se repite:
+// un batido de whey pedía teclear "30" cada vez, y el mismo bowl de Honest Greens —que se
+// repite cuatro o cinco veces al mes— pedía sacarle una foto por quinta vez.
+//
+// LA DECISIÓN DE DISEÑO, y lo que NO cambia: los macros por 100 g siguen siendo la única
+// verdad. Una medida (`serving`) es un MULTIPLICADOR sobre ellos, nunca un segundo juego de
+// macros. Si un día alguien guarda "kcal por ración" junto a "kcal por 100 g", los dos
+// números se separan en cuanto se corrija uno, y el total del día deja de cuadrar con la
+// suma de sus comidas. Lo que persiste en `meals` siguen siendo GRAMOS.
+//
+// MIGRACIÓN PEREZOSA: una fila sin `serving` (todas las que ya están en el teléfono) se
+// comporta exactamente como antes — 100 g. No hay script de migración ni versión de esquema
+// que subir; el lector resuelve el respaldo.
+//
+// Esquema que gana `foods` (todo opcional):
+//   serving    { label, grams }   la medida normal en la que viene ('1 scoop' → 30 g)
+//   servings   [{ label, grams }] cuando hay más de una ('1 scoop' y '2 scoops')
+//   photoPath  string             la foto del plato guardado desde el camino A
+//   useCount   number             veces registrado. Antes se recalculaba escaneando TODAS
+//   useKcal    number             las comidas en cada pintado del ranking; ahora es un campo
+//   lastUsedAt string             la última vez, para la sección Recent del picker
+
+const NUT_DEFAULT_SERVING = { label: '100 g', grams: 100 };
+const NUT_PICKER_SECTION_MAX = 6;   // filas por sección antes de "el resto"
+
+/** Todas las medidas de un alimento, la por defecto primero. Sin ninguna, 100 g. */
+function foodServings(food) {
+  const limpias = [];
+  const add = (s) => {
+    const g = Number(s && s.grams) || 0;
+    const label = String((s && s.label) || '').trim();
+    if (g <= 0 || !label) return;
+    if (limpias.some(x => x.label === label && x.grams === g)) return;
+    limpias.push({ label, grams: g });
+  };
+  add(food && food.serving);
+  for (const s of (food && food.servings) || []) add(s);
+  return limpias.length ? limpias : [{ ...NUT_DEFAULT_SERVING }];
+}
+
+function foodServing(food, idx) {
+  const todas = foodServings(food);
+  const i = Math.min(Math.max(Number(idx) || 0, 0), todas.length - 1);
+  return todas[i];
+}
+
+/** Gramos que persisten en la comida para `qty` medidas. Lo único que se guarda. */
+function servingGrams(food, idx, qty) {
+  const n = Number(qty) > 0 ? Number(qty) : 1;
+  return Math.round(foodServing(food, idx).grams * n);
+}
+
+/** Qué cuesta esa cantidad, para poder decidir en la fila del picker sin abrir nada. */
+function servingCost(food, idx, qty) {
+  const s = foodServing(food, idx);
+  const n = Number(qty) > 0 ? Number(qty) : 1;
+  const grams = servingGrams(food, idx, n);
+  return {
+    label: s.label, qty: n, grams,
+    kcal: Math.round(((Number(food && food.kcal100) || 0) * grams) / 100),
+    protein: Math.round(((Number(food && food.protein100) || 0) * grams) / 100),
+  };
+}
+
+/** "1 scoop · 30 g · 114 kcal · 24 g P" — la medida y lo que cuesta, en una línea. */
+function nutServingLine(food, idx, qty) {
+  const c = servingCost(food, idx, qty);
+  const medida = c.qty === 1 ? c.label : `${c.qty} × ${c.label}`;
+  // Con la medida por defecto (100 g) la etiqueta YA son los gramos: no se dicen dos veces.
+  const gramos = (c.qty === 1 && c.label === `${c.grams} g`) ? '' : `${c.grams} g · `;
+  return `${medida} · ${gramos}${nutFmt(c.kcal)} kcal · ${c.protein} g P`;
+}
+
+/**
+ * Veces y kcal por alimento a partir de las comidas. Se usa SÓLO para el backfill de las
+ * filas viejas: a partir de v11.76 el dato es un campo que mantiene `saveMeal`.
+ */
+function nutFoodUsageMap(meals) {
+  const mapa = new Map();
+  for (const m of meals || []) {
+    const cuando = `${m.date || ''}${m.time ? 'T' + m.time : ''}`;
+    for (const it of (m && m.items) || []) {
+      // El respaldo por nombre es el mismo que usaba el ranking antes de v11.76: sin él, el
+      // backfill contaría MENOS que la tabla que sustituye y el histórico parecería encogerse.
+      const k = (it && it.foodId) || (it && it.name ? nutSlug(it.name) : null);
+      if (!k) continue;
+      const u = mapa.get(k) || { count: 0, kcal: 0, lastUsedAt: null };
+      u.count++;
+      u.kcal += Number(it.kcal) || 0;
+      if (cuando && (!u.lastUsedAt || cuando > u.lastUsedAt)) u.lastUsedAt = cuando;
+      mapa.set(k, u);
+    }
+  }
+  return mapa;
+}
+
+/**
+ * Suma (o resta, al borrar una comida) un uso a un alimento. Puro: devuelve la fila nueva.
+ * `lastUsedAt` sólo avanza al sumar — borrar una comida no puede mover la última vez hacia
+ * el futuro, que es como Recent acabaría lleno de lo que ya no comes.
+ */
+function nutBumpFood(food, delta, when, kcal) {
+  const d = Number(delta) || 0;
+  const out = {
+    ...food,
+    useCount: Math.max(0, (Number(food && food.useCount) || 0) + d),
+    useKcal: Math.max(0, Math.round((Number(food && food.useKcal) || 0) + d * (Number(kcal) || 0))),
+  };
+  if (d > 0 && when) out.lastUsedAt = String(when);
+  return out;
+}
+
+/**
+ * Las secciones del picker. Función pura porque es la decisión que hace o deshace el camino
+ * B: si lo que comes a diario no está en las tres primeras filas, vuelves a la foto.
+ *
+ *   con búsqueda  → una sola lista de coincidencias (nombre o alias), lo más usado primero
+ *   sin búsqueda  → Recent (por `lastUsedAt`) · Frequent (por `useCount`) · el resto por score
+ */
+function nutPickerSections(foods, query) {
+  const lib = (foods || []).filter(f => f && f.id && f.name);
+  const q = nutNormalize(query);
+
+  if (q) {
+    const matches = lib
+      .filter(f => nutNormalize(f.name).includes(q)
+        || (f.aliases || []).some(a => nutNormalize(a).includes(q)))
+      .sort((a, b) => (Number(b.useCount) || 0) - (Number(a.useCount) || 0)
+        || foodScore(b) - foodScore(a))
+      .slice(0, 40);
+    return { query: q, matches, recent: [], frequent: [], rest: [] };
+  }
+
+  const recent = lib.filter(f => f.lastUsedAt)
+    .sort((a, b) => String(b.lastUsedAt).localeCompare(String(a.lastUsedAt)))
+    .slice(0, NUT_PICKER_SECTION_MAX);
+  const enRecent = new Set(recent.map(f => f.id));
+  const frequent = lib.filter(f => (Number(f.useCount) || 0) > 0 && !enRecent.has(f.id))
+    .sort((a, b) => (Number(b.useCount) || 0) - (Number(a.useCount) || 0))
+    .slice(0, NUT_PICKER_SECTION_MAX);
+  const arriba = new Set([...enRecent, ...frequent.map(f => f.id)]);
+  const rest = lib.filter(f => !arriba.has(f.id)).sort((a, b) => foodScore(b) - foodScore(a));
+  return { query: '', matches: [], recent, frequent, rest };
+}
+
+/**
+ * LOS CHIPS DEL CAMINO C, y por qué son EXACTAMENTE estos cinco.
+ *
+ * Describir una comida por texto falla casi siempre por lo mismo, y no es por no saber qué
+ * comiste. Cada chip es el dato que más mueve el número, atado a la regla que lo consume:
+ *
+ *   Cantidad   el primer factor de error, por encima de QUÉ era. Peso o medida casera.
+ *   Cocción    la misma pechuga a la plancha o salteada difieren ~150 kcal (REC-002)
+ *   Proteína   el suelo no negociable, 1,6-2,2 g/kg, y se juzga POR COMIDA, 30-50 g (REC-001)
+ *   Sitio      fuera se cocina con más aceite y más sal; el sesgo es sistemático (REC-002)
+ *   Bebida     el alcohol es la cuarta macro y ya se modela aparte (REC-002)
+ *
+ * La hora y el tipo de día NO son chips: el cliente ya los sabe (`nutDayType`) y los añade
+ * solo. Preguntar por un dato que ya tienes es fricción, y la fricción es lo que hundió el
+ * registro dos veces.
+ *
+ * Los chips sólo ESCRIBEN TEXTO en la nota. El contrato del servidor (`body.note`) no cambia.
+ */
+const NUT_CHIP_DEFS = [
+  {
+    key: 'portion', label: 'Portion', icon: '🖐', rule: 'all', custom: 'weight',
+    options: ['1 palm', '2 palms', '1 fist', '1 cupped hand', '1 handful',
+              '1 cup', 'half a plate', '1 full plate', '1 bowl'],
+  },
+  {
+    key: 'cooking', label: 'Cooking', icon: '🔥', rule: 'REC-002',
+    options: ['grilled, no oil', 'grilled, a little oil', 'pan-fried in oil', 'deep-fried',
+              'boiled or steamed', 'baked', 'raw', 'with butter', 'with a creamy sauce'],
+  },
+  {
+    key: 'protein', label: 'Protein', icon: '🥩', rule: 'REC-001',
+    options: ['chicken or turkey', 'beef or pork', 'fish or seafood', 'eggs',
+              'dairy or whey', 'legumes or tofu', 'no protein source'],
+    // Segundo toque: la fuente sin la cantidad no sirve para juzgar los 30-50 g por comida.
+    amounts: ['~80 g', '~120 g', '~150 g', '~200 g', '1 palm', '2 palms', '1 scoop', 'not sure'],
+  },
+  {
+    key: 'place', label: 'Place', icon: '📍', rule: 'REC-002',
+    options: ['home-cooked', 'restaurant', 'takeaway', 'canteen or work', 'packaged food'],
+  },
+  {
+    key: 'drink', label: 'Drink', icon: '🥤', rule: 'REC-002',
+    options: ['water', 'coffee or tea, no sugar', 'soft drink', 'diet soft drink',
+              'beer 330 ml', 'wine, 1 glass', 'spirits, 1 measure', 'nothing'],
+  },
+];
+
+/**
+ * La línea estructurada que los chips añaden a la nota. SU FORMATO ES UN CONTRATO: el
+ * prompt del servidor la lee por este prefijo, así que cambiarlo aquí sin cambiarlo allí
+ * deja los datos dentro de la nota pero fuera de lo que el modelo sabe interpretar.
+ */
+function nutChipLine(chips, auto) {
+  const c = chips || {};
+  const partes = [];
+  for (const def of NUT_CHIP_DEFS) {
+    const v = c[def.key];
+    if (v) partes.push(`${def.label}: ${v}`);
+  }
+  const a = auto || {};
+  if (a.time) partes.push(`Time: ${a.time}`);
+  if (a.dayType) partes.push(`Day: ${_nutDayTypeLabel(a.dayType)} day`);
+  return partes.length ? 'Context — ' + partes.join(' · ') : '';
+}
+
 // ==================== CONTEXTO DEL DÍA ====================
 
 // Masa libre de grasa. Importa que sea FFM y no peso corporal: dividir la EA por 87,1 en vez
@@ -991,13 +1214,45 @@ async function saveMeal(meal) {
     updatedAt: Date.now(),
   };
   await smartPut('meals', m);
+  // v11.76: la señal de uso de la biblioteca se actualiza AQUÍ, en el único escritor de
+  // `meals`. Antes el ranking la recalculaba escaneando todas las comidas en cada pintado.
+  await nutApplyFoodUsage(m.items, 1, `${m.date}${m.time ? 'T' + m.time : ''}`);
   await recomputeNutritionDay(m.date);
   return m;
 }
 
 async function deleteMeal(id, date) {
+  // Se lee ANTES de borrar: sin los items no hay forma de deshacer el uso que sumó.
+  const previa = await dbGet('meals', id).catch(() => null);
   await smartDelete('meals', id);
+  if (previa) await nutApplyFoodUsage(previa.items, -1, null);
   await recomputeNutritionDay(date);
+}
+
+/**
+ * Suma o resta un uso a cada alimento de una comida. Una sola pasada de lectura y tantas
+ * escrituras como alimentos distintos haya (dos o tres, no cincuenta).
+ *
+ * Nunca revienta la escritura de la comida: el uso es una señal para ordenar el picker, no
+ * un dato del registro. Si falla, el registro sigue guardado y el orden del picker se queda
+ * como estaba.
+ */
+async function nutApplyFoodUsage(items, delta, when) {
+  try {
+    const ids = [...new Set((items || []).map(it => it && it.foodId).filter(Boolean))];
+    if (!ids.length) return;
+    const foods = (await dbGetAll('foods').catch(() => [])) || [];
+    for (const id of ids) {
+      const food = foods.find(f => f && f.id === id);
+      if (!food) continue;
+      const kcal = (items || [])
+        .filter(it => it.foodId === id)
+        .reduce((s, it) => s + (Number(it.kcal) || 0), 0);
+      await smartPut('foods', nutBumpFood(food, delta, when, kcal));
+    }
+  } catch (e) {
+    console.warn('[Nutrición] uso de la biblioteca:', e);
+  }
 }
 
 // Mete en la biblioteca los alimentos que la foto descubrió y que no existían. Se guardan
@@ -1043,7 +1298,38 @@ async function seedFoods() {
     n++;
   }
   if (n) console.log(`[Nutricion] Biblioteca sembrada con ${n} alimentos`);
+  await nutBackfillFoodUsage();
   return n;
+}
+
+/**
+ * v11.76 · El uso histórico, UNA vez. `useCount`/`lastUsedAt` nacen ahora, así que sin esto
+ * el ranking diría "0 veces" de un alimento registrado treinta veces — un dato que la app
+ * tiene y que se leería como que no lo comes.
+ *
+ * Sólo toca las filas que NO tienen el campo y que aparecen en alguna comida: en la segunda
+ * ejecución no escribe nada. Va aquí y no en un render porque un pintado no puede escribir
+ * (E-11), y `seedFoods()` ya corre después de `checkAuth()`, así que esto sí sincroniza.
+ */
+async function nutBackfillFoodUsage() {
+  try {
+    const foods = (await dbGetAll('foods').catch(() => [])) || [];
+    const pendientes = foods.filter(f => f && f.useCount == null);
+    if (!pendientes.length) return 0;
+    const uso = nutFoodUsageMap((await dbGetAll('meals').catch(() => [])) || []);
+    let n = 0;
+    for (const f of pendientes) {
+      const u = uso.get(f.id);
+      if (!u || !u.count) continue;      // nunca comido: se lee como 0 sin ocupar una fila
+      await smartPut('foods', { ...f, useCount: u.count, useKcal: Math.round(u.kcal), lastUsedAt: u.lastUsedAt });
+      n++;
+    }
+    if (n) console.log(`[Nutricion] Uso histórico recuperado en ${n} alimentos`);
+    return n;
+  } catch (e) {
+    console.warn('[Nutrición] backfill de uso:', e);
+    return 0;
+  }
 }
 
 // ==================== UI: PESTAÑA NUTRICIÓN ====================
@@ -1343,6 +1629,9 @@ const NUT_MAX_FOTOS = 4;
 const NUT_FOTO_MAX_PX = 1400;
 
 let _nutStaged = [];   // [{ id, blob, url }]
+// CAMINO C · Lo que los chips han puesto. Vive aparte del textarea a propósito: el texto es
+// del usuario y no se le reescribe debajo del cursor. Se juntan al enviar.
+let _nutChips = {};
 
 // Redimensiona en el móvil antes de subir. `imageOrientation: 'from-image'` aplica el EXIF:
 // sin eso, una foto hecha en vertical llega girada y el modelo estima sobre un plato tumbado.
@@ -1386,6 +1675,7 @@ function nutOpenComposer() {
   const c = document.getElementById('nut-composer');
   if (c) c.classList.remove('hidden');
   renderNutStaged();
+  renderNutChips();
 }
 
 function nutCloseComposer(limpiar) {
@@ -1394,10 +1684,72 @@ function nutCloseComposer(limpiar) {
   if (limpiar !== false) {
     _nutStaged.forEach(s => URL.revokeObjectURL(s.url));
     _nutStaged = [];
+    _nutChips = {};
     const nota = document.getElementById('nut-composer-note');
     if (nota) nota.value = '';
   }
   renderNutStaged();
+  renderNutChips();
+}
+
+// ── CAMINO C · Los chips que ayudan al modelo a interpretar la descripción ───────────
+//
+// No son un formulario: son atajos que rellenan la nota. Ninguno es obligatorio y el texto
+// libre sigue mandando. Por qué EXACTAMENTE estos cinco, y qué regla consume cada uno, está
+// en `NUT_CHIP_DEFS`. La hora y el tipo de día no se preguntan: la app ya los sabe.
+function renderNutChips() {
+  const cont = document.getElementById('nut-chips');
+  if (!cont) return;
+  cont.innerHTML = NUT_CHIP_DEFS.map(d => {
+    const v = _nutChips[d.key];
+    return `<button type="button" class="nut-chip ${v ? 'nut-chip-set' : ''}" data-chip="${d.key}">`
+      + `<span class="nut-chip-ico">${d.icon}</span>${escapeHtml(v || d.label)}</button>`;
+  }).join('');
+  cont.querySelectorAll('[data-chip]').forEach(b => {
+    b.addEventListener('click', () => nutTapChip(b.dataset.chip));
+  });
+
+  const linea = document.getElementById('nut-chip-line');
+  if (!linea) return;
+  const txt = nutChipLine(_nutChips, {});
+  linea.textContent = txt ? `${txt} — the time of day and the day type are added for you.` : '';
+  linea.classList.toggle('hidden', !txt);
+}
+
+async function nutTapChip(key) {
+  const def = NUT_CHIP_DEFS.find(d => d.key === key);
+  if (!def) return;
+
+  const opciones = def.options.map(o => ({ label: o, value: o, selected: _nutChips[key] === o }));
+  if (def.custom === 'weight') opciones.push({ label: 'Weigh it', value: '__weight__' });
+  if (_nutChips[key]) opciones.push({ label: 'Clear', value: '__clear__' });
+
+  const v = await showActionSheet(def.label, opciones);
+  if (v == null) return;
+
+  if (v === '__clear__') { delete _nutChips[key]; renderNutChips(); return; }
+
+  if (v === '__weight__') {
+    const g = (typeof promptSheet === 'function')
+      ? await promptSheet({ title: 'Weight in grams', placeholder: '180', confirmLabel: 'Use it' })
+      : null;
+    const n = Math.round(parseFloat(g) || 0);
+    if (n > 0) { _nutChips[key] = `${n} g`; renderNutChips(); }
+    return;
+  }
+
+  // La proteína pide un segundo toque: la fuente SIN la cantidad no sirve para juzgar los
+  // 30-50 g por comida, que es lo que REC-001 mira y lo único que decide si la comida cumple.
+  if (def.amounts && v !== 'no protein source') {
+    const cuanto = await showActionSheet('How much protein?',
+      def.amounts.map(o => ({ label: o, value: o })));
+    _nutChips[key] = (cuanto && cuanto !== 'not sure') ? `${v}, ${cuanto}` : v;
+    renderNutChips();
+    return;
+  }
+
+  _nutChips[key] = v;
+  renderNutChips();
 }
 
 function renderNutStaged() {
@@ -1439,9 +1791,23 @@ function renderNutStaged() {
 
 async function nutAnalyze() {
   const notaEl = document.getElementById('nut-composer-note');
-  const note = (notaEl && notaEl.value.trim()) || '';
+  const texto = (notaEl && notaEl.value.trim()) || '';
 
-  if (!_nutStaged.length && !note) { toast('Add a photo or write what you ate'); return; }
+  // Los chips solos no son una comida: describen CÓMO era, no QUÉ era. Sin foto y sin texto
+  // propio no hay nada que registrar, y una llamada al modelo con "Portion: 1 plate" y nada
+  // más devolvería items vacíos y habría costado dinero.
+  if (!_nutStaged.length && !texto) { toast('Add a photo or write what you ate'); return; }
+
+  // CAMINO C · La nota que viaja es el texto del usuario MÁS la línea de contexto. El
+  // contrato del servidor no cambia: sigue siendo `{ photoPaths, note }`. La hora y el tipo
+  // de día los añade el cliente porque ya los sabe (`nutDayType`, REC-007) — preguntarlos
+  // sería fricción, y la fricción es lo que hundió el registro dos veces.
+  const ahora = new Date();
+  const hora = `${String(ahora.getHours()).padStart(2, '0')}:${String(ahora.getMinutes()).padStart(2, '0')}`;
+  let tipoDia = null;
+  try { tipoDia = await nutDayType(today()); } catch (e) { /* sin tipo de día se sigue igual */ }
+  const contexto = nutChipLine(_nutChips, { time: hora, dayType: tipoDia });
+  const note = [texto, contexto].filter(Boolean).join('\n');
 
   const supa = nutSupa();
   const user = (typeof window !== 'undefined' && window.getSupaUser) ? await window.getSupaUser() : null;
@@ -1452,7 +1818,7 @@ async function nutAnalyze() {
   if (!supa || !user || !navigator.onLine) {
     nutStatus('Offline or not signed in: add the foods by hand from your library.', 'warn');
     nutCloseComposer();
-    openNutConfirm({ items: [], mealType: nutGuessMealType(), notes: '' });
+    openNutConfirm({ items: [], mealType: nutGuessMealType(), notes: '', note });
     return;
   }
 
@@ -1490,7 +1856,7 @@ async function nutAnalyze() {
     console.error('[Nutrición] analizar:', e);
     nutStatus(`${e.message}. You can add it by hand.`, 'error');
     nutCloseComposer();
-    openNutConfirm({ items: [], mealType: nutGuessMealType(), notes: '' });
+    openNutConfirm({ items: [], mealType: nutGuessMealType(), notes: '', note });
   } finally {
     if (btn) btn.disabled = false;
   }
@@ -1578,6 +1944,7 @@ function renderNutConfirmItems() {
               ${nutFmt(it.kcal)} kcal · ${Math.round(it.protein)} g P
               · ${Math.round(it.carbs)} C · ${Math.round(it.fat)} G
             </div>
+            <button type="button" class="nut-item-save" data-save-food="${i}">Save to my foods</button>
           </div>
           <div class="nut-item-grams">
             <input type="number" inputmode="numeric" step="10" min="0"
@@ -1602,8 +1969,109 @@ function renderNutConfirmItems() {
       renderNutConfirmItems();
     });
   });
+  cont.querySelectorAll('[data-save-food]').forEach(btn => {
+    btn.addEventListener('click', () => nutSaveItemAsFood(parseInt(btn.dataset.saveFood, 10)));
+  });
+
+  // Guardar la comida ENTERA como un plato sólo tiene sentido con varios items: con uno solo
+  // es el mismo botón de la fila, y dos botones que hacen lo mismo es peor que uno.
+  const platoBtn = document.getElementById('nut-confirm-save-food');
+  if (platoBtn) platoBtn.classList.toggle('hidden', items.length < 2);
 
   renderNutConfirmTotals();
+}
+
+// ── CAMINO A · Guardar el plato en la biblioteca ────────────────────────────────────
+//
+// EL CASO REAL, en palabras de Julian: pide dos o tres platos distintos en Honest Greens y
+// los repite cuatro o cinco veces al mes. Hoy eso son cuatro o cinco fotos del mismo bowl.
+// Se fotografía UNA vez, se corrige el gramaje UNA vez, y a partir de ahí se elige por el
+// camino B en dos toques.
+//
+// LA MEDIDA POR DEFECTO ES LA QUE DE VERDAD COMISTE, no 100 g: de un bowl de 420 g, "100 g"
+// no es una cantidad que nadie vaya a pedir nunca.
+const NUT_DISH_SERVING_LABEL = '1 portion';
+
+async function nutSaveItemAsFood(i) {
+  if (!_nutPending) return;
+  const it = _nutPending.items[i];
+  if (!it || !(Number(it.grams) > 0)) { toast('Set the grams first'); return; }
+
+  const foods = (await dbGetAll('foods').catch(() => [])) || [];
+  const id = it.foodId || nutSlug(it.name);
+  const existente = foods.find(f => f && f.id === id) || findFood(foods, it.name);
+
+  // Los macros por 100 g: los del item si vinieron con él, y si no, la regla de tres desde
+  // lo que se comió. Nunca al revés — el por 100 g sigue siendo la única verdad.
+  const g = Number(it.grams);
+  const per100 = it.per100 || {
+    kcal100: Math.round((Number(it.kcal) || 0) * 100 / g),
+    protein100: Math.round(((Number(it.protein) || 0) * 100 / g) * 10) / 10,
+    carbs100: Math.round(((Number(it.carbs) || 0) * 100 / g) * 10) / 10,
+    fat100: Math.round(((Number(it.fat) || 0) * 100 / g) * 10) / 10,
+    fiber100: Math.round(((Number(it.fiber) || 0) * 100 / g) * 10) / 10,
+    alcohol100: Math.round(((Number(it.alcohol) || 0) * 100 / g) * 10) / 10,
+    nova: it.nova || 3,
+  };
+  // `verified: false` a propósito aunque el usuario lo esté guardando a mano: los macros
+  // salieron de una foto o de una nota, y el coach "resto del día" sólo propone verificados.
+  const base = existente || {
+    id, name: it.name, aliases: [],
+    kcal100: per100.kcal100, protein100: per100.protein100, carbs100: per100.carbs100,
+    fat100: per100.fat100, fiber100: per100.fiber100, alcohol100: per100.alcohol100 || 0,
+    nova: per100.nova || it.nova || 3,
+    source: 'dish',
+    verified: false,
+    createdAt: Date.now(),
+  };
+
+  await smartPut('foods', {
+    ...base,
+    serving: { label: NUT_DISH_SERVING_LABEL, grams: Math.round(g) },
+    photoPath: _nutPending.photoPath || base.photoPath || null,
+    updatedAt: Date.now(),
+  });
+  toast(existente ? `${base.name}: ${Math.round(g)} g saved as your serving`
+                  : `${base.name} saved to your foods`);
+}
+
+// La comida entera como UN plato. Es el pedido completo ("lo de siempre en Honest Greens"),
+// no un ingrediente: se suma todo y se guarda con el peso total como medida.
+async function nutSaveMealAsFood() {
+  if (!_nutPending || !_nutPending.items.length) return;
+  const items = _nutPending.items;
+  if (items.length === 1) { await nutSaveItemAsFood(0); return; }
+
+  const sugerido = items.map(x => x.name).slice(0, 2).join(' + ');
+  const nombre = (typeof promptSheet === 'function')
+    ? await promptSheet({ title: 'Name this dish', placeholder: 'Honest Greens · my usual', value: sugerido, confirmLabel: 'Save' })
+    : sugerido;
+  if (nombre === null) return;
+  const name = String(nombre || sugerido).trim();
+  if (!name) return;
+
+  const sum = (k) => items.reduce((s, x) => s + (Number(x[k]) || 0), 0);
+  const g = Math.round(sum('grams'));
+  if (g <= 0) { toast('Set the grams first'); return; }
+  const per = (k) => Math.round((sum(k) * 100 / g) * 10) / 10;
+
+  await smartPut('foods', {
+    id: nutSlug(name),
+    name,
+    aliases: [],
+    kcal100: Math.round(sum('kcal') * 100 / g),
+    protein100: per('protein'), carbs100: per('carbs'), fat100: per('fat'),
+    fiber100: per('fiber'), alcohol100: per('alcohol'),
+    // El NOVA del plato es el peor de sus partes: un bowl con un ultraprocesado dentro no
+    // deja de tenerlo porque el resto sea verdura.
+    nova: Math.max(...items.map(x => Number(x.nova) || 3)),
+    serving: { label: NUT_DISH_SERVING_LABEL, grams: g },
+    photoPath: _nutPending.photoPath || null,
+    source: 'dish',
+    verified: false,
+    createdAt: Date.now(),
+  });
+  toast(`${name} saved to your foods · ${g} g`);
 }
 
 // Reescala los macros de un item a los gramos nuevos. Se usa `per100` cuando el item lo
@@ -1646,26 +2114,30 @@ function renderNutConfirmTotals() {
   `;
 }
 
-// Añadir a mano desde la biblioteca: también es la vía cuando no hay red.
+// ── CAMINO B · La biblioteca, con medidas y por uso ─────────────────────────────────
+//
+// LO QUE HABÍA Y POR QUÉ NO SERVÍA: un `showActionSheet` con los 40 mejores por `foodScore`
+// que insertaba SIEMPRE 100 g. Dos cosas mal, y las dos hacían que uno volviera a la foto:
+// cuarenta filas ordenadas por una fórmula de calidad no son la lista de lo que comes, y
+// 100 g de whey no son una medida — son tres veces el bote de un scoop.
+//
+// Ahora: hoja inferior sobre el chasis de `.plate-sheet`, buscador, Recent y Frequent
+// arriba, y un stepper que cuenta MEDIDAS. Los gramos siguen por debajo y son lo que
+// persiste; la medida sólo decide cuántos.
 async function nutAddItemManual() {
   const foods = (await dbGetAll('foods').catch(() => [])) || [];
   if (!foods.length) { toast('Your library is empty'); return; }
+  const elegido = await nutOpenFoodPicker(foods);
+  if (!elegido || !elegido.food) return;
+  nutPushItemFromFood(elegido.food, servingGrams(elegido.food, elegido.idx, elegido.qty));
+}
 
-  // Los mejores por score primero: es la lista que uno quiere ver en un selector corto.
-  const ordenados = foods
-    .map(f => ({ f, score: foodScore(f) }))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 40);
-
-  const elegido = await showActionSheet('Add food', ordenados.map(o => ({
-    label: `${o.f.name} · ${o.f.kcal100} kcal/100 g · ${o.score}`,
-    value: o.f.id,
-  })));
-  if (!elegido) return;
-
-  const food = foods.find(f => f.id === elegido);
-  if (!food) return;
-  const item = itemFromFood(food, 100, { estimated: false, confidence: 1 });
+// Mete un alimento de la biblioteca en la hoja de confirmación. Los macros por 100 g viajan
+// pegados al item para que corregir los gramos después siga siendo exacto y no una regla de
+// tres sobre otra regla de tres.
+function nutPushItemFromFood(food, grams) {
+  if (!_nutPending) return;
+  const item = itemFromFood(food, grams, { estimated: false, confidence: 1 });
   item.per100 = {
     kcal100: food.kcal100, protein100: food.protein100, carbs100: food.carbs100,
     fat100: food.fat100, fiber100: food.fiber100, alcohol100: food.alcohol100 || 0,
@@ -1674,6 +2146,113 @@ async function nutAddItemManual() {
   item.resolved = 'biblioteca';
   _nutPending.items.push(item);
   renderNutConfirmItems();
+}
+
+// Estado vivo del picker. Las cantidades y la medida elegida son por sesión de hoja: no se
+// guardan, porque "la última vez pusiste 2" es justo el tipo de memoria que hace registrar
+// de más sin mirar.
+let _nutPickerState = null;
+
+/**
+ * La hoja del picker. Devuelve `{ food, idx, qty }` o `null` si se cierra sin elegir — la
+ * misma semántica que `showActionSheet`, así que los llamadores no cambian de forma.
+ */
+function nutOpenFoodPicker(foods) {
+  return new Promise((resolve) => {
+    const sheet = document.getElementById('nut-picker');
+    const backdrop = document.getElementById('nut-picker-backdrop');
+    const search = document.getElementById('nut-picker-search');
+    const cerrarBtn = document.getElementById('nut-picker-close');
+    // Sin la hoja en el DOM (una versión vieja cacheada) no se pierde el gesto.
+    if (!sheet || !backdrop || !search) { resolve(null); return; }
+
+    _nutPickerState = { foods: foods || [], qty: new Map(), unit: new Map(), resolve: null };
+    search.value = '';
+    renderNutPickerList();
+
+    const cerrar = (val) => {
+      // Sin el blur, en iOS el teclado se queda levantado sobre la hoja de confirmación a la
+      // que se vuelve, tapando justo los gramos que se acaban de añadir.
+      search.blur();
+      sheet.classList.remove('visible');
+      backdrop.classList.remove('visible');
+      setTimeout(() => { sheet.classList.add('hidden'); backdrop.classList.add('hidden'); }, 220);
+      search.removeEventListener('input', renderNutPickerList);
+      backdrop.removeEventListener('click', onCancel);
+      if (cerrarBtn) cerrarBtn.removeEventListener('click', onCancel);
+      _nutPickerState = null;
+      resolve(val);
+    };
+    function onCancel() { cerrar(null); }
+    _nutPickerState.resolve = cerrar;
+
+    search.addEventListener('input', renderNutPickerList);
+    backdrop.addEventListener('click', onCancel);
+    if (cerrarBtn) cerrarBtn.addEventListener('click', onCancel);
+
+    sheet.classList.remove('hidden');
+    backdrop.classList.remove('hidden');
+    requestAnimationFrame(() => { sheet.classList.add('visible'); backdrop.classList.add('visible'); });
+  });
+}
+
+function renderNutPickerList() {
+  const cont = document.getElementById('nut-picker-list');
+  const st = _nutPickerState;
+  if (!cont || !st) return;
+  const q = (document.getElementById('nut-picker-search') || {}).value || '';
+  const sec = nutPickerSections(st.foods, q);
+
+  const fila = (f) => {
+    const idx = st.unit.get(f.id) || 0;
+    const qty = st.qty.get(f.id) || 1;
+    const varias = foodServings(f).length > 1;
+    return `
+      <div class="nut-pick-row">
+        <button type="button" class="nut-pick-main" data-pick="${f.id}">
+          <span class="nut-pick-name">${escapeHtml(f.name)}</span>
+          <span class="nut-pick-cost">${nutServingLine(f, idx, qty)}</span>
+        </button>
+        ${varias ? `<button type="button" class="nut-pick-unit" data-unit="${f.id}" aria-label="Change measure">⇄</button>` : ''}
+        <span class="nut-pick-step">
+          <button type="button" data-qty="${f.id}" data-delta="-1" aria-label="One less">−</button>
+          <b class="nut-pick-qty">${qty}</b>
+          <button type="button" data-qty="${f.id}" data-delta="1" aria-label="One more">+</button>
+        </span>
+      </div>`;
+  };
+  const bloque = (titulo, filas) => filas.length
+    ? `<div class="nut-pick-sec">${titulo}</div>${filas.map(fila).join('')}` : '';
+
+  cont.innerHTML = sec.query
+    ? (sec.matches.length ? sec.matches.map(fila).join('')
+                          : `<div class="nut-pick-empty">Nothing in your library matches that. Take a photo or write it instead.</div>`)
+    : bloque('Recent', sec.recent) + bloque('Frequent', sec.frequent)
+      + bloque('All foods · best score first', sec.rest);
+
+  cont.querySelectorAll('[data-qty]').forEach(b => {
+    b.addEventListener('click', () => {
+      const id = b.dataset.qty;
+      const n = (st.qty.get(id) || 1) + parseInt(b.dataset.delta, 10);
+      st.qty.set(id, Math.min(12, Math.max(1, n)));
+      renderNutPickerList();
+    });
+  });
+  cont.querySelectorAll('[data-unit]').forEach(b => {
+    b.addEventListener('click', () => {
+      const id = b.dataset.unit;
+      const f = st.foods.find(x => x.id === id);
+      st.unit.set(id, ((st.unit.get(id) || 0) + 1) % foodServings(f).length);
+      renderNutPickerList();
+    });
+  });
+  cont.querySelectorAll('[data-pick]').forEach(b => {
+    b.addEventListener('click', () => {
+      const f = st.foods.find(x => x.id === b.dataset.pick);
+      if (!f || !st.resolve) return;
+      st.resolve({ food: f, idx: st.unit.get(f.id) || 0, qty: st.qty.get(f.id) || 1 });
+    });
+  });
 }
 
 async function nutSaveConfirmed() {
@@ -2047,35 +2626,22 @@ async function renderNutFoods() {
   const el = document.getElementById('nut-foods');
   if (!el) return;
 
-  const [foods, meals] = await Promise.all([
-    dbGetAll('foods').catch(() => []),
-    dbGetAll('meals').catch(() => []),
-  ]);
-  if (!foods || !foods.length) {
+  const foods = (await dbGetAll('foods').catch(() => [])) || [];
+  if (!foods.length) {
     showEmptyState(el, '🥩', 'Empty library', 'It is seeded when you sign in.');
     return;
   }
 
-  // Veces registrado y kcal acumuladas: es lo que distingue "un alimento que existe" de
-  // "un alimento que de verdad comes".
-  const uso = new Map();
-  for (const m of meals || []) {
-    for (const it of m.items || []) {
-      const k = it.foodId || nutSlug(it.name);
-      const u = uso.get(k) || { veces: 0, kcal: 0 };
-      u.veces++; u.kcal += Number(it.kcal) || 0;
-      uso.set(k, u);
-    }
-  }
-
-  const filas = foods.map(f => {
-    const u = uso.get(f.id) || { veces: 0, kcal: 0 };
-    return {
-      f, score: foodScore(f), pd: proteinDensity(f),
-      kcalPorG: (Number(f.kcal100) || 0) / 100,
-      veces: u.veces, kcalTotal: Math.round(u.kcal),
-    };
-  });
+  // v11.76: veces registrado y kcal acumuladas son CAMPOS (`useCount` / `useKcal`), que
+  // mantiene `saveMeal`. Antes esto escaneaba todas las comidas —todas, no las del mes— en
+  // cada pintado de la pestaña, y el historial sólo crece. El uso histórico de antes de
+  // v11.76 lo recupera `nutBackfillFoodUsage()` una vez, al arrancar.
+  const filas = foods.map(f => ({
+    f, score: foodScore(f), pd: proteinDensity(f),
+    kcalPorG: (Number(f.kcal100) || 0) / 100,
+    veces: Number(f.useCount) || 0,
+    kcalTotal: Math.round(Number(f.useKcal) || 0),
+  }));
 
   const ordenes = {
     score: (a, b) => b.score - a.score,
@@ -2100,6 +2666,7 @@ async function renderNutFoods() {
       <td class="nut-food-name">
         ${escapeHtml(r.f.name)}
         ${r.f.verified === false ? '<span class="nut-tag nut-tag-nuevo">unverified</span>' : ''}
+        ${r.f.serving ? `<span class="nut-food-serving">${escapeHtml(r.f.serving.label)} · ${Math.round(r.f.serving.grams)} g</span>` : ''}
       </td>
       <td class="nut-food-score"><span class="nut-score-pill ${r.score >= 70 ? 'nut-verde' : r.score >= 40 ? 'nut-ambar' : 'nut-rojo'}">${r.score}</span></td>
       <td>${r.pd.toFixed(1)}</td>
@@ -2265,6 +2832,8 @@ function bindNutricionV2() {
   if (save) save.addEventListener('click', nutSaveConfirmed);
   const add = document.getElementById('nut-confirm-add');
   if (add) add.addEventListener('click', nutAddItemManual);
+  const guardarPlato = document.getElementById('nut-confirm-save-food');
+  if (guardarPlato) guardarPlato.addEventListener('click', nutSaveMealAsFood);
   const energy = document.getElementById('btn-nut-energy');
   if (energy) energy.addEventListener('click', nutSaveEnergy);
 
@@ -2291,5 +2860,9 @@ if (typeof module !== 'undefined' && module.exports) {
     // F-20 / F-21 (v11.73): carbohidrato por tipo de día (REC-007) y proteína por comida.
     NUT_CARB_TARGETS, NUT_PROTEIN_MEAL_MIN, NUT_PROTEIN_MEAL_MAX,
     NUT_LONGRUN_KM, NUT_LONGRUN_MIN, nutDayType, nutDayTargets, _nutDayTypeLabel,
+    // v11.76: medidas de verdad, señal de uso, picker y chips. Todo puro.
+    foodServings, foodServing, servingGrams, servingCost, nutServingLine,
+    nutFoodUsageMap, nutBumpFood, nutPickerSections, nutChipLine,
+    NUT_DEFAULT_SERVING, NUT_CHIP_DEFS, NUT_PICKER_SECTION_MAX, NUT_DISH_SERVING_LABEL,
   };
 }

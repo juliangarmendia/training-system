@@ -594,7 +594,7 @@ async function renderCoachGoalLine() {
 // LA VERSIÓN DE LA APP viaja al servidor (`clientVersion`) y al pack (`meta.appVersion`), que
 // es lo que permite luego saber qué código produjo una revisión rara.
 // `verify-coach-wiring.mjs` comprueba que coincide con la de index.html y con `CACHE_NAME`.
-const COACH_APP_VERSION = 'v11.74';
+const COACH_APP_VERSION = 'v11.77';
 
 const COACH_MAX_SESSION_IDS = 12;   // el tope que valida la edge function
 const COACH_MAX_EXERCISE_IDS = 150; // idem

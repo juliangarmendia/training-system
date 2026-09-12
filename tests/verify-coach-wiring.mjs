@@ -1649,11 +1649,16 @@ const HOME_IDS = [...HOME_HTML.matchAll(/id="([a-z0-9-]+)"/g)].map(m => m[1]);
 const HOME_ESPERADO = [
   'view-home', 'home-scroll',
   'resume-workout-banner', 'resume-mobility-banner',
-  'home-topbar', 'plan-selector', 'week-calendar',
+  'home-topbar',
+  // v11.77 (punto 3 de Julian): los cuatro tiles SUBEN por delante de "Your plan". Son los
+  // numeros con los que se decide si hoy se entrena y como (readiness, carga de RPE, racha,
+  // volumen); leerlos despues del plan es leerlos cuando ya has decidido. Estaban al fondo,
+  // entre la tarjeta de hoy y "This week".
+  'home-stat-trio',
+  'plan-selector', 'week-calendar',
   'coach-week-card', 'coach-goal-line',
   'todays-detail',                    // la fila "Today's session"
   'coach-readout', 'todays-plan-card',
-  'home-stat-trio',                   // v11.65: 4 tiles, Readiness el primero
   'queue-ahead',                      // la fila "This week"
   'home-queue',
 ];

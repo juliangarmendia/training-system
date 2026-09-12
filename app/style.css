@@ -2168,6 +2168,70 @@ body[data-tab="home"] .home-scroll-v2 { padding-top: calc(var(--safe-top) + 10px
 .nut-confirm-totals { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); font-size: var(--fs-xs); color: var(--text3); }
 .nut-confirm-totals strong { color: var(--text); font-family: var(--font-mono); font-size: 15px; font-variant-numeric: tabular-nums; }
 
+/* ========== v11.76 · La comida en tres caminos ==========
+   A · guardar el plato desde la hoja de confirmación · B · el picker con medidas de verdad
+   · C · los chips que estructuran la descripción de texto. */
+
+/* A · "Save to my foods" en cada fila. Un botón de texto, no un primario: es una acción
+   secundaria dentro de una hoja cuyo botón principal es guardar la comida. */
+.nut-item-save { background: none; border: none; padding: 4px 0 0; margin: 0; font-size: 10px;
+  font-weight: 600; color: var(--accent); cursor: pointer; text-align: left; letter-spacing: 0.2px; }
+.nut-item-save:active { opacity: 0.6; }
+
+/* B · El picker. Se abre SOBRE la hoja de confirmación, que es un `.modal` en z-index 900;
+   el chasis de `.plate-sheet` vive en 111, así que sin esto se pintaría debajo. El marcado
+   está fuera de `#app` por la misma razón (ver el comentario en index.html): dentro, el
+   contexto de apilamiento de `#app` lo dejaría bajo el modal hiciera lo que hiciera con su
+   z-index. 2900/2901 queda por encima del modal (900) y del toast (2000), y por debajo del
+   action sheet (3000), que es el que los chips abren encima de todo. */
+/* `overflow: hidden` en la hoja y el scroll SÓLO en la lista: con los dos scrollando, en
+   iOS el gesto se lo queda el contenedor de fuera y la lista no se mueve. `min-height: 0`
+   es lo que permite que un hijo flex encoja por debajo de su contenido y scrollee. */
+#nut-picker { z-index: 2901; max-height: 78vh; display: flex; flex-direction: column; overflow: hidden; }
+#nut-picker-backdrop { z-index: 2900; }
+.nut-picker-search { width: 100%; margin-bottom: 10px; flex-shrink: 0; }
+.nut-picker-list { overflow-y: auto; -webkit-overflow-scrolling: touch; display: flex; flex-direction: column; gap: 6px; min-height: 0; }
+.nut-pick-sec { font-size: 9px; font-weight: 700; color: var(--text3); text-transform: uppercase;
+  letter-spacing: 0.5px; margin: 10px 0 2px; }
+.nut-pick-sec:first-child { margin-top: 0; }
+.nut-pick-row { display: flex; align-items: center; gap: 8px; background: var(--surface);
+  border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 10px; }
+.nut-pick-main { flex: 1; min-width: 0; background: none; border: none; padding: 0; margin: 0;
+  text-align: left; cursor: pointer; display: flex; flex-direction: column; gap: 2px; min-height: 40px;
+  justify-content: center; }
+.nut-pick-main:active { opacity: 0.6; }
+.nut-pick-name { font-size: 13px; font-weight: 600; color: var(--text); }
+/* La medida y lo que cuesta, para decidir sin abrir nada. */
+.nut-pick-cost { font-size: 10px; color: var(--text3); font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.nut-pick-unit { flex-shrink: 0; width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--border2);
+  background: transparent; color: var(--text2); font-size: 13px; cursor: pointer; }
+/* El stepper cuenta MEDIDAS, no gramos: los gramos siguen por debajo y son lo que persiste. */
+.nut-pick-step { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+.nut-pick-step button { width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--border2);
+  background: var(--surface2); color: var(--text); font-size: 15px; line-height: 1; cursor: pointer; }
+.nut-pick-step button:active { opacity: 0.6; }
+.nut-pick-qty { min-width: 18px; text-align: center; font-size: 13px; font-weight: 700;
+  font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.nut-pick-empty { font-size: var(--fs-xs); color: var(--text3); text-align: center; padding: 22px 12px; line-height: 1.5; }
+
+/* La medida, también en el ranking: es el único sitio donde se ve la biblioteca entera. */
+.nut-food-serving { display: block; font-size: 9px; color: var(--text3); font-family: var(--font-mono); margin-top: 2px; }
+
+/* C · Los chips del compositor. Opcionales, y se ven puestos: el que lleva valor pinta en
+   acento, así que de un vistazo se sabe qué sabe ya el modelo y qué no. */
+.nut-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.nut-chip { display: inline-flex; align-items: center; gap: 4px; background: var(--surface2);
+  border: 1px solid var(--border); border-radius: 999px; padding: 6px 11px; font-size: 11px;
+  font-weight: 600; color: var(--text2); cursor: pointer; min-height: 32px; }
+.nut-chip:active { opacity: 0.6; }
+.nut-chip-set { background: var(--tint-green); border-color: transparent; color: var(--accent); }
+.nut-chip-ico { font-size: 12px; }
+/* La línea exacta que se va a añadir a la nota. Se enseña porque es lo que lee el modelo:
+   un atajo que escribe algo invisible es un atajo en el que no se puede confiar. */
+.nut-chip-line { margin-top: 8px; font-size: 10px; color: var(--text3); line-height: 1.5;
+  font-family: var(--font-mono); word-break: break-word; }
+.nut-chip-line.hidden { display: none; }
+
 /* En pantallas estrechas los cuatro números del contrato pasan a dos filas antes que
    encogerse hasta ser ilegibles. */
 @media (max-width: 360px) {
@@ -2275,7 +2339,9 @@ body[data-tab="home"] .home-scroll-v2 { padding-top: calc(var(--safe-top) + 10px
 .nut-composer-actions { display: flex; gap: 8px; margin-top: 10px; }
 .nut-composer-actions button { flex: 1; }
 /* Tu nota, separada visualmente de lo que dedujo el modelo. */
-.nut-user-note { font-size: var(--fs-xs); color: var(--text2); background: var(--surface2); border-radius: var(--radius-sm); padding: 8px 10px; margin-bottom: 8px; line-height: 1.45; }
+/* `pre-line`: desde v11.76 la nota lleva el texto del usuario y, en una segunda línea, la
+   línea de contexto de los chips. Sin esto se leerían pegadas en un solo párrafo. */
+.nut-user-note { font-size: var(--fs-xs); color: var(--text2); background: var(--surface2); border-radius: var(--radius-sm); padding: 8px 10px; margin-bottom: 8px; line-height: 1.45; white-space: pre-line; }
 
 /* ==================================================
    COACH v2 — objetivo del set y lectura de sesión (v11.57)
@@ -2575,6 +2641,11 @@ body[data-tab="home"] .home-scroll-v2 { padding-top: calc(var(--safe-top) + 10px
    como un diálogo del navegador (con el dominio en la cabecera), no admiten varias líneas —y
    la nota para el coach es justo eso— y no se pueden estilar. Reutiliza el chasis de
    `.plate-sheet`; aquí sólo van el campo y los dos botones. */
+/* v11.76 · El marcado subió a nivel de `body` (ver index.html) y con él hace falta un
+   z-index que gane a `.modal` (900): la hoja se abre ahora también desde DENTRO de un modal
+   —"Save the whole meal to my foods"— y con los 111 de `.plate-sheet` quedaría detrás. */
+#prompt-sheet { z-index: 2911; }
+#prompt-sheet-backdrop { z-index: 2910; }
 .prompt-sheet-body { display: flex; flex-direction: column; gap: 10px; }
 .prompt-sheet-input { min-height: 44px; }
 textarea.prompt-sheet-input { min-height: 96px; resize: none; line-height: 1.45; }
@@ -2590,3 +2661,48 @@ textarea.prompt-sheet-input { min-height: 96px; resize: none; line-height: 1.45;
 /* V-23 · El tile de Readiness cuando WHOOP no está conectado es un botón a Integraciones. */
 button.stat-card { width: 100%; text-align: left; font: inherit; cursor: pointer; }
 button.stat-card:active { opacity: 0.7; }
+
+
+/* ==================================================
+   v11.75 / v11.77 — la semana que se adapta y el cardio con opciones
+   ================================================== */
+
+/* "This week": cada dia dice QUE. Antes la unica diferencia entre hecho y pendiente era la
+   opacidad de una barra de 2 px, y los dias pasados no ensenaban plan ninguno — un martes
+   fallado se veia igual que un martes de descanso. La etiqueta cabe en la columna porque se
+   recorta por palabra en el render; aqui solo se le pone tamano y color. */
+.wc-cell .wc-label {
+  display: block; margin-top: 3px; font-size: var(--fs-3xs); line-height: 1.2;
+  color: var(--text3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 100%;
+}
+.wc-cell .wc-label.-done { color: var(--accent); }
+.wc-cell .wc-label.-pending { color: var(--text2); }
+.wc-cell .wc-label.-missed { color: var(--text3); text-decoration: line-through; }
+.wc-cell .wc-label.-rest { color: var(--text3); opacity: 0.6; }
+
+/* Las opciones del dia de cardio. Reutiliza el chasis de `.swap-option` (el unico selector
+   inline de N opciones que ya tenia la app) y solo anade la numeracion y el porque. */
+.cardio-opts { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+.cardio-opt { display: flex; align-items: flex-start; gap: 10px; text-align: left; width: 100%; }
+.cardio-opt-n {
+  flex-shrink: 0; width: 20px; height: 20px; border-radius: 50%;
+  background: var(--surface3); color: var(--text2);
+  font-family: var(--font-mono); font-size: var(--fs-3xs);
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.cardio-opt-main { flex: 1; min-width: 0; }
+.cardio-opt-label { display: block; font-size: var(--fs-sm); color: var(--text); line-height: 1.35; }
+.cardio-opt-why { display: block; margin-top: 2px; font-size: var(--fs-2xs); color: var(--text3); line-height: 1.4; }
+.cardio-opt-rec {
+  flex-shrink: 0; align-self: center; font-family: var(--font-mono); font-size: var(--fs-3xs);
+  text-transform: uppercase; letter-spacing: 0.06em; color: var(--accent);
+}
+.cardio-opt.is-picked, .cardio-mod.is-picked { border-color: var(--accent); color: var(--text); }
+.cardio-opt.is-picked .cardio-opt-n { background: var(--accent-dim); color: var(--accent); }
+.cardio-mods { display: flex; flex-wrap: wrap; gap: 6px; }
+.cardio-mod { flex: 1 1 auto; min-width: 84px; text-align: center; }
+
+/* v11.77 · el icono por modalidad. Los tres SVG que habia se elegian por FAMILIA, asi que bici,
+   remo y ski salian los tres con el mismo munequito corriendo. */
+.hi-icon-emoji { font-size: 18px; line-height: 1; display: inline-flex; align-items: center; justify-content: center; }

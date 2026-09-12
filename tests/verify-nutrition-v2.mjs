@@ -659,6 +659,163 @@ console.log('\nF-20/F-21. Publicados en la fila del día y en la vista');
     '…y diciendo que la palanca es redistribuir, no subir el total (el caveat de REC-007)');
 }
 
+// ── v11.76 · LA COMIDA EN TRES CAMINOS ──────────────────────────────────────────
+//
+// Hasta aquí había UN embudo: foto → hoja de confirmación → saveMeal. Y la biblioteca era
+// sólo por 100 g, así que registrar un batido de proteína pedía teclear "30" cada vez y
+// registrar el mismo bowl de Honest Greens pedía sacarle una foto por quinta vez.
+//
+// LOS FALLOS QUE ESTE BLOQUE IMPIDE:
+//   · Una fila de `foods` sin `serving` (todas las que ya están en el teléfono) dejando de
+//     comportarse como antes. La migración es PEREZOSA: sin `serving`, 100 g, como siempre.
+//   · Las medidas convirtiéndose en un SEGUNDO juego de macros. La verdad sigue siendo
+//     `*100`; la medida es un multiplicador y nada más. Si alguien guarda kcal por ración,
+//     el día deja de cuadrar con la suma de sus comidas.
+//   · `useCount` contando comidas borradas, o `lastUsedAt` moviéndose al borrar.
+//   · La línea de contexto de los chips cambiando de formato en silencio: es lo que lee el
+//     prompt del servidor, así que su formato es un contrato, no una decoración.
+console.log('\nv11.76. Medidas, uso, picker y chips');
+{
+  // ── A · La medida, con migración perezosa ────────────────────────────────────
+  const viejo = { id: 'whey', name: 'Proteína whey (polvo)', kcal100: 380, protein100: 80,
+                  carbs100: 8, fat100: 4, fiber100: 0, nova: 4 };
+  const s0 = N.foodServings(viejo);
+  eq(s0.length, 1, 'una fila sin `serving` tiene UNA medida');
+  eq(s0[0].grams, 100, '…de 100 g, exactamente como antes de v11.76');
+  eq(s0[0].label, '100 g', '…y así etiquetada');
+
+  const whey = { ...viejo, serving: { label: '1 scoop', grams: 30 } };
+  eq(N.foodServings(whey)[0].grams, 30, 'con `serving` la medida por defecto son 30 g');
+  const multi = { ...whey, servings: [{ label: '1 scoop', grams: 30 }, { label: '2 scoops', grams: 60 }] };
+  eq(N.foodServings(multi).length, 2, '`servings[]` publica todas las medidas');
+  eq(N.foodServings(multi)[0].label, '1 scoop', '…con la de `serving` primero');
+  eq(N.foodServings({ ...viejo, serving: { label: 'x', grams: 0 } })[0].grams, 100,
+     'una medida de 0 g no se acepta: cae al respaldo de 100 g');
+
+  // ── B · La medida es un MULTIPLICADOR, nunca un segundo juego de macros ───────
+  const c1 = N.servingCost(whey, 0, 1);
+  eq(c1.grams, 30, '1 scoop = 30 g');
+  eq(c1.kcal, 114, '…114 kcal, calculadas desde kcal100');
+  eq(c1.protein, 24, '…24 g de proteína');
+  const c2 = N.servingCost(whey, 0, 2);
+  eq(c2.grams, 60, '2 medidas = 60 g');
+  eq(c2.kcal, 228, '…y las kcal escalan, no se duplica una cifra guardada');
+  eq(N.nutServingLine(whey, 0, 1), '1 scoop · 30 g · 114 kcal · 24 g P',
+     'la fila del picker dice qué cuesta la medida');
+  eq(N.nutServingLine(whey, 0, 2), '2 × 1 scoop · 60 g · 228 kcal · 48 g P',
+     '…y con varias medidas lo dice sin inventar un plural');
+  eq(N.nutServingLine(viejo, 0, 1), '100 g · 380 kcal · 80 g P',
+     'un alimento sin medida sigue leyéndose en gramos, sin repetirlos dos veces');
+  // Lo que persiste son GRAMOS: el item que entra en la comida es el de siempre.
+  const it = N.itemFromFood(whey, N.servingGrams(whey, 0, 1));
+  eq(it.grams, 30, 'lo que se guarda en la comida son gramos');
+  eq(it.kcal, 114, '…con los macros de la regla de tres de siempre');
+  eq(it.serving, undefined, '…y sin un segundo juego de macros pegado al item');
+
+  // ── C · Uso: un campo, no un escaneo de todas las comidas en cada pintado ─────
+  const comidasUso = [
+    { date: '2026-09-10', time: '08:00', items: [{ foodId: 'whey', kcal: 114 }, { foodId: 'avena', kcal: 300 }] },
+    { date: '2026-09-11', time: '08:10', items: [{ foodId: 'whey', kcal: 114 }, { kcal: 50 }] },
+  ];
+  const mapa = N.nutFoodUsageMap(comidasUso);
+  eq(mapa.get('whey').count, 2, 'la whey aparece en dos comidas');
+  eq(mapa.get('whey').kcal, 228, '…con sus kcal acumuladas');
+  eq(mapa.get('whey').lastUsedAt, '2026-09-11T08:10', '…y la última vez, con su hora');
+  eq(mapa.get('avena').count, 1, 'la avena, una');
+  eq(mapa.size, 2, 'y nada más: un item sin foodId ni nombre no inventa una fila');
+  eq(N.nutFoodUsageMap([{ date: '2026-09-10', items: [{ name: 'Skyr natural', kcal: 63 }] }]).get('skyr-natural').count,
+     1, 'un item viejo sin foodId se atribuye por nombre, como hacía el ranking antes');
+  eq(N.nutFoodUsageMap(null).size, 0, 'null no revienta');
+
+  let f = N.nutBumpFood(viejo, 1, '2026-09-12T13:00', 114);
+  eq(f.useCount, 1, 'registrar una comida sube el contador');
+  eq(f.lastUsedAt, '2026-09-12T13:00', '…y sella cuándo');
+  eq(f.useKcal, 114, '…y acumula las kcal');
+  f = N.nutBumpFood(f, -1, '2026-09-13T13:00', 114);
+  eq(f.useCount, 0, 'borrar la comida lo baja');
+  eq(f.lastUsedAt, '2026-09-12T13:00', '…y NO mueve la última vez hacia el futuro');
+  eq(N.nutBumpFood(f, -1, '2026-09-14T09:00', 999).useCount, 0, 'el contador nunca baja de 0');
+  eq(N.nutBumpFood(f, -1, '2026-09-14T09:00', 999).useKcal, 0, '…ni las kcal');
+
+  // ── D · El picker: Recent y Frequent arriba, el resto por score ───────────────
+  const lib = [
+    { id: 'whey', name: 'Proteína whey (polvo)', aliases: ['protein shake'], kcal100: 380, protein100: 80, fiber100: 0, nova: 4, useCount: 9, lastUsedAt: '2026-09-01T08:00' },
+    { id: 'skyr', name: 'Skyr natural', aliases: [], kcal100: 63, protein100: 11, fiber100: 0, nova: 1, useCount: 2, lastUsedAt: '2026-09-12T09:00' },
+    { id: 'pollo', name: 'Pechuga de pollo', aliases: ['chicken breast'], kcal100: 165, protein100: 31, fiber100: 0, nova: 1 },
+    { id: 'hg-bowl', name: 'Honest Greens · Spicy Feta Bowl', aliases: [], kcal100: 130, protein100: 7, fiber100: 3, nova: 3, useCount: 4, lastUsedAt: '2026-09-11T14:00', source: 'dish' },
+  ];
+  const sec = N.nutPickerSections(lib, '');
+  eq(sec.recent.map(f2 => f2.id).join(','), 'skyr,hg-bowl,whey', 'Recent va por `lastUsedAt`, lo último primero');
+  eq(sec.frequent.length, 0, 'con la biblioteca corta, Frequent no repite lo que ya está en Recent');
+  eq(sec.rest.map(f2 => f2.id).join(','), 'pollo', 'el resto, por score, sin duplicar');
+  eq(sec.matches.length, 0, 'sin búsqueda no hay lista de coincidencias');
+
+  const sec2 = N.nutPickerSections(lib, 'chicken');
+  eq(sec2.matches.map(f2 => f2.id).join(','), 'pollo', 'la búsqueda encuentra por alias');
+  eq(sec2.recent.length, 0, '…y con búsqueda no se pintan las secciones');
+  eq(N.nutPickerSections(lib, 'greens').matches[0].id, 'hg-bowl',
+     'y un plato guardado desde una foto se busca por su nombre');
+  eq(N.nutPickerSections(lib, 'zzz').matches.length, 0, 'sin coincidencias, lista vacía');
+  eq(N.nutPickerSections(null, '').rest.length, 0, 'null no revienta');
+  // Frecuencia por delante del score cuando hay historial: es lo que uno quiere teclear menos.
+  const muchos = Array.from({ length: 12 }, (_, k) => ({
+    id: 'f' + k, name: 'Food ' + k, kcal100: 100, protein100: 5, fiber100: 0, nova: 1,
+    useCount: k, lastUsedAt: k ? `2026-08-${String(k + 10)}T12:00` : null,
+  }));
+  const sec3 = N.nutPickerSections(muchos, '');
+  eq(sec3.recent.length, 6, 'Recent se corta en 6 filas');
+  eq(sec3.frequent.length, 5, '…y Frequent recoge los siguientes por uso, sin repetir');
+  yes(sec3.frequent.every(f2 => !sec3.recent.some(r => r.id === f2.id)),
+     '…sin que un alimento salga en las dos secciones');
+
+  // ── E · La línea de contexto de los chips (camino C) ──────────────────────────
+  eq(N.nutChipLine({ portion: '1 plate', cooking: 'grilled, little oil' }, { time: '14:20', dayType: 'lower' }),
+     'Context — Portion: 1 plate · Cooking: grilled, little oil · Time: 14:20 · Day: lower-body day',
+     'la línea estructurada que se añade a la nota');
+  eq(N.nutChipLine({}, {}), '', 'sin chips ni contexto no se añade nada');
+  eq(N.nutChipLine({}, { time: '09:10', dayType: 'rest' }),
+     'Context — Time: 09:10 · Day: rest day',
+     'la hora y el tipo de día los pone el cliente solo, sin preguntar');
+  eq(N.nutChipLine({ drink: 'beer 330 ml' }, {}), 'Context — Drink: beer 330 ml',
+     'el alcohol entra por su chip: es la cuarta macro y ya se modela');
+  eq(N.nutChipLine(null, null), '', 'null no revienta');
+  // Los cinco datos que de verdad mueven el número, cada uno con su regla.
+  eq(N.NUT_CHIP_DEFS.map(d => d.key).join(','), 'portion,cooking,protein,place,drink',
+     'los cinco chips, en el orden en que se leen');
+  yes(N.NUT_CHIP_DEFS.every(d => d.label && d.options && d.options.length >= 3),
+     'cada chip tiene etiqueta y al menos tres opciones');
+  yes(N.NUT_CHIP_DEFS.every(d => /^(REC-\d{3}|all)$/.test(d.rule)),
+     'cada chip cita la regla que consume su dato');
+}
+
+// ── v11.76 · TODO CAMINO TERMINA EN saveMeal() ──────────────────────────────────
+// La invariante del módulo: `recomputeNutritionDay` es el único escritor de `nutrition`, y
+// sólo lo alcanzan `saveMeal` / `deleteMeal` / `nutCloseDay`. Tres caminos de entrada
+// multiplican por tres las ocasiones de saltársela.
+console.log('\nv11.76. Los tres caminos desembocan en saveMeal()');
+{
+  const escrituras = (SRC.match(/smartPut\('meals'/g) || []).length;
+  eq(escrituras, 1, "una sola escritura de 'meals' en todo el módulo");
+  const SAVE = fnSrcN('async function saveMeal(');
+  yes(/smartPut\('meals', m\)/.test(SAVE), '…y está dentro de saveMeal()');
+  yes(/recomputeNutritionDay\(m\.date\)/.test(SAVE), '…que recalcula el día');
+  yes(/nutApplyFoodUsage\(m\.items, 1/.test(SAVE),
+     'saveMeal() es también donde se actualiza el uso de la biblioteca (useCount/lastUsedAt)');
+  const DEL = fnSrcN('async function deleteMeal(');
+  yes(/nutApplyFoodUsage\([^,]+, -1/.test(DEL), 'y borrar una comida lo deshace');
+  // El picker no puede escribir la comida por su cuenta: mete items en la hoja y ya.
+  const PICK = fnSrcN('async function nutAddItemManual(');
+  yes(!/smartPut\(/.test(PICK), 'el picker no escribe nada: sólo añade items a la hoja');
+  yes(/nutOpenFoodPicker\(/.test(PICK), '…y se apoya en la hoja inferior nueva');
+  // Guardar un plato escribe en `foods`, nunca en `meals` ni en `nutrition`.
+  const DISH = fnSrcN('async function nutSaveItemAsFood(');
+  yes(/smartPut\('foods'/.test(DISH), '"Save to my foods" escribe en la biblioteca');
+  yes(!/smartPut\('meals'|smartPut\('nutrition'/.test(DISH), '…y en ningún otro store');
+  yes(/serving:/.test(DISH), '…con la medida realmente comida como medida por defecto');
+  yes(/photoPath/.test(DISH), '…y con la foto que ya estaba subida');
+  yes(/source: 'dish'/.test(DISH), "…marcado como source:'dish'");
+}
+
 // ── Resultado ───────────────────────────────────────────────────────────────────
 console.log(failed === 0
   ? '\n✅ Nutrición v2: todas las métricas derivadas son reproducibles.'

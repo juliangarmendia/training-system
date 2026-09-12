@@ -675,7 +675,10 @@ yes(/\.hi-delete[^{]*\{/.test(CSS), '.hi-delete sigue existiendo');
 {
   const borrar = (APP.match(/class="hi-delete"[^>]*aria-label=/g) || []).length
     + (NUTJS.match(/class="hi-delete"[^>]*aria-label=/g) || []).length;
-  yes(borrar === 5, `los 5 botones de borrar tienen aria-label (son ${borrar})`);
+  // v11.77: son 4, no 5. `renderRunHistory()` se retira al fusionarse las dos listas de
+  // Cardio en una sola, y con ella su boton de borrar. El de la lista unica se quedo con
+  // su deshacer y paso a `smartDelete`, que es lo que ya hacia el de las carreras.
+  yes(borrar === 4, `los 4 botones de borrar tienen aria-label (son ${borrar})`);
 }
 yes(/aria-label="Set \$\{i \+ 1\}"/.test(APP) && /aria-pressed=/.test(APP),
   '.set-check dice qué serie es y si está marcada (aria-label + aria-pressed)');

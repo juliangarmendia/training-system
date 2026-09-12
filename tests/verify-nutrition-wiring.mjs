@@ -291,6 +291,83 @@ yes(!cuerpoAdd.includes('.upload('), 'elegir una foto NO la sube: solo se suben 
 yes(NUT.slice(NUT.indexOf('async function nutAnalyze')).includes('.upload('),
   'la subida ocurre en nutAnalyze()');
 
+// ── 15. v11.76 · Los tres caminos ────────────────────────────────
+// A (foto → guardar el plato), B (biblioteca con medidas y por uso), C (texto con chips).
+// El cableado nuevo es el de siempre: ids en el marcado, clases en el CSS, y ninguna
+// escritura que se salte `saveMeal`.
+console.log('');
+console.log('15. Los tres caminos de registro (v11.76)');
+// B · La hoja del picker, sobre el chasis de `.plate-sheet` (no un action sheet de 40 filas).
+for (const id of ['nut-picker', 'nut-picker-backdrop', 'nut-picker-close',
+                  'nut-picker-search', 'nut-picker-list']) {
+  yes(HTML.includes(`id="${id}"`), `#${id} existe`);
+}
+yes(/id="nut-picker"[^>]*class="[^"]*plate-sheet/.test(HTML),
+  'el picker reutiliza el chasis de .plate-sheet (un solo patrón de hoja inferior)');
+// El chasis vive en z-index 111 y la hoja de confirmación es un `.modal` en 900: sin subirlo,
+// el picker se abriría DEBAJO de la hoja desde la que se invoca.
+yes(/#nut-picker\s*\{[^}]*z-index:\s*(\d+)/.test(CSS) &&
+    Number(CSS.match(/#nut-picker\s*\{[^}]*z-index:\s*(\d+)/)[1]) > 900,
+  'el picker se pinta por encima de la hoja de confirmación (.modal está en 900)');
+yes(/function nutOpenFoodPicker/.test(NUT), 'nutOpenFoodPicker() existe');
+yes(/function nutPickerSections/.test(NUT), 'y las secciones se calculan en una función pura');
+yes(!/showActionSheet\('Add food'/.test(NUT),
+  'el action sheet de 40 filas se retiró (era el problema, no la solución)');
+
+// C · Los chips del compositor. Sólo escriben texto: el contrato del servidor no cambia.
+for (const id of ['nut-chips', 'nut-chip-line']) {
+  yes(HTML.includes(`id="${id}"`), `#${id} existe`);
+}
+yes(/const NUT_CHIP_DEFS/.test(NUT), 'los chips están declarados en un solo sitio');
+yes(/function nutChipLine/.test(NUT), 'y componen una línea con formato fijo');
+{
+  const ANALYZE = NUT.slice(NUT.indexOf('async function nutAnalyze('),
+                            NUT.indexOf('function nutGuessMealType('));
+  yes(/nutChipLine\(/.test(ANALYZE), 'nutAnalyze() añade la línea a la nota');
+  yes(/nutDayType\(/.test(ANALYZE), '…con el tipo de día, que el cliente ya sabe');
+  yes(/body: \{ photoPaths, note \}/.test(ANALYZE),
+    '…y el cuerpo del request sigue siendo el mismo: photoPaths + note');
+}
+
+// A · Guardar el plato desde la hoja de confirmación.
+yes(HTML.includes('id="nut-confirm-save-food"'), '#nut-confirm-save-food existe');
+yes(/function nutSaveItemAsFood/.test(NUT), 'se puede guardar un item como alimento');
+yes(/function nutSaveMealAsFood/.test(NUT), '…y la comida entera como un plato');
+yes(/Save to my foods/.test(HTML) || /Save to my foods/.test(NUT),
+  'y se llama por su nombre en la pantalla');
+
+// El esquema de `foods` crece, y la migración es perezosa: sin `serving`, 100 g.
+yes(/function foodServings/.test(NUT), 'foodServings() resuelve la medida de cualquier fila');
+yes(/NUT_DEFAULT_SERVING/.test(NUT), '…con un respaldo de 100 g declarado');
+yes(/function nutApplyFoodUsage/.test(NUT), 'el uso se actualiza en un solo sitio');
+{
+  // Ojo con los anclajes: la cabecera de sección "COACH RESTO DEL DÍA" aparece DOS veces en
+  // el fichero (una en el índice del encabezado), así que el corte va por la declaración.
+  const FOODS = NUT.slice(NUT.indexOf('async function renderNutFoods('),
+                          NUT.indexOf('async function renderNutCoach('));
+  yes(!/dbGetAll\('meals'\)/.test(FOODS),
+    'el ranking ya no escanea todas las comidas en cada pintado: lee el campo');
+  yes(/useCount/.test(FOODS), '…que es `useCount`');
+}
+
+// 10 · La pestaña se llama por lo que es.
+yes(/data-nut-group="alimentos">Ranking</.test(HTML),
+  'la pestaña "Foods" pasa a "Ranking" (el panel es una tabla ordenable, no la biblioteca)');
+yes(HTML.includes('data-nut-group="alimentos"'),
+  '…y la clave `alimentos` no se toca: el switch y los tests dependen de ella');
+
+// El prompt del servidor gana su propia sección para el caso sin foto.
+console.log('');
+console.log('16. El prompt del caso sin foto');
+yes(/PROMPT_VERSION = 2/.test(FN), 'PROMPT_VERSION sube a 2');
+yes(/SIN FOTO/.test(FN), 'hay una sección de sistema propia para el registro por texto');
+yes(/palma|taza|cucharada/i.test(FN),
+  'las medidas caseras se traducen a gramos con supuestos dichos');
+yes(/Context —/.test(FN),
+  'el prompt sabe leer la línea estructurada que escriben los chips');
+yes(/no la suavices/i.test(FN),
+  'una estimación con poca confianza se marca como tal, no se suaviza');
+
 console.log('');
 console.log(failed === 0
   ? '✅ Nutrición v2: el cableado entre los tres ficheros está completo.'

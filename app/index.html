@@ -122,6 +122,10 @@
       <div id="nut-confirm-notes" class="nut-ai-notes"></div>
       <div id="nut-confirm-items" class="nut-items"></div>
       <button id="nut-confirm-add" class="btn-secondary" style="margin-top:10px">+ Add food</button>
+      <!-- CAMINO A (v11.76): el pedido entero como UN plato. Se fotografía una vez y a
+           partir de ahí se elige desde la biblioteca. Sólo aparece con varios alimentos:
+           con uno solo es el mismo botón que lleva cada fila. -->
+      <button id="nut-confirm-save-food" class="btn-secondary hidden" style="margin-top:8px">Save the whole meal to my foods</button>
       <div id="nut-confirm-totals" class="nut-confirm-totals"></div>
       <div class="form-row" style="margin-top:12px">
         <label>Meal</label>
@@ -133,6 +137,54 @@
         </select>
       </div>
       <button id="nut-confirm-save" class="btn-primary btn-lg" style="margin-top:12px">Save meal</button>
+    </div>
+  </div>
+
+  <!-- CAMINO B (v11.76): la biblioteca, con medidas de verdad. Sustituye al action sheet de
+       40 filas ordenadas por `foodScore`, que no era la lista de lo que uno come. Recent y
+       Frequent arriba; el stepper cuenta MEDIDAS ("1 scoop"), no gramos — los gramos siguen
+       por debajo y son lo que se guarda.
+
+       VIVE AQUÍ, FUERA DE `#app`, Y NO CON LAS OTRAS HOJAS. `#app` lleva `z-index: 1`, así
+       que crea un contexto de apilamiento: todo lo que hay dentro —incluidas `#plate-sheet`
+       y `#prompt-sheet`— se pinta DEBAJO de cualquier `.modal` (z-index 900), pase lo que
+       pase con su propio z-index. Y este picker se abre justo sobre la hoja de confirmación,
+       que es un `.modal`. Los overlays que tienen que ganar a un modal viven a nivel de
+       `body`: es donde están `#action-sheet` y el toast. Reutiliza el CSS de `.plate-sheet`. -->
+  <div id="nut-picker-backdrop" class="plate-sheet-backdrop hidden"></div>
+  <div id="nut-picker" class="plate-sheet hidden" role="dialog" aria-modal="true" aria-labelledby="nut-picker-title">
+    <div class="plate-sheet-handle"></div>
+    <div class="plate-sheet-header">
+      <span class="plate-sheet-title" id="nut-picker-title">Add from my foods</span>
+      <button id="nut-picker-close" class="plate-sheet-close" aria-label="Close">&times;</button>
+    </div>
+    <input type="search" id="nut-picker-search" class="text-input nut-picker-search" placeholder="Search your foods" autocomplete="off">
+    <div id="nut-picker-list" class="nut-picker-list"></div>
+  </div>
+
+  <!-- Prompt Bottom Sheet (V-7): sustituye a `prompt()`, que en una PWA instalada sale
+       como un diálogo del navegador y no admite varias líneas — y la nota que va al modelo
+       es justo eso. Reutiliza el CSS de `.plate-sheet`.
+
+       v11.76: SUBE a nivel de `body` desde dentro de `#app`, por la misma razón que el
+       picker de arriba. Dentro de `#app` (`z-index: 1`, contexto de apilamiento) se pintaba
+       DEBAJO de cualquier `.modal`, así que pedir un texto desde dentro de un modal abría
+       una hoja invisible: el gesto se quedaba esperando una respuesta que nadie podía ver.
+       Hasta ahora nadie lo llamaba desde un modal y el fallo estaba latente; "Save the whole
+       meal to my foods" sí lo hace. Sólo se mueve el marcado: el id no cambia. -->
+  <div id="prompt-sheet-backdrop" class="plate-sheet-backdrop hidden"></div>
+  <div id="prompt-sheet" class="plate-sheet hidden" role="dialog" aria-modal="true" aria-labelledby="prompt-sheet-title">
+    <div class="plate-sheet-handle"></div>
+    <div class="plate-sheet-header">
+      <span class="plate-sheet-title" id="prompt-sheet-title">Note</span>
+      <button id="prompt-sheet-close" class="plate-sheet-close" aria-label="Close">&times;</button>
+    </div>
+    <div class="prompt-sheet-body">
+      <div id="prompt-sheet-field"></div>
+      <div class="prompt-sheet-actions">
+        <button type="button" id="prompt-sheet-cancel" class="btn-secondary">Cancel</button>
+        <button type="button" id="prompt-sheet-ok" class="btn-primary">OK</button>
+      </div>
     </div>
   </div>
 
@@ -175,6 +227,11 @@
           <div id="resume-workout-banner" class="hidden"></div>
           <div id="resume-mobility-banner" class="hidden"></div>
           <div id="home-topbar"></div>
+          <!-- v11.77 (punto 3 de Julian): readiness, RPE load, racha y volumen ARRIBA de "Your
+               plan". Son los cuatro números con los que se decide si hoy se entrena y cómo; leerlos
+               después del plan es leerlos cuando ya has decidido. No hay ninguna regla `order:` en
+               todo style.css, así que el orden visual es este orden. -->
+          <div id="home-stat-trio"></div>
           <div id="plan-selector"></div>
           <div id="week-calendar"></div>
           <!-- Revisión semanal del coach (v11.61, reordenada en v11.65). Sube por encima de
@@ -195,7 +252,6 @@
           <!-- v11.65: el trío pasa a CUATRO tarjetas — Readiness (el WHOOP de hoy) · Strain ·
                Streak · Volume. La línea de texto de recuperación que estaba justo aquí se mudó
                a Stats › Today: un número va en la fila de números, no en un párrafo. -->
-          <div id="home-stat-trio"></div>
           <div class="home-sec-row" style="margin-top:28px">
             <h2 class="home-h2">This week</h2>
             <button type="button" class="home-link-mono" id="queue-ahead"></button>
@@ -310,25 +366,6 @@
         <div id="plate-sheet-result"></div>
       </div>
 
-      <!-- Prompt Bottom Sheet (V-7): sustituye a `prompt()`, que en una PWA instalada sale
-           como un diálogo del navegador y no admite varias líneas — y la nota que va al modelo
-           es justo eso. Reutiliza el CSS de `.plate-sheet`. -->
-      <div id="prompt-sheet-backdrop" class="plate-sheet-backdrop hidden"></div>
-      <div id="prompt-sheet" class="plate-sheet hidden" role="dialog" aria-modal="true" aria-labelledby="prompt-sheet-title">
-        <div class="plate-sheet-handle"></div>
-        <div class="plate-sheet-header">
-          <span class="plate-sheet-title" id="prompt-sheet-title">Note</span>
-          <button id="prompt-sheet-close" class="plate-sheet-close" aria-label="Close">&times;</button>
-        </div>
-        <div class="prompt-sheet-body">
-          <div id="prompt-sheet-field"></div>
-          <div class="prompt-sheet-actions">
-            <button type="button" id="prompt-sheet-cancel" class="btn-secondary">Cancel</button>
-            <button type="button" id="prompt-sheet-ok" class="btn-primary">OK</button>
-          </div>
-        </div>
-      </div>
-
       <!-- Cardio (unified logger: run / treadmill / bike / row / ski / walk) -->
       <section id="view-cardio" class="view">
         <div class="view-scroll">
@@ -368,13 +405,12 @@
             <div class="form-row"><textarea id="cardio-notes" class="input-notes" placeholder="Notes (optional)" rows="2"></textarea></div>
             <button id="btn-log-cardio" class="btn-primary btn-lg">Log cardio</button>
           </div>
-          <div class="section-head" style="margin-top:28px">
-            <div class="section-head-icon" style="background:var(--tint-teal);color:var(--teal)">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>
-            </div>
-            <span class="section-head-title">Recent cardio</span>
-          </div>
-          <div id="sess-history" class="recent-list"></div>
+          <!-- v11.77 (punto 9 de Julian). Había DOS listas: "Recent cardio" leía el store
+               `sessions` (bici, remo, ski, caminata) y "Runs (history)" leía `runs` (las
+               carreras), con los totales metidos en medio. Para ver lo que hiciste esta semana
+               había que mirar en dos sitios y sumar de cabeza. Ahora los totales abren la
+               pantalla y hay UNA lista con todo, ya dedupeada: la misma actividad del COROS llega
+               por Strava y por intervals.icu, y juntarlas sin dedupe la habría duplicado. -->
           <div class="section-head" style="margin-top:28px">
             <div class="section-head-icon" style="background:var(--tint-blue);color:var(--blue)">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 17 9 11 13 15 21 7"/><polyline points="14 7 21 7 21 14"/></svg>
@@ -383,12 +419,12 @@
           </div>
           <div id="run-totals-card" class="run-totals-card"></div>
           <div class="section-head" style="margin-top:28px">
-            <div class="section-head-icon" style="background:var(--tint-blue);color:var(--blue)">
+            <div class="section-head-icon" style="background:var(--tint-teal);color:var(--teal)">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>
             </div>
-            <span class="section-head-title">Runs (history)</span>
+            <span class="section-head-title">Recent cardio</span>
           </div>
-          <div id="run-history" class="recent-list"></div>
+          <div id="sess-history" class="recent-list"></div>
         </div>
       </section>
 
@@ -401,7 +437,11 @@
           <div class="stats-tabs" id="nut-tabs">
             <button class="stats-tab active" data-nut-group="hoy">Today</button>
             <button class="stats-tab" data-nut-group="tendencias">Trends</button>
-            <button class="stats-tab" data-nut-group="alimentos">Foods</button>
+            <!-- v11.76: se llamaba "Foods" y el panel nunca fue la biblioteca — es una tabla
+                 ordenable por puntuación, densidad de proteína, NOVA y veces usado, más la
+                 lista "To avoid". La clave `alimentos` NO se toca: la usan el switch y los
+                 tests, y renombrarla no arreglaría nada. -->
+            <button class="stats-tab" data-nut-group="alimentos">Ranking</button>
           </div>
 
           <!-- ===== HOY ===== -->
@@ -430,10 +470,18 @@
             <div id="nut-composer-thumbs" class="nut-thumbs"></div>
             <textarea id="nut-composer-note" class="input-notes nut-note" rows="2"
               placeholder="Anything the photo does not say? &quot;I ate half&quot;, &quot;no sauce&quot;, &quot;double chicken&quot;…"></textarea>
+            <!-- CAMINO C (v11.76): los chips. No son un formulario ni son obligatorios —
+                 son atajos que añaden una línea estructurada a la nota, así que el contrato
+                 del servidor (`body.note`) no cambia. Son los cinco datos que de verdad
+                 mueven el número: cantidad, cocción y grasa añadida, proteína, sitio y
+                 bebida. La hora y el tipo de día NO se preguntan: la app ya los sabe. -->
+            <div id="nut-chips" class="nut-chips"></div>
+            <div id="nut-chip-line" class="nut-chip-line hidden"></div>
             <div class="nut-composer-hint">
               The note beats what is visible: you were the one in front of the plate.
               Menu + plate together is the best combination — the menu gives the published
-              macros, the photo says how much was served.
+              macros, the photo says how much was served. Without a photo, the chips above
+              are what turn a description into a number.
             </div>
             <div class="nut-composer-actions">
               <button id="btn-nut-discard" class="btn-secondary">Discard</button>
@@ -846,7 +894,7 @@
           </div>
           <div class="section-label" style="margin-top:24px">App</div>
           <div class="card">
-            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v11.74<br>Data stored locally + cloud sync.<br>Works offline.</p>
+            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v11.77<br>Data stored locally + cloud sync.<br>Works offline.</p>
             <button id="btn-force-update" class="btn-secondary btn-full" style="text-align:center">Force Update App</button>
           </div>
         </div>

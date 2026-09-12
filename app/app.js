@@ -2279,7 +2279,7 @@ function switchTab(tab) {
       // B-3: el banner de la semana lo pedía la tira retirada.
       renderWeekBanner().catch(e => console.warn('[Gym] week banner:', e));
     }
-  } else if (tab === 'cardio') { showView('cardio'); renderRunPlanBanner(); renderCardioLibrary(); renderSessionHistory(); renderRunTotals(); renderRunHistory(); }
+  } else if (tab === 'cardio') { showView('cardio'); renderRunPlanBanner(); renderCardioLibrary(); renderRunTotals(); renderSessionHistory(); }
   else if (tab === 'nutrition') { showView('nutrition'); renderNutrition(); }
   else if (tab === 'stats') { showView('stats'); renderStats().catch(e => console.warn('[Stats] render:', e)); }
   // BUG-UI-2 fix (v11.12): 'settings' had no branch, so the Home gear/bell/avatar
@@ -8129,7 +8129,8 @@ async function renderSessionHistory() {
       kind: 'run', id: r.id, date: r.date,
       title: r.avgPace ? `Run · ${r.avgPace}/km` : 'Run',
       distance: r.distance, durationMin: r.duration ? Math.round(durationToMinutes(r.duration)) : null,
-      week: r.week, feel: null, modality: 'run_outdoor', family: 'cardio',
+      week: r.week, feel: r.feel || null, modality: 'run_outdoor', family: 'cardio',
+      avgHR: r.avgHR || null,
     })))
     .filter((f) => f && f.date)
     .sort((a, b) => String(b.date).localeCompare(String(a.date)))
@@ -8139,27 +8140,53 @@ async function renderSessionHistory() {
     else container.innerHTML = '';
     return;
   }
+  // La estimacion de kcal la pintaba la lista de carreras que esta fusion retira. Se queda:
+  // es el unico sitio de la app donde se ve lo que costo una salida.
+  const bw = await getBodyweightLatest().catch(() => null);
   container.innerHTML = filas.map(sess => {
     const ic = cardioIconFor(sess.modality, sess.family);
     const dist = sess.distance != null ? ` · ${sess.distance} km` : '';
     const dur = sess.durationMin != null ? `${sess.durationMin} min` : '';
+    const hr = sess.avgHR ? ` · ${sess.avgHR} bpm` : '';
+    const cal = (sess.kind === 'run')
+      ? estimateCalories({ type: 'run', durationMin: sess.durationMin, bodyweightKg: bw, avgHr: sess.avgHR, distanceKm: sess.distance, age: state.settings.age })
+      : null;
+    const calBit = cal ? ` · ~${cal.kcal} kcal` : '';
+    const store = sess.kind === 'run' ? 'runs' : 'sessions';
     return `
     <div class="history-item">
       <div class="hi-icon hi-icon-emoji" style="background:${ic.bg};color:${ic.fg}">${ic.icono}</div>
       <div class="hi-left">
         <div class="hi-title">${escapeHtml(sess.title)}${dist}</div>
-        <div class="hi-sub">${formatDate(sess.date)}${dur ? ` · ${dur}` : ''}${sess.week ? ` · Wk ${sess.week}` : ''}</div>
+        <div class="hi-sub">${formatDate(sess.date)}${dur ? ` · ${dur}` : ''}${hr}${calBit}${sess.week ? ` · Wk ${sess.week}` : ''}</div>
       </div>
       <div class="hi-right">
         ${sess.feel ? `<div><div class="hi-stat">${sess.feel}/5</div><div class="hi-stat-sub">feel</div></div>` : ''}
-        ${sess.kind === 'session' ? `<button class="hi-delete" data-delete-session="${sess.id}" aria-label="Delete session">&times;</button>` : ''}
+        <button class="hi-delete" data-del-store="${store}" data-del-id="${sess.id}" aria-label="Delete entry">&times;</button>
       </div>
     </div>`;
   }).join('');
-  container.querySelectorAll('[data-delete-session]').forEach(btn => {
+  // UN solo borrado para las dos fuentes. Antes cada lista tenia el suyo y no hacian lo mismo:
+  // el de carreras usaba `smartDelete` y ofrecia deshacer; el de sesiones llamaba a `dbDelete`
+  // en crudo, asi que la fila volvia en la siguiente sincronizacion y no habia forma de
+  // recuperarla si el borrado era un error. Juntas en una lista, esa diferencia se veria.
+  container.querySelectorAll('[data-del-id]').forEach((btn) => {
     btn.addEventListener('click', async () => {
-      try { await dbDelete('sessions', btn.dataset.deleteSession); } catch (e) { console.warn(e); }
+      const store = btn.dataset.delStore;
+      const id = btn.dataset.delId;
+      const borrada = await dbGet(store, id).catch(() => null);
+      try { await smartDelete(store, id); } catch (e) { console.warn('[Cardio] borrar:', e); toast('Could not delete it'); return; }
+      renderRunTotals();
       renderSessionHistory();
+      toast('Entry deleted', {
+        label: 'Undo',
+        callback: async () => {
+          if (!borrada) return;
+          await smartPut(store, borrada);
+          renderRunTotals();
+          renderSessionHistory();
+        },
+      });
     });
   });
 }
@@ -11013,58 +11040,11 @@ async function renderRunTotals() {
   `;
 }
 
-async function renderRunHistory() {
-  const container = document.getElementById('run-history');
-  const runs = (await getRunsDeduped()).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 12);
-
-  if (!runs.length) {
-    showEmptyState(container, '🏃', 'No runs yet', 'Log your runs in the Run tab to track distance and pace.');
-    return;
-  }
-
-  const bw = await getBodyweightLatest();
-  const iconRunner = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13" cy="4" r="2"/><path d="M5 21l3-9 2.5 2V21M15 11l-3-3-4 4 2 2"/></svg>`;
-  container.innerHTML = runs.map(r => {
-    const cal = estimateCalories({ type: 'run', durationMin: parseFloat(r.duration) || 0, bodyweightKg: bw || 80, avgHr: r.avgHR, distanceKm: r.distance, age: state.settings.age });
-    const calBit = cal ? ` · ~${cal.kcal} kcal` : '';
-    return `
-    <div class="history-item">
-      <div class="hi-icon" style="background:var(--tint-blue);color:var(--blue)">${iconRunner}</div>
-      <div class="hi-left">
-        <div class="hi-title">${r.distance} km · ${r.avgPace}/km</div>
-        <div class="hi-sub">${formatDate(r.date)} · ${r.duration} min${r.avgHR ? ` · ${r.avgHR} bpm` : ''}${calBit}${r.week ? ` · Wk ${r.week}` : ''}</div>
-      </div>
-      <div class="hi-right">
-        <div>
-          <div class="hi-stat">${r.feel}/5</div>
-          <div class="hi-stat-sub">feel</div>
-        </div>
-        <button class="hi-delete" data-delete-run="${r.id}" aria-label="Delete cardio session">&times;</button>
-      </div>
-    </div>
-  `;
-  }).join('');
-
-  container.querySelectorAll('[data-delete-run]').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const runId = btn.dataset.deleteRun;
-      const deletedRun = await dbGet('runs', runId);
-      await smartDelete('runs', runId);
-      renderRunTotals();
-      renderRunHistory();
-      toast('Run deleted', {
-        label: 'Undo',
-        callback: async () => {
-          if (deletedRun) {
-            await smartPut('runs', deletedRun);
-            renderRunTotals();
-            renderRunHistory();
-          }
-        }
-      });
-    });
-  });
-}
+// v11.77 · `renderRunHistory()` RETIRADA. Pintaba una segunda lista, solo de carreras, debajo de
+// los totales. "Recent cardio" (`renderSessionHistory`) ensena ahora las dos fuentes juntas y ya
+// dedupeadas, con el icono de cada modalidad, y se ha quedado lo que vivia aqui: las kcal
+// estimadas, el pulso medio y el borrado con deshacer. Dos listas para la misma pregunta eran
+// dos sitios donde mirar y una suma de cabeza.
 
 // ==================== NUTRITION MODULE ====================
 // v11.49: el registro vive en nutrition.js (Nutricion v2, foto -> IA -> confirmacion).

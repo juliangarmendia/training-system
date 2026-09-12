@@ -145,7 +145,7 @@ const debenDedupear = [
   'async function renderWeekCalendar(',      // el calendario de Home
   'async function renderTodaysPlan(',        // la tarjeta de hoy
   'async function renderRunTotals(',         // totales semana/mes/año
-  'async function renderRunHistory(',        // historial de carreras
+  'async function renderSessionHistory(',    // v11.77: la lista unica de cardio (antes eran dos)
   'async function renderSwimlaneTL(',        // swimlane
   'async function renderWeekBanner(',        // el banner de Gym
 ];
