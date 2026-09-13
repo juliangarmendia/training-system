@@ -2553,6 +2553,10 @@ body[data-tab="home"] .home-scroll-v2 { padding-top: calc(var(--safe-top) + 10px
 
 /* Tarjeta del coach: foco, bloques con etiqueta, bullets y desplegables. */
 .cwc-focus { margin-top: 8px; font-size: var(--fs-sm); color: var(--text); line-height: 1.45; }
+/* El rotulo de una seccion es SIEMPRE un bloque. Lo que sigue (`_cMd`) son parrafos, y un
+   inline delante de un bloque no comparte linea con el: el rotulo se quedaba solo arriba y el
+   texto empezaba debajo sin relacion visible con el. */
+.cwc-label { display: block; margin-bottom: 4px; }
 .cwc-block { margin-top: 12px; }
 .cwc-line { margin-top: 4px; font-size: var(--fs-sm); color: var(--text); line-height: 1.45; }
 .cwc-bullets { margin: 4px 0 0; padding-left: 16px; font-size: var(--fs-sm); color: var(--text2); line-height: 1.5; }
@@ -2586,8 +2590,10 @@ body[data-tab="home"] .home-scroll-v2 { padding-top: calc(var(--safe-top) + 10px
    390 px. Julian: "no entiendo nada". Ahora son frases, asi que el layout es de TEXTO: una
    frase por regla, su nivel debajo en mono pequeno, y la salvedad si la hay. Sin columnas,
    sin numeros y sin codigos a la vista. */
-.evt-theme { margin-top: 14px; }
-.evt-theme:first-of-type { margin-top: 10px; }
+/* `:first-of-type` NO valia: cuenta por etiqueta, y el primer <div> de la tarjeta es el
+   titulo, no el primer tema. La regla no casaba nunca. El hueco extra es entre temas. */
+.evt-theme { margin-top: 10px; }
+.evt-theme + .evt-theme { margin-top: 16px; }
 .evt-row { padding: 7px 0; border-bottom: 1px solid var(--border); }
 .evt-theme .evt-row:last-child { border-bottom: none; }
 .evt-rule { font-size: var(--fs-xs); line-height: 1.45; color: var(--text); }

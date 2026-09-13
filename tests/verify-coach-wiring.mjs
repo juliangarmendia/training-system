@@ -1987,6 +1987,25 @@ yes(!/@keyframes cwc-|animation:[^;]*cwc-/.test(CSS), 'y cero animaciones nuevas
   yes(!APPL.includes('WHAT CHANGES AND WHY'), 'y sin WHAT CHANGES AND WHY cuando whyChanged viene vacío');
   yes(/<div class="cwc-block"><div class="cwc-label">WHY IT HOLDS/.test(APPL),
     'que va ABIERTO (no plegado) cuando es lo único que hay que leer');
+
+  // v11.78 · un rotulo NUNCA es inline delante de un bloque.
+  //
+  // El fallo que esto existe para impedir, y que Julian vio en pantalla: la tarjeta de Home
+  // pintaba `<span class="cwc-label">WHY</span>` seguido de `_cMd(...)`, que devuelve `<p>`.
+  // Un bloque detras de un inline no comparte linea con el, asi que el rotulo se quedaba solo
+  // arriba y el texto empezaba debajo, descolgado y sin relacion visible con su etiqueta.
+  // Se comprueba en los DOS sitios: el marcado que se emite y la regla que lo sostiene.
+  yes(!/<span class="cwc-label"/.test(COACHJS),
+    'ningun `.cwc-label` se emite como <span> (un rotulo seguido de <p> queda huerfano)');
+  yes((COACHJS.match(/<div class="cwc-label"/g) || []).length >= 3,
+    'los rotulos de Home, la vista Coach y la evidencia son todos bloques');
+  {
+    const css = readFileSync('app/style.css', 'utf8');
+    yes(/\.cwc-label \{[^}]*display:\s*block/.test(css),
+      'y el CSS lo fija, para que volver al <span> siga saliendo bien');
+    yes(!/\.evt-theme:first-of-type/.test(css),
+      '`.evt-theme:first-of-type` retirado: contaba por etiqueta, y el primer <div> de la tarjeta es el titulo, asi que no casaba nunca');
+  }
   yes(APPL.includes('What changes (2 sessions)'), 'desplegable "What changes" con las 2 que no son `kept`');
   yes(APPL.includes('All sessions (4)'), 'y "All sessions" con las 4');
   for (const w of WS) {

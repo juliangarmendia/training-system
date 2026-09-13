@@ -594,7 +594,7 @@ async function renderCoachGoalLine() {
 // LA VERSIÓN DE LA APP viaja al servidor (`clientVersion`) y al pack (`meta.appVersion`), que
 // es lo que permite luego saber qué código produjo una revisión rara.
 // `verify-coach-wiring.mjs` comprueba que coincide con la de index.html y con `CACHE_NAME`.
-const COACH_APP_VERSION = 'v11.77';
+const COACH_APP_VERSION = 'v11.78';
 
 const COACH_MAX_SESSION_IDS = 12;   // el tope que valida la edge function
 const COACH_MAX_EXERCISE_IDS = 150; // idem
@@ -2105,7 +2105,10 @@ async function renderCoachWeekCard(opts = {}) {
     ? `<div class="cwc-story">${_cMd(_cTrimTxt(queCambio, 460))}</div>`
     : (prios.length ? `<ol class="coach-week-prios">${prios.map((p) => `<li>${_cEsc(p)}</li>`).join('')}</ol>` : '')}
         ${porQue
-    ? `<div class="cwc-story"><span class="cwc-label">WHY</span> ${_cMd(_cTrimTxt(porQue, 340))}</div>`
+    // La etiqueta va en su PROPIO bloque. Era un `<span>` en linea seguido de `_cMd`, que
+      // devuelve `<p>`: un bloque detras de un inline empuja el texto a la linea siguiente y
+      // deja el rotulo huerfano y descolgado. Asi es igual que en la vista Coach.
+    ? `<div class="cwc-story"><div class="cwc-label">WHY</div>${_cMd(_cTrimTxt(porQue, 340))}</div>`
     : _coachWhyHtml(brief, { plegado: true })}
         <div class="coach-week-diff">${_coachDiffHtml(groups, 8)}</div>
         ${_coachGuardChipsHtml(guardrails)}`;
