@@ -1380,8 +1380,9 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
   top: 0;
   z-index: 30;
 }
-#view-stats .view-scroll > .section-label,
-#view-nutrition .view-scroll > .section-label { top: var(--stats-tabs-h); }
+/* El desplazamiento del sticky lo pide CUALQUIER vista con barra de pestañas, no una lista
+   de vistas escrita a mano: la clase `-grouped` en el contenedor de scroll es el interruptor. */
+.view-scroll.-grouped > .section-label { top: var(--stats-tabs-h); }
 .stats-tab {
   flex: 1;
   padding: 12px 4px;
@@ -1400,8 +1401,11 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
   background: var(--section-accent, var(--accent));
   color: var(--bg);
 }
-#view-stats .view-scroll > [data-group]:not(.active-group),
-#view-stats .view-scroll > .section-label[data-group]:not(.active-group) { display: none; }
+/* La regla de ocultado, UNA. Estaba copiada por vista (`#view-stats` aquí, `#view-nutrition`
+   500 líneas más abajo) porque cada selector estaba scopeado a su id, así que una vista nueva
+   con pestañas no heredaba nada y el bug era invisible: se veían todos los grupos a la vez. */
+.view-scroll.-grouped > [data-group]:not(.active-group),
+.view-scroll.-grouped > .section-label[data-group]:not(.active-group) { display: none; }
 
 /* ==================================================
    v7.6 — Workout screen polish + light theme fixes
@@ -2087,11 +2091,6 @@ body[data-tab="home"] .home-scroll-v2 { padding-top: calc(var(--safe-top) + 10px
 .an-method > summary::-webkit-details-marker { display: none; }
 .an-method > summary::before { content: "▸ "; }
 .an-method[open] > summary::before { content: "▾ "; }
-
-/* Sub-vistas de Nutricion: mismo patron que las de Stats, que scopea su regla a
-   #view-stats y por eso no cubre esta vista. */
-#view-nutrition .view-scroll > [data-group]:not(.active-group),
-#view-nutrition .view-scroll > .section-label[data-group]:not(.active-group) { display: none; }
 
 /* ========== Nutrición v2 (v11.49) ========== */
 /* Semáforo. Los umbrales se imprimen SIEMPRE junto al color en la propia UI: un color

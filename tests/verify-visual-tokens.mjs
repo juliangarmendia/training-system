@@ -703,7 +703,15 @@ yes(/<option value="auto-if-clean" disabled>/.test(HTML) && /<option value="auto
   for (const [nombre, src] of [['app.js', APP], ['coach.js', COACHJS], ['whoop.js', WHOOP]]) {
     yes(!/\.style\.display\s*=/.test(codigo(src)), `${nombre} no usa style.display (hidden o .hidden)`);
   }
-  yes(/<div id="intervals-icu-section" hidden>/.test(HTML), '#intervals-icu-section usa el atributo hidden');
+  // v11.79: `#intervals-icu-section` YA NO EXISTE. Era un bloque `hidden` con cuatro controles
+  // inalcanzables (dos de ellos botones sin texto) y el tercer camino de guardado de la clave de
+  // intervals.icu. Se borró con su renderer al reorganizar Ajustes. La aserción se invierte: lo
+  // que hay que impedir ahora es que vuelva.
+  yes(!/id="intervals-icu-section"/.test(HTML),
+    'el bloque oculto de intervals.icu sigue sin existir (cuatro controles que nadie podía tocar)');
+  // Sobre el CODIGO, no sobre los comentarios: la lapida que explica por que se borro tiene
+  // que poder nombrarlo, que para eso esta.
+  yes(!/renderIntervalsIcuUI/.test(codigo(APP)), 'ni su renderer en app.js');
   yes(!/style="display:none"/.test(HTML.replace(/<input type="file"[^>]*>/g, '')),
     'y en el marcado no queda un display:none inline (salvo el input de fichero)');
 }

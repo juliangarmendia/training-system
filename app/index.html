@@ -433,7 +433,7 @@
            es cómo se llegó a 11 filas en cuatro meses.
            v11.51: tres sub-vistas con el mismo patrón que las de Stats. -->
       <section id="view-nutrition" class="view">
-        <div class="view-scroll">
+        <div class="view-scroll -grouped">
           <div class="stats-tabs" id="nut-tabs">
             <button class="stats-tab active" data-nut-group="hoy">Today</button>
             <button class="stats-tab" data-nut-group="tendencias">Trends</button>
@@ -530,7 +530,7 @@
 
       <!-- Stats -->
       <section id="view-stats" class="view">
-        <div class="view-scroll">
+        <div class="view-scroll -grouped">
           <!-- Stats sub-tabs.
                V-10 (auditoría 2026-09-09, decisión de Julian): las pestañas eran
                Today / Body / Strength / Tools y "Today" tenía CINCO bloques de semana
@@ -744,13 +744,73 @@
 
       <!-- Settings -->
       <section id="view-settings" class="view">
-        <div class="view-scroll">
-          <div class="section-label">Account</div>
-          <div class="card" id="auth-section">
+        <!-- v11.79 · Settings en CINCO grupos (Julian, 2026-09-13: "se hace muy largo el scroll
+             hasta el fondo, busquemos una forma MECE").
+
+             Eran 16 bloques y ~50 controles en una sola columna, sin ninguna navegación interna.
+             Tenía tres consecuencias medibles: (1) lo que existe no se encuentra — Julian no dio
+             con "Who writes the weekly review", que estaba en la quinta sección; (2) el ajuste y
+             su guardado quedaban lejos — `saveSettings()` lee OCHO campos que vivían repartidos
+             por tres secciones y su único botón estaba en la tercera; (3) la herramienta de
+             taller compartía columna con "Your name".
+
+             El criterio de agrupación es la pregunta que trae aquí al usuario: quién soy y qué
+             persigo · de dónde salen mis números · cómo decide el coach · qué pasa con mis datos
+             · qué hace la app en mi teléfono. Lo de taller va a un solo "Advanced" al final.
+
+             El chasis es el de Stats y Nutrición (`.stats-tabs`), y el conmutador es el MISMO
+             (`switchViewGroup`, app.js): esta vista habría sido la tercera copia de las mismas
+             diez líneas. Las etiquetas ya no llevan `margin-top` en línea: lo pone la regla
+             `.view-scroll > .section-label ~ .section-label`, como en Stats. -->
+        <div class="view-scroll -grouped">
+          <div class="stats-tabs" id="settings-tabs">
+            <button class="stats-tab active" data-settings-group="you">You</button>
+            <button class="stats-tab" data-settings-group="sources">Sources</button>
+            <button class="stats-tab" data-settings-group="coach">Coach</button>
+            <button class="stats-tab" data-settings-group="data">Data</button>
+            <button class="stats-tab" data-settings-group="app">App</button>
+          </div>
+
+          <!-- ===== YOU · quién soy y qué persigo ===== -->
+          <!-- Los OCHO campos de `saveSettings()` y su botón, por fin juntos. Estaban en tres
+               secciones distintas (Profile & Targets, Program, Daily Steps) con un único Save
+               en la tercera: cambiabas el objetivo de pasos y tenías que buscarlo dos secciones
+               más abajo. `saveSettings()` no cambia, sigue leyendo por id. -->
+          <div class="section-label" data-group="you">Profile &amp; targets</div>
+          <div class="card" data-group="you">
+            <div class="form-row"><label>Your name</label><input type="text" id="setting-name" class="text-input" placeholder="Your name"></div>
+            <div style="height:12px"></div>
+            <div class="form-row inline"><label>Weight unit</label><div class="toggle-group"><button id="unit-kg" class="toggle-btn selected">kg</button><button id="unit-lb" class="toggle-btn">lb</button></div></div>
+            <div style="height:12px"></div>
+            <div class="form-row"><label>Daily protein target (g)</label><input type="number" id="setting-protein-target" step="5" min="0" value="185" inputmode="numeric"></div>
+            <!-- Objetivos por tipo de dia (v11.49): plans/nutrition-notes.md cicla 2.700 kcal
+                 en dia de entreno y 2.400 en descanso. Un unico numero no podia representarlo,
+                 y `calorieTarget` ademas no estaba cableado a nada. -->
+            <div class="form-row"><label>Calories · training day</label><input type="number" id="setting-calorie-target-training" step="50" min="0" value="2700" inputmode="numeric"></div>
+            <div class="form-row"><label>Calories · rest day</label><input type="number" id="setting-calorie-target-rest" step="50" min="0" value="2400" inputmode="numeric"></div>
+            <div class="form-row"><label>Goal weight (kg)</label><input type="number" id="setting-goal-weight" step="0.5" min="20" max="300" placeholder="e.g. 78" inputmode="decimal"></div>
+            <p class="setting-hint" style="margin-top:-6px">Used to project ETA and progress on the Body card.</p>
+            <div class="form-row"><label>Daily step target</label><input type="number" id="setting-steps-target" class="text-input" min="0" max="50000" step="500" placeholder="8000"></div>
+            <p class="setting-hint">Steps sync automatically from Apple Health via intervals.icu Companion. NEAT (steps + daily activity) drives most fat loss during a deficit — 8-10k is a good baseline.</p>
+            <div class="form-row"><label>Program start date</label><input type="date" id="setting-start-date" class="date-input"></div>
+            <p class="setting-hint">Used to calculate current week, deloads, and running progression.</p>
+            <button id="btn-save-settings" class="btn-primary">Save Settings</button>
+          </div>
+
+          <div class="section-label" data-group="you">Bloodwork</div>
+          <div class="card" data-group="you">
+            <p class="muted" style="font-size:13px;margin:0 0 10px">Your <b>6 blood panels (2021-2025)</b> scored 1-5 against guideline targets, not against the lab's range. Historical context, <b>not a diagnosis</b>.</p>
+            <button id="btn-analytics" class="btn-secondary btn-full" style="text-align:center">My biomarkers</button>
+          </div>
+
+          <!-- ===== SOURCES · de dónde salen mis números ===== -->
+          <div class="section-label" data-group="sources">Account</div>
+          <div class="card" id="auth-section" data-group="sources">
             <div class="skeleton skeleton-line"></div><div class="skeleton skeleton-line short"></div>
           </div>
-          <div class="section-label" style="margin-top:24px">Sync</div>
-          <div class="card" id="sync-section">
+
+          <div class="section-label" data-group="sources">Sync</div>
+          <div class="card" id="sync-section" data-group="sources">
             <div class="skeleton skeleton-line"></div><div class="skeleton skeleton-line short"></div>
           </div>
 
@@ -759,21 +819,14 @@
                espejo `integration_status` y dispara authorize / sincronizar / desconectar. La
                pinta app/integrations.js. El <details> legacy de WHOOP (OAuth en el cliente,
                tokens en localStorage) se borró aquí: era la causa de las desconexiones. -->
-          <div class="section-label" style="margin-top:24px">Integrations</div>
-          <div class="card integrations-card" id="integrations-card">
+          <div class="section-label" data-group="sources">Integrations</div>
+          <div class="card integrations-card" id="integrations-card" data-group="sources">
             <div class="skeleton skeleton-line"></div><div class="skeleton skeleton-line short"></div>
           </div>
 
-          <div class="section-label" style="margin-top:24px">Plan</div>
-          <div class="card">
-            <p class="muted" style="font-size:13px;margin:0 0 10px">Your <b>evidence-based ideal plan</b> is the live plan. Pick the <b>day count (3/4/5/6)</b> to match the week — it only changes going forward, your logged sessions stay untouched.</p>
-            <button id="btn-ideal-preview" class="btn-secondary btn-full" style="text-align:center">My plan</button>
-          </div>
-
-          <!-- Coach semanal (v11.61). "Exportar facts JSON" existe para poder INSPECCIONAR el
-               pack en el iPhone antes de gastar un céntimo en una llamada al modelo. -->
-          <div class="section-label" style="margin-top:24px">Weekly coach</div>
-          <div class="card">
+          <!-- ===== COACH · cómo se decide la semana ===== -->
+          <div class="section-label" data-group="coach">Weekly coach</div>
+          <div class="card" data-group="coach">
             <p class="muted" style="font-size:13px;margin:0 0 10px">The coach reviews the week and <b>proposes</b>; you approve. The proposal shows up on Home and in the Coach view.</p>
             <div class="form-row">
               <label for="setting-coach-auto-apply">How the weekly proposal is applied</label>
@@ -792,26 +845,67 @@
             </div>
             <p class="setting-hint" style="margin-top:4px">In manual mode, "Close the week" saves this week's facts and waits: the proposal shows up here once the review is written from the session. "Regenerate" always asks the model.</p>
             <button id="btn-open-coach" class="btn-secondary btn-full" style="text-align:center;margin-top:10px">Open Coach</button>
-            <button id="btn-export-facts" class="btn-secondary btn-full" style="text-align:center;margin-top:8px">Export facts JSON</button>
-            <p class="setting-hint">Copies the facts the coach receives to the clipboard (no raw rows). Useful to check what it sees before asking for a review.</p>
-            <div id="coach-facts-out" class="hidden" style="margin-top:8px"></div>
           </div>
 
-          <div class="section-label" style="margin-top:24px">Bloodwork</div>
-          <div class="card">
-            <p class="muted" style="font-size:13px;margin:0 0 10px">Your <b>6 blood panels (2021-2025)</b> scored 1-5 against guideline targets, not against the lab's range. Historical context, <b>not a diagnosis</b>.</p>
-            <button id="btn-analytics" class="btn-secondary btn-full" style="text-align:center">My biomarkers</button>
+          <div class="section-label" data-group="coach">Plan</div>
+          <div class="card" data-group="coach">
+            <p class="muted" style="font-size:13px;margin:0 0 10px">Your <b>evidence-based ideal plan</b> is the live plan. Pick the <b>day count (3/4/5/6)</b> to match the week — it only changes going forward, your logged sessions stay untouched.</p>
+            <button id="btn-ideal-preview" class="btn-secondary btn-full" style="text-align:center">My plan</button>
           </div>
 
-          <div class="section-label" style="margin-top:24px">Daily Steps</div>
-          <div class="card">
-            <div class="form-row"><label>Daily target</label><input type="number" id="setting-steps-target" class="text-input" min="0" max="50000" step="500" placeholder="8000"></div>
-            <p class="setting-hint">Steps sync automatically from Apple Health via intervals.icu Companion. NEAT (steps + daily activity) drives most fat loss during a deficit — 8-10k is a good baseline.</p>
+          <!-- ===== DATA · qué pasa con mis datos ===== -->
+          <div class="section-label" data-group="data">Backup &amp; export</div>
+          <div class="card" data-group="data">
+            <button id="btn-export-json" class="btn-secondary btn-full">Full backup (JSON)</button>
+            <button id="btn-backup" class="btn-secondary btn-full" style="margin-top:8px">Workouts, runs and nutrition only (JSON)</button>
+            <button id="btn-export-csv" class="btn-secondary btn-full" style="margin-top:8px">Export data (CSV)</button>
+            <p class="setting-hint">Backups never include your secrets (steps secret, intervals.icu API key).</p>
+            <div style="height:12px"></div>
+            <label class="btn-secondary btn-full" style="text-align:center;cursor:pointer">Import Backup<input type="file" id="file-restore" accept=".json" style="display:none"></label>
           </div>
 
-          <details class="setup-details" style="margin-top:24px">
-            <summary class="section-label" style="cursor:pointer">Legacy connections (advanced)</summary>
-            <p class="setting-hint" style="margin:8px 0 12px">Pre-intervals.icu setup. Kept for fallback only — the unified Sync card above replaces all of these. Don't enable unless intervals.icu fails.</p>
+          <div class="section-label" data-group="data">Trash (2-day recovery)</div>
+          <div class="card" data-group="data">
+            <div id="trash-list"></div>
+          </div>
+
+          <!-- ===== APP · qué hace la app en mi teléfono ===== -->
+          <div class="section-label" data-group="app">Notifications</div>
+          <div class="card" data-group="app">
+            <div class="form-row inline"><label>Training reminders</label>
+              <div class="toggle-group"><button id="notif-on" class="toggle-btn">On</button><button id="notif-off" class="toggle-btn selected">Off</button></div>
+            </div>
+            <p class="setting-hint">Get reminded on training days and to track protein.</p>
+            <div class="form-row inline" style="margin-top:12px"><label>Rest timer sound</label>
+              <div class="toggle-group"><button id="audio-on" class="toggle-btn selected">On</button><button id="audio-off" class="toggle-btn">Off</button></div>
+            </div>
+            <p class="setting-hint">Beep when rest period ends. Plus a 1-second green flash on screen as backup. <strong>iOS caveat:</strong> the side <strong>silent switch</strong> mutes web audio. If you don't hear the beep, flip the silent switch off (or rely on the visual flash). The green flash always works regardless.</p>
+          </div>
+
+          <div class="section-label" data-group="app">About</div>
+          <div class="card" data-group="app">
+            <p class="muted" style="margin:0;font-size:13px">Training System v11.79<br>Data stored locally + cloud sync.<br>Works offline.</p>
+          </div>
+
+          <!-- TODO lo de taller, en un solo sitio y plegado (decisión de Julian, 2026-09-13).
+               Antes estaba repartido: "Export facts JSON" entre dos selectores del coach, "Scan
+               & Recover" con su volcado en crudo como sección propia, y "Force Update App" —que
+               desregistra el service worker y borra TODAS las cachés— a un toque, debajo del
+               número de versión. Nada de esto es un ajuste: son herramientas para cuando algo
+               falla, y sólo estorban el resto del tiempo. -->
+          <details class="setup-details" data-group="app">
+            <summary class="section-label" style="cursor:pointer">Advanced</summary>
+            <p class="setting-hint" style="margin:8px 0 12px">Diagnostics and fallbacks. You don't need any of this unless something is broken.</p>
+
+            <div class="section-label" style="margin-top:8px">Coach pack</div>
+            <div class="card">
+              <button id="btn-export-facts" class="btn-secondary btn-full" style="text-align:center">Export facts JSON</button>
+              <p class="setting-hint">Copies the facts the coach receives to the clipboard (no raw rows). Useful to check what it sees before asking for a review.</p>
+              <div id="coach-facts-out" class="hidden" style="margin-top:8px"></div>
+            </div>
+
+            <div class="section-label" style="margin-top:16px">Legacy connections</div>
+            <p class="setting-hint" style="margin:8px 0 12px">Pre-intervals.icu setup. Kept for fallback only — the Sync card in Sources replaces all of these. Don't enable unless intervals.icu fails.</p>
 
             <div class="section-label" style="margin-top:8px">Strava (legacy COROS bridge)</div>
             <div class="card" id="strava-section">
@@ -830,73 +924,21 @@
               </div>
               <pre id="steps-test-output" class="setting-hint" style="margin-top:10px;white-space:pre-wrap"></pre>
             </div>
+
+            <div class="section-label" style="margin-top:16px">Data recovery</div>
+            <div class="card">
+              <p class="setting-hint" style="margin-top:0">Scans sync queue + cloud to restore anything missing locally.</p>
+              <button id="btn-recover-data" class="btn-secondary btn-full" style="text-align:center;margin-bottom:8px">Scan &amp; Recover</button>
+              <button id="btn-scan-cloud" class="btn-secondary btn-full" style="text-align:center">List Cloud Workouts</button>
+              <pre id="recovery-output" class="muted" style="font-size:10px;margin-top:10px;white-space:pre-wrap;max-height:240px;overflow:auto;background:var(--bg);padding:8px;border-radius:6px;border:1px solid var(--border)" hidden></pre>
+            </div>
+
+            <div class="section-label" style="margin-top:16px">App</div>
+            <div class="card">
+              <p class="setting-hint" style="margin-top:0">Unregisters the service worker and clears every cache, then reloads. Your data is not touched.</p>
+              <button id="btn-force-update" class="btn-secondary btn-full" style="text-align:center">Force Update App</button>
+            </div>
           </details>
-
-          <!-- Hidden inputs kept for legacy renderIntervalsIcuUI() compatibility (the unified Sync card writes through different handlers but reads the same state.settings keys) -->
-          <div id="intervals-icu-section" hidden>
-            <input type="text" id="setting-intervals-athlete">
-            <input type="password" id="setting-intervals-api-key">
-            <button id="btn-save-intervals"></button>
-            <button id="btn-intervals-sync-now"></button>
-          </div>
-          <div class="section-label" style="margin-top:24px">Program</div>
-          <div class="card">
-            <div class="form-row"><label>Program start date</label><input type="date" id="setting-start-date" class="date-input"></div>
-            <p class="setting-hint">Used to calculate current week, deloads, and running progression.</p>
-          </div>
-          <div class="section-label" style="margin-top:24px">Data</div>
-          <div class="card">
-            <button id="btn-export-json" class="btn-secondary btn-full">Full backup (JSON)</button>
-            <button id="btn-backup" class="btn-secondary btn-full" style="margin-top:8px">Workouts, runs and nutrition only (JSON)</button>
-            <button id="btn-export-csv" class="btn-secondary btn-full" style="margin-top:8px">Export data (CSV)</button>
-            <p class="setting-hint">Backups never include your secrets (steps secret, intervals.icu API key).</p>
-            <div style="height:12px"></div>
-            <label class="btn-secondary btn-full" style="text-align:center;cursor:pointer">Import Backup<input type="file" id="file-restore" accept=".json" style="display:none"></label>
-          </div>
-          <div class="section-label" style="margin-top:24px">Profile & Targets</div>
-          <div class="card">
-            <div class="form-row"><label>Your name</label><input type="text" id="setting-name" class="text-input" placeholder="Your name"></div>
-            <div style="height:12px"></div>
-            <div class="form-row inline"><label>Weight unit</label><div class="toggle-group"><button id="unit-kg" class="toggle-btn selected">kg</button><button id="unit-lb" class="toggle-btn">lb</button></div></div>
-            <div style="height:12px"></div>
-            <div class="form-row"><label>Daily protein target (g)</label><input type="number" id="setting-protein-target" step="5" min="0" value="185" inputmode="numeric"></div>
-            <!-- Objetivos por tipo de dia (v11.49): plans/nutrition-notes.md cicla 2.700 kcal
-                 en dia de entreno y 2.400 en descanso. Un unico numero no podia representarlo,
-                 y `calorieTarget` ademas no estaba cableado a nada. -->
-            <div class="form-row"><label>Calories · training day</label><input type="number" id="setting-calorie-target-training" step="50" min="0" value="2700" inputmode="numeric"></div>
-            <div class="form-row"><label>Calories · rest day</label><input type="number" id="setting-calorie-target-rest" step="50" min="0" value="2400" inputmode="numeric"></div>
-            <div class="form-row"><label>Goal weight (kg)</label><input type="number" id="setting-goal-weight" step="0.5" min="20" max="300" placeholder="e.g. 78" inputmode="decimal"></div>
-            <p class="setting-hint" style="margin-top:-6px">Used to project ETA and progress on the Body card.</p>
-            <button id="btn-save-settings" class="btn-primary">Save Settings</button>
-          </div>
-          <div class="section-label" style="margin-top:24px">Notifications</div>
-          <div class="card">
-            <div class="form-row inline"><label>Training reminders</label>
-              <div class="toggle-group"><button id="notif-on" class="toggle-btn">On</button><button id="notif-off" class="toggle-btn selected">Off</button></div>
-            </div>
-            <p class="setting-hint">Get reminded on training days and to track protein.</p>
-            <div class="form-row inline" style="margin-top:12px"><label>Rest timer sound</label>
-              <div class="toggle-group"><button id="audio-on" class="toggle-btn selected">On</button><button id="audio-off" class="toggle-btn">Off</button></div>
-            </div>
-            <p class="setting-hint">Beep when rest period ends. Plus a 1-second green flash on screen as backup. <strong>iOS caveat:</strong> the side <strong>silent switch</strong> mutes web audio. If you don't hear the beep, flip the silent switch off (or rely on the visual flash). The green flash always works regardless.</p>
-          </div>
-          <div class="section-label" style="margin-top:24px">Trash (2-day recovery)</div>
-          <div class="card">
-            <div id="trash-list"></div>
-          </div>
-
-          <div class="section-label" style="margin-top:24px">Data Recovery</div>
-          <div class="card">
-            <p class="muted" style="margin:0 0 10px;font-size:12px">Scans sync queue + cloud to restore anything missing locally.</p>
-            <button id="btn-recover-data" class="btn-secondary btn-full" style="text-align:center;margin-bottom:8px">Scan &amp; Recover</button>
-            <button id="btn-scan-cloud" class="btn-secondary btn-full" style="text-align:center">List Cloud Workouts</button>
-            <pre id="recovery-output" class="muted" style="font-size:10px;margin-top:10px;white-space:pre-wrap;max-height:240px;overflow:auto;background:var(--bg);padding:8px;border-radius:6px;border:1px solid var(--border)" hidden></pre>
-          </div>
-          <div class="section-label" style="margin-top:24px">App</div>
-          <div class="card">
-            <p class="muted" style="margin:0 0 12px;font-size:13px">Training System v11.78<br>Data stored locally + cloud sync.<br>Works offline.</p>
-            <button id="btn-force-update" class="btn-secondary btn-full" style="text-align:center">Force Update App</button>
-          </div>
         </div>
       </section>
     </main>

@@ -629,7 +629,13 @@ async function integrationsHandleReturn() {
   } else {
     _integToast(INTEG_CONNECT_ERROR_EN[err] || `Could not connect (${err})`);
   }
-  try { if (typeof switchTab === 'function') switchTab('settings'); } catch (e) {}
+  // v11.79: Ajustes va por grupos, y volver de un OAuth tiene que caer en el de Integraciones.
+  // `switchTab('settings')` a secas dejaba al usuario en el grupo que estuviera activo — es
+  // decir, mirando sus objetivos de calorías justo después de conectar WHOOP.
+  try {
+    if (typeof openSettingsAt === 'function') openSettingsAt('integrations-card');
+    else if (typeof switchTab === 'function') switchTab('settings');
+  } catch (e) {}
   await integrationsGetStatus({ force: true });
   try { await renderIntegrationsCard(); } catch (e) {}
 }

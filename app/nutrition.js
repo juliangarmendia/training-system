@@ -2315,18 +2315,12 @@ async function nutSaveEnergy() {
 
 // ==================== SUB-VISTAS ====================
 //
-// Mismo patrón que las sub-pestañas de Stats: `data-nut-group` en los botones y
-// `data-group` + `.active-group` en el contenido.
+// `data-nut-group` en los botones y `data-group` + `.active-group` en el contenido. El toggle
+// en sí ya no vive aquí: era una copia literal del de Stats y ahora las dos vistas (y Settings)
+// llaman a `switchViewGroup` (app.js). Lo único propio de Nutrición es recordar el grupo.
 
 function switchNutGroup(group) {
-  document.querySelectorAll('#nut-tabs .stats-tab').forEach(b => {
-    b.classList.toggle('active', b.dataset.nutGroup === group);
-  });
-  document.querySelectorAll('#view-nutrition .view-scroll > [data-group]').forEach(el => {
-    el.classList.toggle('active-group', el.dataset.group === group);
-  });
-  const scroll = document.querySelector('#view-nutrition .view-scroll');
-  if (scroll) scroll.scrollTop = 0;
+  switchViewGroup('view-nutrition', 'nut-tabs', 'nutGroup', group);
   _nutGroup = group;
 }
 

@@ -2285,7 +2285,7 @@ function switchTab(tab) {
   // BUG-UI-2 fix (v11.12): 'settings' had no branch, so the Home gear/bell/avatar
   // (which call switchTab('settings')) only un-hid the global header ("old bar")
   // without ever activating view-settings. Mirror the #btn-settings handler.
-  else if (tab === 'settings') { showView('settings'); renderTrashList(); }
+  else if (tab === 'settings') { showView('settings'); renderSettingsView(); }
 
   updateHeader(tab);
 }
@@ -5363,6 +5363,35 @@ const STATS_GROUPS = {
   ],
 };
 
+/**
+ * EL conmutador de sub-pestañas. Uno, para las tres vistas que las usan.
+ *
+ * Stats lo estrenó y Nutrición lo copió entero — su propio comentario lo admitía, "mismo patrón
+ * que las sub-pestañas de Stats". Settings habría sido la tercera copia de las mismas diez
+ * líneas, en un repo cuyas últimas auditorías se han dedicado justamente a perseguir eso. Lo que
+ * cambia entre vistas son tres nombres, así que son tres argumentos.
+ *
+ * Sólo toca el DOM: qué pestaña se ve activa y qué bloques se enseñan. Lo que haya que PINTAR es
+ * decisión de cada vista y va en su envoltura, porque no coinciden: Stats pinta una vez y guarda
+ * (`state._statsPainted`), y Settings repinta siempre, que es como se arregla que sus tarjetas
+ * lleven horas rancias.
+ *
+ * @param {string} vista  id de la vista, p. ej. 'view-stats'
+ * @param {string} barra  id de la barra de pestañas, p. ej. 'stats-tabs'
+ * @param {string} attr   clave de `dataset` en los botones, p. ej. 'statsGroup'
+ * @param {string} grupo  grupo a activar
+ */
+function switchViewGroup(vista, barra, attr, grupo) {
+  document.querySelectorAll(`#${barra} .stats-tab`).forEach((b) => {
+    b.classList.toggle('active', b.dataset[attr] === grupo);
+  });
+  document.querySelectorAll(`#${vista} .view-scroll > [data-group]`).forEach((el) => {
+    el.classList.toggle('active-group', el.dataset.group === grupo);
+  });
+  const scroll = document.querySelector(`#${vista} .view-scroll`);
+  if (scroll) scroll.scrollTop = 0;
+}
+
 const STATS_DEFAULT_GROUP = 'now';
 
 /** El grupo visible ahora mismo, o el de por defecto si aún no hay ninguno. */
@@ -5373,14 +5402,7 @@ function _activeStatsGroup() {
 
 /** Sólo el DOM: qué pestaña está activa y qué bloques se ven. No pinta nada. */
 function _showStatsGroup(group) {
-  document.querySelectorAll('#stats-tabs .stats-tab').forEach(b => {
-    b.classList.toggle('active', b.dataset.statsGroup === group);
-  });
-  document.querySelectorAll('#view-stats .view-scroll > [data-group]').forEach(el => {
-    el.classList.toggle('active-group', el.dataset.group === group);
-  });
-  const scroll = document.querySelector('#view-stats .view-scroll');
-  if (scroll) scroll.scrollTop = 0;
+  switchViewGroup('view-stats', 'stats-tabs', 'statsGroup', group);
 }
 
 function switchStatsGroup(group) {
@@ -5921,50 +5943,12 @@ async function runFullSync({ silent = true } = {}) {
   return { runsResult, wellnessResult };
 }
 
-// ==================== INTERVALS.ICU SETTINGS UI (legacy) ====================
-function renderIntervalsIcuUI() {
-  const apiInput = document.getElementById('setting-intervals-api-key');
-  const athInput = document.getElementById('setting-intervals-athlete');
-  const saveBtn = document.getElementById('btn-save-intervals');
-  if (!apiInput || !athInput || !saveBtn) return;
-  apiInput.value = intervalsApiKey();
-  athInput.value = (state.settings && state.settings.intervalsIcuAthleteId) || '';
-  saveBtn.onclick = async () => {
-    // A-7: el MISMO camino que la tarjeta Sync (dispositivo + servidor). Este formulario está
-    // oculto y es legacy, pero un tercer camino de guardado sería un tercer sitio donde la clave
-    // del servidor puede quedarse vieja.
-    const r = await saveIntervalsCredentials(apiInput.value, athInput.value);
-    if (typeof toast === 'function') {
-      toast((r && r.ok)
-        ? (r.serverOk ? 'intervals.icu config saved on the server' : 'intervals.icu config saved on this device')
-        : errText(r && r.error, 'The key could not be saved'));
-    }
-    if (!r || !r.ok) return;
-    // Pull HR zones now so cardio prescriptions get real bpm ranges (best-effort).
-    fetchIntervalsIcuZones().catch(() => {});
-    // Rerender the coach card so the "Push to COROS" button toggles based on key presence.
-    if (typeof loadAndRenderWeeklyCoach === 'function') loadAndRenderWeeklyCoach();
-  };
-  const syncBtn = document.getElementById('btn-intervals-sync-now');
-  if (syncBtn) {
-    syncBtn.onclick = async () => {
-      syncBtn.textContent = 'Syncing...';
-      syncBtn.disabled = true;
-      try {
-        const result = await intervalsIcuSync();
-        if (result) {
-          if (typeof toast === 'function') toast(`Pulled ${result.pulled} run${result.pulled === 1 ? '' : 's'}`);
-          renderRecentWorkouts();
-        } else {
-          if (typeof toast === 'function') toast(`Sync failed: ${errText(intervalsLastError(), 'check the API key / athlete ID')}`);
-        }
-      } finally {
-        syncBtn.textContent = 'Sync runs now';
-        syncBtn.disabled = false;
-      }
-    };
-  }
-}
+// v11.79 · `renderIntervalsIcuUI()` RETIRADA con su formulario. Pintaba cuatro controles que
+// vivian dentro de `#intervals-icu-section[hidden]`: sin etiqueta visible, sin texto en dos de
+// los botones y sin ninguna forma de llegar a ellos desde la interfaz. Era el TERCER camino de
+// guardado de la clave de intervals.icu; los otros dos (la tarjeta Sync y la fila de
+// Integraciones) siguen, y los dos ya escribian por `saveIntervalsCredentials()`, asi que
+// borrarlo no quita ninguna capacidad.
 
 // ==================== PULL ACTIVITIES ← intervals.icu ← COROS ====================
 // Client-side sync: pulls Run activities from intervals.icu (which auto-syncs
@@ -8903,15 +8887,64 @@ function showStatsSkeletons(group) {
   }
 }
 
+// ==================== AJUSTES · LOS CINCO GRUPOS (v11.79) ====================
+//
+// Julian: "se hace muy largo el scroll hasta el fondo". Eran 16 bloques en una columna. El
+// criterio de reparto es la pregunta que trae aquí: quién soy y qué persigo (`you`), de dónde
+// salen mis números (`sources`), cómo decide el coach (`coach`), qué pasa con mis datos (`data`)
+// y qué hace la app en el teléfono (`app`, con Advanced plegado dentro).
+const SETTINGS_GROUPS = ['you', 'sources', 'coach', 'data', 'app'];
+const SETTINGS_DEFAULT_GROUP = 'you';
+
+// Qué repintar al abrir cada grupo. Al CONTRARIO que Stats, que pinta una vez y guarda: aquí
+// todas estas tarjetas las inyecta JS y sólo se pintaban en el arranque, así que abrir Ajustes
+// enseñaba el estado de hace horas. Abrir Ajustes hoy sólo repintaba la papelera.
+const SETTINGS_GROUP_RENDER = {
+  you: [],
+  sources: ['renderAuthUI', 'renderSyncCard', 'renderIntegrationsCard'],
+  coach: [],
+  data: ['renderTrashList'],
+  app: ['renderStravaUI'],
+};
+
+function _activeSettingsGroup() {
+  const el = document.querySelector('#view-settings .view-scroll > [data-group].active-group');
+  return (el && el.dataset.group) || SETTINGS_DEFAULT_GROUP;
+}
+
+function switchSettingsGroup(group) {
+  const g = SETTINGS_GROUPS.includes(group) ? group : SETTINGS_DEFAULT_GROUP;
+  switchViewGroup('view-settings', 'settings-tabs', 'settingsGroup', g);
+  for (const fn of (SETTINGS_GROUP_RENDER[g] || [])) {
+    // `safeCall` porque estos renderers viven en cuatro ficheros distintos y uno que falle no
+    // puede dejar el resto del grupo sin pintar.
+    Promise.resolve(safeCall(fn)).catch((e) => console.warn(`[Ajustes] ${fn}:`, e));
+  }
+}
+
+/** Al entrar en Ajustes: asegura que hay un grupo activo y repinta lo suyo. */
+function renderSettingsView() {
+  switchSettingsGroup(_activeSettingsGroup());
+}
+
 // V-4: Ajustes con destino. El engranaje del topbar abre Ajustes y baja a la tarjeta que se
 // va a tocar; sin ancla, "Integraciones" está a tres pantallas de scroll.
 function openSettingsAt(anchorId) {
   switchTab('settings');
-  if (!anchorId) return;
+  if (!anchorId) {
+    renderSettingsView();
+    return;
+  }
+  // v11.79: PRIMERO se abre el grupo que contiene el ancla. Con la vista agrupada, el ancla
+  // puede estar en un panel con `display: none`, y `scrollIntoView` sobre un nodo oculto no
+  // hace absolutamente nada — el engranaje habría dejado de llevar a Integraciones en silencio.
+  const el = document.getElementById(anchorId);
+  const cont = el && (typeof el.closest === 'function') ? el.closest('[data-group]') : null;
+  switchSettingsGroup((cont && cont.dataset.group) || _activeSettingsGroup());
+  if (!el) return;
   // Un frame de margen: `switchTab` activa la vista y el scroll no existe hasta que se pinta.
   setTimeout(() => {
-    const el = document.getElementById(anchorId);
-    if (el && typeof el.scrollIntoView === 'function') {
+    if (typeof el.scrollIntoView === 'function') {
       el.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   }, 120);
@@ -12764,10 +12797,15 @@ function bindEvents() {
     btn.addEventListener('click', () => switchStatsGroup(btn.dataset.statsGroup));
   });
 
+  // Settings sub-tabs (v11.79)
+  document.querySelectorAll('#settings-tabs .stats-tab').forEach(btn => {
+    btn.addEventListener('click', () => switchSettingsGroup(btn.dataset.settingsGroup));
+  });
+
   // Settings button
   document.getElementById('btn-settings').addEventListener('click', () => {
     enterSecondaryView('settings');
-    renderTrashList();
+    renderSettingsView();
   });
 
   // T4: Ideal Plan Preview open/back (read-only view)
@@ -13650,9 +13688,8 @@ async function init() {
   Promise.resolve(safeCall('integrationsHandleReturn')).catch((e) => console.warn('[integraciones] vuelta:', e));
   Promise.resolve(safeCall('renderIntegrationsCard')).catch((e) => console.warn('[integraciones] tarjeta:', e));
 
-  // Legacy connection cards inside collapsible "Legacy connections" section
+  // Legacy connection cards inside the collapsible "Advanced" section
   renderStravaUI();
-  renderIntervalsIcuUI();
   // A-7: `stravaIsConnected()` es síncrona y lee la caché de `integration_status`, que la línea
   // de arriba está cebando en segundo plano. Sin este segundo pase la tarjeta legacy de Strava
   // pinta "Connect" en cada arranque sobre una integración que sí está conectada.

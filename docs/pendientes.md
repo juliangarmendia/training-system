@@ -6,7 +6,7 @@
 > El *por qué* de cada cosa vive en [`../assessments/2026-08-16_system-audit.md`](../assessments/2026-08-16_system-audit.md).
 > Aquí está el *qué sigue*.
 >
-> Última actualización: **2026-09-12** (diez ajustes de Julian tras usar v11.73, los cuatro incrementos DESPLEGADOS: v11.74 el coach que se entiende, v11.75 el plan que se adapta, v11.76 la comida en tres caminos, v11.77 pantallas. `parse-meal-photo` v2 desplegada. Suite en verde, 38 ficheros)
+> Última actualización: **2026-09-13** (v11.78 el rótulo huérfano del coach, v11.79 Ajustes en cinco grupos. Suite en verde, 39 ficheros)
 
 ## Regla de trabajo
 
@@ -711,6 +711,57 @@ this" con Retry.
 3. **`VOL-FLOOR` avisaba seis veces.** Medido sobre la semilla real incumplen el suelo seis familias
    (Rear Delt 3, Chest 4, Shoulders 4, Quads 7, cadena posterior 7, Back 8), cada una con el mismo
    texto de tres frases. Ahora es UN aviso con la lista ordenada por lo peor.
+
+## v11.79 (2026-09-13) — Ajustes en cinco grupos
+
+Julian, tras no encontrar el selector del modo del coach: *"en la parte de Settings deberíamos
+organizar un poco, se hace muy largo el scroll hasta el fondo (busquemos una forma MECE)"*.
+
+El inventario le dio la razón con números: **16 bloques de primer nivel y unos 50 controles en una
+sola columna**, sin ninguna navegación interna, y con cuatro de las tarjetas inyectadas por JS —
+las más altas en pantalla — así que el scroll real era peor que las 156 líneas de HTML. Ya había
+una cicatriz de esto: `openSettingsAt()` se inventó sólo para poder llegar a Integraciones, y su
+comentario decía *"sin ancla, Integraciones está a tres pantallas de scroll"*.
+
+**Los cinco grupos** salen de la pregunta que trae aquí al usuario: quién soy y qué persigo
+(`you`), de dónde salen mis números (`sources`), cómo decide el coach (`coach`), qué pasa con mis
+datos (`data`), qué hace la app en el teléfono (`app`). Lo de taller —Export facts JSON, el puente
+legacy de Strava, los pasos por atajo de iOS, Data Recovery y Force Update— va a un solo
+**Advanced** plegado al final, decisión suya.
+
+**Tres cosas se arreglaron de paso porque agrupar las destapó:**
+
+- **Los ocho campos de `saveSettings()` estaban en tres secciones y el único Save en la tercera.**
+  Cambiabas el objetivo de pasos y tenías que buscar el botón dos secciones más abajo. Ahora
+  comparten panel. La función no cambia: sigue leyendo por id.
+- **Las tarjetas llegaban rancias.** Abrir Ajustes sólo repintaba la papelera; Sync, Integrations
+  y Strava se pintaron en el arranque y podían llevar horas viejas. Cada grupo repinta lo suyo al
+  abrirse — al revés que Stats, que pinta una vez y guarda a propósito.
+- **`#intervals-icu-section` se borra.** Era un bloque `hidden` con cuatro controles que ningún
+  usuario podía alcanzar (dos de ellos botones sin texto) y el tercer camino de guardado de la
+  clave de intervals.icu. Los otros dos ya escribían por `saveIntervalsCredentials()`, así que
+  borrarlo no quitó ninguna capacidad.
+
+**Y una duplicación que NO se tocó, con motivo.** El plan contemplaba dejar el formulario de la
+clave de intervals.icu en un solo sitio. Al abrirlo se vio que los dos que quedan **no son
+duplicados**: el de la tarjeta Sync es el alta, con su explicación de qué cubre la conexión y el
+enlace a intervals.icu/settings, y el de la fila de Integraciones es la acción por proveedor, igual
+que en WHOOP y Withings. Quitar cualquiera de los dos pierde algo, y el riesgo que justificaba
+unificarlos —que la clave quedara vieja en un sitio— no existe: los dos pasan por
+`saveIntervalsCredentials()`. Ahora además están adyacentes en el mismo grupo. Queda a decisión.
+
+**El conmutador, compartido.** `switchStatsGroup` y `switchNutGroup` eran la misma función escrita
+dos veces (el comentario de Nutrición lo admitía). Settings habría sido la tercera copia, así que
+sale `switchViewGroup(vista, barra, attr, grupo)` y las tres delegan. El CSS igual: la regla de
+ocultado estaba scopeada a `#view-stats` y a `#view-nutrition`, de modo que una vista nueva con
+pestañas no heredaba nada y el fallo habría sido invisible — todos los grupos a la vez. Pasa a
+`.view-scroll.-grouped`.
+
+**Test nuevo, `verify-settings-groups.mjs` (63 comprobaciones).** Comprueba las dos mitades del
+MECE por separado: que todo hijo directo del scroll lleve `data-group` y que todo id caiga en un
+grupo (exhaustivo), y que ningún id esté en dos (excluyente). El fallo que impide es el propio de
+toda vista agrupada: un control que se queda fuera de todos los grupos sigue en el HTML, se lee
+bien en revisión y no se ve en el navegador desde ninguna pestaña.
 
 ## Los diez ajustes de Julian (2026-09-12)
 
