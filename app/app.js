@@ -1692,9 +1692,22 @@ function deloadAnchorWeek() {
 function blockWeek(date = new Date()) {
   const anchor = (state.settings && state.settings.deloadAnchorDate) || null;
   if (typeof blockWeekFromDates !== 'function') {      // coach-engine.js no cargó
-    return { index: null, isDeload: false, weeksIntoBlock: null, label: 'no anchor', blockStartMonday: null, deloadMonday: null };
+    return { index: null, isDeload: false, weeksIntoBlock: null, label: 'no anchor', blockStartMonday: null, deloadMonday: null, paused: false };
   }
-  return blockWeekFromDates(dateStr(date), anchor, DELOAD_BLOCK_WEEKS);
+  // v11.80: las semanas fuera (≥4 días de ausencia) no cuentan — el bloque se pausa.
+  return blockWeekFromDates(dateStr(date), anchor, DELOAD_BLOCK_WEEKS, userAbsences());
+}
+
+// Las ausencias del usuario (`settings.absences`, v11.80). Siempre un array: los llamadores
+// (bloque, calendario, adherencia) no tienen que defenderse de un settings viejo sin el campo.
+function userAbsences() {
+  const a = state.settings && state.settings.absences;
+  return Array.isArray(a) ? a : [];
+}
+
+// La ausencia en curso o la próxima que empieza hoy, para la línea de Home. null si no hay.
+function currentAbsence(ds = today()) {
+  return (typeof absenceForDate === 'function') ? absenceForDate(ds, userAbsences()) : null;
 }
 
 // Fecha (local) en la que arranca una semana de app. `getWeekNumber()` cuenta semanas de 7
@@ -2386,7 +2399,7 @@ async function renderWeekBanner() {
   const blockLen = DELOAD_BLOCK_WEEKS;
   const blockIdx = (blk && blk.index) || null;
   const blockTag = (typeof blockLabel === 'function' && state.settings)
-    ? blockLabel(today(), state.settings.deloadAnchorDate, DELOAD_BLOCK_WEEKS)
+    ? blockLabel(today(), state.settings.deloadAnchorDate, DELOAD_BLOCK_WEEKS, userAbsences())
     : null;
   const pct = blockIdx ? Math.min((blockIdx / blockLen) * 100, 100) : 0;
   // Day count since program start — disambiguates training week from ISO week.
@@ -3218,6 +3231,88 @@ async function renderTrashList() {
       toast('Restored');
     });
   });
+}
+
+// ==================== AUSENCIAS (v11.80) ====================
+//
+// Ajustes › You › "Away / travel". Lista, alta y baja de `settings.absences`; la aritmética
+// (qué semana se pausa, qué día es "Away") vive en el motor (`blockWeekFromDates`,
+// `absenceForDate`). Persiste con `smartPut` en `userSettings`, así que sincroniza sola.
+function renderAbsencesCard() {
+  const host = document.getElementById('absences-list');
+  if (!host) return;
+  const list = userAbsences().slice().sort((a, b) => String(b.from || '').localeCompare(String(a.from || '')));
+  if (!list.length) {
+    host.innerHTML = '<p class="muted" style="font-size:12px">No away dates.</p>';
+    return;
+  }
+  const hoy = today();
+  host.innerHTML = list.map((a) => {
+    const estado = a.to < hoy ? 'past' : (a.from <= hoy ? 'now' : 'upcoming');
+    const tipo = a.kind === 'travel' ? 'Travel' : 'Off';
+    return `
+      <div class="trash-item">
+        <div class="ti-left">
+          <div class="ti-title">${escapeHtml(a.from || '?')} → ${escapeHtml(a.to || '?')}</div>
+          <div class="ti-sub">${tipo} · ${estado}${a.note ? ` · ${escapeHtml(a.note)}` : ''}</div>
+        </div>
+        <button class="btn-secondary" data-absence-del="${escapeHtml(a.id || '')}" style="padding:6px 10px;font-size:12px">Delete</button>
+      </div>`;
+  }).join('');
+  host.querySelectorAll('[data-absence-del]').forEach((btn) => {
+    btn.addEventListener('click', () => deleteAbsence(btn.dataset.absenceDel));
+  });
+}
+
+async function _absencesChanged(msg) {
+  await smartPut('settings', { key: 'userSettings', data: state.settings });
+  renderAbsencesCard();
+  // El bloque, el calendario y la tarjeta del coach leen las ausencias: se repintan ya.
+  for (const fn of ['renderWeekBanner', 'renderWeekCalendar', 'renderCoachWeekCard']) {
+    Promise.resolve(safeCall(fn)).catch(() => {});
+  }
+  if (msg) toast(msg);
+}
+
+function toggleAbsenceForm(show) {
+  const form = document.getElementById('absence-form');
+  const add = document.getElementById('btn-absence-add');
+  if (!form) return;
+  const abrir = show != null ? !!show : form.classList.contains('hidden');
+  form.classList.toggle('hidden', !abrir);
+  if (add) add.textContent = abrir ? 'Cancel' : 'Add away dates';
+  if (abrir) {
+    const f = document.getElementById('absence-from');
+    const t = document.getElementById('absence-to');
+    if (f && !f.value) f.value = today();
+    if (t && !t.value) t.value = today();
+  }
+}
+
+async function saveAbsenceFromForm() {
+  const from = (document.getElementById('absence-from') || {}).value || '';
+  const to = (document.getElementById('absence-to') || {}).value || '';
+  const kindEl = document.getElementById('absence-kind');
+  const kind = kindEl && kindEl.value === 'travel' ? 'travel' : 'off';
+  const noteEl = document.getElementById('absence-note');
+  const note = noteEl ? noteEl.value.trim().slice(0, 80) : '';
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) { toast('Pick both dates'); return; }
+  if (to < from) { toast('"To" is before "From"'); return; }
+  const list = userAbsences().slice();
+  list.push({ id: `abs-${Date.now().toString(36)}`, from, to, kind, note });
+  state.settings.absences = list;
+  if (noteEl) noteEl.value = '';
+  toggleAbsenceForm(false);
+  await _absencesChanged('Away dates saved');
+}
+
+async function deleteAbsence(id) {
+  if (!id) return;
+  const list = userAbsences();
+  const next = list.filter((a) => a && a.id !== id);
+  if (next.length === list.length) return;
+  state.settings.absences = next;
+  await _absencesChanged('Away dates deleted');
 }
 
 // ==================== LOG PAST WORKOUT ====================
@@ -7617,7 +7712,18 @@ async function renderWeeklySummary() {
 
   const totalKm = thisWeekRuns.reduce((sum, r) => sum + (r.distance || 0), 0);
   const adherence = thisWeek.length;
-  const planned = Object.values(activeWeekTemplate).filter(d => d.type === 'gym').length;
+  // v11.80: los días de ausencia `off` no son sesiones planificadas (fuera no se falla nada) y
+  // los de `travel` cuentan con la variante de viaje. Mismo criterio que el calendario.
+  const ausencias = userAbsences();
+  const tplViaje = ausencias.some(a => a && a.kind === 'travel') && typeof buildWeekTemplateFromIdeal === 'function'
+    ? buildWeekTemplateFromIdeal(0) : null;
+  const planned = getWeekDates().filter((d) => {
+    const ab = (typeof absenceForDate === 'function') ? absenceForDate(dateStr(d), ausencias) : null;
+    if (ab && ab.kind !== 'travel') return false;
+    const tpl = (ab && tplViaje) ? tplViaje : activeWeekTemplate;
+    const slot = tpl && tpl[d.getDay()];
+    return !!(slot && slot.type === 'gym');
+  }).length;
 
   container.innerHTML = `
     <div class="ws-grid">
@@ -8900,7 +9006,7 @@ const SETTINGS_DEFAULT_GROUP = 'you';
 // todas estas tarjetas las inyecta JS y sólo se pintaban en el arranque, así que abrir Ajustes
 // enseñaba el estado de hace horas. Abrir Ajustes hoy sólo repintaba la papelera.
 const SETTINGS_GROUP_RENDER = {
-  you: [],
+  you: ['renderAbsencesCard'],
   sources: ['renderAuthUI', 'renderSyncCard', 'renderIntegrationsCard'],
   coach: [],
   data: ['renderTrashList'],
@@ -9371,14 +9477,27 @@ function runningPhaseLabel(planned) {
 async function getPlannedSessionForDate(date) {
   const ds = dateStr(date);
   const jsDay = date.getDay();
-  let customSchedule = {};
-  try { customSchedule = await getWeekSchedule(); } catch (e) {}
-  const slot = (activeWeekTemplate && activeWeekTemplate[jsDay]) || { type: 'rest' };
-  const sessionId = getPlannedSession(jsDay, customSchedule, ds); // gym id or null
   // La semana del bloque viaja con la sesión planificada: la pantalla, el push a COROS y el
   // registro leen el mismo `block` que decidió los minutos.
   const blk = blockWeek(date);
-  const variant = (typeof _idealVariant === 'function') ? _idealVariant() : null;
+  // AUSENCIAS (v11.80). `off` = no se entrena: el día es descanso marcado `away` (el calendario
+  // dice "Away", no "missed", y la adherencia no lo cuenta). `travel` = se entrena con la
+  // variante 0 ("Travel · no gym") esas fechas, SIN tocar `settings.idealVariant`: al volver,
+  // la semana es la de siempre sin que nadie tenga que acordarse de cambiarla.
+  const absence = (typeof absenceForDate === 'function') ? absenceForDate(ds, userAbsences()) : null;
+  if (absence && absence.kind !== 'travel') {
+    return { type: 'rest', date: ds, name: 'Away', away: true, absenceTo: absence.to || null, block: blk };
+  }
+  const travel = !!absence;
+  let customSchedule = {};
+  try { customSchedule = await getWeekSchedule(); } catch (e) {}
+  const travelTpl = travel && typeof buildWeekTemplateFromIdeal === 'function' ? buildWeekTemplateFromIdeal(0) : null;
+  const tpl = travelTpl || activeWeekTemplate;
+  const slot = (tpl && tpl[jsDay]) || { type: 'rest' };
+  const sessionId = travelTpl
+    ? (customSchedule[ds] !== undefined ? customSchedule[ds] : (slot.type === 'gym' ? slot.session : null))
+    : getPlannedSession(jsDay, customSchedule, ds); // gym id or null
+  const variant = travel ? 0 : ((typeof _idealVariant === 'function') ? _idealVariant() : null);
   // LA RAMPA SALE DE LO HECHO EN ESTE HUECO (E-6). `kind` separa el finisher post-fuerza de
   // la sesión de cardio del día: mezclar 20′ de finisher con 50′ de bici en la misma mediana
   // describiría un hueco que no existe. Y `lastCardioDaysAgo` pasa a ser del hueco: la puerta
@@ -9396,18 +9515,22 @@ async function getPlannedSessionForDate(date) {
     });
   };
   if (sessionId) {
-    const s = (activePlan && activePlan.sessions) ? activePlan.sessions[sessionId] : null;
+    // De viaje, travelA/travelB pueden no estar en el plan activo (el coach reescribe el suyo):
+    // se cae a `PLAN.sessions`, que siempre las tiene.
+    const s = ((activePlan && activePlan.sessions) ? activePlan.sessions[sessionId] : null)
+      || (travel && typeof PLAN !== 'undefined' && PLAN.sessions ? PLAN.sessions[sessionId] : null)
+      || null;
     // Z2 finisher only applies when the day comes from the template (not a manual override).
     const z2Base = (slot.type === 'gym' && customSchedule[ds] === undefined) ? (slot.z2FinisherMin || null) : null;
-    const z2 = await prog(z2Base, z2Base ? _coachCardioMin(jsDay, 'z2FinisherMin') : null, 'finisher');
+    const z2 = await prog(z2Base, (z2Base && !travel) ? _coachCardioMin(jsDay, 'z2FinisherMin') : null, 'finisher');
     const exs = s ? resolveSessionExercises(sessionId, s.exercises) : [];
-    return { type: 'gym', date: ds, sessionId, name: s ? s.name : sessionId, subtitle: s ? s.subtitle : '', exercises: exs || [], z2FinisherMin: z2.min, z2BaseMin: z2Base, z2Source: z2.source, z2Note: z2.note, z2FinisherModality: slot.z2FinisherModality || null, block: blk };
+    return { type: 'gym', date: ds, sessionId, name: s ? s.name : sessionId, subtitle: s ? s.subtitle : '', exercises: exs || [], z2FinisherMin: z2.min, z2BaseMin: z2Base, z2Source: z2.source, z2Note: z2.note, z2FinisherModality: slot.z2FinisherModality || null, block: blk, travel };
   }
   if (customSchedule[ds] === undefined) {
     if (slot.type === 'run') { // cardio day (internal type stays 'run' for compatibility)
       const st = slot.subtype || 'zone2';
       const base = slot.durationMin || null;
-      const p = await prog(base, _coachCardioMin(jsDay, 'durationMin'));
+      const p = await prog(base, travel ? null : _coachCardioMin(jsDay, 'durationMin'));
       const out = { type: 'run', date: ds, name: slot.label || 'Cardio Z2', subtitle: cardioSubtypeLabel(st), subtype: st, durationMin: p.min, baseMin: base, durationSource: p.source, durationNote: p.note, block: blk, summary: slot.summary || null, hrTarget: cardioHrTarget(st), alt: slot.alt || null };
       // v11.60: la carrera de la semana. Coach > regla > base.
       //
@@ -9419,7 +9542,8 @@ async function getPlannedSessionForDate(date) {
       // el coach cuando ESTE día tiene su cardio vigente (km, zona y nota se pintan), la regla
       // decide la fase cuando no lo tiene, y un `running.plan[]` (que hoy nadie escribe) sería la
       // única forma de que el coach se quede la semana entera.
-      const cc = _coachCardioSlot(jsDay);
+      // De viaje no: el cardio que el coach escribió para ese día es el de la semana en casa.
+      const cc = travel ? null : _coachCardioSlot(jsDay);
       if (cc) {
         if (cc.distanceKm != null && isFinite(Number(cc.distanceKm))) out.distanceKm = Number(cc.distanceKm);
         if (cc.hrZone) out.hrZone = cc.hrZone;
@@ -9432,7 +9556,7 @@ async function getPlannedSessionForDate(date) {
     }
     if (slot.type === 'recovery') {
       const rBase = slot.z2FinisherMin || null;
-      const r = await prog(rBase, rBase ? _coachCardioMin(jsDay, 'z2FinisherMin') : null, 'finisher');
+      const r = await prog(rBase, (rBase && !travel) ? _coachCardioMin(jsDay, 'z2FinisherMin') : null, 'finisher');
       return { type: 'recovery', date: ds, name: slot.label || 'Active recovery', subtitle: 'Mobility + easy Z2', z2FinisherMin: r.min, z2BaseMin: rBase, z2Source: r.source, z2Note: r.note, z2FinisherModality: slot.z2FinisherModality || null, block: blk };
     }
   }
@@ -10627,6 +10751,8 @@ async function renderWeekCalendar() {
     if (gym) { etiqueta = nombreSesion(gym.sessionId || gym.session) || 'Session'; etiquetaEstado = 'done'; }
     else if (loggedCardio) { etiqueta = (sess && sess.title) || (run && 'Run') || 'Cardio'; etiquetaEstado = 'done'; }
     else if (loggedRecovery) { etiqueta = 'Recovery'; etiquetaEstado = 'done'; }
+    // v11.80: un día de ausencia es "Away", no un entreno fallado, y no entra en el "N of M".
+    else if (planned && planned.away) { etiqueta = 'Away'; etiquetaEstado = 'away'; }
     else if (pType === 'gym') { etiqueta = nombreSesion(planned.sessionId || planned.session) || 'Session'; etiquetaEstado = isPast ? 'missed' : 'pending'; }
     else if (pType === 'run') { etiqueta = planned.distanceKm ? `${planned.distanceKm} km` : (planned.durationMin ? `${planned.durationMin}'` : 'Cardio'); etiquetaEstado = isPast ? 'missed' : 'pending'; }
     else if (pType === 'recovery') { etiqueta = 'Mobility'; etiquetaEstado = isPast ? 'missed' : 'pending'; }
@@ -10640,7 +10766,7 @@ async function renderWeekCalendar() {
   container.innerHTML = `
     <div class="home-sec-row">
       <h2 class="home-h2">This week</h2>
-      <span class="home-link-mono">${doneCount} of ${cells.filter((c) => c.etiquetaEstado !== 'rest').length} done</span>
+      <span class="home-link-mono">${doneCount} of ${cells.filter((c) => c.etiquetaEstado !== 'rest' && c.etiquetaEstado !== 'away').length} done</span>
     </div>
     <div class="week-cal">
       ${cells.map(c => `
@@ -12812,6 +12938,9 @@ function bindEvents() {
   { const b = document.getElementById('btn-ideal-preview'); if (b) b.addEventListener('click', openIdealPreview); }
   { const b = document.getElementById('ip-back'); if (b) b.addEventListener('click', () => enterSecondaryView('settings')); }
   { const b = document.getElementById('btn-analytics'); if (b) b.addEventListener('click', openAnalytics); }
+  // v11.80: ausencias (Ajustes › You).
+  { const b = document.getElementById('btn-absence-add'); if (b) b.addEventListener('click', () => toggleAbsenceForm()); }
+  { const b = document.getElementById('btn-absence-save'); if (b) b.addEventListener('click', saveAbsenceFromForm); }
   { const b = document.getElementById('an-back'); if (b) b.addEventListener('click', () => enterSecondaryView('settings')); }
 
   // Vista Coach (v11.61). El "volver" va a HOME y no a Ajustes: se entra sobre todo desde la
@@ -13538,6 +13667,27 @@ async function runMigrations() {
     console.log(`[Migration] Bloque re-anclado al 2026-09-07 (próximo deload la semana del ${prox}); hito −5 kg → 82 kg`);
     done.data.push('coach-v2-reanchor-2026-09-07');
     await dbPut('settings', done);
+  }
+
+  // Semilla (v11.80, 2026-10-03): el viaje del 12-sep al 2-oct, sin entrenar.
+  //
+  // La app no sabía que Julian estaba fuera: el bloque siguió contando (la descarga caía la
+  // semana del 5-oct, justo la de volver) y las tres semanas salían como entrenos perdidos. Con
+  // la ausencia apuntada, la semana del 5-oct es la 2/5 y la descarga pasa al 26-oct.
+  //
+  // UNA SOLA VEZ Y EN `userSettings`, no en el flag local de migraciones: el flag viaja con la
+  // sincronización, así que si Julian borra la ausencia a propósito ningún otro dispositivo la
+  // vuelve a sembrar. Y sólo si la lista está vacía: lo que él ya haya apuntado no se toca.
+  {
+    const st = state.settings;
+    if (!st.absencesSeeded) {
+      if (!Array.isArray(st.absences) || !st.absences.length) {
+        st.absences = [{ id: 'abs-2026-09-12', from: '2026-09-12', to: '2026-10-02', kind: 'off', note: 'Travel' }];
+      }
+      st.absencesSeeded = true;
+      await smartPut('settings', { key: 'userSettings', data: st });
+      console.log(`[Migration] Ausencias sembradas (${st.absences.length}); próximo deload la semana del ${(typeof blockWeek === 'function' && blockWeek().deloadMonday) || '?'}`);
+    }
   }
 }
 

@@ -2685,6 +2685,7 @@ button.stat-card:active { opacity: 0.7; }
 .wc-cell .wc-label.-pending { color: var(--text2); }
 .wc-cell .wc-label.-missed { color: var(--text3); text-decoration: line-through; }
 .wc-cell .wc-label.-rest { color: var(--text3); opacity: 0.6; }
+.wc-cell .wc-label.-away { color: var(--text3); font-style: italic; }
 
 /* Las opciones del dia de cardio. Reutiliza el chasis de `.swap-option` (el unico selector
    inline de N opciones que ya tenia la app) y solo anade la numeracion y el porque. */

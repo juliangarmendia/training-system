@@ -105,6 +105,71 @@ eq(bw('2026-08-31').deloadMonday, '2026-09-21', 'y su deload cae la semana del 2
 eq(E.blockWeekFromDates('2026-08-03', '2026-07-22', 5).index, 3,
   'un ancla en miércoles se normaliza a su lunes (mismo resultado)');
 
+// ── 2b. Ausencias: el bloque se PAUSA, el ancla no se mueve (v11.80) ─────────────────
+//
+// EL FALLO. Julian viajó del 12-sep al 2-oct sin entrenar y el bloque siguió contando: la
+// descarga caía la semana del 5-oct, justo la de volver. Descargar tras tres semanas de cero
+// es recortar sobre nada. Una semana ISO con ≥4 días fuera no cuenta; el ancla NO se mueve
+// (las semanas pasadas quedan estables y el coach ya sabe "don't move the anchor").
+console.log('');
+console.log('2b. Ausencias (ancla 2026-09-07, fuera del 12-sep al 2-oct)');
+yes(typeof E.isAbsentDate === 'function' && typeof E.absentWeeksBetween === 'function',
+  'isAbsentDate y absentWeeksBetween exportados');
+const VIAJE = [{ id: 'a1', from: '2026-09-12', to: '2026-10-02', kind: 'off', note: 'Travel' }];
+const A2 = '2026-09-07';
+const bwa = (d, ab = VIAJE) => E.blockWeekFromDates(d, A2, 5, ab);
+
+yes(E.isAbsentDate('2026-09-12', VIAJE), 'isAbsentDate: el primer día cuenta (inclusivo)');
+yes(E.isAbsentDate('2026-10-02', VIAJE), 'isAbsentDate: el último también');
+yes(!E.isAbsentDate('2026-09-11', VIAJE), 'isAbsentDate: la víspera no');
+yes(!E.isAbsentDate('2026-10-03', VIAJE), 'isAbsentDate: el día de vuelta no');
+yes(!E.isAbsentDate('2026-09-20', []), 'isAbsentDate sin ausencias → false');
+yes(!E.isAbsentDate('2026-09-20', null), 'isAbsentDate con null → false (no lanza)');
+yes(!E.isAbsentDate('2026-09-20', [{ from: 'x', to: null }]), 'una ausencia mal formada se ignora');
+
+// Semana del 7-sep: fuera sáb+dom (2 días) → cuenta. 14, 21: 7 días. 28-sep: lun-vie (5) → no cuenta.
+eq(E.absentWeeksBetween(A2, '2026-10-05', VIAJE), 3, 'absentWeeksBetween(7-sep → 5-oct) = 3 (14, 21, 28-sep)');
+eq(E.absentWeeksBetween(A2, '2026-09-28', VIAJE), 2, 'el extremo final es abierto: hasta el 28-sep son 2');
+eq(E.absentWeeksBetween(A2, '2026-10-05', []), 0, 'sin ausencias → 0');
+
+// Semana parcial: 3 días fuera NO pausa, 4 sí.
+const TRES = [{ from: '2026-09-17', to: '2026-09-19', kind: 'off' }];      // jue-sáb
+const CUATRO = [{ from: '2026-09-17', to: '2026-09-20', kind: 'off' }];    // jue-dom
+yes(!bwa('2026-09-17', TRES).paused, 'semana con 3 días fuera → no se pausa');
+eq(bwa('2026-09-21', TRES).index, 3, '…y la siguiente sigue la cuenta normal (3)');
+yes(bwa('2026-09-17', CUATRO).paused, 'semana con 4 días fuera → pausada');
+eq(bwa('2026-09-21', CUATRO).index, 2, '…y la siguiente retoma donde se quedó (2, no 3)');
+
+// El caso real.
+const vuelta = bwa('2026-10-05');
+yes(!vuelta.isDeload, 'la semana del 5-oct YA NO es descarga');
+eq(vuelta.index, 2, 'es la semana 2/5 (la 1 fue la del 7-sep)');
+eq(vuelta.weeksIntoBlock, 1, 'weeksIntoBlock descuenta las 3 semanas fuera');
+yes(!vuelta.paused, 'y no está pausada');
+eq(vuelta.blockStartMonday, '2026-09-07', 'el bloque sigue empezando en el ancla');
+eq(vuelta.deloadMonday, '2026-10-26', 'la descarga se corre a la semana del 26-oct');
+eq(bwa('2026-10-26').index, 5, 'la del 26-oct es la 5/5…');
+yes(bwa('2026-10-26').isDeload, '…y es descarga');
+eq(bwa('2026-11-02').index, 1, 'el 2-nov arranca el bloque 2');
+
+// Durante la ausencia: pausada, nunca descarga.
+const fuera = bwa('2026-09-21');
+yes(fuera.paused, 'la semana del 21-sep está pausada');
+yes(!fuera.isDeload, 'una semana pausada nunca es descarga');
+eq(fuera.label, 'paused', 'etiqueta "paused"');
+eq(fuera.index, 2, 'index = la semana en la que se retoma (2)');
+yes(!bwa('2026-09-28').isDeload, 'la del 28-sep (raw 4/5) tampoco es descarga');
+
+// El pasado anterior a la ausencia no cambia: el ancla no se mueve.
+eq(bwa('2026-09-07').index, 1, 'la semana del ancla sigue siendo la 1');
+eq(E.blockWeekFromDates('2026-10-05', A2, 5).index, 5, 'sin pasar ausencias, el resultado de siempre (5)');
+
+// blockLabel con ausencias: B1 hasta el 26-oct, B2 desde el 2-nov.
+eq(E.blockLabel('2026-10-26', A2, 5, VIAJE), 'B1', 'blockLabel 26-oct con la ausencia → B1');
+eq(E.blockLabel('2026-11-02', A2, 5, VIAJE), 'B2', 'blockLabel 2-nov con la ausencia → B2');
+eq(E.blockLabel('2026-10-05', A2, 5), 'B1', 'blockLabel sin ausencias, 5-oct → B1 (el de siempre)');
+eq(E.blockLabel('2026-10-12', A2, 5), 'B2', 'y el 12-oct sin ausencias → B2');
+
 // ── 3. progressCardioMin: +10 %/semana con techo, reset en deload ────────────────────
 console.log('');
 console.log('3. progressCardioMin (END-003 · +10 %/sem, techo ×1,35, deload ×0,7)');
@@ -228,9 +293,28 @@ yes(/const blockLen = DELOAD_BLOCK_WEEKS;/.test(BANNER),
   'y la longitud del bloque es la constante única (DELOAD_BLOCK_WEEKS = 5)');
 yes(/const deload = !!\(blk && blk\.isDeload\);/.test(BANNER),
   'el chip Deload sale del mismo objeto, no de un tercer cálculo');
-yes(/blockLabel\(today\(\), state\.settings\.deloadAnchorDate, DELOAD_BLOCK_WEEKS\)/.test(BANNER),
+yes(/blockLabel\(today\(\), state\.settings\.deloadAnchorDate, DELOAD_BLOCK_WEEKS, userAbsences\(\)\)/.test(BANNER),
   'la etiqueta del bloque usa blockLabel() — la MISMA numeración que ve el coach en el pack');
 yes(/const DELOAD_BLOCK_WEEKS = 5;/.test(APP), 'DELOAD_BLOCK_WEEKS sigue siendo 5 (4 build + 1 deload)');
+
+// v11.80: las ausencias llegan a TODOS los que cuentan semanas de bloque o días planificados.
+const BW = fnSrc('function blockWeek(', 700);
+yes(/blockWeekFromDates\(dateStr\(date\), anchor, DELOAD_BLOCK_WEEKS, userAbsences\(\)\)/.test(BW),
+  'blockWeek() pasa settings.absences al motor (el bloque se pausa)');
+const PSD = fnSrc('async function getPlannedSessionForDate(', 2400);
+yes(/absenceForDate\(ds, userAbsences\(\)\)/.test(PSD), 'getPlannedSessionForDate mira si la fecha es de ausencia');
+yes(/type: 'rest', date: ds, name: 'Away', away: true/.test(PSD), "…'off' → descanso marcado away");
+yes(/buildWeekTemplateFromIdeal\(0\)/.test(PSD), "…'travel' → el día de la variante 0, sin tocar idealVariant");
+yes(!/settings\.idealVariant\s*=/.test(PSD), '…y no escribe settings.idealVariant');
+const CAL = fnSrc('async function renderWeekCalendar(', 6000);
+yes(/planned && planned\.away\) \{ etiqueta = 'Away'; etiquetaEstado = 'away'; \}/.test(CAL),
+  'el calendario pinta "Away" y no "missed" en un día de ausencia');
+yes(/c\.etiquetaEstado !== 'away'/.test(CAL), '…y no lo cuenta en el "N of M done"');
+yes(/absencesSeeded/.test(APP) && /from: '2026-09-12', to: '2026-10-02', kind: 'off'/.test(APP),
+  'la semilla del viaje 12-sep → 2-oct existe y lleva su flag (no se re-siembra tras un borrado)');
+const CO = readFileSync('app/coach.js', 'utf8');
+yes(/blockLabel\(ds \|\| today\(\), anchor, n, ausencias\)/.test(CO), 'la etiqueta B<n> del coach también descuenta las ausencias');
+yes(/Away until \$\{_cEsc\(fuera\.to/.test(CO), 'la tarjeta del coach dice "Away until …" durante una ausencia');
 
 const W2D = fnSrc('function _weekNumToDate(', 900);
 yes(!!W2D, '_weekNumToDate() existe');

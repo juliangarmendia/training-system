@@ -45,7 +45,7 @@ const REF = process.env.SUPABASE_PROJECT_REF || 'ycfodifvpvosukepcxie';
 const URL_BASE = `https://${REF}.supabase.co`;
 
 // Mismos valores que `index.ts`. Si allí cambian, aquí también (verify-coach-manual-mode lo vigila).
-const PROMPT_VERSION = 2;
+const PROMPT_VERSION = 3;
 const PHASES = ['base', 'build', 'intensify', 'deload', 'maintenance'];
 const WS_STATUS = ['kept', 'changed', 'new', 'removed'];
 const MAX_SESSIONS = 6;

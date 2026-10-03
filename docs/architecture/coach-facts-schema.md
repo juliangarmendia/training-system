@@ -6,6 +6,14 @@ incremento 9) y quien escriba **la edge function** (`supabase/functions/coach-we
 incremento 8). Las reglas citadas (`STR-*`, `END-*`…) viven en
 [`../../research/evidence-to-rules.md`](../../research/evidence-to-rules.md), única fuente de verdad.
 
+> **`FACTS_SCHEMA = 4`** (v11.80, 2026-10-03 · ausencias). Sección nueva
+> **[`context`](#context--ausencias-esquema-4)** con `absences` (las de las últimas 12 semanas y
+> las ya apuntadas) y `returnFromBreak`. Aditivo también: `adherence[].awayDays` (los días de
+> ausencia dejan de contar como planificados, también en `trajectory.adherenceByWeek`),
+> `trajectory.program.blocks[].pausedWeeks`, los límites de bloque salen de
+> `blockWeekFromDates(…, absences)` (la misma aritmética que Home), `block.phase` puede valer
+> `'paused'`, y un hueco en `dataGaps` la semana de la vuelta.
+>
 > **`FACTS_SCHEMA = 3`** (v11.71, remediación de la [auditoría del 2026-09-09](../audits/2026-09-09-app-audit.md)).
 > Respecto al esquema 2, todo **aditivo**: `progress.performance` (F-6), `plan.plannedSetsPerMuscle`
 > (F-7), `readiness.sleep.{consistency7, debtHrs7, score7}` (F-11), `readiness.subjective` (F-12),
@@ -153,7 +161,7 @@ del servidor (200 KB) no se toca.
 
 ### `meta`
 ```js
-{ factsSchema: 2, weekKey: '2026-W37', todayStr: '2026-09-07', generatedAt: '…',
+{ factsSchema: 4, weekKey: '2026-W37', todayStr: '2026-09-07', generatedAt: '…',
   window: { from: '2026-08-17', to: '2026-09-07', weeks: ['2026-W34','2026-W35','2026-W36','2026-W37'] },
   window28: { from: '2026-08-11', to: '2026-09-07' },
   appVersion: 'v11.61', seedRev: 8, unit: 'kg',
@@ -203,6 +211,26 @@ antes de la primera fecha elegible.
 
 ### `block`
 `{ index, weeksTotal, phase, isDeload, weeksIntoBlock, blockStartMonday, deloadMonday, deloadAnchorDate, weekNumber }`
+
+Sale de `blockWeek()` de la app, que desde v11.80 pasa `settings.absences`: una semana ISO con ≥4
+días fuera no cuenta (`weeksIntoBlock` la descuenta), el ancla no se mueve, y una semana ausente
+llega con `phase: 'paused'`, `isDeload: false` e `index` = la semana en que se retoma.
+
+### `context` — ausencias (esquema 4)
+
+```js
+context: {
+  absences: [{ from: '2026-09-12', to: '2026-10-02', kind: 'off'|'travel', days: 21, note: 'Travel' | null }],
+  returnFromBreak: { daysAway: 21, backSince: '2026-10-03' } | null,
+}
+```
+`absences` = `settings.absences` que terminan dentro de las últimas 12 semanas ISO (o después: las
+futuras ya apuntadas también entran), ordenadas por `from`. `returnFromBreak` = la ausencia
+terminada más reciente si hoy cae en los 14 días siguientes a la vuelta y no se está fuera hoy;
+`null` en otro caso. Con ella, `dataGaps` lleva una línea "Back since …": la primera sesión de
+vuelta va a −10 % (`suggestSetTarget`, LOAD-004) y los números de fuerza recientes son de antes
+del parón. `off` = no se entrena; `travel` = la app usa la variante 0 (sin gimnasio) esas fechas.
+En el pack los dos tipos cuentan como descanso en `adherence` (la plantilla de viaje no viaja).
 
 ### `trajectory` — todo el recorrido (esquema 2)
 
@@ -419,6 +447,7 @@ no persiste campos arbitrarios. Sin ese flag el modelo podría prescribir "box j
   recovery: { planned: 1, done: 0 },
   durationsMin: [64], avgDurationMin: 64,
   restCompliancePct: 90 | null, restComplianceN: 1,
+  awayDays: 7,   // sólo si >0 (v11.80): días de ausencia, que NO cuentan en `planned`
   plannedSource: 'plan-activo' | 'plantilla-actual (aproximado)' }
 ```
 `restCompliancePct` (F-19, v11.71) = Σ`durationSec` / Σ`estimatedSec` × 100 sobre los

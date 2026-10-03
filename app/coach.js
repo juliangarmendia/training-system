@@ -594,7 +594,7 @@ async function renderCoachGoalLine() {
 // LA VERSIÓN DE LA APP viaja al servidor (`clientVersion`) y al pack (`meta.appVersion`), que
 // es lo que permite luego saber qué código produjo una revisión rara.
 // `verify-coach-wiring.mjs` comprueba que coincide con la de index.html y con `CACHE_NAME`.
-const COACH_APP_VERSION = 'v11.79';
+const COACH_APP_VERSION = 'v11.80';
 
 const COACH_MAX_SESSION_IDS = 12;   // el tope que valida la edge function
 const COACH_MAX_EXERCISE_IDS = 150; // idem
@@ -736,6 +736,11 @@ function _coachLowerSessionIds() {
 /** "W37" a partir de "2026-W37": el año sobra en una tarjeta de esta semana. */
 function _cWeekShort(wk) { const m = String(wk || '').match(/W(\d{2})$/); return m ? `W${m[1]}` : String(wk || ''); }
 /** La semana PARA la que se pide la revisión: domingo → la siguiente (motor, con test). */
+/** Fecha con la que se lee el bloque del pack: el lunes de `weekKey` si es una semana futura. */
+function _cBlockDate(todayStr, weekKey) {
+  const mon = (weekKey && typeof _coachWeekKeyMonday === 'function') ? _coachWeekKeyMonday(weekKey) : null;
+  return (mon && mon > todayStr) ? mon : todayStr;
+}
 function _cTargetWeek(ds) {
   return (typeof coachTargetWeekKey === 'function') ? coachTargetWeekKey(ds || today()) : _cWeekKey(ds);
 }
@@ -749,7 +754,8 @@ function _cBlockLabel(ds) {
     if (typeof blockLabel !== 'function') return null;
     const anchor = (typeof state !== 'undefined' && state.settings && state.settings.deloadAnchorDate) || null;
     const n = (typeof DELOAD_BLOCK_WEEKS !== 'undefined') ? DELOAD_BLOCK_WEEKS : 5;
-    return blockLabel(ds || today(), anchor, n);
+    const ausencias = (typeof userAbsences === 'function') ? userAbsences() : [];   // v11.80
+    return blockLabel(ds || today(), anchor, n, ausencias);
   } catch (e) { return null; }
 }
 
@@ -877,7 +883,10 @@ async function buildCoachFactsFromStores({ todayStr = today(), weekKey } = {}) {
     appVersion: COACH_APP_VERSION,
     seedRev: (typeof PLAN_REV !== 'undefined') ? PLAN_REV : null,
     weekNumber: (typeof getWeekNumber === 'function') ? getWeekNumber() : null,
-    block: (typeof blockWeek === 'function') ? blockWeek(new Date(`${todayStr}T12:00:00`)) : null,
+    // v11.80: el bloque es el de la semana QUE SE PLANIFICA. El domingo se cierra la semana y se
+    // pide la siguiente: leer el bloque de hoy le decía al coach "build" en vísperas de la
+    // descarga, y "paused" el día de volver de un viaje.
+    block: (typeof blockWeek === 'function') ? blockWeek(new Date(`${_cBlockDate(todayStr, weekKey)}T12:00:00`)) : null,
     legacyLatest,
     stores: {
       workouts, runs, sessions, mobility, wellness, steps, bodyweight, nutrition, decisions,
@@ -2048,9 +2057,13 @@ async function renderCoachWeekCard(opts = {}) {
     // el consejo diario que Julian retiró el 2026-09-07, por la puerta de atrás.
     const blk = (typeof blockWeek === 'function') ? blockWeek() : null;
     const totalSem = (typeof DELOAD_BLOCK_WEEKS !== 'undefined') ? DELOAD_BLOCK_WEEKS : ((blk && blk.weeksTotal) || 5);
-    const bloqueLinea = (blk && blk.index)
-      ? `<div class="coach-week-line">Week ${blk.index}/${totalSem} · ${_cEsc(blk.label || '')}${blk.deloadMonday ? ` · deload on ${_cEsc(blk.deloadMonday)}` : ''}</div>`
-      : '';
+    // v11.80: durante una ausencia la línea lo dice en vez de contar una semana que no corre.
+    const fuera = (typeof currentAbsence === 'function') ? currentAbsence() : null;
+    const bloqueLinea = fuera
+      ? `<div class="coach-week-line">Away until ${_cEsc(fuera.to || '')}${blk && blk.paused ? ' · block paused' : ''}</div>`
+      : (blk && blk.index)
+        ? `<div class="coach-week-line">Week ${blk.index}/${totalSem} · ${_cEsc(blk.label || '')}${blk.deloadMonday ? ` · deload on ${_cEsc(blk.deloadMonday)}` : ''}</div>`
+        : '';
 
     let cabecera = head();
     let cuerpo = '';

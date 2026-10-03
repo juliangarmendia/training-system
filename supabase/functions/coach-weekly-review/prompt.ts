@@ -283,8 +283,11 @@ saltos → recortar. <45' con saltos → es tiempo, reordena.
 - Llega al tope pero con RPE >8,5 → mismo kg.
 - No llega al mínimo del rango → −2,5 o repetir.
 - En medio del rango → +1 rep, mismo kg.
-- Reentrada (≥21 días sin exposición) → **repetir el último dato conocido, no progresar**; la
-  serie 1 decide; sólo si sale a RPE ≤6 se sube, y hasta +10% por semana durante 3 semanas.
+- Reentrada (>21 días sin exposición) → **la primera sesión de vuelta va a −10 %** sobre el
+  último dato conocido (la app ya lo prescribe así, LOAD-004); desde la siguiente, doble
+  progresión normal sobre esa sesión. No repitas el kg de antes del parón ni lo subas. Si
+  \`context.returnFromBreak\` no es null, la vuelta es de ESTA semana: tus objetivos de fuerza
+  parten del −10 %, no de los números de antes de la ausencia.
 - Bisagra desde el suelo: serie 1 a RPE ≥8 congela la semana (LOAD-003).
 - Cambio de ejercicio: un accesorio estancado 3 semanas rota **en la semana 1 del bloque**
   (STR-010, \`expert\`). Un **anchor nunca rota por estancamiento** — se cambia el esquema de
@@ -569,9 +572,16 @@ const ANCLAS = `# Decisiones ya tomadas por Julian (no las reabras, no las contr
   híbrido, luego −1 serie en accesorios, y sólo al final se afloja el déficit (+150 kcal) y
   únicamente con EA <30, síntomas LEA 2 semanas o caída de fuerza en 2 sesiones.
 - **El bloque está re-anclado al lunes 2026-09-07**, con bloques de 5 semanas (4 build + 1
-  deload) y el **primer deload la semana del 2026-10-05** (decisión del usuario, 2026-09-07). No
+  deload) y el primer deload previsto para la semana del 2026-10-05 (decisión del usuario,
+  2026-09-07), que la ausencia de septiembre corrió — la fecha vigente es \`block.deloadMonday\`. No
   muevas el ancla. Puedes declarar \`phase: 'deload'\` reactivo por LOAD-004; eso no cambia el
   calendario.
+- **Las ausencias pausan el bloque** (v11.80). Una semana ISO con ≥4 días fuera
+  (\`context.absences\`) no cuenta: el bloque se detiene y la descarga se corre (la del 5-oct se
+  movió por el viaje del 12-sep al 2-oct). **Lo calcula la app** — lee \`block.index\` y
+  \`block.deloadMonday\`, no los recalcules desde el ancla. Los días de ausencia no son entrenos
+  fallados: \`adherence\` ya los descuenta (\`awayDays\`); no leas esas semanas como falta de
+  constancia.
 - **El primer hito es −5 kg: 82 kg** (decisión del usuario, 2026-09-07): el número contra el que
   se mide el bloque, y siempre con condición ("82 kg si la pendiente aguanta").
 - **La recuperación es información, no dosis** (decisión del usuario, 2026-09-07). La app ya no

@@ -393,7 +393,7 @@ const facts = buildCoachFacts(mkInput(), DEPS);
 sec('meta y ventana ISO (la frontera domingo/lunes)');
 // ════════════════════════════════════════════════════════════════════════════════════
 eq(facts.meta.weekKey, SEMANA, 'weekKey = 2026-W37');
-eq(facts.meta.factsSchema, 3, 'esquema 3 del pack (v11.71: rendimiento, series planificadas, sueño largo, subjetivas, hidratación, misma carga, descansos y MVPA)');
+eq(facts.meta.factsSchema, 4, 'esquema 4 del pack (v11.80: context.absences y returnFromBreak, sobre el 3 de v11.71)');
 eq(facts.meta.caps.priorReviews, 6, 'el tope de revisiones previas es 6 (3 completas + 3 compactas)');
 eq(facts.meta.window.weeks.join(' '), '2026-W34 2026-W35 2026-W36 2026-W37', 'ventana de 4 semanas ISO, la actual al final');
 eq(facts.meta.window.from, '2026-08-17', 'la ventana empieza el lunes de hace 3 semanas');
@@ -1146,6 +1146,69 @@ if (empty) {
   const src = fx.progress.weight.measuredSources28d || {};
   eq(src.withings, 1, 'un weightMeasured de wellness con weightSource withings cuenta como withings, no intervals.icu');
   ok(Object.values(src).reduce((a, b) => a + b, 0) === fx.progress.weight.nMeasured28, 'y measuredSources28d suma exactamente nMeasured28');
+}
+
+// ---- v11.80 · esquema 4: ausencias y vuelta tras un parón ----
+// EL FALLO: del 12-sep al 2-oct Julian estuvo fuera sin entrenar. Sin ausencias en el pack, tres
+// semanas de cero sesiones se leían como abandono (adherencia hundida) y el bloque de la
+// trayectoria se partía en B1/B2 mientras Home seguía en B1.
+sec('v11.80 · context.absences, returnFromBreak y adherencia sin los días fuera');
+{
+  eq(JSON.stringify(facts.context), JSON.stringify({ absences: [], returnFromBreak: null }),
+    'sin ausencias: context = {absences: [], returnFromBreak: null}');
+  ok(!facts.dataGaps.some(g => /Back since/.test(g)), 'y ningún hueco de vuelta');
+
+  const VIAJE = [{ id: 'abs-1', from: '2026-09-12', to: '2026-10-02', kind: 'off', note: 'Travel' }];
+  const setts = Object.assign({}, SETTINGS, { absences: VIAJE });
+  const base = mkInput();
+  const fx = buildCoachFacts(Object.assign({}, base, {
+    todayStr: '2026-10-04', weekKey: '2026-W40',
+    stores: Object.assign({}, base.stores, {
+      settings: { userSettings: setts, exerciseOverrides: {}, weekSchedule: {} },
+    }),
+  }), DEPS);
+  eq(fx.context.absences.length, 1, 'context.absences trae la ausencia');
+  eq(fx.context.absences[0].days, 21, '…de 21 días');
+  eq(fx.context.absences[0].kind, 'off', '…tipo off');
+  eq(JSON.stringify(fx.context.returnFromBreak), JSON.stringify({ daysAway: 21, backSince: '2026-10-03' }),
+    'returnFromBreak = {daysAway: 21, backSince: 2026-10-03}');
+  ok(fx.dataGaps.some(g => /Back since 2026-10-03 after 21 days away/.test(g)), 'el hueco de la vuelta aparece en dataGaps');
+
+  const fila = (wk) => fx.adherence.find(r => r.weekKey === wk);
+  eq(fila('2026-W38').gym.planned, 0, 'W38 (fuera entera): 0 sesiones planificadas, no 4 falladas');
+  eq(fila('2026-W38').awayDays, 7, 'W38: 7 días fuera');
+  eq(fila('2026-W39').gym.planned, 0, 'W39: 0 planificadas');
+  eq(fila('2026-W40').awayDays, 5, 'W40: lun-vie fuera (5 días)');
+  ok(fila('2026-W37').awayDays === 2, 'W37: sáb y dom fuera (2 días)');
+  const sinAus = buildCoachFacts(Object.assign({}, base, { todayStr: '2026-10-04', weekKey: '2026-W40' }), DEPS);
+  ok(sinAus.adherence.find(r => r.weekKey === '2026-W38').gym.planned > 0,
+    '(control) sin la ausencia, W38 sí tenía sesiones planificadas');
+  ok(!('awayDays' in sinAus.adherence.find(r => r.weekKey === '2026-W38')), '(control) y no lleva awayDays');
+
+  const b1 = fx.trajectory.program.blocks.find(b => b.label === 'B1');
+  eq(b1.from, '2026-09-07', 'B1 sigue empezando en el ancla');
+  eq(b1.to, '2026-10-04', 'B1 llega hasta hoy (el bloque está en curso)');
+  ok(b1.isCurrent, 'B1 es el bloque en curso el 4-oct (Home también dice B1)');
+  eq(b1.pausedWeeks, 3, 'B1 declara 3 semanas en pausa');
+  ok(!fx.trajectory.program.blocks.some(b => b.label === 'B2'), 'no hay B2 todavía (sin ausencias habría empezado el 12-oct)');
+
+  // Ausencia de hace dos meses: entra en context.absences (12 semanas) pero no hay vuelta reciente.
+  const vieja = buildCoachFacts(Object.assign({}, base, {
+    todayStr: '2026-11-20', weekKey: '2026-W47',
+    stores: Object.assign({}, base.stores, {
+      settings: { userSettings: setts, exerciseOverrides: {}, weekSchedule: {} },
+    }),
+  }), DEPS);
+  eq(vieja.context.absences.length, 1, 'una ausencia de hace 7 semanas sigue en context.absences');
+  eq(vieja.context.returnFromBreak, null, 'pero returnFromBreak es null: la vuelta fue hace >14 días');
+  // Hoy fuera: no hay vuelta que declarar.
+  const fuera = buildCoachFacts(Object.assign({}, base, {
+    todayStr: '2026-09-20', weekKey: '2026-W38',
+    stores: Object.assign({}, base.stores, {
+      settings: { userSettings: setts, exerciseOverrides: {}, weekSchedule: {} },
+    }),
+  }), DEPS);
+  eq(fuera.context.returnFromBreak, null, 'todavía fuera: returnFromBreak null');
 }
 
 console.log(`\n${fail === 0 ? 'TODO OK' : `${fail} FALLOS`}`);

@@ -8,7 +8,7 @@
 //
 //   node scripts/build-fn-assets.mjs
 //
-// sourceSha256: 47d33acf0fa1ca37d9bb70e5133ae1b332c8c70c2d4738b02111eeb71fbd2241
+// sourceSha256: 7f854c692c57c8525982aad6970505850a1d89f982a0b87f87909b2cc450ceca
 // source: app/coach-facts.js
 //
 // tests/verify-fn-assets.mjs FALLA si app/coach-facts.js cambia y nadie regeneró esto: dos
@@ -256,7 +256,13 @@ function _ss(v) {
 // contrato del motor (F-9), `readiness.sleep.{consistency7,debtHrs7,score7}` (F-11),
 // `readiness.subjective` (F-12), `readiness.hydration7` (F-13), `lifts[id].atSameLoad` (F-18),
 // `adherence[].restCompliancePct` (F-19) y `cardio.mvpaMinByWeek`/`mvpaBand` (F-22).
-const FACTS_SCHEMA = 3;                 // versión del esquema del pack (viaja en `meta`)
+//
+// v11.80: esquema 4. `context.absences` (ausencias de las últimas 12 semanas y las ya apuntadas)
+// y `context.returnFromBreak` ({daysAway, backSince} o null). También aditivo: `adherence[]`
+// y `trajectory.adherenceByWeek` dejan de contar como planificados los días de ausencia
+// (`adherence[].awayDays`), y los bloques de `trajectory.program` llevan `pausedWeeks`.
+const FACTS_SCHEMA = 4;                 // versión del esquema del pack (viaja en `meta`)
+const FACTS_RETURN_WINDOW_DAYS = 14;    // `returnFromBreak` se declara hasta 14 días tras volver
 const FACTS_WEEKS = 4;                  // ventana de semanas ISO (§A.4)
 const FACTS_LONG_WINDOW_DAYS = 28;      // ventana larga para baselines y nutrición
 const FACTS_MAX_LIFT_SESSIONS = 4;      // ≤4 sesiones por ejercicio
@@ -418,6 +424,7 @@ function buildCoachFacts(input, deps) {
     goals: _factsGoals(ctx),
     progress: _factsProgress(ctx),
     block: _factsBlock(ctx),
+    context: _factsContext(ctx),
     trajectory: _factsTrajectory(ctx),
     plan: _factsPlan(ctx),
     adherence: _factsAdherence(ctx),
@@ -548,6 +555,53 @@ function _factsGoals(ctx) {
   };
 }
 
+// ---------- context · ausencias (esquema 4, v11.80) ----------
+//
+// EL FALLO QUE IMPIDE. Del 12-sep al 2-oct Julian estuvo fuera sin entrenar y el pack no lo
+// sabía: tres semanas con cero sesiones se leían como un problema de constancia, y el coach no
+// tenía cómo distinguir "abandonó" de "estaba de viaje". Las ausencias son un DATO del usuario
+// (`settings.absences`); la aritmética (bloque en pausa, días fuera como descanso) la hace la app.
+
+/** `settings.absences`, siempre un array. */
+function _cfAbsences(ctx) {
+  const a = ctx && ctx.settings && ctx.settings.absences;
+  return Array.isArray(a) ? a : [];
+}
+
+function _factsContext(ctx) {
+  const desde = _cfShift(_cfMonday(ctx.todayStr), -7 * (FACTS_TRAJ_WEEKS - 1));
+  const absences = [];
+  for (const a of _cfAbsences(ctx)) {
+    let from = _cfDate(a && a.from), to = _cfDate(a && a.to);
+    if (!from || !to) continue;
+    if (to < from) { const t = from; from = to; to = t; }
+    if (to < desde) continue;                    // fuera de las 12 semanas
+    absences.push({
+      from, to,
+      kind: a.kind === 'travel' ? 'travel' : 'off',
+      days: (_cfDiff(from, to) || 0) + 1,
+      note: a.note ? String(a.note).slice(0, 80) : null,
+    });
+  }
+  absences.sort((x, y) => x.from.localeCompare(y.from));
+  // La vuelta MÁS RECIENTE: una ausencia terminada antes de hoy, con hoy dentro de la ventana
+  // de 14 días. Si hoy sigue fuera, no hay vuelta que declarar.
+  let returnFromBreak = null;
+  const fueraHoy = absences.some(a => a.from <= ctx.todayStr && ctx.todayStr <= a.to);
+  if (!fueraHoy) {
+    for (const a of absences) {
+      if (a.to >= ctx.todayStr) continue;
+      const backSince = _cfShift(a.to, 1);
+      const dias = _cfDiff(backSince, ctx.todayStr);
+      if (dias == null || dias < 0 || dias >= FACTS_RETURN_WINDOW_DAYS) continue;
+      if (!returnFromBreak || backSince > returnFromBreak.backSince) {
+        returnFromBreak = { daysAway: a.days, backSince };
+      }
+    }
+  }
+  return { absences, returnFromBreak };
+}
+
 // ---------- block ----------
 
 function _factsBlock(ctx) {
@@ -582,7 +636,8 @@ function _deloadIntervals(ctx, from, to) {
   const stop = _cfMonday(to);
   let guard = 0;
   while (mon && stop && mon <= stop && guard++ < 60) {
-    const blk = blockWeekFromDates(mon, anchor, blockWeeks);
+    // v11.80: con las ausencias, la MISMA aritmética que la app (una semana fuera no descarga).
+    const blk = blockWeekFromDates(mon, anchor, blockWeeks, _cfAbsences(ctx));
     if (blk && blk.isDeload) {
       out.push({ from: mon, to: _cfShift(mon, 6 + FACTS_DELOAD_WASHOUT_DAYS), reason: 'deload / diet break + 5 days' });
     }
@@ -665,14 +720,27 @@ function _trajProgram(ctx) {
     if (firstWorkoutDate && firstWorkoutDate < anchor) {
       blocks.push(mk(0, 'pre-bloque', firstWorkoutDate, _cfShift(anchor, -1)));
     }
+    // v11.80: los límites de cada bloque salen de `blockWeekFromDates` CON las ausencias — la
+    // misma aritmética que la tarjeta de Home. Antes este bucle sumaba `blockWeeks × 7` por su
+    // cuenta, y con una ausencia el pack habría dicho B2 mientras Home decía B1. Un bloque con
+    // semanas fuera dura más en calendario y lo declara en `pausedWeeks`.
+    const abs = _cfAbsences(ctx);
+    const bwf = typeof blockWeekFromDates === 'function' ? blockWeekFromDates : null;
     let from = _cfMonday(anchor);
     for (let i = 1; from && from <= ctx.todayStr && i <= FACTS_TRAJ_MAX_BLOCKS; i++) {
-      const end = _cfShift(from, blockWeeks * 7 - 1);
+      const blk = bwf ? bwf(from, anchor, blockWeeks, abs) : null;
+      const deloadMon = blk && _cfDate(blk.deloadMonday);
+      const end = deloadMon ? _cfShift(deloadMon, 6) : _cfShift(from, blockWeeks * 7 - 1);
       const to = end <= ctx.todayStr ? end : ctx.todayStr;
       const row = mk(i, `B${i}`, from, to);
+      const paused = (abs.length && typeof absentWeeksBetween === 'function')
+        ? absentWeeksBetween(from, _cfShift(end, 1), abs) : 0;
+      if (paused) row.pausedWeeks = paused;
       if (from <= ctx.todayStr && ctx.todayStr <= end) row.isCurrent = true;
       blocks.push(row);
-      from = _cfShift(end, 1);
+      // El bloque siguiente empieza en la primera semana PRESENTE tras la descarga.
+      const nxt = bwf ? bwf(_cfShift(end, 1), anchor, blockWeeks, abs) : null;
+      from = (nxt && _cfDate(nxt.blockStartMonday)) || _cfShift(end, 1);
     }
   }
 
@@ -1443,6 +1511,7 @@ function _factsAdherence(ctx) {
       durationsMin: durations,
       avgDurationMin: _rMin(_mean(durations)),
       ...(_restCompliance(workouts)),
+      ...(planned.awayDays ? { awayDays: planned.awayDays } : {}),
       plannedSource: exact ? 'plan-activo' : 'plantilla-actual (aproximado)',
     };
   });
@@ -1487,9 +1556,14 @@ function _restCompliance(workouts) {
 function _plannedForWeek(ctx, w, upTo) {
   const wt = (ctx.plan && ctx.plan.weekTemplate) || {};
   const sched = (ctx.st.settings && ctx.st.settings.weekSchedule) || {};
-  let gym = 0, cardio = 0, recovery = 0, gymToDate = 0, cardioToDate = 0;
+  const abs = _cfAbsences(ctx);
+  let gym = 0, cardio = 0, recovery = 0, gymToDate = 0, cardioToDate = 0, awayDays = 0;
   for (let i = 0; i < 7; i++) {
     const date = _cfShift(w.monday, i);
+    // v11.80: un día de ausencia es DESCANSO. Tres semanas de viaje contadas como 12 sesiones
+    // falladas hundían la adherencia y el coach habría leído un problema de constancia que no
+    // existe. `travel` también: la plantilla de la variante de viaje no está en el pack.
+    if (abs.length && typeof isAbsentDate === 'function' && isAbsentDate(date, abs)) { awayDays++; continue; }
     const dow = _cfDow(date);
     const slot = wt[dow] || wt[String(dow)] || { type: 'rest' };
     let type = slot.type || 'rest';
@@ -1499,7 +1573,7 @@ function _plannedForWeek(ctx, w, upTo) {
     else if (type === 'run') { cardio++; if (counted) cardioToDate++; }
     else if (type === 'recovery') recovery++;
   }
-  return { gym, cardio, recovery, gymToDate, cardioToDate };
+  return { gym, cardio, recovery, gymToDate, cardioToDate, awayDays };
 }
 
 function _hardCount(ctx, runs, sess) {
@@ -2494,6 +2568,11 @@ function _factsGaps(ctx, facts) {
   }
   for (const a of (tr && tr.anchors) || []) {
     if (!a.exposures) gaps.push(`Anchor \`${a.id}\` with 0 logged exposures: there is no way to say whether it is being maintained.`);
+  }
+  // ---- Vuelta tras una ausencia (esquema 4) ----
+  const rfb = facts.context && facts.context.returnFromBreak;
+  if (rfb) {
+    gaps.push(`Back since ${rfb.backSince} after ${rfb.daysAway} days away (\`context.absences\`): the block was paused for those weeks (the app computes it), away days are not counted as missed, and the first session back is −10 % (LOAD-004). Recent strength numbers predate the break.`);
   }
   // Dedupe conservando el orden: el mismo hueco dicho dos veces le baja el peso a los demás.
   return [...new Set(gaps)];

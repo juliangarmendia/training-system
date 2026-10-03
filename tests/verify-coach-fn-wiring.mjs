@@ -246,7 +246,7 @@ for (const [name, value] of [
 ]) {
   yes(new RegExp(`${name}\\s*=\\s*${value}\\b`).test(INDEX), `${name} = ${value}`);
 }
-yes(/PROMPT_VERSION\s*=\s*2\b/.test(INDEX), 'PROMPT_VERSION = 2 (el contrato subió de versión)');
+yes(/PROMPT_VERSION\s*=\s*3\b/.test(INDEX), 'PROMPT_VERSION = 3 (v11.80: ausencias y reentrada a −10 %)');
 // Sin esto, la primera semana de v2 devuelve la revisión v1 cacheada y la Home nueva sale vacía.
 yes(/sha256Hex\([^)]*PROMPT_VERSION/.test(INDEX_CODE),
   'y PROMPT_VERSION entra en el factsHash (si no, una fila v1 en caché se devuelve como v2)');

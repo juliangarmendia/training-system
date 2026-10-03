@@ -803,6 +803,26 @@
             <button id="btn-analytics" class="btn-secondary btn-full" style="text-align:center">My biomarkers</button>
           </div>
 
+          <!-- v11.80 · Ausencias: pausan el bloque y no cuentan como entrenos perdidos. -->
+          <div class="section-label" data-group="you">Away / travel</div>
+          <div class="card" id="absences-card" data-group="you">
+            <p class="muted" style="font-size:13px;margin:0 0 10px">Weeks with <b>4+ days away</b> pause the block (no deload on return). <b>Off</b> = no training, days show as Away. <b>Travel</b> = the no-gym variant for those dates.</p>
+            <div id="absences-list"></div>
+            <div id="absence-form" class="hidden" style="margin-top:10px">
+              <div class="form-row"><label>From</label><input type="date" id="absence-from" class="date-input"></div>
+              <div class="form-row"><label>To</label><input type="date" id="absence-to" class="date-input"></div>
+              <div class="form-row"><label>Type</label>
+                <select id="absence-kind" class="text-input">
+                  <option value="off">Off · no training</option>
+                  <option value="travel">Travel · no-gym variant</option>
+                </select>
+              </div>
+              <div class="form-row"><label>Note</label><input type="text" id="absence-note" class="text-input" placeholder="e.g. Holiday"></div>
+              <button id="btn-absence-save" class="btn-primary">Save away dates</button>
+            </div>
+            <button id="btn-absence-add" class="btn-secondary btn-full" style="text-align:center;margin-top:10px">Add away dates</button>
+          </div>
+
           <!-- ===== SOURCES · de dónde salen mis números ===== -->
           <div class="section-label" data-group="sources">Account</div>
           <div class="card" id="auth-section" data-group="sources">
@@ -884,7 +904,7 @@
 
           <div class="section-label" data-group="app">About</div>
           <div class="card" data-group="app">
-            <p class="muted" style="margin:0;font-size:13px">Training System v11.79<br>Data stored locally + cloud sync.<br>Works offline.</p>
+            <p class="muted" style="margin:0;font-size:13px">Training System v11.80<br>Data stored locally + cloud sync.<br>Works offline.</p>
           </div>
 
           <!-- TODO lo de taller, en un solo sitio y plegado (decisión de Julian, 2026-09-13).

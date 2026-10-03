@@ -178,21 +178,61 @@ sec('1. Los 8 fixtures del audit (Change 7, criterios de aceptación)');
   eq(db.kg, 25, '(f) deload de 30 kg/mano → 25 (par real ≤ 27, no 27)');
 }
 
-// (g) Pausa de 30 días: repetir la carga, nunca subir.
+// (g) Pausa de 30 días: −10 % para volver, nunca subir (v11.80).
+//
+// Hasta v11.79 la pausa REPETÍA la carga: tras el viaje del 12-sep al 2-oct la tarjeta de la
+// sentadilla prescribía los mismos 105 kg de antes de tres semanas sin entrenar. Ahora la
+// primera sesión de vuelta baja un 10 % (mismo redondeo que la descarga) y la siguiente ya
+// progresa sobre ella con la regla normal.
 {
   const r = suggestSetTarget(BENCH, [S('2026-08-08', 92.5, 8, 7)], T());
-  eq(r.kg, 92.5, '(g) última sesión hace 30 días → repite 92,5 kg');
-  eq(r.source, 'last', '(g) origen = último');
-  ok(/30-day break/.test(r.reason), `(g) razón: "${r.reason}"`);
+  eq(r.kg, 83.75, '(g) última sesión hace 30 días → 92,5 × 0,9 = 83,75 kg');
+  eq(r.source, 'rule', '(g) origen = regla');
+  ok(r.delta < 0, `(g) delta negativo (${r.delta})`);
+  ok(/^30-day break: −10 % to come back; normal progression from next session$/.test(r.reason),
+    `(g) razón: "${r.reason}"`);
   ok(r.ruleIds.includes('LOAD-004'), '(g) cita LOAD-004');
-  // La pausa gana a la descarga: ya vienes detrenado, no hay que recortar más.
+  // Pausa + descarga = UN solo −10 %, no dos (×0,81 recortaría sobre un cuerpo imaginario).
   const conDeload = suggestSetTarget(BENCH, [S('2026-08-08', 92.5, 8, 7)], T({ deload: true }));
-  eq(conDeload.kg, 92.5, '(g) pausa + semana de descarga → repite (la pausa manda)');
+  eq(conDeload.kg, 83.75, '(g) pausa + semana de descarga → un solo −10 % (83,75, no 75)');
+  ok(/break/.test(conDeload.reason), '(g) …y la razón es la de la pausa');
+  // Mancuerna: el par real de la tabla, como en la descarga.
+  eq(suggestSetTarget(INCLINE, [S('2026-08-08', 30, 12, 7)], T()).kg, 25,
+    '(g) mancuerna 30 kg/mano tras la pausa → 25 (par real ≤ 27)');
+  // Peso corporal sin lastre: no hay qué bajar.
+  eq(suggestSetTarget(CHINS, [S('2026-08-08', 0, 8, 7)], T()).kg, null,
+    '(g) dominadas sin lastre tras la pausa → sin kg (no hay qué bajar)');
+  // El caso real: sentadilla 105 × 6 @7 el 8-sep, vuelve el 3-oct (25 días).
+  const SQ = { id: 'back-squat', name: 'Back Squat', muscle: 'Quads', sets: 3, reps: '4-6', rpe: '7-8', compound: true };
+  const sq = suggestSetTarget(SQ, [S('2026-09-08', 105, 6, 7)], { today: '2026-10-03', todayWeekKey: '2026-W40' });
+  eq(sq.kg, 95, '(g) sentadilla 105 × 6 el 8-sep, hoy 3-oct → 95 kg (94,5 al múltiplo de 1,25)');
   // El límite es 21 días: 21 progresa, 22 no.
-  eq(suggestSetTarget(BENCH, [S('2026-08-17', 92.5, 8, 7)], T()).source, 'rule',
+  eq(suggestSetTarget(BENCH, [S('2026-08-17', 92.5, 8, 7)], T()).kg, 95,
     '(g) 21 días exactos: todavía progresa');
-  eq(suggestSetTarget(BENCH, [S('2026-08-16', 92.5, 8, 7)], T()).source, 'last',
+  eq(suggestSetTarget(BENCH, [S('2026-08-16', 92.5, 8, 7)], T()).kg, 83.75,
     '(g) 22 días: ya es pausa');
+  // Y la vuelta progresa: con la sesión de 83,75 ya hecha, la siguiente sigue la regla normal.
+  const vuelta = suggestSetTarget(BENCH,
+    [S('2026-09-04', 83.75, 8, 6), S('2026-08-08', 92.5, 8, 7)], T());
+  ok(vuelta.kg > 83.75 && !/break/.test(vuelta.reason),
+    `(g) la sesión siguiente a la vuelta progresa sobre 83,75 (${vuelta.kg} kg)`);
+}
+
+// (g2) Pausa frente al objetivo del coach. Un objetivo VIGENTE escrito antes del hueco describe
+// el cuerpo de antes del viaje: manda la pausa. Si el coach escribió su plan DESPUÉS del hueco
+// (planCreatedAt > última sesión + 21 d), ya lo vio y su número manda.
+{
+  const hist = [S('2026-08-08', 92.5, 8, 7)];
+  const antes = suggestSetTarget(BENCH, hist,
+    T({ coachTarget: { kg: 92.5 }, coachWeekKey: SEMANA, planCreatedAt: '2026-08-20' }));
+  eq(antes.kg, 83.75, '(g2) objetivo vigente pero de un plan de 12 días tras la última sesión → manda la pausa');
+  eq(antes.source, 'rule', '(g2) …origen = regla');
+  const sinFecha = suggestSetTarget(BENCH, hist, T({ coachTarget: { kg: 92.5 }, coachWeekKey: SEMANA }));
+  eq(sinFecha.kg, 83.75, '(g2) objetivo sin fecha de plan (adaptador legacy) → manda la pausa');
+  const despues = suggestSetTarget(BENCH, hist,
+    T({ coachTarget: { kg: 85 }, coachWeekKey: SEMANA, planCreatedAt: '2026-09-06' }));
+  eq(despues.kg, 85, '(g2) plan creado 29 días tras la última sesión → el coach ya vio el hueco, manda él');
+  eq(despues.source, 'coach', '(g2) …origen = coach');
 }
 
 // (h) Sin historial no se inventa un número: la tarjeta se queda como está.

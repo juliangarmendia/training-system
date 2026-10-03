@@ -135,6 +135,10 @@ section('3 · MECE, mitad mutuamente excluyente');
   const ESPERADO = {
     'setting-name': 'you', 'setting-goal-weight': 'you', 'setting-steps-target': 'you',
     'setting-start-date': 'you', 'btn-save-settings': 'you', 'btn-analytics': 'you',
+    // v11.80: ausencias.
+    'absences-card': 'you', 'absences-list': 'you', 'absence-form': 'you', 'absence-from': 'you',
+    'absence-to': 'you', 'absence-kind': 'you', 'absence-note': 'you', 'btn-absence-save': 'you',
+    'btn-absence-add': 'you',
     'auth-section': 'sources', 'sync-section': 'sources', 'integrations-card': 'sources',
     'setting-coach-review-mode': 'coach', 'setting-coach-auto-apply': 'coach',
     'btn-open-coach': 'coach', 'btn-ideal-preview': 'coach',

@@ -66,7 +66,9 @@ const TABLE = "coach_reviews";
 // `focus`/`whyChanged`/`whyKept`/`lastWeekSummary` en el briefing, prompt rendimiento-primero.
 // Va DENTRO del `factsHash` a propósito: con el mismo pack, una revisión v1 en caché no puede
 // devolverse como si fuera v2 — le faltarían justo los campos que la Home nueva lee.
-const PROMPT_VERSION = 2;
+// 3 = v11.80 (2026-10-03): ausencias. Reentrada a −10 % (antes repetir), el bloque se pausa por
+// `context.absences` y lo calcula la app; el pack pasa al esquema 4.
+const PROMPT_VERSION = 3;
 const MODEL = "claude-opus-5";
 // `effort: "high"` — la revisión semanal es la decisión más caras de deshacer del sistema y
 // corre una vez por semana, así que aquí se paga esfuerzo. La misma constante viaja a

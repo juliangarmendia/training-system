@@ -292,6 +292,82 @@ function mondayOf(dateStr) {
   return _utcDayStr(t - (dow - 1) * 86400000);
 }
 
+// ==================== AUSENCIAS (v11.80) ====================
+//
+// `settings.absences = [{id, from, to, kind: 'off'|'travel', note}]`, fechas 'YYYY-MM-DD'
+// inclusivas. Del 12-sep al 2-oct de 2026 Julian viajó sin entrenar y la app no lo sabía: el
+// bloque siguió contando (la descarga caía justo la semana de volver) y esas semanas salían
+// como entrenos perdidos. Una ausencia PAUSA el bloque; el ancla NO se mueve, así que el pasado
+// anterior a la ausencia queda exactamente igual y una sola aritmética (ésta) lo resuelve.
+
+/** Días fuera que hacen falta para que una semana ISO no cuente en el bloque. */
+const ABSENT_WEEK_MIN_DAYS = 4;
+
+/** Las ausencias bien formadas, con `from ≤ to` (una editada a mano puede venir al revés). */
+function _absenceList(absences) {
+  if (!Array.isArray(absences)) return [];
+  const out = [];
+  for (const a of absences) {
+    if (!a || typeof a !== 'object') continue;
+    const f = _utcMs(a.from);
+    const t = _utcMs(a.to);
+    if (f == null || t == null) continue;
+    out.push(Object.assign({}, a, { _f: Math.min(f, t), _t: Math.max(f, t) }));
+  }
+  return out;
+}
+
+/**
+ * La ausencia que cubre una fecha (la primera si se solapan), o null.
+ * @param {string} dateStr 'YYYY-MM-DD' (tolera un ISO completo).
+ * @param {Array} absences `settings.absences`.
+ */
+function absenceForDate(dateStr, absences) {
+  const t = _utcMs(dateStr);
+  if (t == null) return null;
+  for (const a of _absenceList(absences)) if (t >= a._f && t <= a._t) return a;
+  return null;
+}
+
+/** ¿Está `dateStr` dentro de alguna ausencia? (`from`/`to` inclusivos). */
+function isAbsentDate(dateStr, absences) {
+  return absenceForDate(dateStr, absences) != null;
+}
+
+/** ¿La semana ISO que empieza en `mondayMs` tiene ≥ ABSENT_WEEK_MIN_DAYS días fuera? */
+function _isAbsentWeekMs(mondayMs, list) {
+  if (mondayMs == null || !list.length) return false;
+  let n = 0;
+  for (let i = 0; i < 7; i++) {
+    const t = mondayMs + i * 86400000;
+    if (list.some(a => t >= a._f && t <= a._t)) n++;
+  }
+  return n >= ABSENT_WEEK_MIN_DAYS;
+}
+
+/**
+ * Cuántas semanas ISO ausentes hay en [anchorMonday, monday) — el extremo final es ABIERTO:
+ * la semana de `monday` la decide el llamador (es la que se está situando).
+ * Sólo recorre las semanas que tocan alguna ausencia, no todas desde el ancla.
+ */
+function absentWeeksBetween(anchorMondayStr, mondayStr, absences) {
+  const a = _utcMs(mondayOf(anchorMondayStr));
+  const b = _utcMs(mondayOf(mondayStr));
+  const list = _absenceList(absences);
+  if (a == null || b == null || b <= a || !list.length) return 0;
+  const vistas = new Set();
+  let n = 0;
+  for (const ab of list) {
+    const from = Math.max(_utcMs(mondayOf(_utcDayStr(ab._f))), a);
+    for (let w = from; w <= ab._t && w < b; w += 604800000) {
+      if (vistas.has(w)) continue;
+      vistas.add(w);
+      if (_isAbsentWeekMs(w, list)) n++;
+    }
+  }
+  return n;
+}
+
 /**
  * En qué semana del bloque cae una fecha, contando desde un ancla.
  *
@@ -299,36 +375,64 @@ function mondayOf(dateStr) {
  * @param {string} anchorMondayStr  Ancla del bloque (`settings.deloadAnchorDate`), lunes ISO.
  *                                  Se normaliza también: `settings` es editable a mano.
  * @param {number} [blockWeeks=5]   Longitud del bloque (`DELOAD_BLOCK_WEEKS`).
+ * @param {Array}  [absences=[]]    `settings.absences` (v11.80). Las semanas ISO con ≥4 días
+ *                                  fuera no cuentan: el bloque se pausa, el ancla no se mueve.
  * @returns {{index: number|null, isDeload: boolean, weeksIntoBlock: number|null,
- *            label: 'build'|'deload'|'no anchor', blockStartMonday: string|null,
- *            deloadMonday: string|null}}
+ *            label: 'build'|'deload'|'paused'|'no anchor', blockStartMonday: string|null,
+ *            deloadMonday: string|null, paused: boolean}}
  *
  * `index` va de 1 a `blockWeeks`; la ÚLTIMA es la descarga (4 build + 1 deload). Antes del
  * ancla, o sin ancla, devuelve `index: null` — no se extrapola hacia atrás: el ancla se pone
  * la primera vez que arranca la app y las semanas anteriores no pertenecen a ningún bloque.
+ *
+ * Una semana AUSENTE devuelve `paused: true`, `isDeload: false` y el `index` de la semana en
+ * que se retoma (la primera no ausente que sigue): descargar sobre tres semanas de cero es
+ * recortar sobre nada. `blockStartMonday`/`deloadMonday` son fechas de CALENDARIO, así que
+ * saltan las semanas ausentes (también las futuras ya apuntadas).
  */
-function blockWeekFromDates(dateStr, anchorMondayStr, blockWeeks = 5) {
+function blockWeekFromDates(dateStr, anchorMondayStr, blockWeeks = 5, absences = []) {
   const n = Math.max(2, Math.floor(Number(blockWeeks)) || 5);
   const monday = mondayOf(dateStr);
   const anchor = mondayOf(anchorMondayStr);
   const none = {
     index: null, isDeload: false, weeksIntoBlock: null,
-    label: 'no anchor', blockStartMonday: null, deloadMonday: null,
+    label: 'no anchor', blockStartMonday: null, deloadMonday: null, paused: false,
   };
   if (!monday || !anchor) return none;
+  const W = 604800000;
   // Los dos extremos son lunes, así que la división es exacta (sin redondeos que arrastren).
-  const weeksIntoBlock = Math.round((_utcMs(monday) - _utcMs(anchor)) / 604800000);
-  if (weeksIntoBlock < 0) return Object.assign({}, none, { weeksIntoBlock });
+  const rawWeeks = Math.round((_utcMs(monday) - _utcMs(anchor)) / W);
+  if (rawWeeks < 0) return Object.assign({}, none, { weeksIntoBlock: rawWeeks });
+  const list = _absenceList(absences);
+  const MAX_SALTO = 104;                           // dos años: tope de los recorridos
+  if (list.length && _isAbsentWeekMs(_utcMs(monday), list)) {
+    // Semana fuera: se sitúa la primera semana no ausente que sigue y se marca pausada.
+    let next = _utcMs(monday) + W;
+    for (let i = 0; i < MAX_SALTO && _isAbsentWeekMs(next, list); i++) next += W;
+    const r = blockWeekFromDates(_utcDayStr(next), anchor, n, absences);
+    return Object.assign({}, r, { isDeload: false, label: 'paused', paused: true });
+  }
+  const weeksIntoBlock = rawWeeks - absentWeeksBetween(anchor, monday, list);
   const index = (weeksIntoBlock % n) + 1;
   const isDeload = index === n;
-  const blockStartMs = _utcMs(anchor) + Math.floor(weeksIntoBlock / n) * n * 604800000;
+  // Fechas de calendario: hacia atrás (index − 1) semanas presentes hasta el inicio del bloque,
+  // hacia delante (n − index) hasta la descarga. Sin ausencias es la aritmética de siempre.
+  const walk = (fromMs, steps, dir) => {
+    let t = fromMs;
+    for (let k = 0, guard = 0; k < steps && guard < steps + MAX_SALTO; guard++) {
+      t += dir * W;
+      if (!_isAbsentWeekMs(t, list)) k++;
+    }
+    return t;
+  };
   return {
     index,
     isDeload,
     weeksIntoBlock,
     label: isDeload ? 'deload' : 'build',
-    blockStartMonday: _utcDayStr(blockStartMs),
-    deloadMonday: _utcDayStr(blockStartMs + (n - 1) * 604800000),
+    blockStartMonday: _utcDayStr(walk(_utcMs(monday), index - 1, -1)),
+    deloadMonday: _utcDayStr(walk(_utcMs(monday), n - index, 1)),
+    paused: false,
   };
 }
 
@@ -341,13 +445,14 @@ function blockWeekFromDates(dateStr, anchorMondayStr, blockWeeks = 5) {
  *
  * PARÁMETROS Y NO `settings`: el motor es puro (§Principios 1 del plan v2). El llamador pasa
  * `state.settings.deloadAnchorDate`; el plan lo escribe como `blockLabel(todayStr)` porque en
- * la app siempre se llama con el ancla del usuario.
+ * la app siempre se llama con el ancla del usuario. Desde v11.80 también `settings.absences`:
+ * las semanas fuera no cuentan, igual que en `blockWeekFromDates`.
  *
  * @returns {string|null} 'B<n>', o null antes del ancla o sin ancla (no se extrapola atrás).
  */
-function blockLabel(dateStr, anchorMondayStr, blockWeeks = 5) {
+function blockLabel(dateStr, anchorMondayStr, blockWeeks = 5, absences = []) {
   const n = Math.max(2, Math.floor(Number(blockWeeks)) || 5);
-  const b = blockWeekFromDates(dateStr, anchorMondayStr, n);
+  const b = blockWeekFromDates(dateStr, anchorMondayStr, n, absences);
   if (!b || b.weeksIntoBlock == null || b.weeksIntoBlock < 0) return null;
   return `B${Math.floor(b.weeksIntoBlock / n) + 1}`;
 }
@@ -938,6 +1043,14 @@ function suggestSetTarget(ex, history, opts = {}) {
   // Vigencia por FECHA (plan §Reconciliaciones): la semana ISO en que lo fijó tiene que ser
   // ésta o la anterior; sin semana, vale un plan creado hace ≤ 14 días. Un objetivo de hace
   // tres semanas describe un cuerpo que ya no existe, así que cede el paso a la regla.
+  //
+  // SALVO TRAS UNA PAUSA (v11.80). Un objetivo vigente escrito ANTES del hueco describe el
+  // cuerpo de antes del viaje; manda la pausa (5). Sólo si el plan del coach es posterior a
+  // `última sesión + 21 d` el coach ya vio el hueco y su número sigue mandando.
+  const pausa = !!lastSession && daysSince != null && daysSince > COACH_PAUSE_DAYS;
+  const planCreatedDays = (pausa && o.planCreatedAt != null)
+    ? _coachDaysBetween(lastSession.date, o.planCreatedAt) : null;
+  const coachVioHueco = planCreatedDays != null && planCreatedDays > COACH_PAUSE_DAYS;
   const ct = o.coachTarget;
   let expiredPrefix = '';
   if (ct && ct.kg != null && isFinite(Number(ct.kg))) {
@@ -952,7 +1065,7 @@ function suggestSetTarget(ex, history, opts = {}) {
       ageDays = _coachDaysBetween(o.planCreatedAt, todayStr);
       vigente = ageDays != null && ageDays >= 0 && ageDays <= COACH_TARGET_TTL_DAYS;
     }
-    if (vigente) {
+    if (vigente && (!pausa || coachVioHueco)) {
       const kg = +Number(ct.kg).toFixed(2);
       return withBasis({
         kg,
@@ -965,10 +1078,20 @@ function suggestSetTarget(ex, history, opts = {}) {
         basis,
       });
     }
-    expiredPrefix = ageDays != null
-      ? `Coach target from ${ageDays} days ago — falling back to the rule. `
-      : 'Coach target with no date — falling back to the rule. ';
+    expiredPrefix = vigente
+      ? 'Coach target set before the break — falling back to the rule. '
+      : ageDays != null
+        ? `Coach target from ${ageDays} days ago — falling back to the rule. `
+        : 'Coach target with no date — falling back to the rule. ';
   }
+
+  // −10 % con el redondeo de la descarga: par real de la tabla en mancuerna, múltiplo de 1,25
+  // en lo demás, y nada que bajar en peso corporal sin lastre. Lo comparten (5) y (6).
+  const cut10 = () => {
+    if (type === 'bw' && (lastTopKg == null || lastTopKg <= 0)) return null;
+    if (type === 'db') return _coachSnapDbDown(lastTopKg * COACH_DELOAD_FACTOR);
+    return _coachRound(lastTopKg * COACH_DELOAD_FACTOR, COACH_STEP_KG);
+  };
 
   // ── (4) Sin historial no se inventa un número ────────────────────────────────────
   if (!lastSession) {
@@ -976,25 +1099,22 @@ function suggestSetTarget(ex, history, opts = {}) {
       expiredPrefix + 'First time: pick a weight that leaves 2-3 reps in reserve');
   }
 
-  // ── (5) Pausa larga: repetir, nunca subir (LOAD-004) ─────────────────────────────
-  if (daysSince != null && daysSince > COACH_PAUSE_DAYS) {
-    return withBasis(mk(lastTopKg, 'last',
-      `${expiredPrefix}${daysSince}-day break: repeat the load; if it feels easy, go up next time`,
-      { delta: 0, ruleIds: ['LOAD-004'] }));
+  // ── (5) Pausa larga: −10 % para volver, nunca subir (LOAD-004) ───────────────────
+  // v11.80: antes REPETÍA la carga — tras tres semanas de viaje la sentadilla volvía a 105 kg.
+  // La primera sesión de vuelta baja un 10 %; la siguiente ya tiene `daysSince` corto y
+  // progresa sobre ella con la regla normal. Pausa + descarga = UN solo −10 %: va antes que (6).
+  if (pausa) {
+    const kg = cut10();
+    return withBasis(mk(kg, 'rule',
+      `${expiredPrefix}${daysSince}-day break: −10 % to come back; normal progression from next session`,
+      { delta: deltaFrom(kg), ruleIds: ['LOAD-004'] }));
   }
 
   // ── (6) Descarga: −10 % y RPE 5-6. NO se evalúa progresión ───────────────────────
   // Es el punto entero de la semana 5/5. Evaluar la doble progresión aquí y recortar después
   // sería prescribir dos cosas contradictorias sobre el mismo set.
   if (o.deload) {
-    let kg;
-    if (type === 'bw' && (lastTopKg == null || lastTopKg <= 0)) {
-      kg = null;                                   // peso corporal sin lastre: no hay qué bajar
-    } else if (type === 'db') {
-      kg = _coachSnapDbDown(lastTopKg * COACH_DELOAD_FACTOR);
-    } else {
-      kg = _coachRound(lastTopKg * COACH_DELOAD_FACTOR, COACH_STEP_KG);
-    }
+    const kg = cut10();
     return withBasis({
       kg: kg == null ? null : +Number(kg).toFixed(2),
       reps: baseReps,
@@ -2773,6 +2893,11 @@ if (typeof module !== 'undefined' && module.exports) {
     mondayOf,
     blockWeekFromDates,
     blockLabel,
+    // Ausencias (v11.80)
+    ABSENT_WEEK_MIN_DAYS,
+    absenceForDate,
+    isAbsentDate,
+    absentWeeksBetween,
     anchorDateFromWeek,
     roundStep,
     progressCardioMin,
