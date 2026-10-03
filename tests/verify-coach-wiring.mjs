@@ -404,8 +404,10 @@ yes(/wIn\.value = wIn\.placeholder/.test(SW_SRC), '…escribiendo el placeholder
 const CAP_SRC = fnSrc('function captureWorkoutState(');
 yes(/targets: state\.activeTargets/.test(CAP_SRC), 'captureWorkoutState() guarda los objetivos');
 const RES_SRC = fnSrc('async function restoreActiveWorkout(');
-yes(/startWorkout\(saved\.sessionId, \{ targets: saved\.targets \|\| null \}\)/.test(RES_SRC),
-  'restoreActiveWorkout() repone los MISMOS objetivos (y nada más: v11.62 no hay ajustes)');
+// v11.83: además de los objetivos viaja lo marcado en el bloque de movilidad (`mobilityCheck`).
+// Sigue sin haber ajustes: ningún otro campo entra en la reanudación.
+yes(/startWorkout\(saved\.sessionId, \{ targets: saved\.targets \|\| null, mobilityCheck: saved\.mobilityCheck \|\| null \}\)/.test(RES_SRC),
+  'restoreActiveWorkout() repone los MISMOS objetivos y la movilidad marcada (y nada más: v11.62 no hay ajustes)');
 const CLR_SRC = fnSrc('async function clearActiveWorkout(');
 yes(/state\.activeTargets = null/.test(CLR_SRC), 'clearActiveWorkout() los limpia');
 

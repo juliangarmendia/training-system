@@ -48,6 +48,8 @@ const PLAN = {
     },
     lowerA: {
       id: 'lowerA', name: 'Lower A', subtitle: 'Squat Focus', icon: '🦵',
+      // v11.83: 5' de movilidad marcable al principio (ATH-006). Ver `MOBILITY_LIBRARY['lower-prep']`.
+      mobilityMin: 5, mobilityRoutine: 'lower-prep',
       warmup: [
         '5 min treadmill walk or light bike',
         'Leg swings front/back — 2 × 10/side',
@@ -144,6 +146,8 @@ const PLAN = {
     },
     lowerB: {
       id: 'lowerB', name: 'Lower B', subtitle: 'Hinge Focus', icon: '🔥',
+      // v11.83: igual que Lower A — y aquí importa más: es el día de la bisagra pesada.
+      mobilityMin: 5, mobilityRoutine: 'lower-prep',
       warmup: [
         '5 min treadmill walk or light bike',
         'Leg swings front/back — 2 × 10/side',
@@ -525,6 +529,30 @@ const MOBILITY_LIBRARY = {
       { name: 'Prone Y-T-W', reps: '8 each shape', durationSec: 90, youtubeId: 'FATPBjxNuvo', instructions: 'Face down on floor. Lift arms in Y shape (overhead), then T (out to sides), then W (elbows bent). 8 reps each.' },
       { name: 'Romanian Deadlift (Unweighted)', reps: '12 reps slow', durationSec: 75, youtubeId: 'P9akD4PyOXk', instructions: 'Stand tall. Hinge at hips, push butt back, slight knee bend. Slow eccentric to mid-shin, drive hips through.' },
       { name: 'Hip Flexor Stretch + Reach', reps: '45s each side', durationSec: 90, perSide: true, youtubeId: 'd9wYh4pRV6Q', instructions: 'Half-kneeling lunge. Squeeze the glute of the back leg. Reach same-side arm overhead and slightly to opposite side.' },
+    ],
+  },
+  // v11.83 — MOVILIDAD DENTRO DE LA SESIÓN. ATH-006 pide 2-3 sesiones de movilidad por semana y
+  // en seis meses hay DOS registros (el último, 2026-04-27): una sesión aparte no ocurre. Esta
+  // rutina va al principio de Lower A y Lower B, se marca en la pantalla del entreno y se
+  // registra sola al terminar (`finishWorkout`).
+  //
+  // Elegida para la espalda que tiene historial (dos contracturas lumbares): estilo McGill —
+  // movimiento sin carga y en rango cómodo, CERO flexión lumbar cargada. El cat-camel es
+  // movilidad de baja carga (McGill lo usa precisamente así: 5-8 ciclos, sin forzar el final del
+  // rango). Cadera, tobillo y glúteo porque son lo que pide la sentadilla y la bisagra de ese día.
+  'lower-prep': {
+    id: 'lower-prep',
+    name: 'Lower Prep',
+    duration: 5,
+    area: 'hips',
+    color: 'teal',
+    description: '5 minutes before a lower-body session. Back-friendly: no loaded spinal flexion.',
+    exercises: [
+      { name: 'Cat-Camel', reps: '8 slow cycles', durationSec: 50, youtubeId: 'WHUevrqeKIg', instructions: 'On hands and knees. Move gently between a rounded and an arched back, staying in the comfortable middle of the range — do not force the end positions.' },
+      { name: '90/90 Hip Switch', reps: '6 each side', durationSec: 60, perSide: true, youtubeId: 'oALcD7wEa-s', instructions: 'Sit with one leg in front (90°) and the other to the side (90°). Switch sides slowly, chest tall, hands behind you if needed.' },
+      { name: 'Knee-to-Wall Ankle Rocks', reps: '10 each side', durationSec: 60, perSide: true, instructions: 'Half-kneeling facing a wall, front foot a hand-width away. Drive the knee over the toes to touch the wall without lifting the heel.' },
+      { name: 'Glute Bridge Hold', reps: '3 × 10s', durationSec: 50, youtubeId: 'MnluU4dEHQE', instructions: 'Lying on back, knees bent. Drive through the heels, squeeze the glutes and hold 10s with the ribs down — the low back does not arch.' },
+      { name: "World's Greatest Stretch", reps: '3 each side', durationSec: 75, perSide: true, youtubeId: 'PE-UuERblwA', instructions: 'Lunge forward, plant the hand inside the front foot, rotate the other arm to the ceiling. Slow, breathe.' },
     ],
   },
 };
@@ -1085,7 +1113,7 @@ async function loadActivePlan() {
   const plans = await dbGetAll('plans');
   if (plans.length > 0) {
     plans.sort((a, b) => b.version - a.version);
-    activePlan = plans[0];
+    activePlan = _withSeedMobility(plans[0]);
     activeWeekTemplate = activePlan.weekTemplate;
   } else {
     // Fallback to hardcoded (should not happen after seed)
@@ -1925,13 +1953,17 @@ function computeBlocks(session, deload) {
   const dl = (ex) => (typeof deload === 'function' ? !!deload(ex && ex.id) : !!deload);
   const blocks = [];
   // Warmup block: rough estimate based on warmup item count
-  const warmupCount = (session.warmup && session.warmup.length) || 0;
+  // v11.83: el calentamiento de la semilla si la sesión no trae el suyo (el coach lo borra), y
+  // los minutos del bloque de movilidad DENTRO del bloque de calentamiento: son 5' reales que el
+  // "~N min" de la pantalla no puede esconder (el objetivo de sesión es 45-75').
+  const warmupCount = (typeof sessionWarmup === 'function' ? sessionWarmup(session.id, session) : (session.warmup || [])).length;
+  const mob = (typeof sessionMobility === 'function') ? sessionMobility(session.id, session) : null;
   blocks.push({
     id: 'warmup',
     label: 'Warm-up',
     type: 'warmup',
     exerciseIds: [],
-    estimatedSec: Math.max(180, warmupCount * 45 + 120), // ramp sets add time
+    estimatedSec: Math.max(180, warmupCount * 45 + 120) + (mob ? mob.minutes * 60 : 0), // ramp sets add time
   });
 
   let currentSS = null;
@@ -3510,6 +3542,8 @@ function viewCompletedWorkout(workout) {
   const warmupBody = document.getElementById('warmup-body');
   if (warmupBody) warmupBody.innerHTML = '';
   document.getElementById('warmup-section').classList.remove('expanded');
+  // v11.83: ni el bloque de movilidad del entreno en curso (su registro está en Mobility).
+  { const mb = document.getElementById('workout-mobility'); if (mb) { mb.hidden = true; mb.innerHTML = ''; } }
 
   // `showView` es lo que faltaba: activa la sección y, de paso, deja el estado coherente
   // (`state.currentView`), que es lo que lee `switchTab` al volver. El FAB de la calculadora
@@ -3797,6 +3831,8 @@ async function startWorkout(sessionId, opts = {}) {
   // ejercicios, no tapa el RPE y no recorta series (v11.62).
   try { state.activeReadiness = _coachReadinessStamp(await computeReadiness()); } catch (e) { state.activeReadiness = null; }
 
+  // v11.83: ¿re-render de la MISMA sesión (Quick mode, añadir ejercicio)? Se mira antes de pisarlo.
+  const sameSession = state.activeSession === sessionId;
   state.activeSession = sessionId;
   // B-1: la sesión en vivo no enseña las notas del entreno guardado que se estuviera mirando
   // (salir por la barra inferior no pasa por el botón de volver, que es quien las limpia).
@@ -3901,7 +3937,21 @@ async function startWorkout(sessionId, opts = {}) {
 
   // Render warm-up with auto warm-up sets
   const warmupBody = document.getElementById('warmup-body');
-  let warmupHTML = `<ul class="warmup-list">${session.warmup.map(w => `<li>${w}</li>`).join('')}</ul>`;
+  // v11.83: `session.warmup` puede no existir (el coach lo borra de las sesiones que toca).
+  let warmupHTML = `<ul class="warmup-list">${sessionWarmup(sessionId, baseSession).map(w => `<li>${w}</li>`).join('')}</ul>`;
+
+  // v11.83: bloque de movilidad marcable, ANTES del calentamiento. Su estado viaja con la
+  // instantánea del entreno (`captureWorkoutState`), así que sobrevive a cerrar la app, al
+  // round-trip de añadir ejercicio y al toggle de Quick mode.
+  {
+    const mob = sessionMobility(sessionId, baseSession);
+    const prevMob = state.activeMobilityCheck;
+    const keep = sameSession && prevMob && prevMob.sessionId === sessionId;
+    state.activeMobilityCheck = mob
+      ? _mobilityCheckState(sessionId, mob.routine, (opts && opts.mobilityCheck) || (keep ? prevMob : null))
+      : null;
+    renderWorkoutMobility(mob);
+  }
 
   // Auto warm-up ramp: full for 1st compound, short for 2nd, none for accessories
   if (previous) {
@@ -4706,6 +4756,8 @@ function captureWorkoutState() {
     // La instantánea del readiness viaja con la sesión: si entrenó a las 7:00 sin dato de hoy,
     // el registro tiene que decir eso y no el verde que llegó a mediodía.
     readinessAtStart: state.activeReadiness ? JSON.parse(JSON.stringify(state.activeReadiness)) : null,
+    // v11.83: lo marcado en el bloque de movilidad. Sin esto, cerrar la app lo perdía.
+    mobilityCheck: state.activeMobilityCheck ? JSON.parse(JSON.stringify(state.activeMobilityCheck)) : null,
   };
 }
 
@@ -4745,6 +4797,7 @@ async function clearActiveWorkout() {
   state.adHocSession = null;
   state.activeTargets = null;
   state.activeReadiness = null;
+  state.activeMobilityCheck = null;
   { const qb = document.getElementById('quick-mode-bar'); if (qb) qb.classList.remove('hidden'); }
   syncQuickModeUI();
 }
@@ -4855,7 +4908,7 @@ async function restoreActiveWorkout() {
   state.quickMode = !!saved.quickMode;
 
   // Rebuild the workout UI (reuse startWorkout rendering)
-  await startWorkout(saved.sessionId, { targets: saved.targets || null });
+  await startWorkout(saved.sessionId, { targets: saved.targets || null, mobilityCheck: saved.mobilityCheck || null });
   // El readiness del ARRANQUE, no el de ahora: si entrenó a las 7:00 sin dato de hoy, el registro
   // tiene que decir eso y no el verde que llegó a mediodía.
   if (saved.readinessAtStart) state.activeReadiness = saved.readinessAtStart;
@@ -4945,6 +4998,141 @@ function startWorkoutTimer() {
     const elapsed = Math.floor((Date.now() - state.workoutStartTime) / 1000);
     timerEl.textContent = formatDuration(elapsed);
   }, 1000);
+}
+
+// v11.83 — LO QUE LA SESIÓN DEL PLAN NO TRAE, LO PONE LA SEMILLA.
+//
+// `mergeProposal` (coach-facts.js) BORRA el `warmup` de las sesiones que el coach toca, con la
+// promesa de que `startWorkout` cae a `PLAN.sessions[id].warmup`. Esa caída no existía:
+// `session.warmup.map(...)` reventaba al abrir cualquier sesión que el coach hubiera editado.
+// Ahora existe, y es la misma regla para la movilidad: un plan del coach no se regenera con
+// PLAN_REV, así que los campos de la semilla le llegan por aquí.
+function sessionWarmup(sessionId, def) {
+  if (def && Array.isArray(def.warmup)) return def.warmup;
+  if (def && def.adHoc) return [];
+  const seed = PLAN.sessions[sessionId];
+  return (seed && Array.isArray(seed.warmup)) ? seed.warmup : [];
+}
+
+// La rutina de movilidad de la sesión, o null. Si la sesión declara `mobilityRoutine` (aunque sea
+// null) o `mobilityMin: 0`, manda la sesión: así el coach puede QUITARLA. Si no dice nada, la semilla.
+function sessionMobility(sessionId, def) {
+  if (def && def.adHoc) return null;
+  const own = def && (Object.prototype.hasOwnProperty.call(def, 'mobilityRoutine') || def.mobilityMin === 0);
+  const src = own ? def : PLAN.sessions[sessionId];
+  if (!src || !src.mobilityRoutine || src.mobilityMin === 0) return null;
+  const routine = MOBILITY_LIBRARY[src.mobilityRoutine];
+  if (!routine) return null;
+  return { routine, minutes: Number(src.mobilityMin) || routine.duration };
+}
+
+// Al cargar un plan que no trae los campos de movilidad (un plan del coach anterior a v11.83),
+// se los pone la semilla EN MEMORIA, sólo donde faltan. Sirve para que el validador de la
+// propuesta vea la movilidad que la sesión de verdad tiene (MOBILITY-FLOOR) y para que la
+// siguiente versión del coach los herede por `mergeProposal`. No escribe nada.
+function _withSeedMobility(plan) {
+  if (!plan || !plan.sessions || plan.sessions === PLAN.sessions) return plan;
+  let sessions = null;
+  for (const [sid, s] of Object.entries(plan.sessions)) {
+    const seed = PLAN.sessions[sid];
+    if (!s || !seed || !seed.mobilityRoutine) continue;
+    if (Object.prototype.hasOwnProperty.call(s, 'mobilityRoutine') || s.mobilityMin != null) continue;
+    if (!sessions) sessions = Object.assign({}, plan.sessions);
+    sessions[sid] = Object.assign({}, s, { mobilityMin: seed.mobilityMin, mobilityRoutine: seed.mobilityRoutine });
+  }
+  return sessions ? Object.assign({}, plan, { sessions }) : plan;
+}
+
+// ==================== MOVILIDAD EN LA SESIÓN (v11.83) ====================
+//
+// Estado: `state.activeMobilityCheck = { sessionId, routineId, items: [bool…], done: bool }`.
+// `items` va alineado con `routine.exercises`; si la rutina cambia de longitud entre versiones,
+// se recorta/rellena en vez de descartar lo marcado.
+
+// Cuántos ítems marcados bastan para darlo por hecho sin pulsar "Done": la mayoría de una
+// rutina de cinco. Menos sería registrar una movilidad que no ocurrió.
+const MOBILITY_PREP_MIN_ITEMS = 3;
+
+function _mobilityCheckState(sessionId, routine, prev) {
+  const n = routine.exercises.length;
+  const ok = prev && prev.routineId === routine.id;
+  const items = Array.from({ length: n }, (_, i) => !!(ok && Array.isArray(prev.items) && prev.items[i]));
+  return { sessionId, routineId: routine.id, items, done: !!(ok && prev.done) };
+}
+
+// ¿Cuenta como hecha? "Done" pulsado, o al menos MOBILITY_PREP_MIN_ITEMS ítems marcados.
+function mobilityCheckCompleted(mc) {
+  if (!mc) return false;
+  if (mc.done) return true;
+  return (mc.items || []).filter(Boolean).length >= MOBILITY_PREP_MIN_ITEMS;
+}
+
+// La fila de `mobility_sessions` que deja un entreno con la movilidad hecha, o null. Pura: el id
+// sale del entreno (`wo-mob-<workoutId>`), así que escribirla dos veces no duplica nada.
+function workoutMobilityRecord(mc, workout) {
+  if (!mobilityCheckCompleted(mc) || !workout || !workout.id) return null;
+  const routine = MOBILITY_LIBRARY[mc.routineId];
+  if (!routine) return null;
+  return {
+    id: `wo-mob-${workout.id}`,
+    date: workout.date,
+    routineId: routine.id,
+    routineName: routine.name,
+    durationMin: routine.duration,
+    painBefore: null,
+    painAfter: null,
+    notes: '',
+    source: 'workout',
+    workoutId: workout.id,
+    createdAt: Date.now(),
+  };
+}
+
+function renderWorkoutMobility(mob) {
+  const el = document.getElementById('workout-mobility');
+  if (!el) return;
+  const mc = state.activeMobilityCheck;
+  if (!mob || !mc) { el.hidden = true; el.innerHTML = ''; return; }
+  const r = mob.routine;
+  const doneAll = mobilityCheckCompleted(mc);
+  el.hidden = false;
+  el.innerHTML = `
+    <div class="mobility-prep-head">
+      <div>
+        <div class="mobility-prep-title">🧘 Mobility · ${mob.minutes} min</div>
+        <div class="mobility-prep-sub">${escapeHtml(r.name)} · before the warm-up</div>
+      </div>
+      <button type="button" class="mobility-prep-done${mc.done ? ' on' : ''}" data-mob-done aria-pressed="${mc.done ? 'true' : 'false'}">${doneAll ? 'Done ✓' : 'Done'}</button>
+    </div>
+    <ul class="mobility-prep-list">
+      ${r.exercises.map((ex, i) => `<li><button type="button" class="mobility-prep-item${mc.items[i] ? ' checked' : ''}" data-mob-idx="${i}" aria-pressed="${mc.items[i] ? 'true' : 'false'}"><span class="mobility-prep-box">✓</span><span class="mobility-prep-name">${escapeHtml(ex.name)}</span><span class="mobility-prep-reps">${escapeHtml(ex.reps || '')}</span></button></li>`).join('')}
+    </ul>`;
+  // Delegación, ligada UNA vez: el contenedor sobrevive a los re-renders de startWorkout.
+  if (!el.dataset.bound) {
+    el.dataset.bound = '1';
+    el.addEventListener('click', (e) => {
+      const st = state.activeMobilityCheck;
+      if (!st) return;
+      const item = e.target.closest('[data-mob-idx]');
+      const done = e.target.closest('[data-mob-done]');
+      if (item) {
+        const i = Number(item.dataset.mobIdx);
+        st.items[i] = !st.items[i];
+        // Desmarcar un ítem no deshace un "Done" explícito; marcar TODOS sí lo enciende.
+        if (st.items.every(Boolean)) st.done = true;
+      } else if (done) {
+        // "Done" es "lo hice entero": marca todos los ítems. Apagarlo los desmarca todos — si
+        // no, los cinco ítems marcados seguirían contando como hecha y el botón no haría nada.
+        st.done = !st.done;
+        st.items = st.items.map(() => st.done);
+      } else {
+        return;
+      }
+      const cur = sessionMobility(state.activeSession, getSessionDef(state.activeSession));
+      renderWorkoutMobility(cur);
+      _autosaveWorkout();
+    });
+  }
 }
 
 async function finishWorkout() {
@@ -5079,6 +5267,19 @@ async function finishWorkout() {
       });
     } catch (e) {
       console.warn('[Coach] logDecision(session-readout):', e);
+    }
+  }
+
+  // v11.83: la movilidad del principio de la sesión se registra SOLA en `mobility_sessions` —
+  // la misma tienda que lee `_factsMobility`, así que la cuenta de ATH-006 sube sin más. Sólo si
+  // se hizo ("Done" o ≥3 ítems), con id derivado del entreno (idempotente), y DESPUÉS de que el
+  // entreno se haya guardado: si aquello falla, se sale arriba y no queda una movilidad huérfana.
+  // Su fallo no puede deshacer el entreno ya guardado: aviso y sigue.
+  {
+    const mobRec = workoutMobilityRecord(state.activeMobilityCheck, workout);
+    if (mobRec) {
+      try { await smartPut('mobility_sessions', mobRec); }
+      catch (e) { console.warn('[Mobility] registro desde el entreno:', e); toast('Workout saved, but the mobility block could not be logged'); }
     }
   }
 
@@ -9893,7 +10094,7 @@ const IDEAL_BLOCK_V1 = {
       label: 'Travel · no gym',
       note: 'Bodyweight (band if you have one). Every session is complete: legs + push + pull + core.',
       days: [
-        { dow: 1, kind: 'strength', subtype: 'full', bw: 1.5, planRef: 'travelA', title: 'Travel A', summary: 'Bulgarians + push-ups + pull-ups + glute + plank', why: 'A complete session with no equipment; keeps the patterns.', ruleIds: ['STR-002', 'STR-004'], alt: 'strength_upper' },
+        { dow: 1, kind: 'strength', subtype: 'full', bw: 1.5, planRef: 'travelA', title: 'Travel A', summary: 'Bulgarians + push-ups + pull-ups + glute + bird dog', why: 'A complete session with no equipment; keeps the patterns.', ruleIds: ['STR-002', 'STR-004'], alt: 'strength_upper' },
         { dow: 3, kind: 'cardio', subtype: 'zone2', bw: 0.5, durationMin: 30, title: 'Free Z2 cardio', summary: '30 min easy: run, brisk walk, or the hotel gym', why: 'The aerobic minimum without depending on kit.', ruleIds: ['END-001'], alt: 'hard_cardio' },
         { dow: 5, kind: 'strength', subtype: 'full', bw: 1.5, planRef: 'travelB', title: 'Travel B', summary: 'Single-leg RDL + pike + band row + nordic + dead bug', why: 'Hinge and vertical pattern, what A does not cover.', ruleIds: ['STR-002', 'STR-007'], alt: 'strength_upper' },
         { dow: 0, kind: 'recovery', subtype: 'mobility', bw: 0, z2Finisher: 20, z2FinisherModality: 'walk', title: 'Active recovery', summary: 'Mobility + walk', why: 'Travelling piles up sitting hours; mobility matters more, not less.', ruleIds: ['ATH-003', 'ATH-006'], alt: null },
@@ -10042,7 +10243,10 @@ function buildWeekTemplateFromIdeal(variantNum) {
 //     finisher, para que "20' Z2" diga TAMBIÉN en qué — bici/ski tras pierna, cinta tras torso).
 // 11 = v11.75 (la plantilla se queda el `alt` de cada día de cardio: sin él, el bloque
 //      "Pick one" de la tarjeta no tenía alternativas que ofrecer y no se pintaba, en silencio).
-const PLAN_REV = 11;
+// 12 = v11.83 (Lower A/B traen `mobilityMin: 5` + `mobilityRoutine: 'lower-prep'`: el bloque de
+//      movilidad marcable al principio de la sesión. Un plan del coach no se regenera: recibe
+//      los dos campos en memoria con `_withSeedMobility` al cargar).
+const PLAN_REV = 12;
 
 async function applyIdealPlan({ force = false } = {}) {
   const n = _idealVariant();

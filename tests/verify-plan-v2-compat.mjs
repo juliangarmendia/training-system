@@ -64,6 +64,10 @@ const LOAD_SRC = slice('async function loadActivePlan()', '// Load exercise libr
 // v11.66 (E-12): el ancla de cierre era `// ==== RE-ENTRY RAMP`, el bloque de la rampa de
 // re-entrada que se borró por muerto. Ahora cierra en la sección de la base de datos.
 const CNP_SRC = slice('async function createNewPlanVersion(modifications)', '// ==================== DATABASE ====================', 'createNewPlanVersion');
+// v11.83: `loadActivePlan` pasa el plan por `_withSeedMobility` (la semilla rellena, EN MEMORIA,
+// los campos de movilidad que un plan del coach anterior no trae). Se carga la función real.
+const WSM_SRC = (() => { const i = APP.indexOf('function _withSeedMobility(plan) {'); const j = APP.indexOf('\n}\n', i); return (i < 0 || j < 0) ? '' : APP.slice(i, j + 2); })();
+if (!WSM_SRC) { console.log('FAIL — no se pudo extraer _withSeedMobility'); process.exit(1); }
 
 const store = { plans: [] };
 const written = [];
@@ -79,8 +83,10 @@ vm.createContext(ctx);
 vm.runInContext(`
   var activePlan = null;
   var activeWeekTemplate = null;
+  ${WSM_SRC}
   ${LOAD_SRC}
   ${CNP_SRC}
+  globalThis._withSeedMobility = _withSeedMobility;
   globalThis.loadActivePlan = loadActivePlan;
   globalThis.createNewPlanVersion = createNewPlanVersion;
   globalThis._active = () => activePlan;
@@ -404,6 +410,41 @@ eq(restaurada.rolledBackFrom, 'plan_v14', 'y deja rastro de desde dónde se volv
 eq(store.plans.length, 3, 'sin borrar ninguna fila (historia lineal)');
 await ctx.loadActivePlan();
 eq(ctx._active().version, 15, 'y la restaurada es la activa por ser la más alta');
+
+// ════════════════════════════════════════════════════════════════════════════════════
+sec('v11.83 · movilidad de la semilla sobre un plan que no la trae');
+{
+  // La semilla del contexto gana una lowerA con movilidad; el plan del coach no la trae.
+  ctx.PLAN.sessions.lowerA = { id: 'lowerA', name: 'Lower A', mobilityMin: 5, mobilityRoutine: 'lower-prep' };
+  const coachSessions = {
+    upperA: { id: 'upperA', name: 'Upper A', exercises: [] },
+    lowerA: { id: 'lowerA', name: 'Lower A', exercises: [{ id: 'back-squat', sets: 4 }] },
+  };
+  setPlans([{ id: 'plan_v30', version: 30, label: 'Coach · W40', author: 'coach-llm', sessions: coachSessions, weekTemplate: TEMPLATE }]);
+  await ctx.loadActivePlan();
+  const la = ctx._active().sessions.lowerA;
+  eq(la.mobilityMin, 5, 'Lower A de un plan del coach recibe mobilityMin de la semilla');
+  eq(la.mobilityRoutine, 'lower-prep', 'y su mobilityRoutine');
+  eq(la.exercises.length, 1, 'sin tocar sus ejercicios');
+  ok(!('mobilityMin' in ctx._active().sessions.upperA), 'una sesión sin movilidad en la semilla no recibe nada');
+  ok(!('mobilityMin' in store.plans[0].sessions.lowerA), 'y NO se escribe en el store: es en memoria');
+  eq(ctx._active().id, 'plan_v30', 'la identidad del plan no cambia');
+
+  // El coach puede QUITARLA: un mobilityMin explícito (0) manda sobre la semilla.
+  const off = { lowerA: { id: 'lowerA', name: 'Lower A', mobilityMin: 0, exercises: [] } };
+  setPlans([{ id: 'plan_v31', version: 31, label: 'Coach · W41', author: 'coach-llm', sessions: off, weekTemplate: TEMPLATE }]);
+  await ctx.loadActivePlan();
+  eq(ctx._active().sessions.lowerA.mobilityMin, 0, 'mobilityMin: 0 del coach se respeta');
+  ok(!ctx._active().sessions.lowerA.mobilityRoutine, 'y no se le añade la rutina');
+
+  // mergeProposal: la sesión TOCADA conserva la movilidad (a diferencia del warmup).
+  const baseMob = { id: 'plan_v32', version: 32, sessions: { lowerA: { id: 'lowerA', name: 'Lower A', mobilityMin: 5, mobilityRoutine: 'lower-prep', warmup: ['x'], exercises: [] } }, weekTemplate: TEMPLATE };
+  const m2 = mergeProposal(baseMob, { sessions: [{ id: 'lowerA', exercises: [{ id: 'back-squat', sets: 4, reps: '5-8', rpe: '7-8' }] }] });
+  ok(!('warmup' in m2.sessions.lowerA), 'mergeProposal quita el warmup de lowerA tocada');
+  eq(m2.sessions.lowerA.mobilityRoutine, 'lower-prep', 'pero conserva mobilityRoutine');
+  eq(m2.sessions.lowerA.mobilityMin, 5, 'y mobilityMin');
+  delete ctx.PLAN.sessions.lowerA;
+}
 
 console.log('');
 console.log(fail === 0

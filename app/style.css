@@ -417,6 +417,20 @@ nav { display: flex; background: rgba(16,17,22,0.72); -webkit-backdrop-filter: b
 .warmup-list { padding: 0 16px 14px; list-style: none; }
 .warmup-list li { font-size: 13px; color: var(--text2); padding: 4px 0; display: flex; align-items: center; gap: 8px; }
 .warmup-list li::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: var(--yellow); flex-shrink: 0; }
+/* v11.83: bloque de movilidad marcable al principio de Lower A/B */
+.mobility-prep-card { background: linear-gradient(135deg, var(--tint-teal), transparent); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 10px; padding: 12px 16px; }
+.mobility-prep-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.mobility-prep-title { font-size: var(--fs-base); font-weight: 600; }
+.mobility-prep-sub { font-size: var(--fs-xs); color: var(--text2); margin-top: 2px; }
+.mobility-prep-done { border: 1px solid var(--border2); background: none; color: var(--text2); font-size: var(--fs-sm); font-weight: 600; padding: 6px 14px; border-radius: 20px; cursor: pointer; flex-shrink: 0; }
+.mobility-prep-done.on { border-color: var(--teal); background: var(--teal); color: var(--bg); }
+.mobility-prep-list { list-style: none; margin: 10px 0 0; padding: 0; }
+.mobility-prep-item { display: flex; align-items: center; gap: 10px; width: 100%; background: none; border: none; padding: 6px 0; color: var(--text); text-align: left; cursor: pointer; font: inherit; }
+.mobility-prep-box { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--border2); flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: transparent; font-size: var(--fs-2xs); }
+.mobility-prep-item.checked .mobility-prep-box { border-color: var(--teal); background: var(--teal); color: var(--bg); }
+.mobility-prep-name { font-size: var(--fs-sm); flex: 1; min-width: 0; }
+.mobility-prep-item.checked .mobility-prep-name { color: var(--text2); }
+.mobility-prep-reps { font-size: var(--fs-xs); color: var(--text3); font-family: var(--font-mono); flex-shrink: 0; }
 
 /* ========== Workout View ========== */
 .workout-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }

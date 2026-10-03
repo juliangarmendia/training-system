@@ -1265,6 +1265,17 @@ sec('VOL-CAP sobre la semilla REAL (v11.70, L-1): el box jump no es volumen de c
       // con los músculos pequeños que la semilla apenas entrena en directo. Es accionable (un
       // curl, un face pull, o aceptarlo) y por eso se fija aquí: si la semilla cambia y la lista
       // crece, este test lo dice antes de que lo diga la tarjeta del coach.
+      // v11.83: MOBILITY-FLOOR sobre la semilla REAL. Lower A/B traen `mobilityMin: 5` (el bloque
+      // marcable del principio de la sesión), así que la variante viva cumple ATH-006 con la
+      // semilla tal cual — antes el aviso sólo callaba en el fixture, que inventaba el campo.
+      // (Las variantes 4 y 3 usan fullA/fullB, sin bloque: ahí sigue avisando, y es correcto.)
+      if (variant === 6) {
+        ok(!res.some(g => g.id === 'MOBILITY-FLOOR'), 'variante viva (6) sobre la semilla: MOBILITY-FLOOR limpio');
+        const sinMob = JSON.parse(JSON.stringify(SEED.PLAN.sessions));
+        for (const id of ['lowerA', 'lowerB']) { delete sinMob[id].mobilityMin; delete sinMob[id].mobilityRoutine; }
+        const resSin = validatePlanVersion(Object.assign({}, seedPlan, { sessions: sinMob }), ctxV);
+        ok(resSin.some(g => g.id === 'MOBILITY-FLOOR'), '   y sin los campos de Lower A/B, avisa (el test no es vacuo)');
+      }
       if (variant === 6) {
         const floor = res.filter(g => g.id === 'VOL-FLOOR');
         eq(floor.length, 1, 'variante viva: UN aviso de suelo, no uno por familia');
