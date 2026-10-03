@@ -232,6 +232,116 @@ eq(SESSIONS.length, 9, 'las 9 sesiones del plan se cargan');
     : bad('PLAN_REV sin subir — PLAN.sessions cambió y el móvil se quedaría con el plan viejo');
 }
 
+// ── 9. v11.83: movilidad en la sesión + el crash del warmup ausente ──────────
+//
+// EL CRASH: `mergeProposal` borra `warmup` de las sesiones que el coach toca, con la promesa de que
+// `startWorkout` cae a `PLAN.sessions[id].warmup`. Esa caída no existía y `session.warmup.map`
+// reventaba al abrir la sesión. Y LA MOVILIDAD: dos registros en seis meses; ATH-006 pide 2-3/sem.
+{
+  const cutFn = (start) => { const i = SRC.indexOf(start); if (i < 0) return ''; const j = SRC.indexOf('\n}\n', i); return SRC.slice(i, j + 2); };
+  const cutLine = (start) => { const i = SRC.indexOf(start); if (i < 0) return ''; return SRC.slice(i, SRC.indexOf('\n', i) + 1); };
+  const helpers = ['function sessionWarmup(', 'function sessionMobility(', 'function _withSeedMobility(',
+    'function mobilityCheckCompleted(', 'function workoutMobilityRecord(', 'function _mobilityCheckState('].map(cutFn);
+  if (helpers.some(h => !h)) bad('no se pudieron extraer los helpers de movilidad de app.js');
+  const c2 = { console };
+  vm.createContext(c2);
+  vm.runInContext(SRC.slice(planStart, planEnd) + '\n' + cutLine('const MOBILITY_PREP_MIN_ITEMS') + helpers.join('\n')
+    + '\nObject.assign(globalThis, { PLAN, MOBILITY_LIBRARY, sessionWarmup, sessionMobility, _withSeedMobility, mobilityCheckCompleted, workoutMobilityRecord, _mobilityCheckState });', c2);
+
+  // 9a. La rutina
+  const lp = c2.MOBILITY_LIBRARY['lower-prep'];
+  lp ? ok("MOBILITY_LIBRARY['lower-prep'] existe") : bad("falta MOBILITY_LIBRARY['lower-prep']");
+  if (lp) {
+    eq(lp.duration, 5, 'lower-prep dura 5 min');
+    const sec = lp.exercises.reduce((a, e) => a + (e.durationSec || 0), 0);
+    sec >= 240 && sec <= 330 ? ok(`y sus ítems suman ${sec} s (~5 min)`) : bad(`lower-prep suma ${sec} s, no ~5 min`);
+    const names = lp.exercises.map(e => e.name).join(' | ');
+    for (const re of [/cat.?camel/i, /90\/90/i, /ankle|knee.to.wall/i, /glute bridge/i, /world.?s greatest/i]) {
+      re.test(names) ? ok(`lower-prep incluye ${re}`) : bad(`lower-prep sin ${re} — ${names}`);
+    }
+    // Historial lumbar: cero flexión de columna cargada.
+    !/curl.?up|sit.?up|crunch|toe touch|jefferson|good morning/i.test(names)
+      ? ok('lower-prep sin flexión lumbar cargada (ni curl-up, ni crunch, ni toe touch)')
+      : bad(`lower-prep con flexión cargada — ${names}`);
+  }
+
+  // 9b. La semilla
+  for (const id of ['lowerA', 'lowerB']) {
+    const s = c2.PLAN.sessions[id];
+    eq(s.mobilityMin, 5, `${id}: mobilityMin 5`);
+    eq(s.mobilityRoutine, 'lower-prep', `${id}: mobilityRoutine 'lower-prep'`);
+  }
+  for (const id of ['upperA', 'upperB', 'travelA', 'travelB']) {
+    !c2.PLAN.sessions[id].mobilityRoutine ? ok(`${id}: sin bloque de movilidad`) : bad(`${id} trae mobilityRoutine`);
+  }
+
+  // 9c. El warmup ausente (sesión tocada por el coach) cae a la semilla
+  const coachLowerA = { id: 'lowerA', name: 'Lower A', exercises: [] };   // sin `warmup`, como sale de mergeProposal
+  const w = c2.sessionWarmup('lowerA', coachLowerA);
+  Array.isArray(w) && w.length === c2.PLAN.sessions.lowerA.warmup.length
+    ? ok('sesión del coach SIN warmup → calentamiento de la semilla (antes: TypeError en startWorkout)')
+    : bad('sessionWarmup no cae a PLAN.sessions[id].warmup');
+  eq(c2.sessionWarmup('lowerA', { warmup: ['x'] })[0], 'x', 'si la sesión trae warmup, manda el suyo');
+  eq(c2.sessionWarmup('inventada', {}).length, 0, 'id sin semilla y sin warmup → [] (no lanza)');
+  eq(c2.sessionWarmup('free', { adHoc: true }).length, 0, 'sesión libre sin warmup → []');
+  eq(c2.sessionWarmup('lowerA', null).length, c2.PLAN.sessions.lowerA.warmup.length, 'def null → semilla');
+  const swSrc = cutFn('async function startWorkout(');
+  !/session\.warmup\.map/.test(swSrc) && /sessionWarmup\(sessionId, baseSession\)/.test(swSrc)
+    ? ok('startWorkout ya no hace session.warmup.map: usa sessionWarmup')
+    : bad('startWorkout sigue desreferenciando session.warmup sin caída');
+
+  // 9d. Qué sesión muestra el bloque
+  const m1 = c2.sessionMobility('lowerA', coachLowerA);
+  m1 && m1.routine.id === 'lower-prep' && m1.minutes === 5
+    ? ok('Lower A del coach sin campos → bloque de la semilla (lower-prep, 5 min)')
+    : bad('sessionMobility no cae a la semilla');
+  eq(c2.sessionMobility('lowerA', { mobilityMin: 0 }), null, 'mobilityMin: 0 del coach lo QUITA');
+  eq(c2.sessionMobility('lowerA', { mobilityRoutine: null }), null, 'mobilityRoutine: null del coach lo QUITA');
+  eq(c2.sessionMobility('upperA', c2.PLAN.sessions.upperA), null, 'Upper A no muestra bloque');
+  eq(c2.sessionMobility('travelA', c2.PLAN.sessions.travelA), null, 'Travel A no muestra bloque');
+  eq(c2.sessionMobility('free', { adHoc: true }), null, 'sesión libre no muestra bloque');
+  eq(c2.sessionMobility('lowerA', { mobilityRoutine: 'no-existe' }), null, 'rutina desconocida → null, no lanza');
+
+  // 9e. Cuándo se registra: Done, o ≥3 ítems
+  const routine = c2.MOBILITY_LIBRARY['lower-prep'];
+  const st = (items, done) => c2._mobilityCheckState('lowerA', routine, { routineId: 'lower-prep', items, done });
+  const wo = { id: 'w123', date: '2026-10-05' };
+  eq(c2.workoutMobilityRecord(st([], false), wo), null, 'nada marcado → ninguna fila');
+  eq(c2.workoutMobilityRecord(st([true, true], false), wo), null, '2 ítems → ninguna fila (no es la rutina)');
+  const r3 = c2.workoutMobilityRecord(st([true, true, true], false), wo);
+  r3 ? ok('3 ítems marcados → fila') : bad('3 ítems no registran');
+  const rd = c2.workoutMobilityRecord(st([], true), wo);
+  if (rd) {
+    eq(rd.routineId, 'lower-prep', 'Done → fila lower-prep');
+    eq(rd.source, 'workout', "con source 'workout'");
+    eq(rd.workoutId, 'w123', 'y el workoutId');
+    eq(rd.date, '2026-10-05', 'con la fecha del entreno');
+    eq(rd.durationMin, 5, 'durationMin 5');
+    eq(rd.routineName, routine.name, 'y el nombre de la rutina');
+    eq(rd.id, c2.workoutMobilityRecord(st([], true), wo).id, 'id derivado del entreno: dos escrituras = una fila');
+  } else bad('Done no registra');
+  eq(c2.workoutMobilityRecord(null, wo), null, 'sin bloque (Upper, sesión libre) → ninguna fila');
+  const prevOtra = c2._mobilityCheckState('lowerA', routine, { routineId: 'otra', items: [true, true, true, true, true], done: true });
+  eq(c2.mobilityCheckCompleted(prevOtra), false, 'lo marcado para OTRA rutina no se hereda');
+  eq(c2._mobilityCheckState('lowerA', routine, null).items.length, routine.exercises.length, 'estado nuevo: un ítem por ejercicio');
+
+  // 9f. El cableado: persiste con el entreno y se escribe en finishWorkout
+  /mobilityCheck: state\.activeMobilityCheck/.test(cutFn('function captureWorkoutState('))
+    ? ok('captureWorkoutState guarda lo marcado (sobrevive a cerrar la app)')
+    : bad('captureWorkoutState no guarda mobilityCheck');
+  /mobilityCheck: saved\.mobilityCheck/.test(cutFn('async function restoreActiveWorkout('))
+    ? ok('restoreActiveWorkout lo repone') : bad('restoreActiveWorkout no repone mobilityCheck');
+  /state\.activeMobilityCheck = null/.test(cutFn('async function clearActiveWorkout('))
+    ? ok('clearActiveWorkout lo limpia') : bad('clearActiveWorkout no limpia activeMobilityCheck');
+  const fin = cutFn('async function finishWorkout(');
+  const iWo = fin.indexOf("smartPut('workouts'"), iMob = fin.indexOf("smartPut('mobility_sessions'"), iClr = fin.indexOf('await clearActiveWorkout()');
+  iWo > 0 && iMob > iWo && iClr > iMob
+    ? ok('finishWorkout escribe mobility_sessions DESPUÉS del entreno y ANTES de limpiar el estado')
+    : bad(`finishWorkout: orden workouts(${iWo}) → mobility(${iMob}) → clear(${iClr}) roto`);
+  /workoutMobilityRecord\(state\.activeMobilityCheck, workout\)/.test(fin)
+    ? ok('y la fila sale de workoutMobilityRecord (sólo si se hizo)') : bad('finishWorkout no usa workoutMobilityRecord');
+}
+
 console.log(failed
   ? `\nFAIL — ${failed} comprobación(es) no pasan`
   : '\nPASS — una sola prescripción de aproximación, los 4 huecos tapados, y la pliometría fuera de carga y de volumen de pierna');

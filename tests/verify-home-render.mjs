@@ -683,7 +683,8 @@ section('12 · v11.75 · el día de cardio ofrece opciones');
   yes(/data-cmod/.test(html) && /CARDIO_MODALITIES/.test(APP), 'y debajo se elige la máquina');
   yes(/opciones\.length < 2/.test(html), 'con una sola opción no se pinta un selector de una cosa');
   // PLAN_REV sube: la plantilla cambia de forma y los teléfonos tienen que regenerarla.
-  yes(/const PLAN_REV = 11;/.test(APP), 'PLAN_REV sube a 11 (la plantilla cambió de forma)');
+  // v11.83: 12 — Lower A/B traen el bloque de movilidad (`mobilityMin`/`mobilityRoutine`).
+  yes(/const PLAN_REV = 12;/.test(APP), 'PLAN_REV sube a 12 (Lower A/B con movilidad en la sesión)');
 }
 
 section('13 · v11.75 · la semana se recoloca al guardar');
