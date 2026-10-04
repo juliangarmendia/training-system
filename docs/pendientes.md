@@ -6,7 +6,7 @@
 > El *por qué* de cada cosa vive en [`../assessments/2026-08-16_system-audit.md`](../assessments/2026-08-16_system-audit.md).
 > Aquí está el *qué sigue*.
 >
-> Última actualización: **2026-09-13** (v11.78 el rótulo huérfano del coach, v11.79 Ajustes en cinco grupos. Suite en verde, 39 ficheros)
+> Última actualización: **2026-10-04** (v11.82 la fusión de carreras compara la familia del deporte y tiene test)
 
 ## Regla de trabajo
 
@@ -711,6 +711,23 @@ this" con Retry.
 3. **`VOL-FLOOR` avisaba seis veces.** Medido sobre la semilla real incumplen el suelo seis familias
    (Rear Delt 3, Chest 4, Shoulders 4, Quads 7, cadena posterior 7, Back 8), cada una con el mismo
    texto de tres frases. Ahora es UN aviso con la lista ordenada por lo peor.
+
+## v11.82 (2026-10-04) — una carrera es una carrera
+
+Falsa alarma con un fondo real. Leyendo `runs` por SQL vi cada carrera dos veces y lo di por
+volumen doble. No lo era: la fila doble (`icu_` + `strava_`) es a propósito y la app fusiona al
+leer. Tampoco faltaban carreras desde el 21-sep: los dos syncs del 03-oct salen limpios y en esa
+ventana sólo hubo un nado. Lo que sí era real:
+
+- **La fusión comparaba el deporte por cadena exacta.** Strava guarda `sport_type` (`TrailRun`,
+  `VirtualRun`) e intervals.icu `type` (`Run`); esa pareja no se habría fusionado. Ahora se compara
+  la familia (`_runSportFamily`, sobre `CARDIO_TYPE_MAP`). Latente: hoy todas las filas dicen `Run`.
+- **Ningún test probaba el `dedupeRuns` real.** `tests/verify-run-dedupe.mjs` lo carga de app.js
+  con las 12 filas reales de septiembre (→ 6 carreras, 26,6 km) y los casos que no deben fusionarse.
+- **`/coach-deep-dive` lee por SQL sin fusionar.** Nota con la regla junto a la consulta.
+
+**Tuyo:** el 16-sep hay dos "Morning Run" distintas en tu propio Strava (4,90 y 4,82 km). La app
+las cuenta una vez, pero borra una en Strava.
 
 ## v11.79 (2026-09-13) — Ajustes en cinco grupos
 

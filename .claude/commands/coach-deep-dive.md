@@ -82,6 +82,13 @@ FROM workouts
 WHERE (data->>'date')::date BETWEEN '2026-08-10' AND '2026-09-06'
 ORDER BY data->>'date';
 -- idem: runs · sessions · bodyweight · nutrition · steps · mobility_sessions
+--
+-- ⚠ `runs` y `sessions` traen UNA FILA POR FUENTE: cada actividad del COROS aparece como
+--   `icu_<id>` y como `strava_<id>`. Es a propósito; la app las fusiona al leer (`dedupeRuns` /
+--   `dedupeSessions` en app.js). Por SQL hay que fusionarlas igual antes de sumar nada:
+--   runs = mismo día + misma familia de deporte (Run/TrailRun/VirtualRun = carrera) + ±0,3 km
+--   + ±3 min; sessions = mismo día + misma modalidad + ±2 min. Gana intervals.icu. Sumar sin
+--   fusionar da el doble de km (error real del 2026-10-04).
 
 -- 4. Wellness: el blob entero, no columnas sueltas (record_id = fecha)
 SELECT record_id AS date, data

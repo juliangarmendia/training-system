@@ -6660,12 +6660,20 @@ function _zoneForBpm(bpm) {
 
 // Two runs are the SAME Coros activity (arriving via both Strava and intervals.icu)
 // if same date + sport + distance within 0.3 km + duration within 3 min.
+// v11.82: el deporte se compara por FAMILIA, no por cadena. El servidor guarda el `sport_type` de
+// Strava (`TrailRun`, `VirtualRun`) e intervals.icu su `type` (`Run`): con la comparación exacta
+// esa pareja no se fusionaba y la misma carrera contaba dos veces en km y en el pack del coach.
+function _runSportFamily(r) {
+  const raw = String((r && r.sport) || 'Run');
+  const m = _activityModality({ sport: raw });
+  if (m && RUN_MODALITIES.has(m)) return 'run';
+  return m || raw.toLowerCase();
+}
+
 function _runsAreSameActivity(a, b) {
   if (!a || !b) return false;
   if ((a.date || '') !== (b.date || '')) return false;
-  const sa = String(a.sport || 'Run').toLowerCase();
-  const sb = String(b.sport || 'Run').toLowerCase();
-  if (sa !== sb) return false;
+  if (_runSportFamily(a) !== _runSportFamily(b)) return false;
   const distOk = Math.abs(Number(a.distance || 0) - Number(b.distance || 0)) <= 0.3;
   const durOk = Math.abs(Number(a.duration || 0) - Number(b.duration || 0)) <= 3;
   return distOk && durOk;

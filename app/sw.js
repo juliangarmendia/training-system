@@ -28,7 +28,7 @@
 //     └───────────────────────────────┴──────────────────────────────────────────────────┘
 //
 
-const CACHE_NAME = 'training-v11.81';
+const CACHE_NAME = 'training-v11.82';
 
 // La hoja de estilos de Google Fonts que pide `index.html`. Tiene que ser la MISMA URL,
 // carácter por carácter, o el `cache.match` no acierta.
